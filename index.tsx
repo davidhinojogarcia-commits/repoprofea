@@ -1,15 +1,30 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import { AuthGate } from './components/AuthGate';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+// Remove the obsolete manual synchronization entry from the sidebar without
+// touching the legacy component code still used by older workspaces.
+const hideLegacySyncMenu = () => {
+  const buttons = Array.from(document.querySelectorAll('button'));
+  for (const button of buttons) {
+    const label = (button.textContent || '').trim();
+    if (label === 'Sincronizar') {
+      button.remove();
+    }
+  }
+};
+
+const observer = new MutationObserver(hideLegacySyncMenu);
+observer.observe(document.body, { childList: true, subtree: true });
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <AuthGate />
   </React.StrictMode>
 );
