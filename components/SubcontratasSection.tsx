@@ -652,10 +652,6 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
           </div>
         </div>
 
-        <div className="mb-5">
-          <FirmasReporteTecnico onToast={onToast} />
-        </div>
-
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             id="btn-reporte-consolidado-top"
@@ -703,6 +699,11 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
             <span>Nueva Subcontrata</span>
           </button>
         </div>
+      </div>
+
+      {/* Firmas del Reporte Técnico: configuración específica del módulo CAE */}
+      <div className="mb-2">
+        <FirmasReporteTecnico onToast={onToast} />
       </div>
 
       {/* Visual Progress Bar Section for Each Obra */}
