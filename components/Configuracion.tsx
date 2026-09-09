@@ -1,0 +1,2283 @@
+
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Trash2, Plus, Settings, MapPin, GraduationCap, Stethoscope, Phone, 
+  Briefcase, Search, AlertCircle, Database, Download, FileJson, 
+  Clock, Cloud, CheckCircle, LogIn, LogOut, ExternalLink, 
+  Upload, FileArchive, Layers, ShieldAlert, RefreshCw, Loader2,
+  FileText, Check, Eye, FileSignature, ShieldCheck, UserCheck, Edit3, Save, X, Building2, User
+} from 'lucide-react';
+import { Person, DeletedPerson } from '../types';
+import { compressToGzip, decompressFromGzip, isCompressionSupported } from '../src/lib/compression';
+import { downloadPDF } from '../src/lib/exportUtils';
+import { syncAccountSettings } from '../src/lib/firebase';
+import { 
+  DriveAutoBackupConfig, 
+  loadDriveBackupConfig, 
+  saveDriveBackupConfig 
+} from '../src/lib/driveBackup';
+import { DriveAutoBackupSettings } from './DriveAutoBackupSettings';
+import {
+  getStoredReporteTecnicoConfig,
+  saveStoredReporteTecnicoConfig,
+  getStoredObrasRecursosPreventivos,
+  saveStoredObraRecursoPreventivo,
+  deleteStoredObraRecursoPreventivo,
+  ReporteTecnicoConfig,
+  ObraRecursoPreventivo
+} from '../src/lib/subcontratasDefaults';
+import {
+  checkDbHealth,
+  syncAllToDatabase,
+  fetchSnapshotFromDatabase,
+  DbHealthResponse,
+} from '../src/lib/dbClient';
+
+interface ConfiguracionProps {
+  savedObras: string[];
+  setSavedObras: React.Dispatch<React.SetStateAction<string[]>>;
+  savedLugares: string[];
+  setSavedLugares: React.Dispatch<React.SetStateAction<string[]>>;
+  savedSitios: string[];
+  setSavedSitios: React.Dispatch<React.SetStateAction<string[]>>;
+  savedTelefonos: string[];
+  setSavedTelefonos: React.Dispatch<React.SetStateAction<string[]>>;
+  savedCategorias: string[];
+  setSavedCategorias: React.Dispatch<React.SetStateAction<string[]>>;
+  people: Person[];
+  deletedPeople: DeletedPerson[];
+  setPeople: React.Dispatch<React.SetStateAction<Person[]>>;
+  setDeletedPeople: React.Dispatch<React.SetStateAction<DeletedPerson[]>>;
+  workStartHour: string;
+  setWorkStartHour: React.Dispatch<React.SetStateAction<string>>;
+  workEndHour: string;
+  setWorkEndHour: React.Dispatch<React.SetStateAction<string>>;
+  googleUser: any;
+  googleToken: string | null;
+  autoSaveToDrive: boolean;
+  setAutoSaveToDrive: (val: boolean) => void;
+  onGoogleLogin: () => void;
+  onGoogleLogout: () => void;
+  autoThemeByTime: boolean;
+  setAutoThemeByTime: (val: boolean) => void;
+  driveBackupConfig?: DriveAutoBackupConfig;
+  setDriveBackupConfig?: (config: DriveAutoBackupConfig) => void;
+  onExecuteDriveBackupNow?: () => Promise<void>;
+  isBackingUpToDrive?: boolean;
+  setToast?: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' } | null>>;
+}
+
+export const Configuracion: React.FC<ConfiguracionProps> = ({
+  savedObras,
+  setSavedObras,
+  savedLugares,
+  setSavedLugares,
+  savedSitios,
+  setSavedSitios,
+  savedTelefonos,
+  setSavedTelefonos,
+  savedCategorias,
+  setSavedCategorias,
+  people,
+  deletedPeople,
+  setPeople,
+  setDeletedPeople,
+  workStartHour,
+  setWorkStartHour,
+  workEndHour,
+  setWorkEndHour,
+  googleUser,
+  googleToken,
+  autoSaveToDrive,
+  setAutoSaveToDrive,
+  onGoogleLogin,
+  onGoogleLogout,
+  autoThemeByTime,
+  setAutoThemeByTime,
+  driveBackupConfig,
+  setDriveBackupConfig,
+  onExecuteDriveBackupNow,
+  isBackingUpToDrive = false,
+  setToast,
+}) => {
+  const [activeTab, setActiveTab] = useState<'obras' | 'lugares' | 'sitios' | 'telefonos' | 'categorias' | 'firmas' | 'backup' | 'jornada' | 'drive'>('obras');
+  const [localDriveConfig, setLocalDriveConfig] = useState<DriveAutoBackupConfig>(() => loadDriveBackupConfig());
+
+  const effectiveDriveConfig = driveBackupConfig || localDriveConfig;
+  const handleUpdateDriveConfig = (newCfg: DriveAutoBackupConfig) => {
+    if (setDriveBackupConfig) {
+      setDriveBackupConfig(newCfg);
+    } else {
+      setLocalDriveConfig(newCfg);
+      saveDriveBackupConfig(newCfg);
+    }
+  };
+
+  const [newItem, setNewItem] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const [deletingItem, setDeletingItem] = useState<string | null>(null);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+
+  // Firmas Reporte Técnico state
+  const [reporteConfig, setReporteConfig] = useState<ReporteTecnicoConfig>(() => getStoredReporteTecnicoConfig());
+
+  // Recursos Preventivos por Obra state
+  const [obrasRecursos, setObrasRecursos] = useState<Record<string, ObraRecursoPreventivo>>(() => getStoredObrasRecursosPreventivos());
+  const [newObraRecurso, setNewObraRecurso] = useState('');
+  const [newObraCategoria, setNewObraCategoria] = useState('Encargado de Obra');
+  const [editingObraRecurso, setEditingObraRecurso] = useState<{
+    obra: string;
+    recurso: string;
+    categoria: string;
+  } | null>(null);
+
+  // State for parsed backup verification
+  const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDriveLoading, setIsDriveLoading] = useState(false);
+
+  // Cloud SQL Database states
+  const [dbHealth, setDbHealth] = useState<DbHealthResponse | null>(null);
+  const [isDbChecking, setIsDbChecking] = useState(false);
+  const [isDbSyncing, setIsDbSyncing] = useState(false);
+  const [isDbRestoring, setIsDbRestoring] = useState(false);
+
+  // Auto-check DB health on backup tab open
+  useEffect(() => {
+    if (activeTab === 'backup') {
+      checkDbHealth().then(res => setDbHealth(res)).catch(() => {});
+    }
+  }, [activeTab]);
+
+  const handleCheckDb = async () => {
+    setIsDbChecking(true);
+    try {
+      const res = await checkDbHealth();
+      setDbHealth(res);
+      if (res.status === 'ok') {
+        setToast?.({ message: 'Conectado a Cloud SQL PostgreSQL (europe-west2).', type: 'success' });
+      } else {
+        setToast?.({ message: res.message || 'Error conectando a la base de datos.', type: 'error' });
+      }
+    } finally {
+      setIsDbChecking(false);
+    }
+  };
+
+  const handleSyncToDb = async () => {
+    setIsDbSyncing(true);
+    try {
+      let currentSubs: any[] = [];
+      try {
+        const rawSubs = localStorage.getItem('profea_subcontratistas_list');
+        if (rawSubs) currentSubs = JSON.parse(rawSubs);
+      } catch (e) {
+        console.warn('Error reading subcontratistas:', e);
+      }
+
+      const obrasObj = getStoredObrasRecursosPreventivos();
+      const obrasPayload = savedObras.map(obraName => ({
+        nombre: obraName,
+        recursoPreventivoNombre: obrasObj[obraName]?.recursoPreventivoNombre || '',
+        recursoPreventivoCategoria: obrasObj[obraName]?.recursoPreventivoCategoria || 'Encargado de Obra',
+      }));
+
+      await syncAllToDatabase({
+        obras: obrasPayload,
+        workers: people,
+        subcontratistas: currentSubs,
+        configs: {
+          reporte_tecnico_config: getStoredReporteTecnicoConfig(),
+          obras_recursos_preventivos: obrasObj,
+        },
+      });
+
+      const res = await checkDbHealth();
+      setDbHealth(res);
+      setToast?.({ message: 'Base de datos Cloud SQL PostgreSQL sincronizada con éxito.', type: 'success' });
+    } catch (err: any) {
+      console.error('Error syncing to database:', err);
+      setToast?.({ message: err.message || 'Error al sincronizar con la base de datos.', type: 'error' });
+    } finally {
+      setIsDbSyncing(false);
+    }
+  };
+
+  const handleRestoreFromDb = async () => {
+    if (!window.confirm('¿Desea restaurar e integrar los registros almacenados en Cloud SQL PostgreSQL en la aplicación?')) {
+      return;
+    }
+    setIsDbRestoring(true);
+    try {
+      const snapshot = await fetchSnapshotFromDatabase();
+      if (snapshot && snapshot.data) {
+        const { obras: dbObras, workers: dbWorkers, subcontratistas: dbSubs, configs } = snapshot.data;
+
+        // Restore Obras
+        if (Array.isArray(dbObras) && dbObras.length > 0) {
+          const names = Array.from(new Set([...savedObras, ...dbObras.map(o => o.nombre)]));
+          setSavedObras(names);
+          localStorage.setItem('profea_obras', JSON.stringify(names));
+
+          dbObras.forEach(o => {
+            if (o.recursoPreventivoNombre) {
+              saveStoredObraRecursoPreventivo(o.nombre, o.recursoPreventivoNombre, o.recursoPreventivoCategoria || 'Encargado de Obra');
+            }
+          });
+        }
+
+        // Restore Workers
+        if (Array.isArray(dbWorkers) && dbWorkers.length > 0) {
+          const currentMap = new Map<string, Person>(people.map(p => [p.dni, p]));
+          dbWorkers.forEach(w => {
+            if (w.dni) {
+              const existing = currentMap.get(w.dni);
+              const merged = Object.assign({}, existing || {}, w) as Person;
+              currentMap.set(w.dni, merged);
+            }
+          });
+          const mergedWorkers = Array.from(currentMap.values());
+          setPeople(mergedWorkers);
+          localStorage.setItem('profea_trabajadores', JSON.stringify(mergedWorkers));
+        }
+
+        // Restore Subcontratistas
+        if (Array.isArray(dbSubs) && dbSubs.length > 0) {
+          localStorage.setItem('profea_subcontratistas_list', JSON.stringify(dbSubs));
+          window.dispatchEvent(new CustomEvent('profea_subcontratas_changed', { detail: dbSubs }));
+        }
+
+        // Restore configs
+        if (configs?.reporte_tecnico_config) {
+          saveStoredReporteTecnicoConfig(configs.reporte_tecnico_config);
+          setReporteConfig(configs.reporte_tecnico_config);
+        }
+
+        const res = await checkDbHealth();
+        setDbHealth(res);
+        setToast?.({ message: 'Datos restaurados con éxito desde Cloud SQL PostgreSQL.', type: 'success' });
+      }
+    } catch (err: any) {
+      console.error('Error restoring from database:', err);
+      setToast?.({ message: err.message || 'Error al restaurar desde la base de datos.', type: 'error' });
+    } finally {
+      setIsDbRestoring(false);
+    }
+  };
+
+  // Load Google APIs Scripts on mount
+  useEffect(() => {
+    if (!(window as any).gapi) {
+      const scriptGapi = document.createElement('script');
+      scriptGapi.src = 'https://apis.google.com/js/api.js';
+      scriptGapi.async = true;
+      scriptGapi.defer = true;
+      document.body.appendChild(scriptGapi);
+    }
+
+    if (!(window as any).google?.accounts) {
+      const scriptGis = document.createElement('script');
+      scriptGis.src = 'https://accounts.google.com/gsi/client';
+      scriptGis.async = true;
+      scriptGis.defer = true;
+      document.body.appendChild(scriptGis);
+    }
+  }, []);
+
+  const handleOpenGooglePicker = () => {
+    if (!googleToken) {
+      if (onGoogleLogin) {
+        onGoogleLogin();
+      } else {
+        alert('Por favor, inicie sesión en Google para usar el selector.');
+      }
+      return;
+    }
+
+    setIsDriveLoading(true);
+
+    try {
+      (window as any).gapi.load('picker', {
+        callback: () => {
+          const view = new (window as any).google.picker.DocsView((window as any).google.picker.ViewId.DOCS)
+            .setMimeTypes('application/json,application/x-gzip,application/gzip,application/octet-stream')
+            .setIncludeFolders(true)
+            .setSelectFolderEnabled(false);
+
+          const picker = new (window as any).google.picker.PickerBuilder()
+            .addView(view)
+            .setOAuthToken(googleToken)
+            .setDeveloperKey('AIzaSyCoLiLZXdWWYQklXwsWnf1LDjzbKxPST2g') // standard key
+            .setCallback(async (data: any) => {
+              if (data[(window as any).google.picker.Response.ACTION] === (window as any).google.picker.Action.PICKED) {
+                const docItem = data[(window as any).google.picker.Response.DOCUMENTS][0];
+                const fileId = docItem[(window as any).google.picker.Document.ID];
+                const fileName = docItem[(window as any).google.picker.Document.NAME];
+                const mimeType = docItem[(window as any).google.picker.Document.MIME_TYPE];
+
+                await handleImportBackupFromDrive(fileId, fileName, mimeType);
+              }
+            })
+            .build();
+          picker.setVisible(true);
+          setIsDriveLoading(false);
+        }
+      });
+    } catch (err) {
+      console.error('Error loading Google Picker:', err);
+      setIsDriveLoading(false);
+      alert('Error al abrir el selector de Google Drive.');
+    }
+  };
+
+  const handleImportBackupFromDrive = async (fileId: string, fileName: string, mimeType: string) => {
+    if (!googleToken) return;
+    setIsDriveLoading(true);
+
+    try {
+      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${googleToken}` }
+      });
+
+      if (!response.ok) {
+        throw new Error('No se pudo descargar el archivo de copia de seguridad de Google Drive.');
+      }
+
+      const blob = await response.blob();
+      let jsonText = '';
+
+      if (fileName.endsWith('.gz') || mimeType.includes('gzip') || mimeType.includes('octet-stream')) {
+        jsonText = await decompressFromGzip(blob);
+      } else {
+        jsonText = await blob.text();
+      }
+
+      const parsed = JSON.parse(jsonText);
+      if (parsed && (parsed.type === "profea_complete_backup" || parsed.people)) {
+        setLoadedBackup(parsed);
+      } else {
+        alert('⚠️ El archivo no parece ser una copia de seguridad válida de esta aplicación.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Error al restaurar copia desde Drive: ' + (err.message || err));
+    } finally {
+      setIsDriveLoading(false);
+    }
+  };
+
+  // Helper to format a backup object with all local tables and trash
+  const createBackupData = () => {
+    let subcontratasData: any[] = [];
+    try {
+      const raw = localStorage.getItem('profea_subcontratas_v1');
+      if (raw) subcontratasData = JSON.parse(raw);
+    } catch {}
+
+    return {
+      type: "profea_complete_backup",
+      system: "Sistema de Gestión PROFEA",
+      version: "2.0.0",
+      exportDate: new Date().toISOString(),
+      totalRecords: people.length,
+      totalTrashRecords: deletedPeople.length,
+      people: people,
+      deletedPeople: deletedPeople,
+      config: {
+        obras: savedObras,
+        lugares: savedLugares,
+        sitios: savedSitios,
+        telefonos: savedTelefonos,
+        categorias: savedCategorias,
+        workStartHour,
+        workEndHour,
+        subcontratas: subcontratasData,
+        reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
+        obrasRecursosPreventivos: getStoredObrasRecursosPreventivos()
+      }
+    };
+  };
+
+  // 1. Download Compressed Backup (GZIP)
+  const handleDownloadBackupGzip = async () => {
+    try {
+      if (!isCompressionSupported()) {
+        // Fallback to standard JSON if CompressionStream is not available
+        handleDownloadBackupNormal();
+        return;
+      }
+
+      const backupObj = createBackupData();
+      const jsonStr = JSON.stringify(backupObj);
+      const blob = await compressToGzip(jsonStr);
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.href = url;
+      link.download = `copia_completa_profea_${dateStr}.json.gz`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      if (setToast) {
+        setToast({ message: 'Copia de seguridad COMPRIMIDA descargada con éxito', type: 'success' });
+      }
+    } catch (error: any) {
+      console.error(error);
+      alert('⚠️ Hubo un error al generar la copia de seguridad comprimida: ' + error.message);
+    }
+  };
+
+  // 2. Download Standard JSON Backup (Uncompressed fallback/alternative)
+  const handleDownloadBackupNormal = () => {
+    try {
+      const backupObj = createBackupData();
+      const jsonStr = JSON.stringify(backupObj, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.href = url;
+      link.download = `copia_completa_profea_${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      if (setToast) {
+        setToast({ message: 'Copia de seguridad estándar descargada con éxito', type: 'success' });
+      }
+    } catch (error) {
+      console.error(error);
+      alert('⚠️ Hubo un error al generar la copia de seguridad estándar.');
+    }
+  };
+
+  // 3. Import backup file
+  const handleImportBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      let jsonText = '';
+      if (file.name.endsWith('.gz')) {
+        jsonText = await decompressFromGzip(file);
+      } else if (file.name.endsWith('.json')) {
+        jsonText = await file.text();
+      } else {
+        alert('⚠️ Formato de archivo no soportado. Por favor, seleccione un archivo .json o .json.gz');
+        return;
+      }
+
+      const parsed = JSON.parse(jsonText);
+      if (parsed && (parsed.type === "profea_complete_backup" || parsed.people)) {
+        setLoadedBackup(parsed);
+      } else {
+        alert('⚠️ El archivo no parece ser una copia de seguridad válida de esta aplicación.');
+      }
+    } catch (error: any) {
+      console.error(error);
+      alert('⚠️ Error al leer o procesar el archivo de copia de seguridad: ' + error.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  // 4. Confirm and Execute Restore
+  const executeRestore = (mode: 'replace' | 'merge') => {
+    if (!loadedBackup) return;
+
+    const backupPeople = loadedBackup.people || [];
+    const backupDeletedPeople = loadedBackup.deletedPeople || [];
+    const backupConfig = loadedBackup.config || {};
+
+    if (mode === 'replace') {
+      setPeople(backupPeople);
+      setDeletedPeople(backupDeletedPeople);
+
+      if (backupConfig.obras) setSavedObras(backupConfig.obras);
+      if (backupConfig.lugares) setSavedLugares(backupConfig.lugares);
+      if (backupConfig.sitios) setSavedSitios(backupConfig.sitios);
+      if (backupConfig.telefonos) setSavedTelefonos(backupConfig.telefonos);
+      if (backupConfig.categorias) setSavedCategorias(backupConfig.categorias);
+      if (backupConfig.workStartHour) setWorkStartHour(backupConfig.workStartHour);
+      if (backupConfig.workEndHour) setWorkEndHour(backupConfig.workEndHour);
+      if (backupConfig.subcontratas) {
+        try {
+          localStorage.setItem('profea_subcontratas_v1', JSON.stringify(backupConfig.subcontratas));
+        } catch {}
+      }
+      if (backupConfig.reporteTecnicoConfig) {
+        saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
+        setReporteConfig(backupConfig.reporteTecnicoConfig);
+      }
+      if (backupConfig.obrasRecursosPreventivos) {
+        try {
+          localStorage.setItem('profea_obras_recursos_preventivos', JSON.stringify(backupConfig.obrasRecursosPreventivos));
+          setObrasRecursos(backupConfig.obrasRecursosPreventivos);
+        } catch {}
+      }
+
+      if (setToast) {
+        setToast({ message: '¡Base de datos y papelera REEMPLAZADAS por completo!', type: 'success' });
+      } else {
+        alert('Copia de seguridad restaurada correctamente (reemplazo completo).');
+      }
+    } else {
+      // Merge mode (no duplicates by DNI)
+      setPeople(prev => {
+        const merged = [...prev];
+        backupPeople.forEach((bp: Person) => {
+          const idx = merged.findIndex(p => p.dni.trim().toLowerCase() === bp.dni.trim().toLowerCase());
+          if (idx !== -1) {
+            merged[idx] = bp;
+          } else {
+            merged.push(bp);
+          }
+        });
+        return merged;
+      });
+
+      setDeletedPeople(prev => {
+        const merged = [...prev];
+        backupDeletedPeople.forEach((bdp: DeletedPerson) => {
+          const idx = merged.findIndex(dp => dp.person.dni.trim().toLowerCase() === bdp.person.dni.trim().toLowerCase());
+          if (idx !== -1) {
+            merged[idx] = bdp;
+          } else {
+            merged.push(bdp);
+          }
+        });
+        return merged;
+      });
+
+      // Merge config lists
+      const mergeList = (prevList: string[], backupList: string[]) => {
+        if (!backupList) return prevList;
+        const combined = [...prevList];
+        backupList.forEach(item => {
+          if (!combined.some(i => i.toLowerCase() === item.toLowerCase())) {
+            combined.push(item);
+          }
+        });
+        return combined.sort((a, b) => a.localeCompare(b));
+      };
+
+      if (backupConfig.obras) setSavedObras(prev => mergeList(prev, backupConfig.obras));
+      if (backupConfig.lugares) setSavedLugares(prev => mergeList(prev, backupConfig.lugares));
+      if (backupConfig.sitios) setSavedSitios(prev => mergeList(prev, backupConfig.sitios));
+      if (backupConfig.telefonos) setSavedTelefonos(prev => mergeList(prev, backupConfig.telefonos));
+      if (backupConfig.categorias) setSavedCategorias(prev => mergeList(prev, backupConfig.categorias));
+      if (backupConfig.reporteTecnicoConfig) {
+        saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
+        setReporteConfig(backupConfig.reporteTecnicoConfig);
+      }
+      if (backupConfig.obrasRecursosPreventivos) {
+        const currentRec = getStoredObrasRecursosPreventivos();
+        const mergedRec = { ...backupConfig.obrasRecursosPreventivos, ...currentRec };
+        try {
+          localStorage.setItem('profea_obras_recursos_preventivos', JSON.stringify(mergedRec));
+          setObrasRecursos(mergedRec);
+        } catch {}
+      }
+
+      if (setToast) {
+        setToast({ message: '¡Datos de la copia combinados con éxito sin duplicar!', type: 'success' });
+      } else {
+        alert('Copia de seguridad combinada con éxito.');
+      }
+    }
+
+    setLoadedBackup(null);
+  };
+
+  const tabs = [
+    { id: 'obras', label: 'Obras', icon: MapPin, list: savedObras, setter: setSavedObras },
+    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },
+    { id: 'sitios', label: 'Sitios Reconocimiento', icon: Stethoscope, list: savedSitios, setter: setSavedSitios },
+    { id: 'telefonos', label: 'Teléfonos', icon: Phone, list: savedTelefonos, setter: setSavedTelefonos },
+    { id: 'categorias', label: 'Categorías', icon: Briefcase, list: savedCategorias, setter: setSavedCategorias },
+  ] as const;
+
+  const currentTab = tabs.find(t => t.id === activeTab);
+
+  const handleAddItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentTab) return;
+    const trimmed = newItem.trim();
+    if (!trimmed) return;
+
+    if (currentTab.list.some(item => item.toLowerCase() === trimmed.toLowerCase())) {
+      return;
+    }
+
+    currentTab.setter(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b)));
+    setNewItem('');
+  };
+
+  const handleDeleteItem = (itemToDelete: string) => {
+    if (!currentTab) return;
+    currentTab.setter(prev => prev.filter(item => item !== itemToDelete));
+    if (activeTab === 'obras') {
+      deleteStoredObraRecursoPreventivo(itemToDelete);
+      setObrasRecursos(getStoredObrasRecursosPreventivos());
+    }
+    setDeletingItem(null);
+  };
+
+  const handleSaveReporteConfig = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!reporteConfig.tecnicoNombre.trim()) {
+      if (setToast) setToast({ message: 'El Nombre y Apellidos del Técnico es obligatorio.', type: 'error' });
+      return;
+    }
+    saveStoredReporteTecnicoConfig(reporteConfig);
+    if (setToast) {
+      setToast({ message: 'Configuración de firmas del Reporte Técnico guardada correctamente.', type: 'success' });
+    }
+  };
+
+  const handleAddObraWithRecurso = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedObra = newItem.trim();
+    const trimmedRecurso = newObraRecurso.trim();
+    if (!trimmedObra) {
+      if (setToast) setToast({ message: 'Introduzca el nombre de la obra.', type: 'error' });
+      return;
+    }
+    if (!trimmedRecurso) {
+      if (setToast) setToast({ message: 'El campo Recurso Preventivo es obligatorio.', type: 'error' });
+      return;
+    }
+    if (savedObras.some(o => o.toLowerCase() === trimmedObra.toLowerCase())) {
+      if (setToast) setToast({ message: 'Ya existe una obra registrada con ese nombre.', type: 'error' });
+      return;
+    }
+
+    setSavedObras(prev => [...prev, trimmedObra].sort((a, b) => a.localeCompare(b)));
+    saveStoredObraRecursoPreventivo(trimmedObra, trimmedRecurso, newObraCategoria);
+    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    setNewItem('');
+    setNewObraRecurso('');
+    setNewObraCategoria('Encargado de Obra');
+    if (setToast) {
+      setToast({ message: `Obra "${trimmedObra}" añadida con recurso preventivo "${trimmedRecurso}".`, type: 'success' });
+    }
+  };
+
+  const handleSaveEditObraRecurso = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingObraRecurso) return;
+    const { obra, recurso, categoria } = editingObraRecurso;
+    if (!recurso.trim()) {
+      if (setToast) setToast({ message: 'El nombre del Recurso Preventivo no puede estar vacío.', type: 'error' });
+      return;
+    }
+    saveStoredObraRecursoPreventivo(obra, recurso.trim(), categoria.trim());
+    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    setEditingObraRecurso(null);
+    if (setToast) {
+      setToast({ message: `Recurso Preventivo de "${obra}" actualizado correctamente.`, type: 'success' });
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    const allFilteredSelected = filteredList.every(item => selectedItems.includes(item));
+    if (allFilteredSelected) {
+      // Deselect all filtered items
+      setSelectedItems(prev => prev.filter(item => !filteredList.includes(item)));
+    } else {
+      // Select all filtered items
+      setSelectedItems(prev => {
+        const union = [...prev];
+        filteredList.forEach(item => {
+          if (!union.includes(item)) {
+            union.push(item);
+          }
+        });
+        return union;
+      });
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (!currentTab) return;
+    currentTab.setter(prev => prev.filter(item => !selectedItems.includes(item)));
+    if (activeTab === 'obras') {
+      selectedItems.forEach(item => deleteStoredObraRecursoPreventivo(item));
+      setObrasRecursos(getStoredObrasRecursosPreventivos());
+    }
+    if (setToast) {
+      setToast({ 
+        message: `Se han eliminado ${selectedItems.length} elementos de la lista de ${currentTab.label.toLowerCase()}`, 
+        type: 'success' 
+      });
+    }
+    setSelectedItems([]);
+    setShowBulkConfirm(false);
+  };
+
+  const filteredList = currentTab
+    ? currentTab.list.filter(item => item.toLowerCase().includes(searchTerm.toLowerCase()))
+    : [];
+
+  return (
+    <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-3">
+          <div className="bg-brand-primary p-2 rounded-xl shadow-lg shadow-brand-primary/20">
+            <Settings className="w-8 h-8 text-white" />
+          </div>
+          Configuración de Autocompletado
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
+          Gestione las listas de sugerencias que se guardan automáticamente durante el uso de la aplicación.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Sidebar Tabs */}
+        <div className="lg:col-span-1 space-y-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setSearchTerm('');
+                setNewItem('');
+                setDeletingItem(null);
+                setSelectedItems([]);
+                setShowBulkConfirm(false);
+              }}
+              className={`
+                w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+                ${activeTab === tab.id 
+                  ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                }
+              `}
+            >
+              <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+              {tab.label}
+              <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
+                {tab.list.length}
+              </span>
+            </button>
+          ))}
+
+          <div className="border-t border-slate-200 dark:border-slate-800 my-4 pt-4"></div>
+
+          <button
+            onClick={() => {
+              setActiveTab('firmas');
+              setSearchTerm('');
+              setNewItem('');
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
+              ${activeTab === 'firmas' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+              }
+            `}
+          >
+            <FileSignature className={`w-5 h-5 ${activeTab === 'firmas' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+            <span className="flex-1 text-left">Firmas Reporte Técnico</span>
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+              activeTab === 'firmas' 
+                ? 'bg-white/25 text-white' 
+                : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-900'
+            }`}>
+              PDF
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('jornada');
+              setSearchTerm('');
+              setNewItem('');
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
+              ${activeTab === 'jornada' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+              }
+            `}
+          >
+            <Clock className={`w-5 h-5 ${activeTab === 'jornada' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+            Jornada Laboral
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('drive');
+              setSearchTerm('');
+              setNewItem('');
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
+              ${activeTab === 'drive' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+              }
+            `}
+          >
+            <Cloud className={`w-5 h-5 ${activeTab === 'drive' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+            <span className="flex-1 text-left">Google Drive</span>
+            {effectiveDriveConfig.enabled && (
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+                activeTab === 'drive' 
+                  ? 'bg-white/25 text-white' 
+                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
+              }`}>
+                Auto
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('backup');
+              setSearchTerm('');
+              setNewItem('');
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+              ${activeTab === 'backup' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+              }
+            `}
+          >
+            <Database className={`w-5 h-5 ${activeTab === 'backup' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+            Copia de Seguridad
+          </button>
+        </div>
+
+        {/* Content Area */}
+        <div className="lg:col-span-3">
+          {activeTab === 'backup' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 font-bold">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Database className="w-6 h-6 text-brand-primary animate-pulse" />
+                  Copia de Seguridad Completa
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                  Respalde toda la base de datos local de trabajadores activos, el histórico completo de la papelera y la configuración.
+                </p>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Trabajadores Activos</span>
+                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 block mt-1">
+                      {people.length}
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                      En el directorio principal
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">En la Papelera</span>
+                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 block mt-1">
+                      {deletedPeople.length}
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                      Histórico recuperable (30d)
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Sugerencias</span>
+                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 block mt-1">
+                      {savedObras.length + savedCategorias.length + savedLugares.length + savedSitios.length}
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                      Listas de autocompletado
+                    </span>
+                  </div>
+                </div>
+
+                {/* Main Action Block: Export and Compression Information */}
+                <div className="p-5 rounded-2xl border border-emerald-200/60 dark:border-emerald-950 bg-emerald-50/15 dark:bg-emerald-950/10 space-y-4">
+                  <div className="flex gap-3 items-start">
+                    <div className="p-2.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                      <FileArchive className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Compresión GZIP Nativa</h4>
+                      <p className="text-xs text-emerald-700/80 dark:text-emerald-500/80 mt-1 leading-relaxed">
+                        El modo de exportación comprimida procesa toda la base de datos localmente usando algoritmos de compresión modernos de su navegador. Esto reduce enormemente el tamaño del archivo, ideal para respaldos rápidos y transferencias livianas.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button
+                      onClick={handleDownloadBackupGzip}
+                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-xl shadow-md shadow-emerald-500/10 transition-all text-xs uppercase tracking-wider cursor-pointer"
+                    >
+                      <FileArchive className="w-4 h-4" />
+                      Exportación Completa (.json.gz)
+                    </button>
+                    <button
+                      onClick={handleDownloadBackupNormal}
+                      className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 font-bold py-3 px-5 rounded-xl border border-slate-200 dark:border-slate-700 transition-all text-xs uppercase tracking-wider cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      JSON Plano (.json)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cloud SQL PostgreSQL Database Integration Banner */}
+                <div id="cloud-sql-section" className="p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/20 flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-3.5">
+                      <div className="p-3 rounded-2xl shrink-0 bg-indigo-600 text-white shadow-md shadow-indigo-500/20">
+                        <Database className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                            Base de Datos Cloud SQL (PostgreSQL)
+                          </h4>
+                          {dbHealth?.status === 'ok' ? (
+                            <span className="px-2 py-0.5 text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-full flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              Conectada (europe-west2)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 rounded-full">
+                              Verificando conexión...
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                          Instancia gestionada en Cloud SQL con Drizzle ORM para almacenamiento relacional seguro de obras, trabajadores, subcontratas y configuraciones.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleCheckDb}
+                        disabled={isDbChecking}
+                        className="px-3 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        title="Verificar estado de conexión"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isDbChecking ? 'animate-spin' : ''}`} />
+                        {isDbChecking ? 'Comprobando...' : 'Comprobar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* DB Stats & Action Controls */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-indigo-100/70 dark:border-indigo-900/40">
+                    <div className="p-3 bg-white/70 dark:bg-slate-900/60 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">Obras Registradas</span>
+                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                        {dbHealth?.counts ? dbHealth.counts.obras : savedObras.length}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-white/70 dark:bg-slate-900/60 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">Trabajadores en BD</span>
+                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                        {dbHealth?.counts ? dbHealth.counts.workers : people.length}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-white/70 dark:bg-slate-900/60 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">Subcontratas CAE</span>
+                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                        {dbHealth?.counts ? dbHealth.counts.subcontratistas : 'Activo'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleSyncToDb}
+                      disabled={isDbSyncing}
+                      className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isDbSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                      {isDbSyncing ? 'Sincronizando con PostgreSQL...' : 'Sincronizar a Base de Datos'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRestoreFromDb}
+                      disabled={isDbRestoring}
+                      className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isDbRestoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {isDbRestoring ? 'Cargando datos...' : 'Restaurar desde Base de Datos'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Google Drive Scheduled Backup Integration Banner */}
+                <div className="p-5 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/20 dark:bg-blue-950/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-start sm:items-center gap-3.5">
+                    <div className={`p-3 rounded-2xl shrink-0 ${
+                      effectiveDriveConfig.enabled 
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+                    }`}>
+                      <Cloud className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          Copias Automáticas en la Nube (Google Drive)
+                        </h4>
+                        {effectiveDriveConfig.enabled ? (
+                          <span className="px-2 py-0.5 text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-full">
+                            Programación Activa
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 rounded-full">
+                            Desactivada
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                        {effectiveDriveConfig.enabled ? (
+                          <>
+                            Frecuencia: <strong className="text-slate-700 dark:text-slate-300">{
+                              effectiveDriveConfig.frequency === 'daily' ? `Diaria (${effectiveDriveConfig.hourOfDay ?? 20}:00h)` :
+                              effectiveDriveConfig.frequency === 'weekly' ? `Semanal (cada ${effectiveDriveConfig.dayOfWeek ?? 1})` :
+                              effectiveDriveConfig.frequency === 'monthly' ? `Mensual (día ${effectiveDriveConfig.dayOfMonth ?? 1})` :
+                              `Cada ${effectiveDriveConfig.customIntervalMinutes ?? 60} min`
+                            }</strong> en cuenta <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{effectiveDriveConfig.targetAccountEmail || googleUser?.email || 'Google conectada'}</span>.
+                            {effectiveDriveConfig.lastBackupDate && (
+                              <span className="block sm:inline sm:ml-2 text-slate-400">
+                                Última: {new Date(effectiveDriveConfig.lastBackupDate).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          'Programe respaldos automáticos periódicos directamente a una cuenta de Google Drive específica sin intervención manual.'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0">
+                    {effectiveDriveConfig.enabled && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (onExecuteDriveBackupNow) {
+                            await onExecuteDriveBackupNow();
+                          }
+                        }}
+                        disabled={isBackingUpToDrive || !googleToken}
+                        className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isBackingUpToDrive ? 'animate-spin' : ''}`} />
+                        {isBackingUpToDrive ? 'Subiendo...' : 'Hacer Copia Ahora'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('drive')}
+                      className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Configurar Horarios
+                    </button>
+                  </div>
+                </div>
+
+                {/* Import / Restore Section */}
+                <div className="border-t border-slate-200/60 dark:border-slate-850 pt-6 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <Upload className="w-4.5 h-4.5 text-slate-500" />
+                      Restaurar Copia de Seguridad
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Seleccione el origen desde donde restaurar su copia de seguridad previa (<strong className="font-bold text-slate-600 dark:text-slate-300">.json</strong> o <strong className="font-bold text-slate-600 dark:text-slate-300">.json.gz</strong>).
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Drag-n-drop simulated/clickable Area */}
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-brand-primary dark:hover:border-blue-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-all group flex flex-col justify-center items-center"
+                    >
+                      <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        onChange={handleImportBackupFile}
+                        accept=".json, .json.gz, .gz"
+                        className="hidden"
+                      />
+                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Upload className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-750 dark:text-slate-300 block">
+                        Dispositivo Local
+                      </span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">
+                        Soporta .json y .json.gz locales
+                      </span>
+                    </div>
+
+                    {/* Google Drive Option */}
+                    <div 
+                      onClick={handleOpenGooglePicker}
+                      className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-all group flex flex-col justify-center items-center"
+                    >
+                      <div className="w-10 h-10 bg-amber-50 dark:bg-amber-950/20 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Cloud className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-750 dark:text-slate-300 block flex items-center gap-1.5 justify-center">
+                        Google Drive
+                        {googleToken && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" title="Conectado" />
+                        )}
+                      </span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">
+                        {googleToken 
+                          ? 'Busca copias en tus carpetas de Drive' 
+                          : 'Inicia sesión para restaurar desde Drive'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Custom Modal for Restore Confirmation and Options */}
+                {loadedBackup && (
+                  <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+                      
+                      {/* Modal Header */}
+                      <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/20">
+                        <div className="flex gap-4 items-start">
+                          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-2xl shrink-0">
+                            <ShieldAlert className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Copia de Seguridad Detectada</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                              Se ha verificado la integridad de los datos cargados. Por favor, elija cómo desea proceder con la restauración.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Modal Details */}
+                      <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-3 text-xs p-4 rounded-2xl bg-slate-50 dark:bg-slate-850/50 border border-slate-200/50 dark:border-slate-800">
+                          <div>
+                            <span className="text-slate-400 dark:text-slate-500 block">Fecha de Exportación</span>
+                            <span className="font-extrabold text-slate-700 dark:text-slate-200 mt-0.5 block">
+                              {loadedBackup.exportDate ? new Date(loadedBackup.exportDate).toLocaleDateString('es-ES', {
+                                day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                              }) : 'Fecha desconocida'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 dark:text-slate-500 block">Versión del Formato</span>
+                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200 mt-0.5 block">v{loadedBackup.version || '1.0.0'}</span>
+                          </div>
+                          <div className="col-span-2 border-t border-slate-200/50 dark:border-slate-700/50 pt-2.5 mt-1">
+                            <span className="text-slate-400 dark:text-slate-500 block mb-1">Registros de Trabajadores Incluidos</span>
+                            <div className="flex items-center gap-4 text-slate-700 dark:text-slate-200 font-bold">
+                              <span>Activos: <strong className="text-brand-primary dark:text-blue-400">{loadedBackup.people?.length || 0}</strong></span>
+                              <span>Papelera: <strong className="text-amber-600 dark:text-amber-400">{loadedBackup.deletedPeople?.length || 0}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {/* Option 1: Replace */}
+                          <div className="p-3 rounded-xl border border-red-200 dark:border-red-950/40 bg-red-50/10 dark:bg-red-950/10 space-y-1">
+                            <span className="text-xs font-bold text-red-600 dark:text-red-400 block">Opción A: Reemplazar Todo (Limpieza completa)</span>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                              Sustituye completamente la base de datos actual, la papelera y el autocompletado por los datos de la copia de seguridad. Los registros locales actuales que no estén en la copia se perderán.
+                            </p>
+                          </div>
+
+                          {/* Option 2: Merge */}
+                          <div className="p-3 rounded-xl border border-blue-200 dark:border-blue-950/40 bg-blue-50/10 dark:bg-blue-950/10 space-y-1">
+                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 block">Opción B: Combinar e Integrar (Seguro)</span>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                              Une los registros del respaldo con los actuales sin duplicados (identifica por DNI). Conserva los nuevos trabajadores y añade los del respaldo que falten.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Modal Footer */}
+                      <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-2.5 justify-end bg-slate-50/50 dark:bg-slate-850/10">
+                        <button
+                          type="button"
+                          onClick={() => setLoadedBackup(null)}
+                          className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer text-center"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => executeRestore('merge')}
+                          className="px-4 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-md shadow-blue-500/10 cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          Combinar Datos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => executeRestore('replace')}
+                          className="px-4 py-2.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-md shadow-red-500/10 cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Reemplazar Todo
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeTab === 'drive' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Cloud className="w-6 h-6 text-brand-primary animate-pulse" />
+                  Configuración de Google Drive
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                  Guarde automáticamente copias de todos sus documentos generados (PDF y Excel) en la nube.
+                </p>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {googleToken ? (
+                  <div className="space-y-6">
+                    {/* Connection Status Card */}
+                    <div className="p-5 rounded-2xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-emerald-500 text-white rounded-xl">
+                          <CheckCircle className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block">ESTADO DE LA CONEXIÓN</span>
+                          <span className="text-sm font-black text-slate-800 dark:text-slate-100 block">Conectado a Google Drive</span>
+                          {googleUser?.email && (
+                            <span className="text-xs text-slate-500 dark:text-slate-400 block font-medium mt-0.5">{googleUser.email}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={onGoogleLogout}
+                        className="px-4 py-2 bg-white dark:bg-slate-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-xs cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Desconectar
+                      </button>
+                    </div>
+
+                    {/* Automatic Backup Toggle Card */}
+                    <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 font-bold">Guardado Automático de Exportaciones</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                            Cuando esté activado, cada PDF o Excel que descargue de cualquier módulo (Directorio, Estadísticas, Calzado, etc.) se subirá automáticamente en segundo plano a su carpeta <strong className="font-bold">PROFEA_Cádiz</strong> en Google Drive.
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={autoSaveToDrive}
+                            onChange={(e) => setAutoSaveToDrive(e.target.checked)}
+                          />
+                          <div className="w-11 h-6 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-primary/20 dark:peer-focus:ring-brand-primary/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-brand-primary"></div>
+                        </label>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 text-xs font-semibold leading-relaxed">
+                        📁 Los archivos se guardarán en: <strong>Mi unidad &gt; PROFEA_Cádiz &gt; [Nombre_Del_Archivo]</strong>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-10 space-y-6">
+                    <div className="mx-auto w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 dark:text-slate-500">
+                      <Cloud className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-2 max-w-md mx-auto">
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Google Drive no conectado</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                        Conecte su cuenta de Google para habilitar el guardado automático de informes generados, estadísticas y listados directamente en su Drive personal en tiempo real.
+                      </p>
+                    </div>
+                    <button
+                      onClick={onGoogleLogin}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-brand-primary/95 shadow-lg shadow-brand-primary/25 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <LogIn className="w-4 h-4" />
+                      Conectarse con Google
+                    </button>
+                  </div>
+                )}
+
+                {/* Programación de Copias de Seguridad Automáticas a Google Drive */}
+                <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800">
+                  <DriveAutoBackupSettings
+                    config={effectiveDriveConfig}
+                    onChangeConfig={handleUpdateDriveConfig}
+                    googleUser={googleUser}
+                    googleToken={googleToken}
+                    onGoogleLogin={onGoogleLogin}
+                    onExecuteBackupNow={async () => {
+                      if (onExecuteDriveBackupNow) {
+                        await onExecuteDriveBackupNow();
+                      }
+                    }}
+                    isBackingUpNow={isBackingUpToDrive}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'jornada' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Clock className="w-6 h-6 text-brand-primary animate-pulse" />
+                  Jornada Laboral de Reconocimientos Médicos
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                  Defina el rango de horas habitual en el que se deben agendar los reconocimientos médicos de los trabajadores.
+                </p>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Hora de Inicio */}
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/10 space-y-3">
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                      Hora de Inicio de Jornada
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-emerald-500 shrink-0" />
+                      <input
+                        type="time"
+                        value={workStartHour}
+                        onChange={(e) => setWorkStartHour(e.target.value)}
+                        className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
+                      />
+                    </div>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-relaxed font-medium">
+                      Hora de inicio predeterminada para el primer turno del día asignado.
+                    </span>
+                  </div>
+
+                  {/* Hora de Fin */}
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/10 space-y-3">
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                      Hora de Fin de Jornada
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-red-500 shrink-0" />
+                      <input
+                        type="time"
+                        value={workEndHour}
+                        onChange={(e) => setWorkEndHour(e.target.value)}
+                        className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
+                      />
+                    </div>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-relaxed font-medium">
+                      Hora límite de salida. Las citas se programarán dentro de este límite.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 text-xs leading-relaxed flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block mb-1">💡 ¿Cómo utiliza la IA esta configuración?</strong>
+                    Al solicitar a la IA la planificación automática ("Gestionar Citas" &gt; "Planificación Inteligente"), la IA organizará y agrupará a los trabajadores partiendo de las <strong>{workStartHour}</strong> de la mañana. Distribuirá las citas secuencialmente y evitará sobrepasar las <strong>{workEndHour}</strong> de la tarde.
+                  </div>
+                </div>
+
+                {/* Detección Automática de Tema por Horario */}
+                <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Detección Automática de Tema (Light/Dark)</h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                        Cambia automáticamente al modo oscuro después de las <strong className="font-bold">20:00</strong> y vuelve al modo claro al amanecer (<strong className="font-bold">07:00</strong>). Si cambia el tema manualmente desde la barra superior, el modo automático se desactivará temporalmente.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={autoThemeByTime}
+                        onChange={(e) => setAutoThemeByTime(e.target.checked)}
+                      />
+                      <div className="w-11 h-6 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-primary/20 dark:peer-focus:ring-brand-primary/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-brand-primary"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <span className="w-2 h-2 rounded-full bg-brand-primary animate-ping"></span>
+                    <span>Estado actual: {autoThemeByTime ? '🟢 Activado y monitorizando la hora' : '🔴 Desactivado (Tema estático)'}</span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-6 space-y-3">
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                    Simulación de Horarios (Intervalos sugeridos)
+                  </span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Así se vería una programación secuencial típica de citas cada 15 minutos con su jornada configurada:
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[0, 15, 30, 45].map((mins) => {
+                      const [hStr, mStr] = workStartHour.split(':');
+                      const h = parseInt(hStr || '8', 10);
+                      const m = parseInt(mStr || '0', 10);
+                      const totalMins = h * 60 + m + mins;
+                      const simH = Math.floor(totalMins / 60) % 24;
+                      const simM = totalMins % 60;
+                      const formattedH = simH.toString().padStart(2, '0');
+                      const formattedM = simM.toString().padStart(2, '0');
+                      return (
+                        <div key={mins} className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 text-center">
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 block">TURNO {mins === 0 ? '1' : mins / 15 + 1}</span>
+                          <span className="text-sm font-extrabold text-slate-700 dark:text-slate-300">{formattedH}:{formattedM}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'firmas' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <FileSignature className="w-6 h-6 text-brand-primary" />
+                    Firmas y Datos Predeterminados del Reporte Técnico PDF
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                    Configure el Nombre del Técnico, Coordinador de Seguridad y Salud y la Empresa de Coordinación que figurarán en el pie de firmas de los Reportes Técnicos oficiales en PDF.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveReporteConfig}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-brand-primary hover:bg-brand-primary/90 text-white text-xs font-bold rounded-xl shadow-md shadow-brand-primary/20 transition-all cursor-pointer shrink-0"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Guardar Configuración</span>
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <form onSubmit={handleSaveReporteConfig} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Nombre y Apellidos del Técnico de Obra */}
+                  <div className="p-5 rounded-2xl border-2 border-blue-300 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-950/20 space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider">
+                      <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      Nombre y Apellidos del Técnico de Obra *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={reporteConfig.tecnicoNombre}
+                      onChange={(e) => setReporteConfig({ ...reporteConfig, tecnicoNombre: e.target.value })}
+                      placeholder="Ej: David Hinojo García"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                      Este nombre se imprimirá en la casilla <strong>"Por el Técnico"</strong> en todos los Reportes Técnicos y consolidados en PDF.
+                    </p>
+                  </div>
+
+                  {/* Coordinador de Seguridad y Salud */}
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      Coordinador de Seguridad y Salud (CSS)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={reporteConfig.coordinadorNombre}
+                      onChange={(e) => setReporteConfig({ ...reporteConfig, coordinadorNombre: e.target.value })}
+                      placeholder="Ej: David Hinojo García"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-primary focus:outline-hidden"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                      Técnico competente responsable de la coordinación de seguridad y salud en fase de ejecución.
+                    </p>
+                  </div>
+
+                  {/* Empresa de Coordinación */}
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      Empresa o Entidad de Coordinación
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={reporteConfig.empresaCoordinacion}
+                      onChange={(e) => setReporteConfig({ ...reporteConfig, empresaCoordinacion: e.target.value })}
+                      placeholder="Ej: Área de Cooperación - Excma. Diputación Provincial de Cádiz"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-primary focus:outline-hidden"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                      Razón social de la empresa o administración que se imprime junto al coordinador.
+                    </p>
+                  </div>
+
+                  {/* Supervisión de Obra / D.F. */}
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      Supervisión de Obra / Dirección Facultativa
+                    </label>
+                    <input
+                      type="text"
+                      value={reporteConfig.supervisorNombre}
+                      onChange={(e) => setReporteConfig({ ...reporteConfig, supervisorNombre: e.target.value })}
+                      placeholder="Ej: David Hinojo García"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-primary focus:outline-hidden"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                      Nombre que encabeza la primera casilla de Supervisión Técnica de Obra.
+                    </p>
+                  </div>
+                </form>
+
+                {/* Live Signature Preview */}
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-6 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-brand-primary" />
+                      Vista Previa de la Sección de Firmas (Reporte Técnico PDF)
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                      4 Casillas Oficiales
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                    {/* Box 1: Supervisión */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs">
+                      <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
+                        SUPERVISIÓN DE OBRA
+                      </div>
+                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                        [Espacio para Firma]
+                      </div>
+                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
+                          Fdo: {reporteConfig.supervisorNombre || 'David Hinojo García'}
+                        </span>
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
+                          Supervisión Técnica
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Box 2: Recurso Preventivo */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs">
+                      <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
+                        RECURSO PREVENTIVO
+                      </div>
+                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                        [Espacio para Firma]
+                      </div>
+                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
+                          Fdo: [Recurso de cada Obra]
+                        </span>
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
+                          Encargado de Obra
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Box 3: Por el Técnico */}
+                    <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 dark:border-blue-400 rounded-xl overflow-hidden flex flex-col justify-between shadow-xs">
+                      <div className="bg-blue-700 text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase flex items-center justify-center gap-1">
+                        <UserCheck className="w-3 h-3" />
+                        POR EL TÉCNICO
+                      </div>
+                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                        [Espacio para Firma]
+                      </div>
+                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-blue-50/50 dark:bg-blue-950/40">
+                        <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 block truncate">
+                          Fdo: {reporteConfig.tecnicoNombre || 'David Hinojo García'}
+                        </span>
+                        <span className="text-[9px] text-blue-600 dark:text-blue-400 block truncate">
+                          Técnico de Obra
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Box 4: Coordinador CSS */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs">
+                      <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
+                        COORDINACIÓN SEG. Y SALUD
+                      </div>
+                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                        [Espacio para Firma y Sello]
+                      </div>
+                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
+                          Fdo: {reporteConfig.coordinadorNombre || 'David Hinojo García'}
+                        </span>
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate" title={reporteConfig.empresaCoordinacion}>
+                          {reporteConfig.empresaCoordinacion || 'Empresa de Coordinación'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'obras' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      <MapPin className="w-6 h-6 text-brand-primary" />
+                      Configuración de Obras y Recursos Preventivos
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                      Asigne a cada obra su Recurso Preventivo obligatorio y Categoría del puesto (ej. Encargado de Obra) para el cumplimiento de la Ley 32/2006 y su inclusión en las firmas de los reportes técnicos en PDF.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Formulario de Alta con Recurso Preventivo Obligatorio */}
+                <form onSubmit={handleAddObraWithRecurso} className="mt-5 p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs space-y-3">
+                  <div className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-brand-primary" />
+                    <span>Añadir Nueva Obra con Recurso Preventivo Asignado</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-5">
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Nombre de la Obra *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: Obra PFEA Jerez - C/ Larga..."
+                        value={newItem}
+                        onChange={(e) => setNewItem(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Recurso Preventivo Asignado *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nombre y Apellidos..."
+                        value={newObraRecurso}
+                        onChange={(e) => setNewObraRecurso(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Categoría del Puesto
+                      </label>
+                      <select
+                        value={newObraCategoria}
+                        onChange={(e) => setNewObraCategoria(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
+                      >
+                        <option value="Encargado de Obra">Encargado de Obra</option>
+                        <option value="Capataz de Obra">Capataz de Obra</option>
+                        <option value="Técnico Básico PRL (60h)">Técnico Básico PRL (60h)</option>
+                        <option value="Oficial 1ª / Recurso Preventivo">Oficial 1ª / Recurso</option>
+                        <option value="Jefe de Obra">Jefe de Obra</option>
+                        <option value="Personal Designado PRL">Personal Designado PRL</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-brand-primary text-white text-xs font-bold rounded-xl hover:bg-brand-primary/90 transition-colors shadow-md shadow-brand-primary/20 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Añadir Obra y Asignar Recurso</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="p-6">
+                {/* Search Bar */}
+                <div className="mb-6 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nombre de obra, recurso preventivo o categoría..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all placeholder-slate-400"
+                  />
+                </div>
+
+                {savedObras.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-850 p-4 rounded-2xl mb-6">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="select-all-obras-checkbox"
+                        checked={
+                          savedObras.filter(o => {
+                            const rec = obrasRecursos[o]?.recursoPreventivoNombre || '';
+                            const cat = obrasRecursos[o]?.recursoPreventivoCategoria || '';
+                            const searchLower = searchTerm.toLowerCase();
+                            return o.toLowerCase().includes(searchLower) || rec.toLowerCase().includes(searchLower) || cat.toLowerCase().includes(searchLower);
+                          }).length > 0 &&
+                          savedObras
+                            .filter(o => {
+                              const rec = obrasRecursos[o]?.recursoPreventivoNombre || '';
+                              const cat = obrasRecursos[o]?.recursoPreventivoCategoria || '';
+                              const searchLower = searchTerm.toLowerCase();
+                              return o.toLowerCase().includes(searchLower) || rec.toLowerCase().includes(searchLower) || cat.toLowerCase().includes(searchLower);
+                            })
+                            .every(item => selectedItems.includes(item))
+                        }
+                        onChange={() => {
+                          const filtered = savedObras.filter(o => {
+                            const rec = obrasRecursos[o]?.recursoPreventivoNombre || '';
+                            const cat = obrasRecursos[o]?.recursoPreventivoCategoria || '';
+                            const searchLower = searchTerm.toLowerCase();
+                            return o.toLowerCase().includes(searchLower) || rec.toLowerCase().includes(searchLower) || cat.toLowerCase().includes(searchLower);
+                          });
+                          const allSelected = filtered.every(item => selectedItems.includes(item));
+                          if (allSelected) {
+                            setSelectedItems(prev => prev.filter(i => !filtered.includes(i)));
+                          } else {
+                            setSelectedItems(prev => Array.from(new Set([...prev, ...filtered])));
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-brand-primary focus:ring-brand-primary border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer"
+                      />
+                      <label htmlFor="select-all-obras-checkbox" className="text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                        Seleccionar todas las obras filtradas
+                      </label>
+                    </div>
+
+                    {selectedItems.length > 0 && (
+                      <div className="flex items-center gap-3 animate-in fade-in duration-200">
+                        <span className="text-xs font-bold text-brand-primary dark:text-blue-400">
+                          {selectedItems.length} seleccionadas
+                        </span>
+                        
+                        {showBulkConfirm ? (
+                          <div className="flex items-center gap-1.5 bg-red-500/10 dark:bg-red-950/20 px-2 py-1 rounded-xl border border-red-500/20">
+                            <span className="text-[10px] font-black text-red-500 uppercase mr-1">¿Eliminar seleccionadas?</span>
+                            <button
+                              type="button"
+                              onClick={handleBulkDelete}
+                              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black rounded-lg transition-colors cursor-pointer"
+                            >
+                              SÍ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowBulkConfirm(false)}
+                              className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              NO
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowBulkConfirm(true)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-950/30 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Borrado Masivo
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedItems([]);
+                            setShowBulkConfirm(false);
+                          }}
+                          className="text-[11px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* List of Obras with Recurso Preventivo cards */}
+                {(() => {
+                  const filteredObras = savedObras.filter(o => {
+                    const rec = obrasRecursos[o]?.recursoPreventivoNombre || '';
+                    const cat = obrasRecursos[o]?.recursoPreventivoCategoria || '';
+                    const searchLower = searchTerm.toLowerCase();
+                    return o.toLowerCase().includes(searchLower) || rec.toLowerCase().includes(searchLower) || cat.toLowerCase().includes(searchLower);
+                  });
+
+                  if (filteredObras.length === 0) {
+                    return (
+                      <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                        <AlertCircle className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                        <p className="text-slate-500 dark:text-slate-400 font-medium">No se encontraron obras registradas</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[550px] overflow-y-auto pr-2 custom-scrollbar">
+                      {filteredObras.map((obra) => {
+                        const recursoData = obrasRecursos[obra];
+                        const isSelected = selectedItems.includes(obra);
+                        return (
+                          <div
+                            key={obra}
+                            className={`group p-3.5 bg-white dark:bg-slate-800 border rounded-xl hover:border-brand-primary/30 dark:hover:border-blue-500/30 hover:shadow-xs transition-all flex flex-col justify-between gap-3 ${
+                              isSelected
+                                ? 'border-brand-primary/40 bg-brand-primary/5 dark:bg-brand-primary/10'
+                                : 'border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedItems(prev =>
+                                      prev.includes(obra)
+                                        ? prev.filter(i => i !== obra)
+                                        : [...prev, obra]
+                                    );
+                                    setShowBulkConfirm(false);
+                                  }}
+                                  className="w-4 h-4 mt-0.5 rounded text-brand-primary focus:ring-brand-primary/20 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate" title={obra}>
+                                      {obra}
+                                    </h4>
+                                  </div>
+
+                                  {/* Recurso Preventivo Badge */}
+                                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {recursoData?.recursoPreventivoNombre ? (
+                                      <>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                          <UserCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                          <span className="truncate max-w-[150px]">{recursoData.recursoPreventivoNombre}</span>
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                          {recursoData.recursoPreventivoCategoria || 'Encargado de Obra'}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                        <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
+                                        <span>Sin recurso asignado</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingObraRecurso({
+                                    obra,
+                                    recurso: recursoData?.recursoPreventivoNombre || '',
+                                    categoria: recursoData?.recursoPreventivoCategoria || 'Encargado de Obra'
+                                  })}
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors cursor-pointer"
+                                  title="Editar Recurso Preventivo"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingItem(obra)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+                                  title="Eliminar obra"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {deletingItem === obra && (
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 animate-in fade-in duration-150">
+                                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300">¿Eliminar esta obra?</span>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteItem(obra)}
+                                    className="px-2.5 py-1 bg-rose-600 text-white text-[10px] font-black rounded-md hover:bg-rose-700 transition-colors cursor-pointer"
+                                  >
+                                    SÍ
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingItem(null)}
+                                    className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-bold rounded-md hover:bg-slate-300 transition-colors cursor-pointer"
+                                  >
+                                    NO
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Modal para Editar Recurso Preventivo de Obra */}
+              {editingObraRecurso && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in zoom-in duration-200">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 rounded-lg">
+                          <UserCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                            Recurso Preventivo Asignado
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[280px]">
+                            {editingObraRecurso.obra}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingObraRecurso(null)}
+                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-md"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveEditObraRecurso} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          Nombre y Apellidos del Recurso Preventivo *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingObraRecurso.recurso}
+                          onChange={(e) => setEditingObraRecurso({ ...editingObraRecurso, recurso: e.target.value })}
+                          placeholder="Ej: Manuel Gómez Serrano"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          Categoría del Puesto de Trabajo
+                        </label>
+                        <select
+                          value={editingObraRecurso.categoria}
+                          onChange={(e) => setEditingObraRecurso({ ...editingObraRecurso, categoria: e.target.value })}
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                        >
+                          <option value="Encargado de Obra">Encargado de Obra</option>
+                          <option value="Capataz de Obra">Capataz de Obra</option>
+                          <option value="Técnico Básico PRL (60h)">Técnico Básico PRL (60h)</option>
+                          <option value="Oficial 1ª / Recurso Preventivo">Oficial 1ª / Recurso Preventivo</option>
+                          <option value="Jefe de Obra">Jefe de Obra</option>
+                          <option value="Personal Designado PRL">Personal Designado PRL</option>
+                        </select>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                          ℹ️ Esta persona aparecerá en la casilla de Recurso Preventivo del Reporte Técnico PDF de esta obra.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setEditingObraRecurso(null)}
+                          className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Guardar Recurso</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    {currentTab && <currentTab.icon className="w-6 h-6 text-brand-primary" />}
+                    {currentTab?.label}
+                  </h2>
+                  
+                  <form onSubmit={handleAddItem} className="flex w-full sm:w-auto gap-2">
+                    <input
+                      type="text"
+                      placeholder={currentTab ? `Añadir ${currentTab.label.toLowerCase()}...` : ''}
+                      value={newItem}
+                      onChange={(e) => setNewItem(e.target.value)}
+                      className="flex-1 sm:w-64 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all placeholder-slate-400"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-brand-primary text-white p-2 rounded-xl hover:bg-brand-primary/90 transition-colors shadow-md shadow-brand-primary/10"
+                      title="Añadir"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="mb-6 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Filtrar lista..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all placeholder-slate-400"
+                  />
+                </div>
+
+                {currentTab && currentTab.list.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-850 p-4 rounded-2xl mb-6">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="select-all-checkbox"
+                        checked={filteredList.length > 0 && filteredList.every(item => selectedItems.includes(item))}
+                        onChange={handleToggleSelectAll}
+                        className="w-4 h-4 rounded text-brand-primary focus:ring-brand-primary border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer"
+                      />
+                      <label htmlFor="select-all-checkbox" className="text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                        Seleccionar todos los filtrados ({filteredList.length})
+                      </label>
+                    </div>
+
+                    {selectedItems.length > 0 && (
+                      <div className="flex items-center gap-3 animate-in fade-in duration-200">
+                        <span className="text-xs font-bold text-brand-primary dark:text-blue-400">
+                          {selectedItems.length} seleccionados
+                        </span>
+                        
+                        {showBulkConfirm ? (
+                          <div className="flex items-center gap-1.5 bg-red-500/10 dark:bg-red-950/20 px-2 py-1 rounded-xl border border-red-500/20">
+                            <span className="text-[10px] font-black text-red-500 uppercase mr-1">¿Eliminar seleccionados?</span>
+                            <button
+                              type="button"
+                              onClick={handleBulkDelete}
+                              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black rounded-lg transition-colors cursor-pointer"
+                            >
+                              SÍ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowBulkConfirm(false)}
+                              className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              NO
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowBulkConfirm(true)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-950/30 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Borrado Masivo
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedItems([]);
+                            setShowBulkConfirm(false);
+                          }}
+                          className="text-[11px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {filteredList.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                    <AlertCircle className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                    <p className="text-slate-500 dark:text-slate-400 font-medium">No se encontraron elementos</p>
+                    {searchTerm && (
+                      <button 
+                        onClick={() => setSearchTerm('')}
+                        className="text-brand-primary text-sm font-bold mt-2 hover:underline"
+                      >
+                        Limpiar búsqueda
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                    {filteredList.map((item, index) => (
+                      <div 
+                        key={index}
+                        className={`group flex items-center justify-between p-3 bg-white dark:bg-slate-800 border rounded-xl hover:border-brand-primary/30 dark:hover:border-blue-500/30 hover:shadow-sm transition-all ${
+                          selectedItems.includes(item) 
+                            ? 'border-brand-primary/40 bg-brand-primary/5 dark:bg-brand-primary/10 dark:border-blue-500/40' 
+                            : 'border-slate-200 dark:border-slate-800'
+                        }`}
+                      >
+                        {deletingItem === item ? (
+                          <div className="flex items-center justify-between w-full animate-in fade-in zoom-in-95 duration-200">
+                            <span className="text-xs font-bold text-red-500 uppercase">¿Eliminar?</span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleDeleteItem(item)}
+                                className="px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-lg hover:bg-red-600 transition-colors"
+                              >
+                                SÍ
+                              </button>
+                              <button
+                                onClick={() => setDeletingItem(null)}
+                                className="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                              >
+                                NO
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-3 truncate pr-4">
+                              <input 
+                                type="checkbox"
+                                checked={selectedItems.includes(item)}
+                                onChange={() => {
+                                  setSelectedItems(prev => 
+                                    prev.includes(item) 
+                                      ? prev.filter(i => i !== item) 
+                                      : [...prev, item]
+                                  );
+                                  setShowBulkConfirm(false);
+                                }}
+                                className="w-4 h-4 rounded text-brand-primary focus:ring-brand-primary/20 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all cursor-pointer"
+                              />
+                              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium truncate">
+                                {item}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setDeletingItem(item)}
+                              className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all lg:opacity-0 group-hover:opacity-100"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-100 dark:border-amber-900/40 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                  <strong>Nota:</strong> Eliminar un elemento de esta lista no afectará a los registros ya guardados. 
+                  Simplemente dejará de aparecer como sugerencia en los formularios.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Loading Overlay */}
+      {isDriveLoading && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm text-white">
+          <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+          <p className="mt-4 text-sm font-semibold">Descargando copia de seguridad desde Google Drive...</p>
+        </div>
+      )}
+    </div>
+  );
+};

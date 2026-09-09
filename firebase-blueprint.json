@@ -1,0 +1,348 @@
+{
+  "entities": {
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Represents a shared workspace / data vault synchronized across devices and team members.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique workspace identifier (e.g. canonical email key or generated id)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Workspace display name."
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Owner Google email address."
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Owner auth UID."
+        },
+        "ownerName": {
+          "type": "string",
+          "description": "Owner display name."
+        },
+        "ownerPhoto": {
+          "type": "string",
+          "description": "Owner profile picture URL."
+        },
+        "sharedWith": {
+          "type": "array",
+          "description": "List of authorized coworker emails and their permission roles."
+        },
+        "sharedWithEmails": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Flat list of authorized coworker email addresses for simple querying."
+        },
+        "accessCode": {
+          "type": "string",
+          "description": "6-digit access code for fast device linking."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        },
+        "lastSyncAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last synchronization timestamp."
+        }
+      },
+      "required": ["id", "ownerEmail", "lastSyncAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Represents the user account profile and sync metadata.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique user ID (auth uid)."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "User avatar URL."
+        },
+        "lastSyncAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp of the last synchronization."
+        }
+      },
+      "required": ["userId", "email", "lastSyncAt"]
+    },
+    "Person": {
+      "title": "Person",
+      "description": "Represents a worker registered in the PROFEA system.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Unique numeric identifier."
+        },
+        "supervisorResponsable": {
+          "type": "string",
+          "description": "Supervisor's name."
+        },
+        "numOferta": {
+          "type": "string",
+          "description": "Job offer number."
+        },
+        "obra": {
+          "type": "string",
+          "description": "Assigned public work."
+        },
+        "categoria": {
+          "type": "string",
+          "description": "Professional category."
+        },
+        "quincena": {
+          "type": "string",
+          "description": "Work fortnight."
+        },
+        "apellidosNombre": {
+          "type": "string",
+          "description": "Surnames and First Name."
+        },
+        "dni": {
+          "type": "string",
+          "description": "National ID document number."
+        },
+        "fechaNacimiento": {
+          "type": "string",
+          "format": "date",
+          "description": "Birth date."
+        },
+        "periodoInicio": {
+          "type": "string",
+          "format": "date",
+          "description": "Contract start date."
+        },
+        "periodoFin": {
+          "type": "string",
+          "format": "date",
+          "description": "Contract end date."
+        },
+        "telefono": {
+          "type": "string",
+          "description": "Contact phone number."
+        },
+        "calzado": {
+          "type": "string",
+          "description": "Shoe size."
+        },
+        "formacion": {
+          "type": "string",
+          "enum": ["Sí", "No"],
+          "description": "Whether the worker has training."
+        },
+        "lugarFormacion": {
+          "type": "string",
+          "description": "Training location (optional)."
+        },
+        "citaDia": {
+          "type": "string",
+          "format": "date",
+          "description": "Medical appointment day."
+        },
+        "citaHora": {
+          "type": "string",
+          "description": "Medical appointment hour."
+        },
+        "sitioReconocimiento": {
+          "type": "string",
+          "description": "Medical examination center."
+        },
+        "documentacionCompleta": {
+          "type": "string",
+          "enum": ["Sí", "No"],
+          "description": "Whether documentation is fully complete."
+        },
+        "observaciones": {
+          "type": "string",
+          "description": "Additional notes and observations (optional)."
+        },
+        "fechaRegistro": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp of registration."
+        },
+        "sincronizadoEnNube": {
+          "type": "boolean",
+          "description": "Whether synced to cloud."
+        },
+        "necesitaReconocimiento": {
+          "type": "string",
+          "enum": ["Sí", "No"],
+          "description": "Whether a medical check is needed."
+        }
+      },
+      "required": [
+        "id",
+        "supervisorResponsable",
+        "numOferta",
+        "obra",
+        "categoria",
+        "quincena",
+        "apellidosNombre",
+        "dni",
+        "fechaNacimiento",
+        "periodoInicio",
+        "periodoFin",
+        "telefono",
+        "calzado",
+        "formacion",
+        "citaDia",
+        "citaHora",
+        "sitioReconocimiento",
+        "documentacionCompleta",
+        "fechaRegistro"
+      ]
+    },
+    "DeletedPerson": {
+      "title": "DeletedPerson",
+      "description": "Represents a deleted worker residing in the trash bin.",
+      "type": "object",
+      "properties": {
+        "person": {
+          "$ref": "#/entities/Person",
+          "description": "The deleted worker's profile data."
+        },
+        "fechaEliminacion": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp of when the worker was deleted."
+        }
+      },
+      "required": ["person", "fechaEliminacion"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "Application settings and customized catalogs for the user account.",
+      "type": "object",
+      "properties": {
+        "savedObras": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Custom list of obras."
+        },
+        "savedLugares": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Custom training locations."
+        },
+        "savedSitios": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Custom medical check centers."
+        },
+        "savedTelefonos": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Saved telephone contacts."
+        },
+        "savedCategorias": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Job categories."
+        },
+        "workStartHour": {
+          "type": "string",
+          "description": "Work day start hour."
+        },
+        "workEndHour": {
+          "type": "string",
+          "description": "Work day end hour."
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp of settings update."
+        }
+      },
+      "required": ["lastUpdated"]
+    },
+    "DeviceSession": {
+      "title": "DeviceSession",
+      "description": "Active device connected to the user account.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Session identifier."
+        },
+        "deviceName": {
+          "type": "string",
+          "description": "Friendly name of the device/browser."
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Email associated with session."
+        },
+        "lastActive": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp of activity."
+        }
+      },
+      "required": ["id", "deviceName", "userEmail", "lastActive"]
+    }
+  },
+  "firestore": {
+    "/workspaces/{workspaceId}": {
+      "schema": "Workspace",
+      "description": "Multi-device and team workspaces synchronized in real time."
+    },
+    "/workspaces/{workspaceId}/workers/{workerId}": {
+      "schema": "Person",
+      "description": "Workers in the shared workspace."
+    },
+    "/workspaces/{workspaceId}/trash/{workerId}": {
+      "schema": "DeletedPerson",
+      "description": "Deleted workers in the shared workspace."
+    },
+    "/workspaces/{workspaceId}/settings/{settingDoc}": {
+      "schema": "UserSettings",
+      "description": "Shared catalogs and configuration for the workspace."
+    },
+    "/workspaces/{workspaceId}/sessions/{sessionId}": {
+      "schema": "DeviceSession",
+      "description": "Active connected devices in the workspace."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User account profile and global sync status."
+    },
+    "/users/{userId}/workers/{workerId}": {
+      "schema": "Person",
+      "description": "The workers belonging to the user account."
+    },
+    "/users/{userId}/trash/{workerId}": {
+      "schema": "DeletedPerson",
+      "description": "The trash bin of deleted workers for the user account."
+    },
+    "/users/{userId}/settings/{settingDoc}": {
+      "schema": "UserSettings",
+      "description": "User preferences and shared catalogs across devices."
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "DeviceSession",
+      "description": "Active devices connected under this user account."
+    }
+  }
+}

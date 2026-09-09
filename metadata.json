@@ -1,0 +1,6 @@
+{
+  "name": "Sistema contratación PROFEA_DHG",
+  "description": "Sistema Gestión Contratación PFEA - Gestión integral de contrataciones, formación y empleo, citas y reconocimientos médicos con IA, documentación administrativa oficial y sincronización multidispositivo en tiempo real.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

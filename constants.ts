@@ -1,0 +1,3 @@
+export const BUTTON_GHOST = "p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors";
+export const BUTTON_PRIMARY = "px-4 py-2.5 bg-[#00548E] hover:bg-[#003860] text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+export const BUTTON_SECONDARY = "px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
