@@ -1,43 +1,41 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Shared Workspaces & Multi-Device Sync
-    match /workspaces/{workspaceId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
+    // New canonical per-user application database.
+    // Every account has an isolated state collection keyed by Firebase UID.
+    match /user_data/{userId}/state/{stateKey} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // User Accounts & Multi-device Sync
+    // User profile data belongs only to the authenticated owner.
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
       match /{allChildren=**} {
-        allow read, write: if true;
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
-    // Email-based Sync Vaults
+    // Legacy workspace/sync collections remain available only to signed-in users.
+    // The application is migrating away from manual synchronization to user_data.
+    match /workspaces/{workspaceId} {
+      allow read, write: if request.auth != null;
+      match /{allChildren=**} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
     match /email_vaults/{emailKey} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
       match /{allChildren=**} {
-        allow read, write: if true;
+        allow read, write: if request.auth != null;
       }
     }
 
-    // Legacy Sync Groups
     match /sync_groups/{groupId} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
       match /{allChildren=**} {
-        allow read, write: if true;
+        allow read, write: if request.auth != null;
       }
-    }
-
-    // Global fallback
-    match /{document=**} {
-      allow read, write: if true;
     }
   }
 }
-
