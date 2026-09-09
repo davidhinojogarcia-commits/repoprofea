@@ -1,12 +1,11 @@
-import { collection, doc, getDocs, onSnapshot, setDoc, deleteDoc, query, where, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 
 const ROOT_COLLECTION = 'user_data';
 const STATE_COLLECTION = 'state';
-const PREFIX = 'personasPROFEA';
 const MAX_VALUE_BYTES = 900_000;
 
-// Keys used only by the old manual synchronization system are deliberately not persisted.
+// Persist application data automatically. Legacy manual-sync metadata is excluded.
 const EXCLUDED_KEYS = new Set([
   'personasPROFEA_groupId',
   'personasPROFEA_isSyncing',
@@ -16,21 +15,26 @@ const EXCLUDED_KEYS = new Set([
   'personasPROFEA_activeWorkspaceId',
   'personasPROFEA_sessionId',
   'personasPROFEA_lastSyncTime',
+  'personasPROFEA_activeUid',
 ]);
 
 function shouldSyncKey(key: string) {
-  return key.startsWith(PREFIX) || [
-    'obrasGuardadas',
-    'lugaresFormacion',
-    'sitiosReconocimiento',
-    'telefonosGuardados',
-    'categoriasGuardadas',
-    'workStartHour',
-    'workEndHour',
-    'selectedObraFilter',
-    'selectedQuincenaFilter',
-    'theme',
-  ].includes(key);
+  return (
+    key.startsWith('personasPROFEA') ||
+    key.startsWith('profea_') ||
+    [
+      'obrasGuardadas',
+      'lugaresFormacion',
+      'sitiosReconocimiento',
+      'telefonosGuardados',
+      'categoriasGuardadas',
+      'workStartHour',
+      'workEndHour',
+      'selectedObraFilter',
+      'selectedQuincenaFilter',
+      'theme',
+    ].includes(key)
+  ) && !EXCLUDED_KEYS.has(key);
 }
 
 function encodeValue(value: string | null) {
@@ -52,16 +56,12 @@ export async function loadUserCloudState(uid: string): Promise<{ hasCloudData: b
   const snapshot = await getDocs(collection(db, ROOT_COLLECTION, uid, STATE_COLLECTION));
   if (snapshot.empty) return { hasCloudData: false };
 
-  // Cloud is authoritative once the account already has data.
   for (const item of snapshot.docs) {
     const key = item.id;
-    if (!shouldSyncKey(key) || EXCLUDED_KEYS.has(key)) continue;
+    if (!shouldSyncKey(key)) continue;
     const data = item.data();
-    if (data.deleted === true) {
-      localStorage.removeItem(key);
-    } else if (data.value !== undefined) {
-      localStorage.setItem(key, decodeValue(data.value));
-    }
+    if (data.deleted === true) localStorage.removeItem(key);
+    else if (data.value !== undefined) localStorage.setItem(key, decodeValue(data.value));
   }
   return { hasCloudData: true };
 }
@@ -73,7 +73,7 @@ export async function uploadExistingLocalState(uid: string) {
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (!key || !shouldSyncKey(key) || EXCLUDED_KEYS.has(key)) continue;
+    if (!key || !shouldSyncKey(key)) continue;
     const encoded = encodeValue(localStorage.getItem(key));
     if (encoded === null) continue;
     batch.set(doc(stateRef, key), { value: encoded, updatedAt: new Date() });
@@ -86,14 +86,14 @@ export async function uploadExistingLocalState(uid: string) {
 export function startUserCloudSync(uid: string) {
   let applyingRemote = false;
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
-
   const originalSetItem = localStorage.setItem.bind(localStorage);
   const originalRemoveItem = localStorage.removeItem.bind(localStorage);
 
   const persist = (key: string, value: string | null) => {
-    if (applyingRemote || !shouldSyncKey(key) || EXCLUDED_KEYS.has(key)) return;
+    if (applyingRemote || !shouldSyncKey(key)) return;
     const oldTimer = pending.get(key);
     if (oldTimer) clearTimeout(oldTimer);
+
     const timer = setTimeout(async () => {
       pending.delete(key);
       const encoded = encodeValue(value);
@@ -132,7 +132,7 @@ export function startUserCloudSync(uid: string) {
         let changed = false;
         snapshot.docChanges().forEach((change) => {
           const key = change.doc.id;
-          if (!shouldSyncKey(key) || EXCLUDED_KEYS.has(key)) return;
+          if (!shouldSyncKey(key)) return;
           const data = change.doc.data();
           if (change.type === 'removed' || data.deleted === true) {
             originalRemoveItem(key);
