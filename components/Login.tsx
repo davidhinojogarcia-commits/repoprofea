@@ -1,124 +1,154 @@
 import React, { useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  updateProfile,
-} from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { Eye, EyeOff, Loader2, LockKeyhole, Mail, UserRound } from 'lucide-react';
 import { auth } from '../src/lib/firebase';
 
+type Mode = 'login' | 'register' | 'reset';
+
+const firebaseErrorMessage = (err: any, mode: Mode) => {
+  const code = String(err?.code || '').toLowerCase();
+  if (code.includes('invalid-credential')) return 'El correo o la contraseña no son correctos.';
+  if (code.includes('user-not-found')) return 'No existe una cuenta con ese correo electrónico.';
+  if (code.includes('wrong-password')) return 'La contraseña no es correcta.';
+  if (code.includes('email-already-in-use')) return 'Ya existe una cuenta con ese correo electrónico.';
+  if (code.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
+  if (code.includes('too-many-requests')) return 'Demasiados intentos. Espera unos minutos y vuelve a intentarlo.';
+  if (code.includes('invalid-email')) return 'Introduce un correo electrónico válido.';
+  if (code.includes('network-request-failed')) return 'No hay conexión con Firebase. Comprueba tu conexión a Internet.';
+  if (code.includes('operation-not-allowed')) return 'El acceso por correo y contraseña no está habilitado en Firebase.';
+  if (code.includes('invalid-api-key') || code.includes('app-not-authorized')) return 'La configuración de Firebase no autoriza esta aplicación.';
+  if (mode === 'reset') return 'No se pudo enviar el correo de recuperación. Comprueba la dirección e inténtalo de nuevo.';
+  return 'No se pudo completar la operación. Inténtalo de nuevo.';
+};
+
 export const Login: React.FC = () => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [name, setName] = useState('');
+  const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [name, setName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const cleanEmail = email.trim().toLowerCase();
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage(null);
-    const cleanEmail = email.trim().toLowerCase();
 
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setMessage({ type: 'error', text: 'Introduce un correo electrónico válido.' });
+    if (!cleanEmail) {
+      setMessage({ type: 'error', text: 'Introduce tu correo electrónico.' });
       return;
     }
-    if (password.length < 6) {
-      setMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres.' });
+    if (mode !== 'reset' && !password) {
+      setMessage({ type: 'error', text: 'Introduce tu contraseña.' });
       return;
     }
 
-    setBusy(true);
+    setLoading(true);
     try {
       if (mode === 'register') {
+        if (password.length < 6) {
+          setMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres.' });
+          return;
+        }
         const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         if (name.trim()) await updateProfile(credential.user, { displayName: name.trim() });
-        setMessage({ type: 'success', text: 'Cuenta creada correctamente. Preparando tus datos…' });
+        setMessage({ type: 'success', text: 'Cuenta creada correctamente. Entrando en la aplicación…' });
+      } else if (mode === 'reset') {
+        await sendPasswordResetEmail(auth, cleanEmail);
+        setMessage({ type: 'success', text: 'Te hemos enviado un correo para restablecer la contraseña.' });
       } else {
         await signInWithEmailAndPassword(auth, cleanEmail, password);
+        setMessage({ type: 'success', text: 'Inicio de sesión correcto. Entrando…' });
       }
-    } catch (error: any) {
-      const code = error?.code || '';
-      const messages: Record<string, string> = {
-        'auth/invalid-credential': 'Correo o contraseña incorrectos.',
-        'auth/user-not-found': 'No existe una cuenta con ese correo.',
-        'auth/wrong-password': 'Correo o contraseña incorrectos.',
-        'auth/email-already-in-use': 'Ese correo ya tiene una cuenta. Inicia sesión.',
-        'auth/weak-password': 'La contraseña es demasiado débil.',
-        'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.',
-        'auth/invalid-email': 'El correo electrónico no es válido.',
-      };
-      setMessage({ type: 'error', text: messages[code] || 'No se pudo completar la operación. Inténtalo de nuevo.' });
+    } catch (err: any) {
+      console.error('[PROFEA Auth]', err?.code || err, err);
+      setMessage({ type: 'error', text: firebaseErrorMessage(err, mode) });
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
-  const resetPassword = async () => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) {
-      setMessage({ type: 'error', text: 'Introduce primero tu correo para recuperar la contraseña.' });
-      return;
-    }
-    setBusy(true);
-    try {
-      await sendPasswordResetEmail(auth, cleanEmail);
-      setMessage({ type: 'success', text: 'Te hemos enviado un correo para restablecer la contraseña.' });
-    } catch {
-      setMessage({ type: 'error', text: 'No se pudo enviar el correo de recuperación.' });
-    } finally {
-      setBusy(false);
-    }
+  const changeMode = (next: Mode) => {
+    setMode(next);
+    setMessage(null);
+    setPassword('');
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl p-7 sm:p-9">
-          <div className="flex justify-center mb-6">
-            <img src="/logo-diputacion-profea.svg" alt="PROFEA Diputación de Cádiz" className="h-14 w-auto dark:hidden" />
-            <img src="/logo-diputacion-profea-dark.svg" alt="PROFEA Diputación de Cádiz" className="h-14 w-auto hidden dark:block" />
-          </div>
-
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-8">
           <div className="text-center mb-7">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Gestión PROFEA</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Accede a tus datos desde cualquier dispositivo</p>
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg mb-4">
+              <LockKeyhole className="w-7 h-7" />
+            </div>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">PROFEA</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Gestión de obras y personal</p>
           </div>
 
-          <div className="grid grid-cols-2 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 mb-6">
-            <button type="button" onClick={() => { setMode('login'); setMessage(null); }} className={`py-2.5 rounded-lg text-sm font-semibold transition ${mode === 'login' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}>Iniciar sesión</button>
-            <button type="button" onClick={() => { setMode('register'); setMessage(null); }} className={`py-2.5 rounded-lg text-sm font-semibold transition ${mode === 'register' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}>Crear cuenta</button>
-          </div>
+          {mode !== 'reset' && (
+            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-6">
+              <button type="button" onClick={() => changeMode('login')} className={`rounded-lg py-2 text-sm font-semibold transition ${mode === 'login' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}>Iniciar sesión</button>
+              <button type="button" onClick={() => changeMode('register')} className={`rounded-lg py-2 text-sm font-semibold transition ${mode === 'register' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}>Crear cuenta</button>
+            </div>
+          )}
+
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">
+            {mode === 'login' ? 'Accede a tu cuenta' : mode === 'register' ? 'Crea tu cuenta' : 'Recuperar contraseña'}
+          </h2>
 
           <form onSubmit={submit} className="space-y-4">
             {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Nombre</label>
-                <input value={name} onChange={e => setName(e.target.value)} type="text" autoComplete="name" placeholder="Tu nombre" className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Nombre</span>
+                <div className="relative mt-1">
+                  <UserRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input value={name} onChange={e => setName(e.target.value)} autoComplete="name" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 py-3 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Tu nombre" />
+                </div>
+              </label>
+            )}
+
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Correo electrónico</span>
+              <div className="relative mt-1">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input value={email} onChange={e => setEmail(e.target.value)} type="email" autoComplete="email" required className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 py-3 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="correo@ejemplo.com" />
+              </div>
+            </label>
+
+            {mode !== 'reset' && (
+              <label className="block">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Contraseña</span>
+                <div className="relative mt-1">
+                  <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} required minLength={6} className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 py-3 pl-10 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" />
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </label>
+            )}
+
+            {message && (
+              <div className={`rounded-xl px-3 py-2.5 text-xs font-medium ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                {message.text}
               </div>
             )}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Correo electrónico</label>
-              <input value={email} onChange={e => setEmail(e.target.value)} type="email" autoComplete="email" required placeholder="tu@correo.com" className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Contraseña</label>
-              <input value={password} onChange={e => setPassword(e.target.value)} type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} required minLength={6} placeholder="Mínimo 6 caracteres" className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
 
-            {message && <div className={`rounded-xl px-4 py-3 text-sm ${message.type === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>{message.text}</div>}
-
-            <button disabled={busy} className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
-              {busy ? 'Procesando…' : mode === 'register' ? 'Crear mi cuenta' : 'Entrar en la aplicación'}
+            <button type="submit" disabled={loading} className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 text-sm flex items-center justify-center gap-2 transition-colors">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear cuenta' : 'Enviar recuperación'}
             </button>
           </form>
 
           {mode === 'login' && (
-            <button type="button" onClick={resetPassword} disabled={busy} className="w-full mt-4 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400">¿Has olvidado tu contraseña?</button>
+            <button type="button" onClick={() => changeMode('reset')} className="w-full mt-4 text-xs font-semibold text-blue-600 hover:text-blue-700">¿Has olvidado tu contraseña?</button>
           )}
-
-          <p className="text-[11px] text-center text-slate-400 mt-7 leading-relaxed">Tus datos de trabajo se almacenan separados por cuenta. Nadie que use otra cuenta podrá acceder a tus registros.</p>
+          {mode === 'reset' && (
+            <button type="button" onClick={() => changeMode('login')} className="w-full mt-4 text-xs font-semibold text-blue-600 hover:text-blue-700">Volver al inicio de sesión</button>
+          )}
         </div>
       </div>
     </main>
