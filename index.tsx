@@ -1,11 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
+import { installButtonSounds } from './src/lib/uiSounds';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
+
+// Install the short key-click sound globally for buttons in the application.
+installButtonSounds();
 
 // Remove the obsolete manual synchronization entry from the sidebar without
 // touching the legacy component code still used by older workspaces.
