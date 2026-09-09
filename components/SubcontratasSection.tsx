@@ -26,6 +26,7 @@ import {
 import { formatDate } from '../src/lib/exportUtils';
 import { FileUploaderIA } from './FileUploaderIA';
 import { ChecklistConfigModal } from './ChecklistConfigModal';
+import { FirmasReporteTecnico } from './FirmasReporteTecnico';
 
 interface SubcontratasSectionProps {
   savedObras: string[];
@@ -649,6 +650,10 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               Checklist legal de documentación obligatoria por obra, cotejo y verificación automática con Inteligencia Artificial, alertas en rojo de faltantes e informe oficial con sello de Diputación.
             </p>
           </div>
+        </div>
+
+        <div className="mb-5">
+          <FirmasReporteTecnico onToast={onToast} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
