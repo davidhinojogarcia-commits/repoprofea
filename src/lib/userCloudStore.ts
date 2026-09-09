@@ -1,5 +1,6 @@
 import { collection, doc, getDocs, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
+import { playNotificationSound } from './uiSounds';
 
 const ROOT_COLLECTION = 'user_data';
 const STATE_COLLECTION = 'state';
@@ -69,6 +70,8 @@ function showDatabaseNotification(success: boolean, message: string) {
   if (message === lastNotificationMessage && now - lastNotificationAt < 900) return;
   lastNotificationMessage = message;
   lastNotificationAt = now;
+
+  playNotificationSound();
 
   const existing = document.getElementById('profea-database-notification');
   existing?.remove();
