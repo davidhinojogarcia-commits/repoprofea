@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { LogOut, Cloud, Loader2 } from 'lucide-react';
 import App from '../App';
@@ -11,10 +11,10 @@ export const AuthGate: React.FC = () => {
   const [checking, setChecking] = useState(true);
   const [cloudReady, setCloudReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const stopCloudSyncRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let stopCloudSync: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (cancelled) return;
@@ -22,9 +22,12 @@ export const AuthGate: React.FC = () => {
       setCloudReady(false);
       setError(null);
 
+      if (stopCloudSyncRef.current) {
+        stopCloudSyncRef.current();
+        stopCloudSyncRef.current = null;
+      }
+
       if (!currentUser) {
-        if (stopCloudSync) stopCloudSync();
-        stopCloudSync = null;
         setChecking(false);
         return;
       }
@@ -49,7 +52,7 @@ export const AuthGate: React.FC = () => {
           await uploadExistingLocalState(currentUser.uid);
         }
         if (cancelled) return;
-        stopCloudSync = startUserCloudSync(currentUser.uid);
+        stopCloudSyncRef.current = startUserCloudSync(currentUser.uid);
         setCloudReady(true);
       } catch (err: any) {
         console.error('[PROFEA Cloud] Error preparando cuenta:', err);
@@ -62,31 +65,19 @@ export const AuthGate: React.FC = () => {
     return () => {
       cancelled = true;
       unsubscribe();
-      if (stopCloudSync) stopCloudSync();
+      if (stopCloudSyncRef.current) stopCloudSyncRef.current();
     };
   }, []);
 
   const logout = async () => {
-    if (stopCloudSyncSafe) stopCloudSyncSafe();
+    if (stopCloudSyncRef.current) {
+      stopCloudSyncRef.current();
+      stopCloudSyncRef.current = null;
+    }
     await auth.signOut();
   };
 
-  // Kept outside render lifecycle through a tiny indirection; AuthGate's effect owns the actual cleanup.
-  const stopCloudSyncSafe = () => undefined;
-
   if (!user) return <Login />;
-  if (checking || !cloudReady) {
-    return (
-      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-6">
-        <div className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg mb-5"><Cloud className="w-7 h-7" /></div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Preparando tu espacio</h1>
-          <p className="text-sm text-slate-500 mt-2">Cargando tus datos de la nube…</p>
-          <Loader2 className="w-5 h-5 animate-spin mx-auto mt-5 text-blue-600" />
-        </div>
-      </main>
-    );
-  }
 
   if (error) {
     return (
@@ -95,6 +86,19 @@ export const AuthGate: React.FC = () => {
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Error de conexión</h1>
           <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">{error}</p>
           <button onClick={() => auth.signOut()} className="mt-5 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold">Volver al inicio de sesión</button>
+        </div>
+      </main>
+    );
+  }
+
+  if (checking || !cloudReady) {
+    return (
+      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-6">
+        <div className="text-center">
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg mb-5"><Cloud className="w-7 h-7" /></div>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Preparando tu espacio</h1>
+          <p className="text-sm text-slate-500 mt-2">Cargando tus datos de la nube…</p>
+          <Loader2 className="w-5 h-5 animate-spin mx-auto mt-5 text-blue-600" />
         </div>
       </main>
     );
