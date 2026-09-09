@@ -1,17 +1,71 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { LogOut, Cloud, Loader2 } from 'lucide-react';
+import { LogOut, Cloud, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 import App from '../App';
 import { Login } from './Login';
 import { auth } from '../src/lib/firebase';
 import { loadUserCloudState, uploadExistingLocalState, startUserCloudSync } from '../src/lib/userCloudStore';
 
+const getCloudErrorMessage = (err: any) => {
+  const code = String(err?.code || '').toLowerCase();
+  if (code.includes('permission-denied')) {
+    return 'La sesión es correcta, pero Firestore ha rechazado el acceso. Comprueba las reglas de seguridad de la base de datos.';
+  }
+  if (code.includes('unavailable') || code.includes('network')) {
+    return 'La sesión es correcta, pero la base de datos no está disponible temporalmente. Tus cambios se conservarán localmente y se intentará sincronizar de nuevo.';
+  }
+  return 'La sesión es correcta, pero no se ha podido preparar la sincronización con la nube. Puedes continuar trabajando y volver a intentarlo.';
+};
+
 export const AuthGate: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [cloudReady, setCloudReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [cloudError, setCloudError] = useState<string | null>(null);
   const stopCloudSyncRef = useRef<(() => void) | null>(null);
+
+  const prepareCloud = async (currentUser: User) => {
+    setChecking(true);
+    setCloudError(null);
+
+    try {
+      const previousUid = localStorage.getItem('personasPROFEA_activeUid');
+      if (previousUid && previousUid !== currentUser.uid) {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (
+            key &&
+            (key.startsWith('personasPROFEA') ||
+              ['obrasGuardadas', 'lugaresFormacion', 'sitiosReconocimiento', 'telefonosGuardados', 'categoriasGuardadas', 'workStartHour', 'workEndHour'].includes(key))
+          ) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+
+      localStorage.setItem('personasPROFEA_activeUid', currentUser.uid);
+
+      const result = await loadUserCloudState(currentUser.uid);
+      if (!result.hasCloudData) {
+        await uploadExistingLocalState(currentUser.uid);
+      }
+    } catch (err: any) {
+      console.error('[PROFEA Cloud] Error preparando cuenta:', err?.code || err, err);
+      setCloudError(getCloudErrorMessage(err));
+    }
+
+    // Authentication must never be blocked by a cloud/database outage.
+    try {
+      if (stopCloudSyncRef.current) stopCloudSyncRef.current();
+      stopCloudSyncRef.current = startUserCloudSync(currentUser.uid);
+    } catch (err: any) {
+      console.error('[PROFEA Cloud] Error iniciando sincronización:', err?.code || err, err);
+      setCloudError(getCloudErrorMessage(err));
+    } finally {
+      setCloudReady(true);
+      setChecking(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -20,7 +74,7 @@ export const AuthGate: React.FC = () => {
       if (cancelled) return;
       setUser(currentUser);
       setCloudReady(false);
-      setError(null);
+      setCloudError(null);
 
       if (stopCloudSyncRef.current) {
         stopCloudSyncRef.current();
@@ -32,34 +86,7 @@ export const AuthGate: React.FC = () => {
         return;
       }
 
-      setChecking(true);
-      try {
-        const previousUid = localStorage.getItem('personasPROFEA_activeUid');
-        if (previousUid && previousUid !== currentUser.uid) {
-          // Never expose the previous account's records to the new account on this device.
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key && (key.startsWith('personasPROFEA') || ['obrasGuardadas','lugaresFormacion','sitiosReconocimiento','telefonosGuardados','categoriasGuardadas','workStartHour','workEndHour'].includes(key))) {
-              localStorage.removeItem(key);
-            }
-          }
-        }
-
-        localStorage.setItem('personasPROFEA_activeUid', currentUser.uid);
-        const result = await loadUserCloudState(currentUser.uid);
-        if (!result.hasCloudData) {
-          // First login: preserve any existing local records and make them the initial cloud dataset.
-          await uploadExistingLocalState(currentUser.uid);
-        }
-        if (cancelled) return;
-        stopCloudSyncRef.current = startUserCloudSync(currentUser.uid);
-        setCloudReady(true);
-      } catch (err: any) {
-        console.error('[PROFEA Cloud] Error preparando cuenta:', err);
-        if (!cancelled) setError('No se ha podido conectar con la base de datos. Comprueba tu conexión e inténtalo de nuevo.');
-      } finally {
-        if (!cancelled) setChecking(false);
-      }
+      await prepareCloud(currentUser);
     });
 
     return () => {
@@ -77,19 +104,11 @@ export const AuthGate: React.FC = () => {
     await auth.signOut();
   };
 
-  if (!user) return <Login />;
+  const retryCloud = async () => {
+    if (user) await prepareCloud(user);
+  };
 
-  if (error) {
-    return (
-      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-6">
-        <div className="max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 p-7 text-center">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Error de conexión</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">{error}</p>
-          <button onClick={() => auth.signOut()} className="mt-5 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold">Volver al inicio de sesión</button>
-        </div>
-      </main>
-    );
-  }
+  if (!user) return <Login />;
 
   if (checking || !cloudReady) {
     return (
@@ -107,6 +126,28 @@ export const AuthGate: React.FC = () => {
   return (
     <div className="min-h-screen">
       <App />
+
+      {cloudError && (
+        <div className="fixed left-4 right-4 sm:left-auto sm:right-4 top-4 z-[110] no-print max-w-md">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/90 shadow-xl p-4 backdrop-blur">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-100">Sesión iniciada correctamente</p>
+                <p className="text-xs leading-5 text-amber-800 dark:text-amber-200 mt-1">{cloudError}</p>
+                <button
+                  onClick={retryCloud}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Reintentar sincronización
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed right-4 top-4 z-[100] no-print">
         <div className="flex items-center gap-2 rounded-full bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-lg px-3 py-2 backdrop-blur">
           <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold">{(user.displayName || user.email || 'U')[0].toUpperCase()}</div>
