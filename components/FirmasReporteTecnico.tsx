@@ -58,7 +58,7 @@ export const FirmasReporteTecnico: React.FC<Props> = ({ onToast }) => {
               <input value={config.empresaCoordinacion} onChange={e => setConfig({ ...config, empresaCoordinacion: e.target.value })} placeholder="Ej: Área de Cooperación - Excma. Diputación Provincial de Cádiz" className="w-full px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100" />
             </div>
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider"><Briefcase className="w-4 h-4 text-indigo-600" /> Supervisión de Obra / Dirección Facultativa</label>
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider"><Briefcase className="w-4 h-4 text-indigo-600" /> Supervisor de Obra</label>
               <input value={config.supervisorNombre} onChange={e => setConfig({ ...config, supervisorNombre: e.target.value })} placeholder="Ej: David Hinojo García" className="w-full px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100" />
             </div>
           </div>
@@ -66,7 +66,7 @@ export const FirmasReporteTecnico: React.FC<Props> = ({ onToast }) => {
             <div className="flex items-center gap-2 mb-3"><Eye className="w-4 h-4 text-blue-700" /><span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Vista previa</span></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               {[
-                ['SUPERVISIÓN DE OBRA', config.supervisorNombre || 'David Hinojo García', 'Supervisión Técnica'],
+                ['SUPERVISOR DE OBRA', config.supervisorNombre || 'David Hinojo García', 'Supervisor de Obra'],
                 ['RECURSO PREVENTIVO', '[Recurso de cada Obra]', 'Encargado de Obra'],
                 ['POR EL TÉCNICO', config.tecnicoNombre || 'David Hinojo García', 'Técnico de Obra'],
                 ['COORDINACIÓN SEG. Y SALUD', config.coordinadorNombre || 'David Hinojo García', config.empresaCoordinacion || 'Empresa de Coordinación']
