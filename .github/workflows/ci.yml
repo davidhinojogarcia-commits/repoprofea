@@ -14,15 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'push' && github.ref_name || github.event.pull_request.head.sha }}
       - name: Apply direct Supabase repairs
         if: github.event_name == 'push' && github.event.head_commit.message == 'chore: run direct Supabase repair pass'
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          # 1) Worker imports: persist before showing success and bypass old sync/workspace routing.
           p = Path('App.tsx')
           s = p.read_text()
           anchor = "import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';"
@@ -43,7 +40,6 @@ jobs:
           s = s.replace("                commitAddMultipleWorkers(all, 0);", "                void commitAddMultipleWorkers(all, 0);")
           p.write_text(s)
 
-          # 2) Citas: remove Firebase/Firestore naming and bind directly to databaseService/Supabase.
           p = Path('components/GestionCitas.tsx')
           s = p.read_text()
           if "../src/lib/firebase" in s:
