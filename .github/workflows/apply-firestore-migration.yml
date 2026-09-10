@@ -3,13 +3,15 @@ name: Apply Firestore source migration
 on:
   push:
     branches: ['feat/firebase-multiusuario']
+  pull_request:
+    branches: ['main']
 
 permissions:
   contents: write
 
 jobs:
   migrate:
-    if: ${{ !contains(github.event.head_commit.message, '[skip firestore migration]') }}
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip firestore migration]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
