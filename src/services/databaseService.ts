@@ -81,7 +81,8 @@ async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRe
 
   for (let index = 0; index < checklist.length; index += 1) {
     const item = checklist[index] || {};
-    const itemId = String(item.id || `${subcontrataId}_${index + 1}`);
+    const sourceId = String(item.id || `item_${index + 1}`);
+    const itemId = `${subcontrataId}:${sourceId}`;
     nextIds.add(itemId);
     await supabase.query('subcontrata_documentos', {
       method: 'POST',

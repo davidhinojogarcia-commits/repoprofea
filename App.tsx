@@ -32,6 +32,7 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument } from './src/services/databaseService';
+import { importWorkersAtomic } from './src/services/workerImportService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
 import { CheckCircle, AlertTriangle, Cloud, CloudOff, RefreshCw } from 'lucide-react';
@@ -965,9 +966,7 @@ function App() {
     });
 
     try {
-      for (const person of formattedWorkers) {
-        await createDocument('workers', person.id, person as any);
-      }
+      await importWorkersAtomic(formattedWorkers);
     } catch (error) {
       console.error('Error persistiendo trabajadores importados en Supabase:', error);
       setToast({ message: 'La importación no se ha guardado en la base de datos. No se han aplicado cambios.', type: 'error' });
