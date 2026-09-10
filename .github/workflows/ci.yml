@@ -15,7 +15,8 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
       - run: npm run build
       - name: Build Firebase Functions
         working-directory: functions
