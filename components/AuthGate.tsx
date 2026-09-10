@@ -82,9 +82,9 @@ export function AuthGate({ children }: AuthGateProps) {
       </React.Suspense>
     ) : <>{children}</>}
 
-    <div className="fixed bottom-5 left-5 z-[90] flex flex-col sm:flex-row gap-2 print:hidden">
-      {role === 'admin' && !adminOpen && <button type="button" onClick={() => setAdminOpen(true)} className="rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2"><ShieldCheck size={17}/> Administración</button>}
-      <button type="button" onClick={handleSignOut} disabled={signingOut} className="rounded-full bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 shadow-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60" aria-label="Cerrar sesión">
+    <div className="fixed bottom-5 left-5 z-[90] flex flex-col items-stretch gap-2 print:hidden">
+      {role === 'admin' && !adminOpen && <button type="button" onClick={() => setAdminOpen(true)} className="w-full rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2"><ShieldCheck size={17}/> Administración</button>}
+      <button type="button" onClick={handleSignOut} disabled={signingOut} className="w-full rounded-full bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 shadow-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60" aria-label="Cerrar sesión">
         {signingOut ? <Loader2 size={17} className="animate-spin"/> : <LogOut size={17}/>} {signingOut ? 'Cerrando…' : 'Cerrar sesión'}
       </button>
     </div>
