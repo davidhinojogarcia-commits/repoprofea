@@ -1,0 +1,21 @@
+name: Temp audit legacy server
+
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+    paths:
+      - '.github/workflows/temp-audit-legacy-server.yml'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit legacy API references
+        run: |
+          echo '=== CLIENT_API_DATABASE ==='
+          grep -RInE "/api/database|/api/accounts|/api/auth" --include='*.ts' --include='*.tsx' . --exclude='server.ts' --exclude-dir=node_modules --exclude-dir=.git || true
+          echo '=== LEGACY_SERVER_MODULES ==='
+          grep -RInE "databaseStore|accountStore|backupService" --include='*.ts' --include='*.tsx' . --exclude-dir=node_modules --exclude-dir=.git || true
+          echo '=== FIREBASE_NAMES ==='
+          grep -RInE "src/lib/firebase|lib/firebase|firestoreService|Firebase|Firestore" --include='*.ts' --include='*.tsx' . --exclude-dir=node_modules --exclude-dir=.git || true
