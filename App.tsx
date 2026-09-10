@@ -18,17 +18,6 @@ import { SubcontratasSection } from './components/SubcontratasSection';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
-import { DatabaseSyncAlert } from './components/DatabaseSyncAlert';
-import { FirebaseSyncModal } from './components/FirebaseSyncModal';
-import { executeDatabaseSync, notifyDatabaseSync } from './src/lib/syncNotifier';
-import {
-  createFirestoreWorker,
-  updateFirestoreWorker,
-  deleteFirestoreWorker,
-  restoreFirestoreWorker,
-  permanentDeleteFirestoreWorker,
-  triggerFirestoreDatabaseSync
-} from './src/lib/firebase';
 import * as pdfjsLib from 'pdfjs-dist';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -97,8 +86,6 @@ import {
   unregisterWorkspaceSession,
   subscribeToWorkspaceSessions,
   canonicalizeEmailKey,
-  DEFAULT_WORKSPACE_ID,
-  isQuotaExceeded,
   getOrCreateSyncGroup, 
   syncWorkerToCloud, 
   deleteWorkerFromCloud, 
@@ -178,16 +165,7 @@ function App() {
   });
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
-  const [people, setPeopleRaw] = useState<Person[]>(() => {
-    const saved = localStorage.getItem('personasPROFEA');
-    if (!saved) return [];
-    try {
-      const parsed: Person[] = JSON.parse(saved);
-      return ensureUniquePersonIds(parsed);
-    } catch {
-      return [];
-    }
-  });
+  const [people, setPeopleRaw] = useState<Person[]>([]);
 
   const setPeople = useCallback((action: React.SetStateAction<Person[]>) => {
     setPeopleRaw(prev => {
@@ -407,65 +385,6 @@ function App() {
   });
 
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
-  const [isFirebaseSyncModalOpen, setIsFirebaseSyncModalOpen] = useState(false);
-  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
-
-  const handlePerformFirebaseSync = async (): Promise<number> => {
-    setIsSyncingFirebase(true);
-    try {
-      const result = await triggerFirestoreDatabaseSync(currentEffectiveWorkspaceId);
-      if (result.workers && result.workers.length > 0) {
-        setPeople(result.workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-      }
-      if (result.trash && result.trash.length > 0) {
-        setDeletedPeople(result.trash.map(t => ({
-          person: { ...t.person, sincronizadoEnNube: true },
-          fechaEliminacion: t.fechaEliminacion
-        })));
-      }
-      if (result.settings?.savedObras && result.settings.savedObras.length > 0) {
-        setSavedObras(prev => Array.from(new Set([...prev, ...result.settings!.savedObras!])).sort((a, b) => a.localeCompare(b)));
-      }
-      setLastSyncTime(new Date());
-      setToast({
-        message: `Se han leído y sincronizado ${result.count} trabajadores desde Firebase Firestore.`,
-        type: 'success'
-      });
-      return result.count;
-    } catch (err: any) {
-      setToast({
-        message: `Error al sincronizar con Firebase Firestore: ${err?.message || 'Error de conexión'}`,
-        type: 'error'
-      });
-      throw err;
-    } finally {
-      setIsSyncingFirebase(false);
-    }
-  };
-
-  const handleForceSaveAllToCloud = async (): Promise<void> => {
-    const currentList = peopleRef.current || [];
-    try {
-      await fetch('/api/database/save-workers-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: currentEffectiveWorkspaceId,
-          workers: currentList
-        })
-      });
-      setToast({
-        message: 'Todos los trabajadores se han consolidado en la base de datos de Firebase Firestore.',
-        type: 'success'
-      });
-    } catch (err: any) {
-      setToast({
-        message: `Error al guardar en la base de datos: ${err?.message || 'Error'}`,
-        type: 'error'
-      });
-      throw err;
-    }
-  };
 
   const notificationAlertsCount = useMemo(() => {
     if (!people || people.length === 0) return 0;
@@ -1764,14 +1683,6 @@ function App() {
     }
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA', JSON.stringify(people));
-  }, [people]);
-
-  useEffect(() => {
-    localStorage.setItem('personasEliminadasPROFEA', JSON.stringify(deletedPeople));
-  }, [deletedPeople]);
 
   // Limpieza automática de registros de papelera que lleven más de 30 días
   useEffect(() => {
@@ -3324,9 +3235,6 @@ function App() {
             canRedo={canRedo}
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
-            onOpenFirebaseSync={() => setIsFirebaseSyncModalOpen(true)}
-            isSyncingFirebase={isSyncingFirebase}
-            firebaseWorkersCount={people.length}
           />
           
           {/* Offline Banner and Sync Queue Visualizer */}
@@ -3749,20 +3657,7 @@ function App() {
             onToast={(msg, type) => setToast({ message: msg, type })}
           />
 
-          <FirebaseSyncModal
-            isOpen={isFirebaseSyncModalOpen}
-            onClose={() => setIsFirebaseSyncModalOpen(false)}
-            workersCount={people.length}
-            trashCount={deletedPeople.length}
-            activeWorkspaceId={currentEffectiveWorkspaceId}
-            lastSyncTime={lastSyncTime}
-            onPerformSync={handlePerformFirebaseSync}
-            onForceSaveAllToCloud={handleForceSaveAllToCloud}
-            userEmail={syncEmail || 'davidhinojogarcia@gmail.com'}
-          />
-
           {/* Database synchronization feedback alert (green for success, red for error) */}
-          <DatabaseSyncAlert />
 
           {/* Footer Copyright */}
           <footer className="mt-16 text-center border-t border-slate-200 dark:border-slate-800/85 pt-6 text-xs text-slate-400 dark:text-slate-500 font-medium">

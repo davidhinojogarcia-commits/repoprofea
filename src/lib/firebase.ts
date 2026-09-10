@@ -1,26 +1,11 @@
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  initializeFirestore,
-  getDocFromServer,
-  disableNetwork,
-  enableNetwork,
-  setLogLevel,
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  onSnapshot, 
-  deleteDoc,
-  Unsubscribe
-} from 'firebase/firestore';
-import { 
-  getAuth, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  User 
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  User
 } from 'firebase/auth';
 import { Person, DeletedPerson, PdfCustomConfig, UserAccount } from '../../types';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -31,21 +16,7 @@ export const app = initializeApp(firebaseConfig);
 // Initialize Auth
 export const auth = getAuth(app);
 
-// Initialize Provider with full Drive, Sheets, Gmail & Calendar scopes
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/drive');
-provider.addScope('https://www.googleapis.com/auth/drive.file');
-provider.addScope('https://www.googleapis.com/auth/drive.metadata.readonly');
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-provider.addScope('https://www.googleapis.com/auth/spreadsheets.readonly');
-provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-provider.addScope('https://www.googleapis.com/auth/gmail.send');
-provider.addScope('https://www.googleapis.com/auth/gmail.compose');
-provider.addScope('https://www.googleapis.com/auth/gmail.modify');
-provider.addScope('https://www.googleapis.com/auth/calendar.events');
 
-let isSigningIn = false;
-let cachedAccessToken: string | null = null;
 
 // Auth listeners
 export const initAuth = (
@@ -68,44 +39,32 @@ export const initAuth = (
   });
 };
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      cachedAccessToken = credential.accessToken;
-    }
-    
-    // Save user profile metadata in Firestore
-    if (result.user) {
-      await saveUserProfile(result.user);
-    }
+export async function emailPasswordSignIn(email: string, password: string) {
+  const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+  await saveUserProfile(result.user);
+  return result.user;
+}
 
-    return { user: result.user, accessToken: cachedAccessToken || '' };
-  } catch (error: any) {
-    if (
-      error?.code === 'auth/popup-closed-by-user' ||
-      error?.code === 'auth/cancelled-popup-request' ||
-      error?.message?.includes('popup-closed-by-user')
-    ) {
-      // User closed the authentication popup - gracefully return null without error
-      return null;
-    }
-    console.error('Sign in error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
+export async function registerEmailPassword(email: string, password: string, displayName?: string) {
+  const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+  if (displayName?.trim()) await updateProfile(result.user, { displayName: displayName.trim() });
+  await saveUserProfile(result.user);
+  return result.user;
+}
+
+export async function resetEmailPassword(email: string) {
+  return sendPasswordResetEmail(auth, email.trim());
+}
+
+// Compatibility exports kept only so legacy UI code compiles. No Google provider exists.
+export const googleSignIn = async () => {
+  throw new Error('Google Sign-In está deshabilitado. Usa correo electrónico y contraseña.');
 };
 
-export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
-};
+export const getAccessToken = async (): Promise<string | null> => null;
 
 export const logoutGoogle = async () => {
   await auth.signOut();
-  cachedAccessToken = null;
 };
 
 // Initialize Firestore (utilizing long polling in browser contexts to avoid WebChannel stream drops)
@@ -125,13 +84,11 @@ export const db = (() => {
   return getFirestore(app, firebaseConfig.firestoreDatabaseId);
 })();
 
-const QUOTA_STORAGE_KEY = 'profea_firestore_quota_exhausted_date';
 let isFirestoreQuotaExceeded = false;
 
 // Ensure Firestore network is always enabled for live database reading
 if (typeof window !== 'undefined') {
   try {
-    localStorage.removeItem(QUOTA_STORAGE_KEY);
     if (db) {
       enableNetwork(db).catch(() => {});
     }
@@ -739,7 +696,7 @@ export async function fetchWorkspaceData(workspaceId: string): Promise<{
 
   const workers: Person[] = [];
   try {
-    const workersRef = collection(db, 'workspaces', cleanWsId, 'workers');
+    const workersRef = collection(db, 'users', auth.currentUser!.uid, 'workers');
     const workersSnap = await getDocs(workersRef);
     workersSnap.forEach(docSnap => {
       const data = docSnap.data();
@@ -752,7 +709,7 @@ export async function fetchWorkspaceData(workspaceId: string): Promise<{
 
   const trash: DeletedPerson[] = [];
   try {
-    const trashRef = collection(db, 'workspaces', cleanWsId, 'trash');
+    const trashRef = collection(db, 'users', auth.currentUser!.uid, 'trash');
     const trashSnap = await getDocs(trashRef);
     trashSnap.forEach(docSnap => {
       const data = docSnap.data();
@@ -765,7 +722,7 @@ export async function fetchWorkspaceData(workspaceId: string): Promise<{
 
   let settings: UserAccountSettings | null = null;
   try {
-    const settingsDoc = await getDoc(doc(db, 'workspaces', cleanWsId, 'settings', 'app_config'));
+    const settingsDoc = await getDoc(doc(db, 'users', auth.currentUser!.uid, 'settings', 'app_config'));
     if (settingsDoc.exists()) {
       settings = settingsDoc.data() as UserAccountSettings;
     }
@@ -855,7 +812,7 @@ export function subscribeToWorkspaceWorkers(
   // Also hook Firestore snapshot
   let unsubFirestore: Unsubscribe = () => {};
   try {
-    const workersRef = collection(db, 'workspaces', cleanWsId, 'workers');
+    const workersRef = collection(db, 'users', auth.currentUser!.uid, 'workers');
     unsubFirestore = onSnapshot(workersRef, (snapshot) => {
       const workers: Person[] = [];
       snapshot.forEach((docSnap) => {
@@ -893,7 +850,7 @@ export function subscribeToWorkspaceTrash(
 ): Unsubscribe {
   const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
   if (!cleanWsId) return () => {};
-  const trashRef = collection(db, 'workspaces', cleanWsId, 'trash');
+  const trashRef = collection(db, 'users', auth.currentUser!.uid, 'trash');
 
   return onSnapshot(trashRef, (snapshot) => {
     const trash: DeletedPerson[] = [];
@@ -931,7 +888,7 @@ export async function syncWorkspaceSettings(workspaceId: string, settings: UserA
   // 2. Firestore
   if (isFirestoreQuotaExceeded) return;
   try {
-    const settingsRef = doc(db, 'workspaces', cleanWsId, 'settings', 'app_config');
+    const settingsRef = doc(db, 'users', auth.currentUser!.uid, 'settings', 'app_config');
     await setDoc(settingsRef, {
       ...sanitized,
       lastUpdated: new Date().toISOString()
@@ -973,7 +930,7 @@ export function subscribeToWorkspaceSettings(
 
   let unsubFirestore: Unsubscribe = () => {};
   try {
-    const settingsRef = doc(db, 'workspaces', cleanWsId, 'settings', 'app_config');
+    const settingsRef = doc(db, 'users', auth.currentUser!.uid, 'settings', 'app_config');
     unsubFirestore = onSnapshot(settingsRef, (docSnap) => {
       if (docSnap.exists()) {
         onUpdate(docSnap.data() as UserAccountSettings);
@@ -1049,7 +1006,7 @@ export function subscribeToWorkspaceSessions(
   onUpdate: (sessions: DeviceSession[]) => void
 ): Unsubscribe {
   if (!workspaceId) return () => {};
-  const sessionsRef = collection(db, 'workspaces', workspaceId, 'sessions');
+  const sessionsRef = collection(db, 'users', auth.currentUser!.uid, 'sessions');
 
   return onSnapshot(sessionsRef, (snapshot) => {
     const sessions: DeviceSession[] = [];
@@ -1567,7 +1524,7 @@ export async function saveFirestoreAccount(account: UserAccount): Promise<void> 
   if (isFirestoreQuotaExceeded) return;
 
   try {
-    const accRef = doc(db, 'accounts', cleanId);
+    const accRef = doc(db, 'users', cleanId);
     await setDoc(accRef, safePayload, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `accounts/${cleanId}`);
