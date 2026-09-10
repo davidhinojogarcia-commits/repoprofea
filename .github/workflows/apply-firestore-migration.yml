@@ -1,0 +1,34 @@
+name: Apply Firestore source migration
+
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: ${{ !contains(github.event.head_commit.message, '[skip firestore migration]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/firebase-multiusuario
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply migration
+        run: python scripts/migrate_firestore_source.py
+      - name: Commit migration
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add App.tsx src/lib/firebase.ts
+          git commit -m 'refactor: use Firestore as permanent data source [skip firestore migration]'
+          git push origin feat/firebase-multiusuario
