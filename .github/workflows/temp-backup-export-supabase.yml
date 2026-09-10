@@ -1,0 +1,38 @@
+name: Temp backup export Supabase
+
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+    paths:
+      - '.github/workflows/temp-backup-export-supabase.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python .github/scripts/temp_backup_export_supabase.py
+      - name: Verify backups read business data from Supabase
+        run: |
+          grep -n "getDocuments.*workers\|getDocuments.*subcontratas\|storage: \"supabase\"" components/Configuracion.tsx
+          ! grep -n "localStorage.getItem('profea_subcontratas_v1')" components/Configuracion.tsx
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Commit migration and remove temporary files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/scripts/temp_backup_export_supabase.py .github/workflows/temp-backup-export-supabase.yml
+          git add -A
+          git commit -m 'refactor: export backups from Supabase source of truth'
+          git pull --rebase origin feat/firebase-multiusuario
+          git push origin HEAD:feat/firebase-multiusuario
