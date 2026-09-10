@@ -1,0 +1,18 @@
+name: Verify Firebase multiuser branch
+
+on:
+  push:
+    branches: [feat/firebase-multitenant]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
