@@ -1,4 +1,4 @@
-import { supabase, type SupabaseUser } from './supabase';
+import { supabase, type SupabaseUser, migrateLegacyDataForCurrentUser } from './supabase';
 import { auth } from './firebase';
 
 export type AppRole = 'admin' | 'user';
@@ -25,6 +25,7 @@ export async function signInWithEmail(email:string,password:string):Promise<User
     await supabase.query('users',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(data.user.id)}`,body:{last_access_at:new Date().toISOString()}});
     await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:data.user.id,user_email:data.user.email||'',action:'LOGIN',resource_type:'auth',resource_id:data.user.id,details:{}}}).catch(()=>{});
     auth.currentUser=data.user;
+    await migrateLegacyDataForCurrentUser(data.user);
     return data.user;
   }catch(error){await supabase.auth.signOut().catch(()=>{});auth.currentUser=null;throw error;}
 }
