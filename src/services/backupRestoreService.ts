@@ -2,6 +2,7 @@ import type { DeletedPerson, Person } from '../../types';
 import { supabase } from '../lib/supabase';
 import { createDocument } from './databaseService';
 import { loadAppBusinessSettings, saveAppBusinessSettings } from './appSettingsService';
+import { loadSubcontratasPreferences, saveSubcontratasPreferences } from './subcontratasPreferencesService';
 
 export type RestoreMode = 'replace' | 'merge';
 
@@ -94,6 +95,20 @@ export async function restoreBackupToSupabase(payload: ProfeaBackupPayload, mode
     workEndHour: config.workEndHour || '15:00',
   };
   await saveAppBusinessSettings(settings);
+
+  const currentSubPrefs = await loadSubcontratasPreferences();
+  const prefPatch: Record<string, any> = {};
+  if (config.reporteTecnicoConfig && typeof config.reporteTecnicoConfig === 'object') {
+    prefPatch.reporteTecnicoConfig = mode === 'merge'
+      ? { ...(currentSubPrefs.reporteTecnicoConfig || {}), ...config.reporteTecnicoConfig }
+      : config.reporteTecnicoConfig;
+  }
+  if (config.obrasRecursosPreventivos && typeof config.obrasRecursosPreventivos === 'object') {
+    prefPatch.obrasRecursosPreventivos = mode === 'merge'
+      ? { ...(currentSubPrefs.obrasRecursosPreventivos || {}), ...config.obrasRecursosPreventivos }
+      : config.obrasRecursosPreventivos;
+  }
+  if (Object.keys(prefPatch).length) await saveSubcontratasPreferences(prefPatch);
 
   return { restored, settings };
 }
