@@ -31,6 +31,7 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
+import { createDocument } from './src/services/databaseService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
 import { CheckCircle, AlertTriangle, Cloud, CloudOff, RefreshCw } from 'lucide-react';
@@ -953,7 +954,7 @@ function App() {
     }
   };
 
-  const commitAddMultipleWorkers = (
+  const commitAddMultipleWorkers = async (
     workersToAdd: Omit<Person, 'id' | 'fechaRegistro'>[],
     skippedCount: number = 0
   ) => {
@@ -981,6 +982,16 @@ function App() {
       return person;
     });
 
+    try {
+      for (const person of formattedWorkers) {
+        await createDocument('workers', person.id, person as any);
+      }
+    } catch (error) {
+      console.error('Error persistiendo trabajadores importados en Supabase:', error);
+      setToast({ message: 'La importación no se ha guardado en la base de datos. No se han aplicado cambios.', type: 'error' });
+      return;
+    }
+
     setPeopleWithHistory(prev => [...prev, ...formattedWorkers]);
 
     if (skippedCount > 0) {
@@ -992,35 +1003,10 @@ function App() {
       setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores correctamente`, type: 'success' });
     }
 
-    const targetImportWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetImportWsId && !isOffline) {
-      executeDatabaseSync(`Importación de ${formattedWorkers.length} trabajadores`, async () => {
-        for (const newPerson of formattedWorkers) {
-          await syncWorkerToWorkspace(targetImportWsId, newPerson);
-          if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, newPerson);
-        }
-      }, {
-        detail: `${formattedWorkers.length} trabajadores subidos a Firebase Firestore.`
-      }).catch(err => {
-        console.error("Error syncing imported workers to workspace:", err);
-      });
-    } else if (googleUser?.uid && !isOffline) {
-      formattedWorkers.forEach(newPerson => {
-        syncWorkerToAccount(googleUser.uid, newPerson).catch(err => {
-          console.error("Error syncing new worker to account:", err);
-        });
-      });
-    } else if (isAutoSync && groupId.trim()) {
-      formattedWorkers.forEach(newPerson => {
-        syncWorkerToCloud(groupId, newPerson).catch(err => {
-          console.error("Error syncing new worker to cloud:", err);
-          setPeople(prev => prev.map(p => p.id === newPerson.id ? { ...p, sincronizadoEnNube: false } : p));
-        });
-      });
-    }
+
   };
 
-  const handleAddMultipleWorkers = (
+  const handleAddMultipleWorkers = async (
     newWorkers: Omit<Person, 'id' | 'fechaRegistro'>[],
     skipDuplicateCheck: boolean = false
   ) => {
@@ -1040,7 +1026,7 @@ function App() {
       }
     }
 
-    commitAddMultipleWorkers(newWorkers, 0);
+    await commitAddMultipleWorkers(newWorkers, 0);
   };
 
   const handleDelete = (id: number) => {
@@ -2759,12 +2745,12 @@ function App() {
                 const unique = pendingImportModal.uniqueWorkers;
                 const skipped = pendingImportModal.duplicates.length;
                 setPendingImportModal(null);
-                commitAddMultipleWorkers(unique, skipped);
+                void commitAddMultipleWorkers(unique, skipped);
               }}
               onConfirmImportAll={() => {
                 const all = pendingImportModal.allWorkers;
                 setPendingImportModal(null);
-                commitAddMultipleWorkers(all, 0);
+                void commitAddMultipleWorkers(all, 0);
               }}
             />
           )}
