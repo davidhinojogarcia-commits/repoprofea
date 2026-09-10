@@ -17,14 +17,19 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
-      - name: Validate no manual synchronization
+      - name: Validate Supabase-only runtime
         run: |
-          if grep -RniE 'FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)' App.tsx components src --exclude='*.map'; then
-            echo 'Legacy/manual synchronization code detected.'
+          test ! -f src/lib/firebase.ts
+          test ! -f src/services/firestoreService.ts
+          if grep -RniE "src/lib/firebase|services/firestoreService|from ['\"]firebase(/|['\"])|FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)|Object.assign\(globalThis as any|executeDatabaseSync|handleSyncPendingToCloud|currentEffectiveWorkspaceId" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy Firebase/manual synchronization/runtime bridge code detected.'
             exit 1
           fi
-      - name: TypeScript validation (diagnostic during migration)
-        continue-on-error: true
+          if grep -RniE "['\"]workers['\"]" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy workers runtime table reference detected.'
+            exit 1
+          fi
+      - name: TypeScript validation
         run: npm run lint
       - name: Build application
         run: npm run build
