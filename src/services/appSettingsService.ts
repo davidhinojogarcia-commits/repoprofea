@@ -64,9 +64,9 @@ async function requireUser() {
 export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
   const user = await requireUser();
   const rows = await supabase.query('user_settings', {
-    query: `user_id=eq.${encodeURIComponent(user.id)}&select=data&limit=1`,
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
   });
-  const remote = rows?.[0]?.data?.app;
+  const remote = rows?.[0]?.settings?.app;
   if (remote && typeof remote === 'object') return normalize(remote);
 
   // Migración única: rescata la configuración empresarial que versiones antiguas
@@ -74,15 +74,16 @@ export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
   const legacy = readLegacyBrowserSettings();
   const migrated = normalize(hasMeaningfulLegacyData(legacy) ? legacy : DEFAULTS);
   await saveAppBusinessSettings(migrated);
+  clearLegacyBusinessSettings();
   return migrated;
 }
 
 export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings>): Promise<void> {
   const user = await requireUser();
   const rows = await supabase.query('user_settings', {
-    query: `user_id=eq.${encodeURIComponent(user.id)}&select=data&limit=1`,
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
   });
-  const existing = normalize(rows?.[0]?.data?.app || DEFAULTS);
+  const existing = normalize(rows?.[0]?.settings?.app || DEFAULTS);
   const next = normalize({ ...existing, ...patch });
 
   await supabase.rpc('patch_user_settings', {
