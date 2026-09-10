@@ -8,45 +8,35 @@ service cloud.firestore {
         && request.auth.token.role in ['admin', 'user']
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
     }
-
     function moduleFor(collectionName) {
       return collectionName == 'workers' || collectionName == 'trash' ? 'trabajadores' :
              collectionName == 'works' || collectionName == 'obras' ? 'obras' :
              collectionName == 'medicalExams' || collectionName == 'recognitions' || collectionName == 'reconocimientos' ? 'reconocimientos' :
              collectionName == 'subcontractors' || collectionName == 'subcontratas' ? 'subcontratas' :
              collectionName == 'appointments' || collectionName == 'citas' ? 'citas' :
-             collectionName == 'contracts' || collectionName == 'contratos' ? 'contratacion' :
-             '';
+             collectionName == 'contracts' || collectionName == 'contratos' ? 'contratacion' : '';
     }
-
     function hasModule(collectionName, action) {
-      return isAdmin()
-        || (active()
-          && moduleFor(collectionName) != ''
-          && get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.modules[moduleFor(collectionName)][action] == true);
+      return isAdmin() || (active() && moduleFor(collectionName) != '' && get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.modules[moduleFor(collectionName)][action] == true);
     }
-
     function shared(resourceType, resourceId, action) {
       return active()
         && get(/databases/$(database)/documents/dataPermissions/$(resourceType + '_' + resourceId + '_' + request.auth.uid)).data.userId == request.auth.uid
         && get(/databases/$(database)/documents/dataPermissions/$(resourceType + '_' + resourceId + '_' + request.auth.uid)).data[action] == true;
     }
-
     function owner() { return resource.data.ownerId == request.auth.uid; }
     function incomingOwner() { return request.resource.data.ownerId == request.auth.uid; }
 
     match /users/{uid} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create, delete: if isAdmin();
-      allow update: if isAdmin()
-        || (signedIn()
-          && request.auth.uid == uid
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.email == resource.data.email
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.active == resource.data.active
-          && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.createdBy == resource.data.createdBy);
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy);
     }
 
     match /userPermissions/{uid} {
@@ -67,20 +57,27 @@ service cloud.firestore {
 
     match /auditLogs/{id} {
       allow read: if isAdmin();
-      allow create: if active()
-        && request.resource.data.userId == request.auth.uid
+      allow create: if active() && request.resource.data.userId == request.auth.uid
         && request.resource.data.action in ['LOGIN', 'CREATE', 'UPDATE', 'DELETE', 'CREATE_USER', 'UPDATE_USER', 'DELETE_USER', 'UPDATE_PERMISSIONS']
         && request.resource.data.resourceId is string;
       allow update, delete: if false;
     }
 
+    match /users/{uid}/workers/{workerId} {
+      allow read: if isAdmin() || (hasModule('workers', 'read') && (request.auth.uid == uid && resource.data.ownerId == request.auth.uid || shared('workers', workerId, 'canRead')));
+      allow create: if isAdmin() || (request.auth.uid == uid && hasModule('workers', 'create') && request.resource.data.ownerId == request.auth.uid);
+      allow update: if isAdmin() || (request.auth.uid == uid && hasModule('workers', 'update') && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == resource.data.ownerId) || (shared('workers', workerId, 'canUpdate') && request.resource.data.ownerId == resource.data.ownerId);
+      allow delete: if isAdmin() || (request.auth.uid == uid && hasModule('workers', 'delete') && resource.data.ownerId == request.auth.uid) || shared('workers', workerId, 'canDelete');
+    }
+
+    match /users/{uid}/trash/{itemId} {
+      allow read, create, update, delete: if isAdmin() || (active() && request.auth.uid == uid);
+    }
+
     match /{collection}/{id} {
       allow read: if hasModule(collection, 'read') && (isAdmin() || owner() || shared(collection, id, 'canRead'));
       allow create: if isAdmin() || (hasModule(collection, 'create') && incomingOwner());
-      allow update: if isAdmin()
-        || (active() && hasModule(collection, 'update')
-          && (owner() || shared(collection, id, 'canUpdate'))
-          && request.resource.data.ownerId == resource.data.ownerId);
+      allow update: if isAdmin() || (active() && hasModule(collection, 'update') && (owner() || shared(collection, id, 'canUpdate')) && request.resource.data.ownerId == resource.data.ownerId);
       allow delete: if isAdmin() || (active() && hasModule(collection, 'delete') && (owner() || shared(collection, id, 'canDelete')));
     }
 
