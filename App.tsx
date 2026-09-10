@@ -576,7 +576,7 @@ function App() {
       isAutoBackupRunningRef.current = true;
       setIsBackingUpToDrive(true);
 
-      const backupData = buildCompleteSystemBackup({
+      const backupData = await buildCompleteSystemBackup({
         people,
         deletedPeople,
         savedObras,

@@ -1,5 +1,6 @@
 import { compressToGzip, isCompressionSupported } from './compression';
 import { Person, DeletedPerson } from '../../types';
+import { buildSupabaseSystemBackup } from '../services/backupExportService';
 
 export type BackupFrequency = 'daily' | 'every_6h' | 'every_12h' | 'weekly';
 
@@ -107,9 +108,11 @@ export function saveDriveBackupConfig(config: DriveAutoBackupConfig): void {
 }
 
 /**
- * Construye el objeto completo con todos los datos del sistema para respaldo
+ * Construye la copia completa leyendo directamente de Supabase.
+ * Los parámetros históricos se conservan temporalmente para no romper la UI,
+ * pero los datos empresariales nunca se toman del estado local.
  */
-export function buildCompleteSystemBackup(data: {
+export async function buildCompleteSystemBackup(data: {
   people: Person[];
   deletedPeople: DeletedPerson[];
   savedObras: string[];
@@ -121,43 +124,7 @@ export function buildCompleteSystemBackup(data: {
   workEndHour?: string;
   accountEmail?: string;
 }) {
-  let subcontratasData: any[] = [];
-  try {
-    const rawSub = localStorage.getItem('profea_subcontratas_v1');
-    if (rawSub) {
-      subcontratasData = JSON.parse(rawSub);
-    }
-  } catch (e) {
-    console.warn('Could not read subcontratas for backup:', e);
-  }
-
-  return {
-    type: 'profea_complete_backup',
-    system: 'Sistema de Gestión PROFEA',
-    version: '2.0.0',
-    exportDate: new Date().toISOString(),
-    accountEmail: data.accountEmail || '',
-    totalActiveWorkers: data.people.length,
-    totalTrashWorkers: data.deletedPeople.length,
-    totalSubcontratas: subcontratasData.length,
-    people: data.people,
-    deletedPeople: data.deletedPeople,
-    config: {
-      obras: data.savedObras,
-      lugares: data.savedLugares,
-      sitios: data.savedSitios,
-      telefonos: data.savedTelefonos,
-      categorias: data.savedCategorias,
-      workStartHour: data.workStartHour || '07:30',
-      workEndHour: data.workEndHour || '15:00',
-      subcontratas: subcontratasData
-    },
-    metadata: {
-      creator: 'David Hinojo García',
-      exportedAt: new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }),
-      timestamp: Date.now()
-    }
-  };
+  return buildSupabaseSystemBackup(data.accountEmail || '');
 }
 
 /**
