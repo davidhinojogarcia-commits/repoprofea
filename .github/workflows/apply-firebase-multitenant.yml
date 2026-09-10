@@ -22,7 +22,11 @@ jobs:
         run: |
           git fetch origin feat/firebase-multitenant
           git rebase origin/feat/firebase-multitenant
-      - name: Apply migration
+      - name: Normalize Firebase authentication
+        run: node scripts/fix-firebase-auth.mjs
+      - name: Remove manual sync UI and browser business storage
+        run: node scripts/remove-sync-ui.mjs
+      - name: Apply Firebase tenant path migration
         run: node scripts/apply-firebase-multitenant.mjs
       - name: Commit migration
         run: |
