@@ -32,8 +32,9 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
-import { createDocument } from './src/services/databaseService';
+import { createDocument, updateDocument } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
+import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
 import { CheckCircle, AlertTriangle, Cloud, CloudOff, RefreshCw } from 'lucide-react';
@@ -2649,20 +2650,19 @@ function App() {
                 workEndHour={workEndHour}
                 onUpdateWorkStartHour={setWorkStartHour}
                 onUpdatePeople={(updatedPeople) => {
-                  setPeople(updatedPeople);
-                  
-                  // Sync individual changed workers to cloud if connected
-                  if (isSyncing && groupId.trim() && !isOffline) {
-                    const changed = updatedPeople.filter(p => {
-                      const original = people.find(o => o.id === p.id);
-                      return !original || JSON.stringify(original) !== JSON.stringify(p);
-                    });
-                    changed.forEach(p => {
-                      syncWorkerToCloud(groupId, { ...p, sincronizadoEnNube: true }).catch(err => {
-                        console.error("Error syncing during appointment update:", err);
-                      });
-                    });
-                  }
+                  const changed = updatedPeople.filter(p => {
+                    const original = people.find(o => o.id === p.id);
+                    return !original || JSON.stringify(original) !== JSON.stringify(p);
+                  });
+                  void Promise.all(changed.map(async p => {
+                    await updateDocument('workers', p.id, { ...p, sincronizadoEnNube: true } as any);
+                    await persistMedicalRecognition(p);
+                  })).then(() => {
+                    setPeople(updatedPeople.map(p => ({ ...p, sincronizadoEnNube: true })));
+                  }).catch(error => {
+                    console.error('Error guardando reconocimientos en Supabase:', error);
+                    setToast({ message: 'No se han podido guardar los cambios médicos en la base de datos.', type: 'error' });
+                  });
                 }}
                 onToast={(message, type) => setToast({ message, type })}
               />
