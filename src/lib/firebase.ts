@@ -803,17 +803,14 @@ export function subscribeToAccountTrash(userId: string, onUpdate: (trash: Delete
  * Saves custom catalogs/settings to the user account in Firestore
  */
 export async function syncAccountSettings(userId: string, settings: UserAccountSettings): Promise<void> {
-  if (!userId) return;
-  const settingsRef = doc(db, 'users', userId, 'settings', 'app_config');
-  const sanitized = sanitizeForFirestore(settings);
-  try {
-    await setDoc(settingsRef, {
-      ...sanitized,
-      lastUpdated: new Date().toISOString()
-    }, { merge: true });
-  } catch (error) {
-    console.warn("Error saving account settings to Firestore:", error);
-  }
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) throw new Error('Debes iniciar sesión para guardar la configuración.');
+  await setDoc(doc(db, 'userSettings', uid), {
+    ...sanitizeForFirestore(settings),
+    ownerId: uid,
+    updatedBy: uid,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
 }
 
 /**
@@ -821,18 +818,14 @@ export async function syncAccountSettings(userId: string, settings: UserAccountS
  */
 export function subscribeToAccountSettings(
   userId: string,
-  onUpdate: (settings: UserAccountSettings) => void
+  onUpdate: (settings: UserAccountSettings) => void,
+  onError?: (err: any) => void
 ): Unsubscribe {
-  if (!userId) return () => {};
-  const settingsRef = doc(db, 'users', userId, 'settings', 'app_config');
-
-  return onSnapshot(settingsRef, (docSnap) => {
-    if (docSnap.exists()) {
-      onUpdate(docSnap.data() as UserAccountSettings);
-    }
-  }, (error) => {
-    console.warn("Error subscribing to account settings:", error);
-  });
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return () => {};
+  return onSnapshot(doc(db, 'userSettings', uid), snap => {
+    if (snap.exists()) onUpdate(snap.data() as UserAccountSettings);
+  }, onError);
 }
 
 /**

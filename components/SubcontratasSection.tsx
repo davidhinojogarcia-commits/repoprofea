@@ -28,6 +28,9 @@ import {
 import { formatDate } from '../src/lib/exportUtils';
 import { FileUploaderIA } from './FileUploaderIA';
 import { ChecklistConfigModal } from './ChecklistConfigModal';
+import { auth } from '../src/lib/firebase';
+import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/firestoreService';
+import type { Unsubscribe } from 'firebase/firestore';
 
 interface SubcontratasSectionProps {
   savedObras: string[];
@@ -52,67 +55,53 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   
   // List of subcontractors
-  const [subcontratistas, setSubcontratistas] = useState<Subcontratista[]>(() => {
+  const [subcontratistas, setSubcontratistasState] = useState<Subcontratista[]>([]);
+  const suppressSubPersistenceRef = useRef(false);
+  const hydratedSubcontratasRef = useRef(false);
+
+  const persistSubcontratas = async (previous: Subcontratista[], next: Subcontratista[]) => {
+    if (!auth.currentUser || suppressSubPersistenceRef.current || !hydratedSubcontratasRef.current) return;
+    const previousById = new Map(previous.map(item => [item.id, item]));
+    const nextById = new Map(next.map(item => [item.id, item]));
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      for (const item of next) {
+        const old = previousById.get(item.id);
+        if (!old) await createDocument('subcontractors', item.id, item as any);
+        else if (JSON.stringify(old) !== JSON.stringify(item)) await updateDocument('subcontractors', item.id, item as any);
       }
-    } catch (e) {
-      console.warn('Error reading stored subcontratas:', e);
+      for (const old of previous) {
+        if (!nextById.has(old.id)) await deleteDocument('subcontractors', old.id);
+      }
+    } catch (error) {
+      console.error('Error guardando subcontratas en Firestore:', error);
+      onToast('No se pudieron guardar los cambios de subcontratas en Firebase.', 'error');
     }
-    
-    // Default mock data so user sees working UI immediately
-    const initialObra = savedObras[0] || 'Obra PFEA Arcos de la Frontera';
-    const sub1 = createNewSubcontratista(initialObra, supervisoresDisponibles[0] || 'David Hinojo García', {
-      nombreEmpresa: 'Estructuras y Cimentaciones Bahía S.L.',
-      cif: 'B11987452',
-      personaContacto: 'Manuel Rodríguez Gómez',
-      telefono: '654 321 987',
-      email: 'm.rodriguez@estructurasbahia.es',
-      actividadGremio: 'Estructuras y Encofrados',
-      fechaInicioPrevista: new Date(Date.now() + 86400000 * 5).toISOString().slice(0, 10),
-      recursoPreventivo: 'Manuel Rodríguez Gómez (60h Básico)',
-      numeroTrabajadoresPrevistos: 4,
-      notas: 'Aportando documentación previa para acceso a cimentación.'
+  };
+
+  const setSubcontratistas = useCallback((action: React.SetStateAction<Subcontratista[]>) => {
+    setSubcontratistasState(previous => {
+      const next = typeof action === 'function' ? (action as (prev: Subcontratista[]) => Subcontratista[])(previous) : action;
+      void persistSubcontratas(previous, next);
+      return next;
     });
-
-    // Mark a few items as delivered
-    sub1.checklist = sub1.checklist.map(item => {
-      if (['rea', 'libro_subcontratacion', 'concierto_sprl', 'cert_aeat', 'seguro_rc'].includes(item.id)) {
-        return { ...item, estado: 'entregado', fechaEntrega: new Date().toISOString().slice(0, 10), observaciones: 'Validado con sello y fecha en vigor.' };
-      }
-      if (item.id === 'cert_tgss') {
-        return { ...item, estado: 'caducado', fechaCaducidad: '2026-02-15', observaciones: 'Certificado TGSS emitido hace más de 3 meses, solicitar actualización.' };
-      }
-      return item;
-    });
-    sub1.estadoExpediente = 'condicionado';
-
-    return [sub1];
-  });
-
-  // Save changes to localStorage and notify app for cloud synchronization
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(subcontratistas));
-      window.dispatchEvent(new CustomEvent('profea_subcontratas_changed', { detail: subcontratistas }));
-    } catch (e) {
-      console.warn('Error saving subcontratas to localStorage:', e);
-    }
-  }, [subcontratistas]);
-
-  // Listen for real-time cloud updates from other devices
-  useEffect(() => {
-    const handleSyncIncoming = (e: any) => {
-      if (e?.detail && Array.isArray(e.detail) && e.detail.length > 0) {
-        setSubcontratistas(e.detail);
-      }
-    };
-    window.addEventListener('profea_subcontratas_synced', handleSyncIncoming);
-    return () => window.removeEventListener('profea_subcontratas_synced', handleSyncIncoming);
   }, []);
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const unsubscribe: Unsubscribe = subscribeToDocuments<Subcontratista>('subcontractors', items => {
+      suppressSubPersistenceRef.current = true;
+      setSubcontratistasState(items);
+      hydratedSubcontratasRef.current = true;
+      queueMicrotask(() => { suppressSubPersistenceRef.current = false; });
+    }, { includeShared: true }, error => {
+      console.error('Error leyendo subcontratas de Firestore:', error);
+      onToast('No se pudieron cargar las subcontratas desde Firebase.', 'error');
+    });
+    return () => unsubscribe();
+  }, []);
+
+, [subcontratistas]);
 
   // Modals & UI States
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -177,15 +166,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
   // Workers belonging to the active subcontractor's obra
   const activeObraWorkers = useMemo(() => {
-    let allWorkers = workers;
-    if (!allWorkers || allWorkers.length === 0) {
-      try {
-        const saved = localStorage.getItem('personasPROFEA');
-        if (saved) allWorkers = JSON.parse(saved);
-      } catch {
-        allWorkers = [];
-      }
-    }
+    const allWorkers = workers || [];
     if (!activeSubcontrata?.obra) return allWorkers;
     const cleanSubObra = activeSubcontrata.obra.trim().toLowerCase();
     const matched = allWorkers.filter(w => (w.obra || '').trim().toLowerCase() === cleanSubObra);
@@ -456,15 +437,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
   // Helper to persist updated obras list
   const persistObrasList = (updatedObras: string[]) => {
-    if (onUpdateSavedObras) {
-      onUpdateSavedObras(updatedObras);
-    }
-    try {
-      localStorage.setItem('savedObras', JSON.stringify(updatedObras));
-      localStorage.setItem('profea_obras', JSON.stringify(updatedObras));
-    } catch (e) {
-      console.warn('Error saving obras to localStorage:', e);
-    }
+    onUpdateSavedObras?.(updatedObras);
   };
 
   // Add a new obra to the catalog

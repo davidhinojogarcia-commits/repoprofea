@@ -18,9 +18,6 @@ import { SubcontratasSection } from './components/SubcontratasSection';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
-import { DatabaseSyncAlert } from './components/DatabaseSyncAlert';
-import { FirebaseSyncModal } from './components/FirebaseSyncModal';
-import { executeDatabaseSync, notifyDatabaseSync } from './src/lib/syncNotifier';
 import {
   createFirestoreWorker,
   updateFirestoreWorker,
@@ -398,41 +395,6 @@ function App() {
   });
 
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
-  const [isFirebaseSyncModalOpen, setIsFirebaseSyncModalOpen] = useState(false);
-  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
-
-  const handlePerformFirebaseSync = async (): Promise<number> => {
-    setIsSyncingFirebase(true);
-    try {
-      const result = await triggerFirestoreDatabaseSync(currentEffectiveWorkspaceId);
-      if (result.workers && result.workers.length > 0) {
-        setPeople(result.workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-      }
-      if (result.trash && result.trash.length > 0) {
-        setDeletedPeople(result.trash.map(t => ({
-          person: { ...t.person, sincronizadoEnNube: true },
-          fechaEliminacion: t.fechaEliminacion
-        })));
-      }
-      if (result.settings?.savedObras && result.settings.savedObras.length > 0) {
-        setSavedObras(prev => Array.from(new Set([...prev, ...result.settings!.savedObras!])).sort((a, b) => a.localeCompare(b)));
-      }
-      setLastSyncTime(new Date());
-      setToast({
-        message: `Se han leído y sincronizado ${result.count} trabajadores desde Firebase Firestore.`,
-        type: 'success'
-      });
-      return result.count;
-    } catch (err: any) {
-      setToast({
-        message: `Error al sincronizar con Firebase Firestore: ${err?.message || 'Error de conexión'}`,
-        type: 'error'
-      });
-      throw err;
-    } finally {
-      setIsSyncingFirebase(false);
-    }
-  };
 
   const handleForceSaveAllToCloud = async (): Promise<void> => {
     const currentList = peopleRef.current || [];
@@ -3033,9 +2995,6 @@ function App() {
             canRedo={canRedo}
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
-            onOpenFirebaseSync={() => setIsFirebaseSyncModalOpen(true)}
-            isSyncingFirebase={isSyncingFirebase}
-            firebaseWorkersCount={people.length}
           />
           
           {/* Offline Banner and Sync Queue Visualizer */}
@@ -3456,18 +3415,6 @@ function App() {
             onClose={() => setIsNotificationModalOpen(false)}
             people={visiblePeople}
             onToast={(msg, type) => setToast({ message: msg, type })}
-          />
-
-          <FirebaseSyncModal
-            isOpen={isFirebaseSyncModalOpen}
-            onClose={() => setIsFirebaseSyncModalOpen(false)}
-            workersCount={people.length}
-            trashCount={deletedPeople.length}
-            activeWorkspaceId={currentEffectiveWorkspaceId}
-            lastSyncTime={lastSyncTime}
-            onPerformSync={handlePerformFirebaseSync}
-            onForceSaveAllToCloud={handleForceSaveAllToCloud}
-            userEmail={syncEmail || 'davidhinojogarcia@gmail.com'}
           />
 
           {/* Database synchronization feedback alert (green for success, red for error) */}
