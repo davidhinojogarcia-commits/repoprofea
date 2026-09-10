@@ -37,7 +37,7 @@ import { importWorkersAtomic } from './src/services/workerImportService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
-import { CheckCircle, AlertTriangle, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Cloud, RefreshCw } from 'lucide-react';
 import { 
   preparePRLExcelData, 
   preparePRLPDFData, 
@@ -2330,8 +2330,6 @@ function App() {
             onMenuClick={() => setIsMobileMenuOpen(true)} 
             theme={theme} 
             onThemeToggle={handleThemeToggle} 
-            isOffline={isOffline}
-            pendingSyncCount={isSyncing && groupId.trim() ? people.filter(p => !p.sincronizadoEnNube).length : 0}
             onUndo={handleUndo}
             onRedo={handleRedo}
             canUndo={canUndo}
@@ -2339,90 +2337,6 @@ function App() {
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
           />
-          
-          {/* Offline Banner and Sync Queue Visualizer */}
-          {isOffline && (
-            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex flex-col gap-3 animate-in fade-in duration-300">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
-                    <CloudOff className="w-5 h-5 animate-pulse" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400">
-                      Modo sin Conexión (Offline)
-                    </h4>
-                    <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-0.5">
-                      El sistema está funcionando localmente de forma segura. Todos los cambios se guardan en el navegador.
-                    </p>
-                  </div>
-                </div>
-
-                {isSyncing && people.filter(p => !p.sincronizadoEnNube).length > 0 && (
-                  <span className="text-[11px] font-extrabold px-2.5 py-1 bg-amber-500/20 text-amber-800 dark:text-amber-300 rounded-lg animate-pulse">
-                    {people.filter(p => !p.sincronizadoEnNube).length} Registros Pendientes
-                  </span>
-                )}
-              </div>
-
-              {/* Expandable Sync Queue List */}
-              {isSyncing && people.filter(p => !p.sincronizadoEnNube).length > 0 && (
-                <div className="border-t border-amber-500/10 pt-3 mt-1">
-                  <span className="text-[10px] font-bold text-amber-700/60 dark:text-amber-500/60 uppercase tracking-widest block mb-2">
-                    Cola de Sincronización (Pendiente de subir a Firebase)
-                  </span>
-                  <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-1">
-                    {people.filter(p => !p.sincronizadoEnNube).map((person, idx) => (
-                      <div 
-                        key={`sync_item_${person.id}_${idx}`} 
-                        className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-amber-500/10 rounded-xl flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                        <span>{person.apellidosNombre}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">({person.dni})</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-amber-700/60 dark:text-amber-500/60 mt-2">
-                    * Estos registros se subirán automáticamente a Firebase en cuanto se recupere la conexión a Internet.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Online Connection Alert when Internet is Restored but has Unsynced Data */}
-          {!isOffline && isSyncing && people.filter(p => !p.sincronizadoEnNube).length > 0 && (
-            <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-300">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
-                  <Cloud className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">
-                    Conexión Restablecida
-                  </h4>
-                  <p className="text-xs text-emerald-700/80 dark:text-emerald-500/80 mt-0.5">
-                    Tienes {people.filter(p => !p.sincronizadoEnNube).length} registros pendientes en cola listos para subir a la nube.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={async () => {
-                  try {
-                    await handleSyncPendingToCloud();
-                  } catch (e) {
-                    console.error(e);
-                  }
-                }}
-                className="px-4 py-2 bg-[#00548E] hover:bg-[#003860] text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/10 transition-colors flex items-center gap-1.5 shrink-0 self-end sm:self-auto cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
-                Sincronizar Cola Ahora
-              </button>
-            </div>
-          )}
           
           {activeView === 'dashboard' && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
@@ -2482,8 +2396,6 @@ function App() {
                     setSelectedObraFilter={setSelectedObraFilter}
                     selectedQuincenaFilter={selectedQuincenaFilter}
                     setSelectedQuincenaFilter={setSelectedQuincenaFilter}
-                    isSyncActive={isSyncing}
-                    onToggleSync={handleTogglePersonSync}
                     googleToken={googleToken}
                     onGoogleLogin={handleGoogleLogin}
                     onToast={(message, type) => setToast({ message, type })}
@@ -2539,8 +2451,6 @@ function App() {
                   setSelectedObraFilter={setSelectedObraFilter}
                   selectedQuincenaFilter={selectedQuincenaFilter}
                   setSelectedQuincenaFilter={setSelectedQuincenaFilter}
-                  isSyncActive={isSyncing}
-                  onToggleSync={handleTogglePersonSync}
                   googleToken={googleToken}
                   onGoogleLogin={handleGoogleLogin}
                   onToast={(message, type) => setToast({ message, type })}

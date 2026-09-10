@@ -35,8 +35,6 @@ interface PersonListProps {
   setSelectedObraFilter: (obras: string[]) => void;
   selectedQuincenaFilter: string[];
   setSelectedQuincenaFilter: (quincenas: string[]) => void;
-  isSyncActive?: boolean;
-  onToggleSync?: (id: number) => void;
   googleToken?: string | null;
   onGoogleLogin?: () => void;
   onToast?: (message: string, type: 'success' | 'error') => void;
@@ -101,8 +99,6 @@ export const PersonList: React.FC<PersonListProps> = ({
   setSelectedObraFilter,
   selectedQuincenaFilter,
   setSelectedQuincenaFilter,
-  isSyncActive = false,
-  onToggleSync,
   googleToken,
   onGoogleLogin,
   onToast,
@@ -962,8 +958,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                     onGenerateIDCard={onGenerateIDCard}
                     onExportHistoryPDF={onExportHistoryPDF}
                     onOpenCalendar={handleOpenCalendarForWorker}
-                    isSyncActive={isSyncActive}
-                    onToggleSync={onToggleSync}
                     sameDniWorkers={sameDniWorkers}
                   />
                 );
@@ -979,8 +973,6 @@ export const PersonList: React.FC<PersonListProps> = ({
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
               onOpenCalendar={handleOpenCalendarForWorker}
-              isSyncActive={isSyncActive}
-              onToggleSync={onToggleSync}
               sameDniWorkersMap={sameDniWorkersMap}
             />
           )}
