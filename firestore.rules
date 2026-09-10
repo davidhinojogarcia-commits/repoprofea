@@ -55,7 +55,9 @@ service cloud.firestore {
     }
 
     match /userSettings/{uid} {
-      allow read, write: if isAdmin() || (active() && request.auth.uid == uid && request.resource.data.ownerId == request.auth.uid);
+      allow read: if isAdmin() || (active() && request.auth.uid == uid);
+      allow create, update: if isAdmin() || (active() && request.auth.uid == uid && request.resource.data.ownerId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     match /dataPermissions/{permissionId} {
