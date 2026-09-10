@@ -25,6 +25,12 @@ export async function signInWithEmail(email:string,password:string):Promise<User
     await supabase.query('users',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(data.user.id)}`,body:{last_access_at:new Date().toISOString()}});
     await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:data.user.id,user_email:data.user.email||'',action:'LOGIN',resource_type:'auth',resource_id:data.user.id,details:{}}}).catch(()=>{});
     auth.currentUser=data.user;
+    if(profile.role==='admin'){
+      const token=(await supabase.auth.getSession()).data.session?.access_token;
+      if(token){
+        await fetch('/api/migrate-legacy',{method:'POST',headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():null).catch(error=>console.error('Migración legacy automática:',error));
+      }
+    }
     return data.user;
   }catch(error){await supabase.auth.signOut().catch(()=>{});auth.currentUser=null;throw error;}
 }
