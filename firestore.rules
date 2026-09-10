@@ -54,6 +54,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /userSettings/{uid} {
+      allow read, write: if isAdmin() || (active() && request.auth.uid == uid && request.resource.data.ownerId == request.auth.uid);
+    }
+
     match /dataPermissions/{permissionId} {
       allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
       allow write: if isAdmin();
@@ -70,11 +74,12 @@ service cloud.firestore {
 
     match /{collection}/{id} {
       allow read: if hasModule(collection, 'read') && (isAdmin() || owner() || shared(collection, id, 'canRead'));
-      allow create: if hasModule(collection, 'create') && incomingOwner();
-      allow update: if hasModule(collection, 'update')
-        && (isAdmin() || owner() || shared(collection, id, 'canUpdate'))
-        && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if hasModule(collection, 'delete') && (isAdmin() || owner() || shared(collection, id, 'canDelete'));
+      allow create: if isAdmin() || (hasModule(collection, 'create') && incomingOwner());
+      allow update: if isAdmin()
+        || (active() && hasModule(collection, 'update')
+          && (owner() || shared(collection, id, 'canUpdate'))
+          && request.resource.data.ownerId == resource.data.ownerId);
+      allow delete: if isAdmin() || (active() && hasModule(collection, 'delete') && (owner() || shared(collection, id, 'canDelete')));
     }
 
     match /workspaces/{workspaceId}/{document=**} { allow read, write: if false; }
