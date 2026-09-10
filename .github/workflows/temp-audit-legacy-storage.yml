@@ -1,0 +1,28 @@
+name: Temp audit legacy storage
+
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+    paths:
+      - '.github/workflows/temp-audit-legacy-storage.yml'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Legacy Firebase compatibility references
+        run: |
+          echo '=== FIREBASE_IMPORTS ==='
+          grep -RInE "src/lib/firebase|services/firestoreService|from ['\"]firebase|firebase/" --include='*.ts' --include='*.tsx' . \
+            --exclude-dir=node_modules --exclude-dir=.git || true
+      - name: Business localStorage references
+        run: |
+          echo '=== LOCAL_STORAGE ==='
+          grep -RIn "localStorage." --include='*.ts' --include='*.tsx' . \
+            --exclude-dir=node_modules --exclude-dir=.git || true
+      - name: Users compatibility view references
+        run: |
+          echo '=== USERS_COMPAT ==='
+          grep -RInE "query\(['\"]users['\"]|from\(['\"]users['\"]|public\.users" --include='*.ts' --include='*.tsx' --include='*.sql' . \
+            --exclude-dir=node_modules --exclude-dir=.git || true
