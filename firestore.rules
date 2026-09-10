@@ -1,48 +1,48 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User Accounts & Authentication Profiles
-    match /accounts/{accountId} {
-      allow read, write: if true;
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.role == 'admin'; }
+    function active() { return signedIn() && request.auth.token.role in ['admin', 'user']; }
+    function hasModule(module, action) {
+      return isAdmin() || (active() && get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.modules[module][action] == true);
+    }
+    function owner() { return resource.data.ownerId == request.auth.uid; }
+    function incomingOwner() { return request.resource.data.ownerId == request.auth.uid; }
+
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.active == resource.data.active);
+    }
+    match /userPermissions/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if isAdmin();
+    }
+    match /dataPermissions/{permissionId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+    match /auditLogs/{id} {
+      allow read: if isAdmin();
+      allow create: if active() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
     }
 
-    // Shared Workspaces & Multi-Device Sync
-    match /workspaces/{workspaceId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
+    match /{collection}/{id} {
+      allow read: if isAdmin() || (active() && hasModule(collection, 'read') && owner());
+      allow create: if isAdmin() || (active() && hasModule(collection, 'create') && incomingOwner());
+      allow update: if isAdmin() || (active() && hasModule(collection, 'update') && owner() && request.resource.data.ownerId == resource.data.ownerId);
+      allow delete: if isAdmin() || (active() && hasModule(collection, 'delete') && owner());
     }
 
-    // User Accounts & Multi-device Sync
-    match /users/{userId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
-    // Email-based Sync Vaults
-    match /email_vaults/{emailKey} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
-    // Legacy Sync Groups
-    match /sync_groups/{groupId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
-    // Global fallback
-    match /{document=**} {
-      allow read, write: if true;
-    }
+    match /workspaces/{workspaceId}/{document=**} { allow read, write: if false; }
+    match /accounts/{accountId} { allow read, write: if false; }
+    match /email_vaults/{emailKey}/{document=**} { allow read, write: if false; }
+    match /sync_groups/{groupId}/{document=**} { allow read, write: if false; }
   }
 }
-
