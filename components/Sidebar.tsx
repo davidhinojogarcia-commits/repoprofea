@@ -1,8 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, BarChart3, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, Cloud, HardHat } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, BarChart3, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
+import { useAuthShell } from './AuthGate';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -39,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   uniqueQuincenas = [],
   onOpenScanner,
 }) => {
+  const { role, signOut, signingOut } = useAuthShell();
   const menuItems: { id: ViewMode; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: 'Vista General', icon: LayoutDashboard },
     { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
@@ -209,6 +211,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 Escanear Cámara
               </div>
             )}
+          </button>
+        </div>
+
+        {/* Session / administration actions aligned with the scanner button */}
+        <div className="px-3 pb-3 space-y-2 no-print">
+          {role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => handleNavClick('administracion')}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition-colors ${activeView === 'administracion' ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'} ${isCollapsed && !isMobileOpen ? 'lg:h-11 lg:w-11 lg:p-0 lg:mx-auto lg:rounded-full' : ''}`}
+              title="Administración"
+            >
+              <ShieldCheck className="w-5 h-5 shrink-0" />
+              <span className={`${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>Administración</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-slate-600/70 dark:border-slate-700 text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-semibold transition-colors disabled:opacity-60 ${isCollapsed && !isMobileOpen ? 'lg:h-11 lg:w-11 lg:p-0 lg:mx-auto lg:rounded-full' : ''}`}
+            title="Cerrar sesión"
+          >
+            {signingOut ? <Loader2 className="w-5 h-5 animate-spin shrink-0" /> : <LogOut className="w-5 h-5 shrink-0" />}
+            <span className={`${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>{signingOut ? 'Cerrando…' : 'Cerrar sesión'}</span>
           </button>
         </div>
 
