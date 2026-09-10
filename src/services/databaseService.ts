@@ -1,13 +1,14 @@
 import { supabase } from '../lib/supabase';
 
 export type DatabaseRecord = Record<string, any> & { id?: string | number; ownerId?: string };
-type ListOptions = { includeShared?: boolean; limitCount?: number };
+type ListOptions = { includeShared?: boolean; allForAdmin?: boolean; limitCount?: number };
 
 const TABLE_BY_COLLECTION: Record<string, string> = {
   appointments: 'citas', citas: 'citas',
   subcontractors: 'subcontratas', subcontratas: 'subcontratas',
   medicalExams: 'reconocimientos', reconocimientos: 'reconocimientos',
   contracts: 'contrataciones', contratacion: 'contrataciones', contrataciones: 'contrataciones',
+  works: 'obras', obras: 'obras',
 };
 
 const canonicalTable = (name: string) => TABLE_BY_COLLECTION[name] || name;
@@ -24,13 +25,20 @@ async function requireUser() {
 
 async function resolveObraId(obra: unknown): Promise<string | null> {
   if (!obra || typeof obra !== 'string') return null;
-  const rows = await supabase.query('obras', { query: `select=id&nombre=ilike.${encodeURIComponent(obra.trim())}&limit=1` });
+  const name = obra.trim();
+  const rows = await supabase.query('obras', { query: `select=id&nombre=eq.${encodeURIComponent(name)}&limit=1` });
   return rows?.[0]?.id || null;
 }
 
 async function serialize(table: string, value: DatabaseRecord) {
   const data = clean(value);
   if (isLegacyNumericTable(table)) return { data };
+  if (table === 'obras') return {
+    codigo: value.codigo || value.code || '',
+    nombre: value.nombre || value.name || value.obra || '',
+    municipio: value.municipio || '',
+    descripcion: value.descripcion || value.description || '',
+  };
   const obraId = value.obraId || value.obra_id || await resolveObraId(value.obra);
   if (table === 'citas') return {
     obra_id: obraId, trabajador_id: value.trabajadorId ?? value.trabajador_id ?? null,
@@ -64,7 +72,19 @@ async function serialize(table: string, value: DatabaseRecord) {
   return { data };
 }
 
-function hydrate(row: any): any {
+function hydrate(row: any, table: string): any {
+  if (table === 'obras') return {
+    id: row.id,
+    codigo: row.codigo,
+    nombre: row.nombre,
+    municipio: row.municipio,
+    descripcion: row.descripcion,
+    ownerId: row.owner_id,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at,
+  };
   return {
     ...(row.data || {}), id: row.id, ownerId: row.owner_id, obraId: row.obra_id,
     createdBy: row.created_by, createdAt: row.created_at, updatedBy: row.updated_by, updatedAt: row.updated_at,
@@ -99,15 +119,17 @@ export async function deleteDocument(collectionName: string, id: string | number
 
 export async function getDocument<T = DatabaseRecord>(collectionName: string, id: string | number): Promise<T | null> {
   await requireUser();
-  const rows = await supabase.query(canonicalTable(collectionName), { query: `select=*&id=eq.${encodeURIComponent(String(id))}&limit=1` });
-  return rows?.[0] ? hydrate(rows[0]) as T : null;
+  const table = canonicalTable(collectionName);
+  const rows = await supabase.query(table, { query: `select=*&id=eq.${encodeURIComponent(String(id))}&limit=1` });
+  return rows?.[0] ? hydrate(rows[0], table) as T : null;
 }
 
 export async function getDocuments<T = DatabaseRecord>(collectionName: string, options: ListOptions = {}): Promise<T[]> {
   await requireUser();
+  const table = canonicalTable(collectionName);
   const limit = options.limitCount ? `&limit=${options.limitCount}` : '';
-  const rows = await supabase.query(canonicalTable(collectionName), { query: `select=*&order=updated_at.desc${limit}` });
-  return (rows || []).map((row: any) => hydrate(row) as T);
+  const rows = await supabase.query(table, { query: `select=*&order=updated_at.desc${limit}` });
+  return (rows || []).map((row: any) => hydrate(row, table) as T);
 }
 
 export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string, onUpdate: (items: T[]) => void, options: ListOptions = {}, onError?: (error: Error) => void) {
