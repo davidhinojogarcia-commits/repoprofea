@@ -3,7 +3,7 @@ name: Deploy Firebase backend
 on:
   workflow_dispatch:
   push:
-    branches: ['main']
+    branches: ['main', 'feat/firebase-multiusuario']
     paths:
       - 'functions/**'
       - 'firestore.rules'
@@ -24,6 +24,13 @@ jobs:
       - name: Install Functions dependencies
         working-directory: functions
         run: npm install --no-audit --no-fund
+      - name: Configure initial administrator
+        working-directory: functions
+        env:
+          INITIAL_ADMIN_EMAIL: ${{ secrets.INITIAL_ADMIN_EMAIL }}
+        run: |
+          test -n "$INITIAL_ADMIN_EMAIL" || { echo 'Missing INITIAL_ADMIN_EMAIL GitHub secret.'; exit 1; }
+          printf 'INITIAL_ADMIN_EMAIL=%s\n' "$INITIAL_ADMIN_EMAIL" > .env
       - name: Build Functions
         working-directory: functions
         run: npm run build
