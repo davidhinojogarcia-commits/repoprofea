@@ -60,7 +60,7 @@ async function serialize(table: string, value: DatabaseRecord) {
     obra_id: obraId, trabajador_id: value.matchedPersonId ?? value.trabajadorId ?? value.trabajador_id ?? null,
     dni: value.dni || '', apellidos_nombre: value.apellidosNombre || '', resultado: value.resultado || value.reconocimientoEstado || 'Pendiente',
     limitaciones: value.limitaciones || value.reconocimientoLimitaciones || '', fecha_reconocimiento: dateOrNull(value.fechaReconocimiento || value.reconocimientoFecha),
-    validez: value.validez || value.reconocimientoValidez || '', centro_medico: value.centroMedico || value.sitioReconocimiento || '',
+    validez: dateOrNull(value.validez || value.reconocimientoValidez), centro_medico: value.centroMedico || value.sitioReconocimiento || '',
     observaciones: value.observaciones || value.reconocimientoObservaciones || '', data
   };
   if (table === 'contrataciones') return {

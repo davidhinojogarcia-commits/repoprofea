@@ -32,7 +32,7 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
-import { createDocument, updateDocument, subscribeToDocuments } from './src/services/databaseService';
+import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { Person, StatsData, DeletedPerson } from './types';
@@ -491,6 +491,18 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // La papelera también se lee automáticamente desde Supabase.
+  useEffect(() => {
+    if (!auth.currentUser?.uid) return;
+    const unsubscribe = subscribeToDocuments<DeletedPerson>('trash', items => {
+      setDeletedPeople(items);
+    }, { includeShared: true }, error => {
+      console.error('Error leyendo la papelera de Supabase:', error);
+      setToast({ message: 'Error al leer la papelera desde Supabase.', type: 'error' });
+    });
+    return () => unsubscribe();
+  }, []);
+
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedObraFilter, setSelectedObraFilter] = useState<string[]>(() => {
@@ -510,10 +522,7 @@ function App() {
     }
   });
 
-  const [deletedPeople, setDeletedPeople] = useState<DeletedPerson[]>(() => {
-    const saved = localStorage.getItem('personasEliminadasPROFEA');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [deletedPeople, setDeletedPeople] = useState<DeletedPerson[]>([]);
 
   const visiblePeople = people;
   const visibleDeletedPeople = deletedPeople;
@@ -707,74 +716,7 @@ function App() {
     workEndHour
   ]);
 
-  // Auto-sync catalogs and settings to user workspace in Firestore
-  useEffect(() => {
-    const targetId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (!targetId || isOffline) return;
-    const timer = setTimeout(() => {
-      let subcontratasData: any[] = [];
-      try {
-        const raw = localStorage.getItem('profea_subcontratas_v1');
-        if (raw) subcontratasData = JSON.parse(raw);
-      } catch (e) {}
 
-      executeDatabaseSync('Configuraciones y Obras', async () => {
-        await syncWorkspaceSettings(targetId, {
-          savedObras,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          savedCategorias,
-          workStartHour,
-          workEndHour,
-          subcontratas: subcontratasData
-        });
-        if (googleUser?.uid) {
-          await syncAccountSettings(googleUser.uid, {
-            savedObras,
-            savedLugares,
-            savedSitios,
-            savedTelefonos,
-            savedCategorias,
-            workStartHour,
-            workEndHour,
-            subcontratas: subcontratasData
-          });
-        }
-      }, {
-        detail: 'Catálogos y configuración actualizados en Firestore.'
-      }).catch(err => console.warn('Error auto-syncing settings to Firestore:', err));
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [currentEffectiveWorkspaceId, googleUser?.uid, isOffline, savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
-
-  // Real-time listener for local subcontratas changes to sync to workspace
-  useEffect(() => {
-    const handleSubChange = (e: any) => {
-      const targetId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-      if (!targetId || isOffline) return;
-      const subs = e.detail;
-      
-      executeDatabaseSync('Subcontratas y Checklist CAE', async () => {
-        await syncWorkspaceSettings(targetId, {
-          savedObras,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          savedCategorias,
-          workStartHour,
-          workEndHour,
-          subcontratas: subs
-        });
-      }, {
-        detail: 'Documentación CAE y subcontratas sincronizadas con éxito.'
-      }).catch(err => {
-        console.warn('Error auto-syncing subcontratas:', err);
-      });
-    };
-    window.addEventListener('profea_subcontratas_changed', handleSubChange);
-    return () => window.removeEventListener('profea_subcontratas_changed', handleSubChange);
-  }, [currentEffectiveWorkspaceId, isOffline, savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -797,13 +739,7 @@ function App() {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA', JSON.stringify(people));
-  }, [people]);
 
-  useEffect(() => {
-    localStorage.setItem('personasEliminadasPROFEA', JSON.stringify(deletedPeople));
-  }, [deletedPeople]);
 
   // Limpieza automática de registros de papelera que lleven más de 30 días
   useEffect(() => {
@@ -995,194 +931,63 @@ function App() {
     await commitAddMultipleWorkers(newWorkers, 0);
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     const personToDelete = people.find(p => p.id === id);
-    if (personToDelete) {
-      if (window.confirm(`¿Está seguro de que desea enviar a la Papelera el registro de ${personToDelete.apellidosNombre}? Se almacenará allí durante 30 días.`)) {
-        setPeopleWithHistory(prev => prev.filter(p => p.id !== id));
-        const deletedObj = {
-          person: personToDelete,
-          fechaEliminacion: new Date().toISOString()
-        };
-        setDeletedPeople(prev => [...prev, deletedObj]);
-        setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
+    if (!personToDelete) return;
+    if (!window.confirm(`¿Está seguro de que desea enviar a la Papelera el registro de ${personToDelete.apellidosNombre}? Se almacenará allí durante 30 días.`)) return;
 
-        const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-        if (targetWsId && !isOffline) {
-          executeDatabaseSync(`Baja: ${personToDelete.apellidosNombre}`, async () => {
-            await deleteWorkerFromWorkspace(targetWsId, id);
-            await syncDeletedWorkerToWorkspace(targetWsId, {
-              ...deletedObj,
-              person: { ...deletedObj.person, sincronizadoEnNube: true }
-            });
-            if (googleUser?.uid) {
-              await deleteWorkerFromAccount(googleUser.uid, id);
-              await syncDeletedWorkerToAccount(googleUser.uid, {
-                ...deletedObj,
-                person: { ...deletedObj.person, sincronizadoEnNube: true }
-              });
-            }
-          }, {
-            detail: `${personToDelete.apellidosNombre} movido a la papelera en Firestore.`
-          }).catch(err => console.error(err));
-        } else if (googleUser?.uid && !isOffline) {
-          deleteWorkerFromAccount(googleUser.uid, id).catch(err => console.error(err));
-          syncDeletedWorkerToAccount(googleUser.uid, {
-            ...deletedObj,
-            person: { ...deletedObj.person, sincronizadoEnNube: true }
-          }).catch(err => console.error(err));
-        } else if (isSyncing && groupId.trim() && !isOffline) {
-          deleteWorkerFromCloud(groupId, id).catch(err => console.error(err));
-          if (personToDelete.sincronizadoEnNube) {
-            syncDeletedWorkerToCloud(groupId, {
-              ...deletedObj,
-              person: { ...deletedObj.person, sincronizadoEnNube: true }
-            }).catch(err => console.error(err));
-          }
-        }
-      }
+    const deletedObj: DeletedPerson = { person: personToDelete, fechaEliminacion: new Date().toISOString() };
+    try {
+      await createDocument('trash', id, deletedObj as any);
+      await deleteDocument('workers', id);
+      setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
+    } catch (error) {
+      console.error('Error enviando trabajador a papelera en Supabase:', error);
+      setToast({ message: 'No se pudo enviar el registro a la Papelera.', type: 'error' });
     }
   };
 
-  const handleDeleteMultiple = (ids: number[]) => {
-    if (!ids || ids.length === 0) return;
-    
-    if (window.confirm(`¿Está seguro de que desea enviar ${ids.length} registros a la Papelera? Se almacenarán allí durante 30 días.`)) {
-      const todayStr = new Date().toISOString();
-      const peopleToDelete = people.filter(p => ids.includes(p.id));
-      
-      setPeopleWithHistory(prev => prev.filter(p => !ids.includes(p.id)));
-      
-      const deletedObjs = peopleToDelete.map(p => ({
-        person: p,
-        fechaEliminacion: todayStr
-      }));
-      setDeletedPeople(prev => [...prev, ...deletedObjs]);
-      setToast({ message: `${ids.length} registros enviados a la Papelera correctamente`, type: 'success' });
-
-      const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-      if (targetWsId && !isOffline) {
-        executeDatabaseSync(`Baja de ${peopleToDelete.length} registros`, async () => {
-          for (const p of peopleToDelete) {
-            await deleteWorkerFromWorkspace(targetWsId, p.id);
-            await syncDeletedWorkerToWorkspace(targetWsId, {
-              person: { ...p, sincronizadoEnNube: true },
-              fechaEliminacion: todayStr
-            });
-            if (googleUser?.uid) {
-              await deleteWorkerFromAccount(googleUser.uid, p.id);
-              await syncDeletedWorkerToAccount(googleUser.uid, {
-                person: { ...p, sincronizadoEnNube: true },
-                fechaEliminacion: todayStr
-              });
-            }
-          }
-        }, {
-          detail: `${peopleToDelete.length} registros enviados a la papelera en Firestore.`
-        }).catch(err => console.error(err));
-      } else if (googleUser?.uid && !isOffline) {
-        peopleToDelete.forEach(p => {
-          deleteWorkerFromAccount(googleUser.uid, p.id).catch(err => console.error(err));
-          syncDeletedWorkerToAccount(googleUser.uid, {
-            person: { ...p, sincronizadoEnNube: true },
-            fechaEliminacion: todayStr
-          }).catch(err => console.error(err));
-        });
-      } else if (isSyncing && groupId.trim() && !isOffline) {
-        peopleToDelete.forEach(p => {
-          deleteWorkerFromCloud(groupId, p.id).catch(err => console.error(err));
-          if (p.sincronizadoEnNube) {
-            syncDeletedWorkerToCloud(groupId, {
-              person: { ...p, sincronizadoEnNube: true },
-              fechaEliminacion: todayStr
-            }).catch(err => console.error(err));
-          }
-        });
+  const handleDeleteMultiple = async (ids: number[]) => {
+    if (!ids?.length) return;
+    if (!window.confirm(`¿Está seguro de que desea enviar ${ids.length} registros a la Papelera? Se almacenarán allí durante 30 días.`)) return;
+    const peopleToDelete = people.filter(p => ids.includes(p.id));
+    const fechaEliminacion = new Date().toISOString();
+    try {
+      for (const person of peopleToDelete) {
+        await createDocument('trash', person.id, { person, fechaEliminacion } as any);
+        await deleteDocument('workers', person.id);
       }
+      setToast({ message: `${peopleToDelete.length} registros enviados a la Papelera correctamente`, type: 'success' });
+    } catch (error) {
+      console.error('Error en baja múltiple de Supabase:', error);
+      setToast({ message: 'No se pudieron enviar todos los registros a la Papelera.', type: 'error' });
     }
   };
 
-  const handleRestorePerson = (id: number) => {
+  const handleRestorePerson = async (id: number) => {
     const foundDeleted = deletedPeople.find(dp => dp.person.id === id);
-    if (foundDeleted) {
-      setDeletedPeople(prev => prev.filter(dp => dp.person.id !== id));
-      setPeopleWithHistory(prev => [...prev, foundDeleted.person]);
+    if (!foundDeleted) return;
+    try {
+      await createDocument('workers', id, foundDeleted.person as any);
+      await deleteDocument('trash', id);
       setToast({ message: `Registro de ${foundDeleted.person.apellidosNombre} restaurado correctamente`, type: 'success' });
-
-      const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-      if (targetWsId && !isOffline) {
-        executeDatabaseSync(`Restaurar: ${foundDeleted.person.apellidosNombre}`, async () => {
-          await deleteFromWorkspaceTrash(targetWsId, id);
-          await syncWorkerToWorkspace(targetWsId, foundDeleted.person);
-          if (googleUser?.uid) {
-            await deleteFromAccountTrash(googleUser.uid, id);
-            await syncWorkerToAccount(googleUser.uid, foundDeleted.person);
-          }
-        }, {
-          detail: `${foundDeleted.person.apellidosNombre} restaurado en Firestore.`
-        }).catch(err => console.error(err));
-      } else if (googleUser?.uid && !isOffline) {
-        deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
-        syncWorkerToAccount(googleUser.uid, foundDeleted.person).catch(err => console.error(err));
-      } else if (isSyncing && groupId.trim()) {
-        deleteFromCloudTrash(groupId, id).catch(err => console.error(err));
-        if (foundDeleted.person.sincronizadoEnNube) {
-          syncWorkerToCloud(groupId, foundDeleted.person).catch(err => console.error(err));
-        }
-      }
+    } catch (error) {
+      console.error('Error restaurando trabajador desde Supabase:', error);
+      setToast({ message: 'No se pudo restaurar el registro.', type: 'error' });
     }
   };
 
-  const handlePermanentDelete = (id: number) => {
+  const handlePermanentDelete = async (id: number) => {
     const foundDeleted = deletedPeople.find(dp => dp.person.id === id);
-    if (foundDeleted) {
-      if (window.confirm(`¿Está seguro de que desea eliminar permanentemente el registro de ${foundDeleted.person.apellidosNombre}? Esta acción no se puede deshacer.`)) {
-        setDeletedPeople(prev => prev.filter(dp => dp.person.id !== id));
-        setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
-
-        const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-        if (targetWsId && !isOffline) {
-          executeDatabaseSync(`Eliminación permanente: ${foundDeleted.person.apellidosNombre}`, async () => {
-            await deleteFromWorkspaceTrash(targetWsId, id);
-            if (googleUser?.uid) {
-              await deleteFromAccountTrash(googleUser.uid, id);
-            }
-          }, {
-            detail: `${foundDeleted.person.apellidosNombre} eliminado definitivamente de Firestore.`
-          }).catch(err => console.error(err));
-        } else if (googleUser?.uid && !isOffline) {
-          deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
-        } else if (isSyncing && groupId.trim()) {
-          deleteFromCloudTrash(groupId, id).catch(err => console.error(err));
-        }
-      }
+    if (!foundDeleted) return;
+    if (!window.confirm(`¿Está seguro de que desea eliminar permanentemente el registro de ${foundDeleted.person.apellidosNombre}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await deleteDocument('trash', id);
+      setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
+    } catch (error) {
+      console.error('Error eliminando definitivamente en Supabase:', error);
+      setToast({ message: 'No se pudo eliminar definitivamente el registro.', type: 'error' });
     }
-  };
-
-  const handleEmptyTrash = () => {
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync('Vaciar papelera', async () => {
-        for (const dp of deletedPeople) {
-          await deleteFromWorkspaceTrash(targetWsId, dp.person.id);
-          if (googleUser?.uid) {
-            await deleteFromAccountTrash(googleUser.uid, dp.person.id);
-          }
-        }
-      }, {
-        detail: 'Papelera vaciada completamente en Firestore.'
-      }).catch(err => console.error(err));
-    } else if (googleUser?.uid && !isOffline) {
-      deletedPeople.forEach(dp => {
-        deleteFromAccountTrash(googleUser.uid, dp.person.id).catch(err => console.error(err));
-      });
-    } else if (isSyncing && groupId.trim()) {
-      deletedPeople.forEach(dp => {
-        deleteFromCloudTrash(groupId, dp.person.id).catch(err => console.error(err));
-      });
-    }
-    setDeletedPeople([]);
-    setToast({ message: 'Papelera vaciada correctamente', type: 'success' });
   };
 
   const handleEdit = (person: Person) => {
