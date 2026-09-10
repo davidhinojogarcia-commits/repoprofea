@@ -28,6 +28,13 @@ jobs:
             echo "Expected exactly one getOrCreateUserWorkspace declaration, found $count."
             exit 1
           fi
+          sync_count=$(grep -c '^export async function triggerFirestoreDatabaseSync' src/lib/firebase.ts || true)
+          if [ "$sync_count" -ne 1 ]; then
+            echo "Expected exactly one temporary Firestore compatibility sync declaration, found $sync_count."
+            exit 1
+          fi
+      # This push-triggered CI run validates the branch after the migration workflow
+      # has materialized its generated Firestore source changes.
       - run: npm run build
       - name: Install Firebase Functions dependencies
         working-directory: functions
