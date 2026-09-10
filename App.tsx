@@ -905,9 +905,7 @@ function App() {
     }
   };
 
-  const handleRegister = (personData: Omit<Person, 'id' | 'fechaRegistro'>) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid) && syncMode === 'auto' && !isOffline;
-    
+  const handleRegister = async (personData: Omit<Person, 'id' | 'fechaRegistro'>) => {
     // Si la persona ya estuvo registrada anteriormente sin formación, se actualiza a 'Sí'
     const cleanDni = personData.dni ? personData.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
     const cleanName = personData.apellidosNombre ? personData.apellidosNombre.trim().toLowerCase() : '';
@@ -919,46 +917,30 @@ function App() {
     });
 
     const finalPersonData = hadPreviousNoFormacion ? { ...personData, formacion: 'Sí' } : personData;
-
     const newPerson: Person = {
       ...finalPersonData,
       id: Date.now() + Math.floor(Math.random() * 100000) + 1,
       fechaRegistro: new Date().toISOString(),
-      sincronizadoEnNube: isAutoSync
+      sincronizadoEnNube: true
     };
+
+    try {
+      await createDocument('workers', newPerson.id, newPerson as any);
+    } catch (error) {
+      console.error('Error guardando trabajador en Supabase:', error);
+      setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
+      return;
+    }
+
     setPeopleWithHistory(prev => [...prev, newPerson]);
     updateAutocompleteLists(finalPersonData);
     setToast({ message: 'Registro guardado correctamente', type: 'success' });
-
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync(`Alta: ${newPerson.apellidosNombre}`, async () => {
-        await syncWorkerToWorkspace(targetWsId, newPerson);
-        if (googleUser?.uid) {
-          await syncWorkerToAccount(googleUser.uid, newPerson);
-        }
-      }, {
-        detail: `${newPerson.apellidosNombre} guardado en Firebase Firestore.`
-      }).catch(err => {
-        console.error("Error syncing new worker to workspace:", err);
-      });
-    } else if (googleUser?.uid && !isOffline) {
-      syncWorkerToAccount(googleUser.uid, newPerson).catch(err => {
-        console.error("Error syncing new worker to user account:", err);
-      });
-    } else if (isAutoSync && groupId.trim()) {
-      syncWorkerToCloud(groupId, newPerson).catch(err => {
-        console.error("Error syncing new worker to cloud:", err);
-        setPeople(prev => prev.map(p => p.id === newPerson.id ? { ...p, sincronizadoEnNube: false } : p));
-      });
-    }
   };
 
   const commitAddMultipleWorkers = async (
     workersToAdd: Omit<Person, 'id' | 'fechaRegistro'>[],
     skippedCount: number = 0
   ) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid || !!currentEffectiveWorkspaceId) && syncMode === 'auto' && !isOffline;
     const baseId = Date.now();
     const formattedWorkers: Person[] = workersToAdd.map((w, index) => {
       const cleanDni = w.dni ? w.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
@@ -976,7 +958,7 @@ function App() {
         ...updatedW,
         id: baseId + index * 1000 + Math.floor(Math.random() * 999) + 1,
         fechaRegistro: new Date().toISOString(),
-        sincronizadoEnNube: isAutoSync
+        sincronizadoEnNube: true
       };
       updateAutocompleteLists(person);
       return person;

@@ -28,9 +28,7 @@ import {
 import { formatDate } from '../src/lib/exportUtils';
 import { FileUploaderIA } from './FileUploaderIA';
 import { ChecklistConfigModal } from './ChecklistConfigModal';
-import { auth } from '../src/lib/firebase';
-import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/firestoreService';
-import type { Unsubscribe } from 'firebase/firestore';
+import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/databaseService';
 
 interface SubcontratasSectionProps {
   savedObras: string[];
@@ -60,21 +58,21 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const hydratedSubcontratasRef = useRef(false);
 
   const persistSubcontratas = async (previous: Subcontratista[], next: Subcontratista[]) => {
-    if (!auth.currentUser || suppressSubPersistenceRef.current || !hydratedSubcontratasRef.current) return;
+    if (suppressSubPersistenceRef.current || !hydratedSubcontratasRef.current) return;
     const previousById = new Map(previous.map(item => [item.id, item]));
     const nextById = new Map(next.map(item => [item.id, item]));
     try {
       for (const item of next) {
         const old = previousById.get(item.id);
-        if (!old) await createDocument('subcontractors', item.id, item as any);
-        else if (JSON.stringify(old) !== JSON.stringify(item)) await updateDocument('subcontractors', item.id, item as any);
+        if (!old) await createDocument('subcontratas', item.id, item as any);
+        else if (JSON.stringify(old) !== JSON.stringify(item)) await updateDocument('subcontratas', item.id, item as any);
       }
       for (const old of previous) {
-        if (!nextById.has(old.id)) await deleteDocument('subcontractors', old.id);
+        if (!nextById.has(old.id)) await deleteDocument('subcontratas', old.id);
       }
     } catch (error) {
-      console.error('Error guardando subcontratas en Firestore:', error);
-      onToast('No se pudieron guardar los cambios de subcontratas en Firebase.', 'error');
+      console.error('Error guardando subcontratas en Supabase:', error);
+      onToast('No se pudieron guardar los cambios de subcontratas en Supabase.', 'error');
     }
   };
 
@@ -87,16 +85,14 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   }, []);
 
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    const unsubscribe: Unsubscribe = subscribeToDocuments<Subcontratista>('subcontractors', items => {
+    const unsubscribe = subscribeToDocuments<Subcontratista>('subcontratas', items => {
       suppressSubPersistenceRef.current = true;
       setSubcontratistasState(items);
       hydratedSubcontratasRef.current = true;
       queueMicrotask(() => { suppressSubPersistenceRef.current = false; });
     }, { includeShared: true }, error => {
-      console.error('Error leyendo subcontratas de Firestore:', error);
-      onToast('No se pudieron cargar las subcontratas desde Firebase.', 'error');
+      console.error('Error leyendo subcontratas de Supabase:', error);
+      onToast('No se pudieron cargar las subcontratas desde Supabase.', 'error');
     });
     return () => unsubscribe();
   }, []);
