@@ -9,7 +9,7 @@ const auth = getAuth();
 type Role = 'admin' | 'user';
 type PermissionAction = 'read' | 'create' | 'update' | 'delete';
 
-const INITIAL_ADMIN_EMAIL = (process.env.INITIAL_ADMIN_EMAIL || 'davidhinojogarcia@gmail.com').trim().toLowerCase();
+const INITIAL_ADMIN_EMAIL = (process.env.INITIAL_ADMIN_EMAIL || '').trim().toLowerCase();
 const MODULES = ['contratacion', 'trabajadores', 'obras', 'reconocimientos', 'subcontratas', 'citas'] as const;
 
 const defaultModules = Object.fromEntries(
@@ -56,6 +56,7 @@ function validateModules(modules: unknown): asserts modules is Record<string, Re
 /** One-time bootstrap for the already-created initial Firebase Auth account. */
 export const bootstrapFirstAdmin = onCall(async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  if (!INITIAL_ADMIN_EMAIL) throw new HttpsError('failed-precondition', 'El alta inicial del administrador no está configurada.');
   const callerEmail = (request.auth.token.email || '').trim().toLowerCase();
   if (callerEmail !== INITIAL_ADMIN_EMAIL) throw new HttpsError('permission-denied', 'Esta cuenta no está autorizada para el alta inicial.');
 
