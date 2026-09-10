@@ -112,67 +112,105 @@ s = replace_function(s, 'deleteWorkerFromAccount', """export async function dele
 }""")
 s = replace_function(s, 'syncDeletedWorkerToAccount', """export async function syncDeletedWorkerToAccount(userId: string, deletedPerson: DeletedPerson): Promise<void> {
   if (!userId || !deletedPerson?.person?.id) return;
-  const worker = { ...deletedPerson.person, ownerId: auth.currentUser?.uid || userId };
-  await setDoc(doc(db, 'trash', String(deletedPerson.person.id)), sanitizeForFirestore({ person: worker, fechaEliminacion: deletedPerson.fechaEliminacion || new Date().toISOString(), ownerId: auth.currentUser?.uid || userId }));
+  const ownerId = auth.currentUser?.uid || userId;
+  const cleanTrash = sanitizeForFirestore({
+    ...deletedPerson,
+    person: { ...deletedPerson.person, ownerId },
+    ownerId,
+    _lastUpdated: new Date().toISOString()
+  });
+  await setDoc(doc(db, 'trash', `${ownerId}_${deletedPerson.person.id}`), cleanTrash);
 }""")
-s = replace_function(s, 'deleteFromAccountTrash', """export async function deleteFromAccountTrash(_userId: string, personId: number): Promise<void> {
-  await deleteDoc(doc(db, 'trash', String(personId)));
+s = replace_function(s, 'deleteFromAccountTrash', """export async function deleteFromAccountTrash(userId: string, personId: number): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !personId) return;
+  const snapshot = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid), where('person.id', '==', personId)));
+  await Promise.all(snapshot.docs.map(item => deleteDoc(item.ref)));
 }""")
 s = replace_function(s, 'fetchAccountData', """export async function fetchAccountData(userId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null }> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return { workers: [], trash: [], settings: null };
-  const workersSnap = await getDocs(collection(db, 'workers'));
-  const workers = workersSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as Person);
-  const trashSnap = await getDocs(collection(db, 'trash'));
-  const trash = trashSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson);
+  const workersSnap = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid)));
+  const workers = workersSnap.docs.map(d => d.data() as Person);
+  const trashSnap = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid)));
+  const trash = trashSnap.docs.map(d => d.data() as DeletedPerson);
   return { workers, trash, settings: null };
 }""")
 s = replace_function(s, 'subscribeToAccountWorkers', """export function subscribeToAccountWorkers(userId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
-  return onSnapshot(collection(db, 'workers'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), onError);
+  return onSnapshot(query(collection(db, 'workers'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), onError);
 }""")
 s = replace_function(s, 'subscribeToAccountTrash', """export function subscribeToAccountTrash(userId: string, onUpdate: (trash: DeletedPerson[]) => void, onError?: (err: any) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
-  return onSnapshot(collection(db, 'trash'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson)), onError);
+  return onSnapshot(query(collection(db, 'trash'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => d.data() as DeletedPerson)), onError);
 }""")
 
-# CRUD worker functions: permanent source of truth is top-level workers/trash.
+# CRUD worker functions use UID-scoped document IDs so two users can safely have the same local numeric worker ID.
 s = replace_function(s, 'createFirestoreWorker', """export async function createFirestoreWorker(userId: string, worker: Person): Promise<void> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid || !worker?.id) return;
-  const payload = sanitizeForFirestore({ ...worker, ownerId: worker.ownerId || uid, sincronizadoEnNube: true, _lastUpdated: new Date().toISOString() });
-  await setDoc(doc(db, 'workers', String(worker.id)), payload, { merge: true });
+  const ownerId = worker.ownerId || uid;
+  if (ownerId !== uid) throw new Error('No puedes guardar un trabajador a nombre de otro usuario.');
+  const payload = sanitizeForFirestore({
+    ...worker,
+    ownerId,
+    createdBy: worker.createdBy || uid,
+    updatedBy: uid,
+    createdAt: worker.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    sincronizadoEnNube: true,
+  });
+  await setDoc(doc(db, 'workers', `${uid}_${worker.id}`), payload, { merge: true });
 }""")
-s = replace_function(s, 'updateFirestoreWorker', """export async function updateFirestoreWorker(userId: string, worker: Person): Promise<void> { return createFirestoreWorker(userId, worker); }""")
+s = replace_function(s, 'updateFirestoreWorker', """export async function updateFirestoreWorker(userId: string, worker: Person): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !worker?.id) return;
+  const snapshot = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid), where('id', '==', worker.id)));
+  const payload = sanitizeForFirestore({ ...worker, ownerId: uid, updatedBy: uid, updatedAt: new Date().toISOString(), sincronizadoEnNube: true });
+  if (snapshot.empty) {
+    await setDoc(doc(db, 'workers', `${uid}_${worker.id}`), { ...payload, createdBy: uid, createdAt: new Date().toISOString() });
+  } else {
+    await Promise.all(snapshot.docs.map(item => updateDoc(item.ref, payload)));
+  }
+}""")
 s = replace_function(s, 'deleteFirestoreWorker', """export async function deleteFirestoreWorker(userId: string, workerId: number | string, deletedRecord?: DeletedPerson): Promise<void> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid || !workerId) return;
-  await deleteDoc(doc(db, 'workers', String(workerId)));
-  if (deletedRecord) await setDoc(doc(db, 'trash', String(workerId)), sanitizeForFirestore({ ...deletedRecord, ownerId: uid, _lastUpdated: new Date().toISOString() }));
+  const workers = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid), where('id', '==', Number(workerId))));
+  if (workers.empty) throw new Error('El trabajador que intentas eliminar no existe.');
+  const trashPayload = deletedRecord ? sanitizeForFirestore({ ...deletedRecord, ownerId: uid, _lastUpdated: new Date().toISOString() }) : null;
+  if (trashPayload) await setDoc(doc(db, 'trash', `${uid}_${workerId}`), trashPayload);
+  await Promise.all(workers.docs.map(item => deleteDoc(item.ref)));
 }""")
 s = replace_function(s, 'restoreFirestoreWorker', """export async function restoreFirestoreWorker(userId: string, worker: Person): Promise<void> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid || !worker?.id) return;
-  await deleteDoc(doc(db, 'trash', String(worker.id)));
+  const trash = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid), where('person.id', '==', worker.id)));
+  await Promise.all(trash.docs.map(item => deleteDoc(item.ref)));
   await createFirestoreWorker(uid, worker);
 }""")
-s = replace_function(s, 'permanentDeleteFirestoreWorker', """export async function permanentDeleteFirestoreWorker(_userId: string, workerId: number | string): Promise<void> {
-  if (!workerId) return;
-  await deleteDoc(doc(db, 'trash', String(workerId)));
+s = replace_function(s, 'permanentDeleteFirestoreWorker', """export async function permanentDeleteFirestoreWorker(userId: string, workerId: number | string): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !workerId) return;
+  const trash = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid), where('person.id', '==', Number(workerId))));
+  await Promise.all(trash.docs.map(item => deleteDoc(item.ref)));
 }""")
 s = replace_function(s, 'fetchFirestoreWorkers', """export async function fetchFirestoreWorkers(userId: string): Promise<Person[]> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return [];
-  const snap = await getDocs(collection(db, 'workers'));
-  return snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person));
+  const snap = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid)));
+  return snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person));
 }""")
 s = replace_function(s, 'subscribeToFirestoreUserWorkers', """export function subscribeToFirestoreUserWorkers(userId: string, onUpdate: (workers: Person[]) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
-  return onSnapshot(collection(db, 'workers'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), err => handleFirestoreError(err, OperationType.GET, 'workers'));
+  return onSnapshot(query(collection(db, 'workers'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), err => handleFirestoreError(err, OperationType.GET, 'workers'));
 }""")
+
+# Firestore query/where imports are required by the ownership-safe queries above.
+s = s.replace("  Unsubscribe\n} from 'firebase/firestore';", "  Unsubscribe,\n  query,\n  where,\n  updateDoc\n} from 'firebase/firestore';")
 
 # Workspace worker API is now a compatibility facade over the same top-level source.
 s = replace_function(s, 'syncWorkerToWorkspace', """export async function syncWorkerToWorkspace(_workspaceId: string, person: Person): Promise<void> { return createFirestoreWorker(auth.currentUser?.uid || '', person); }""")
@@ -202,5 +240,3 @@ if start >= 0:
         a = a[:start] + replacement + a[end:]
 a = a.replace("setToast({ message: 'Sin conexión a internet. Los cambios se guardarán localmente.', type: 'error' });", "setToast({ message: 'Sin conexión a internet. Los cambios se aplicarán cuando se recupere la conexión.', type: 'error' });")
 app.write_text(a)
-
-# Intentionally no EOF shell marker: this file is executed directly by Python in CI.
