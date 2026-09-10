@@ -50,7 +50,7 @@ export function AdminPanel({onClose}:AdminPanelProps){
  const saveShare=async()=>{if(!share.resourceId||!share.ownerId||!share.userId){setError('Indica recurso, propietario y usuario destinatario.');return;}await run(()=>setDataPermission(share));};
  const filteredUserLabel=useMemo(()=>users.find(u=>u.id===auditUserFilter),[users,auditUserFilter]);
 
- return <section className="min-h-screen bg-slate-50 dark:bg-slate-950">
+ return <section className="w-full bg-transparent">
   <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
    <header className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 p-2.5"><ShieldCheck size={22}/></div><div><h1 className="text-2xl font-bold">Administración</h1><p className="text-sm text-slate-500">Usuarios, permisos, compartición y auditoría</p></div></div>

@@ -15,6 +15,7 @@ import { CameraScannerModal } from './components/CameraScannerModal';
 import { GestionCitas } from './components/GestionCitas';
 import { CalendarioIntegrado } from './components/CalendarioIntegrado';
 import { SubcontratasSection } from './components/SubcontratasSection';
+import { AdminPanel } from './components/AdminPanel';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
@@ -2605,6 +2606,12 @@ function App() {
               isBackingUpToDrive={isBackingUpToDrive}
               setToast={setToast}
             />
+          )}
+
+          {activeView === 'administracion' && (
+            <div className="max-w-7xl mx-auto">
+              <AdminPanel onClose={() => setActiveView('dashboard')} />
+            </div>
           )}
 
           {activeView === 'papelera' && (
