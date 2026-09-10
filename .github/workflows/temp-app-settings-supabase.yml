@@ -37,3 +37,4 @@ jobs:
           git commit -m 'refactor: persist business settings in Supabase'
           git pull --rebase origin feat/firebase-multiusuario
           git push origin HEAD:feat/firebase-multiusuario
+      # rerun after import-safety fix
