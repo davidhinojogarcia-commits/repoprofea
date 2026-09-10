@@ -3,6 +3,7 @@ import type { SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
 import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
+import { hydrateStoredPdfConfig } from '../src/lib/exportUtils';
 
 
 interface AuthGateProps { children: React.ReactNode; }
@@ -38,9 +39,14 @@ export function AuthGate({ children }: AuthGateProps) {
       try {
         const currentRole = await getCurrentRole();
         if (currentRole) {
-          await hydrateStoredSubcontratasPreferences().catch(error =>
-            console.warn('No se pudieron precargar preferencias de subcontratas:', error)
-          );
+          await Promise.all([
+            hydrateStoredSubcontratasPreferences().catch(error =>
+              console.warn('No se pudieron precargar preferencias de subcontratas:', error)
+            ),
+            hydrateStoredPdfConfig().catch(error =>
+              console.warn('No se pudo precargar la configuración PDF:', error)
+            ),
+          ]);
         }
         setRole(currentRole);
         if (!currentRole) {
