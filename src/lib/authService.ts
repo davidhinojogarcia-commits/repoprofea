@@ -7,7 +7,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { auth } from './firebase';
-import { bootstrapFirstAdmin } from './functions';
+import { bootstrapFirstAdmin, touchLogin } from './functions';
 
 export type AppRole = 'admin' | 'user';
 
@@ -31,20 +31,17 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const normalizedEmail = email.trim().toLowerCase();
   const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
 
-  // The initial administrator is created manually in Firebase Authentication.
-  // On first login, bootstrap the secure Custom Claim server-side. The callable
-  // function is one-time and refuses to run after an admin already exists.
   if (normalizedEmail === INITIAL_ADMIN_EMAIL) {
     try {
       await bootstrapFirstAdmin({});
       await credential.user.getIdToken(true);
     } catch (error) {
-      // If the admin is already bootstrapped, login must continue normally.
       const code = (error as { code?: string })?.code;
       if (code !== 'functions/failed-precondition') throw error;
     }
   }
 
+  await touchLogin({});
   return credential.user;
 }
 
@@ -79,6 +76,8 @@ export function authErrorMessage(error: unknown): string {
       return 'Error de conexión con Firebase. Comprueba tu conexión a internet.';
     case 'functions/permission-denied':
       return 'La cuenta no tiene permisos de administrador configurados.';
+    case 'functions/failed-precondition':
+      return 'La configuración inicial de la cuenta no se ha podido completar.';
     case 'functions/unavailable':
       return 'El servicio de autenticación no está disponible temporalmente.';
     default:
