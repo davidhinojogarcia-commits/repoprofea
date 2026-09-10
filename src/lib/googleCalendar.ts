@@ -1,4 +1,4 @@
-import { googleSignIn, getAccessToken } from './firebase';
+import { googleSignIn, getAccessToken } from './supabaseData';
 
 export interface CalendarEventInput {
   summary: string;

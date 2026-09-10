@@ -1,5 +1,5 @@
 import { supabase, type SupabaseUser } from './supabase';
-import { auth } from './firebase';
+import { auth } from './supabaseData';
 
 export type AppRole = 'admin' | 'user';
 export interface AuthProfile {

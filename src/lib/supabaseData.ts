@@ -1,7 +1,7 @@
 import { supabase, type SupabaseUser } from './supabase';
 import { Person, DeletedPerson, PdfCustomConfig, UserAccount } from '../../types';
 
-// Capa temporal de compatibilidad para imports históricos. No usa Firebase SDK ni Firestore.
+// Adaptador de datos Supabase para trabajadores, papelera y ajustes.
 export const auth = { currentUser: null as SupabaseUser | null };
 
 export const initAuth = (
@@ -35,14 +35,14 @@ export enum OperationType {
   CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write',
 }
 
-export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+export function sanitizeForDatabase<T extends Record<string, any>>(obj: T): T {
   if (!obj || typeof obj !== 'object') return obj;
   const clean: any = {};
   for (const [key, value] of Object.entries(obj)) {
     if (key === 'documentos' || value === undefined) continue;
     if (value instanceof Date) clean[key] = value.toISOString();
-    else if (Array.isArray(value)) clean[key] = value.filter(v => v !== undefined).map(v => v && typeof v === 'object' && !(v instanceof Date) ? sanitizeForFirestore(v) : v);
-    else if (value && typeof value === 'object') clean[key] = sanitizeForFirestore(value as any);
+    else if (Array.isArray(value)) clean[key] = value.filter(v => v !== undefined).map(v => v && typeof v === 'object' && !(v instanceof Date) ? sanitizeForDatabase(v) : v);
+    else if (value && typeof value === 'object') clean[key] = sanitizeForDatabase(value as any);
     else clean[key] = value;
   }
   return clean;
@@ -65,21 +65,32 @@ function uid() {
   return auth.currentUser.uid;
 }
 
+function workerFields(p: Partial<Person>) {
+  return {
+    obra_id: (p as any).obraId || (p as any).obra_id || null,
+    supervisor_responsable: p.supervisorResponsable || '', num_oferta: p.numOferta || '', obra: p.obra || '',
+    categoria: p.categoria || '', quincena: p.quincena || '', apellidos_nombre: p.apellidosNombre || '', dni: p.dni || '',
+    fecha_nacimiento: p.fechaNacimiento || '', periodo_inicio: p.periodoInicio || '', periodo_fin: p.periodoFin || '',
+    telefono: p.telefono || '', calzado: p.calzado || '', formacion: p.formacion || '', lugar_formacion: p.lugarFormacion || null,
+    cita_dia: p.citaDia || '', cita_hora: p.citaHora || '', sitio_reconocimiento: p.sitioReconocimiento || '',
+    documentacion_completa: p.documentacionCompleta || '', observaciones: p.observaciones || null, fecha_registro: p.fechaRegistro || '',
+    necesita_reconocimiento: p.necesitaReconocimiento || null, aptitud_medica: p.aptitudMedica || null,
+    limitaciones_aptitud: p.limitacionesAptitud || null, reconocimiento_estado: p.reconocimientoEstado || null,
+    reconocimiento_fecha: p.reconocimientoFecha || null, reconocimiento_validez: p.reconocimientoValidez || null,
+    reconocimiento_limitaciones: p.reconocimientoLimitaciones || null, reconocimiento_observaciones: p.reconocimientoObservaciones || null,
+  };
+}
+
 function workerRow(p: Person, ownerId: string) {
   const now = new Date().toISOString();
   return {
-    owner_id: ownerId,
-    id: Number(p.id),
-    data: sanitizeForFirestore(p),
-    created_by: ownerId,
-    created_at: p.fechaRegistro || now,
-    updated_by: ownerId,
-    updated_at: now,
+    owner_id: ownerId, id: Number(p.id), ...workerFields(p), data: sanitizeForDatabase(p),
+    created_by: ownerId, created_at: p.fechaRegistro || now, updated_by: ownerId, updated_at: now,
   };
 }
 
 async function verifyWorkerPersisted(ownerId: string, personId: number) {
-  const rows = await supabase.query('workers', {
+  const rows = await supabase.query('trabajadores', {
     query: `select=owner_id,id&owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}&limit=1`,
   });
   if (!rows?.[0]) throw new Error(`Supabase no confirmó la persistencia del trabajador ${personId}.`);
@@ -91,7 +102,7 @@ export async function createFirestoreWorker(_uid: string, person: Person) {
   const ownerId = uid();
   const personId = Number(person.id);
   if (!Number.isFinite(personId)) throw new Error('ID de trabajador inválido');
-  await supabase.query('workers', {
+  await supabase.query('trabajadores', {
     method: 'POST',
     prefer: 'resolution=merge-duplicates,return=representation',
     body: workerRow(person, ownerId),
@@ -100,18 +111,18 @@ export async function createFirestoreWorker(_uid: string, person: Person) {
 }
 export async function updateFirestoreWorker(_uid: string, personId: number, person: Partial<Person>) {
   const ownerId = uid();
-  const currentRows = await supabase.query('workers', {
+  const currentRows = await supabase.query('trabajadores', {
     query: `select=data&owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}&limit=1`,
   });
   if (!currentRows?.[0]) throw new Error('El trabajador no existe o no tienes permiso para modificarlo.');
-  const merged = { ...(currentRows[0].data || {}), ...sanitizeForFirestore(person as any), id: personId };
-  await supabase.query('workers', { method: 'PATCH', prefer: 'return=representation', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}`, body: { data: merged, updated_by: ownerId, updated_at: new Date().toISOString() } });
+  const merged = { ...(currentRows[0].data || {}), ...sanitizeForDatabase(person as any), id: personId };
+  await supabase.query('trabajadores', { method: 'PATCH', prefer: 'return=representation', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}`, body: { ...workerFields(merged), data: merged, updated_by: ownerId, updated_at: new Date().toISOString() } });
   await verifyWorkerPersisted(ownerId, personId);
 }
 export async function deleteFirestoreWorker(_uid: string, personId: number, deletedRecord?: DeletedPerson) {
   const ownerId = uid();
   if (deletedRecord) await syncDeletedWorkerToAccount(ownerId, deletedRecord);
-  await supabase.query('workers', { method: 'DELETE', prefer: 'return=minimal', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}` });
+  await supabase.query('trabajadores', { method: 'DELETE', prefer: 'return=minimal', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}` });
 }
 export async function restoreFirestoreWorker(_uid: string, person: Person) {
   await createFirestoreWorker(uid(), person);
@@ -134,7 +145,7 @@ function mapTrash(row: any): DeletedPerson {
 }
 
 export async function fetchFirestoreWorkers(_uid: string) {
-  const rows = await supabase.query('workers', { query: 'select=owner_id,id,data,created_by,created_at,updated_by,updated_at&order=updated_at.desc' });
+  const rows = await supabase.query('trabajadores', { query: 'select=owner_id,id,data,created_by,created_at,updated_by,updated_at&order=updated_at.desc' });
   return (rows || []).map(mapWorker);
 }
 export async function fetchAccountTrash(_uid: string) {
@@ -145,7 +156,7 @@ export async function syncDeletedWorkerToAccount(_uid: string, d: DeletedPerson)
   const ownerId = uid();
   const personId = Number(d.person?.id);
   if (!Number.isFinite(personId)) throw new Error('ID de trabajador inválido para papelera');
-  await supabase.query('trash', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { owner_id: ownerId, id: personId, data: sanitizeForFirestore(d), created_by: ownerId, created_at: new Date().toISOString(), updated_by: ownerId, updated_at: new Date().toISOString() } });
+  await supabase.query('trash', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { owner_id: ownerId, id: personId, data: sanitizeForDatabase(d), created_by: ownerId, created_at: new Date().toISOString(), updated_by: ownerId, updated_at: new Date().toISOString() } });
 }
 export async function deleteFromAccountTrash(_uid: string, id: number) {
   const ownerId = uid();
@@ -159,7 +170,7 @@ export async function fetchUserAccountSettings(_uid: string) {
 }
 export async function saveUserAccountSettings(_uid: string, settings: UserAccountSettings) {
   const ownerId = uid();
-  await supabase.query('user_settings', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { user_id: ownerId, settings: sanitizeForFirestore(settings), updated_by: ownerId, updated_at: new Date().toISOString() } });
+  await supabase.query('user_settings', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { user_id: ownerId, settings: sanitizeForDatabase(settings), updated_by: ownerId, updated_at: new Date().toISOString() } });
 }
 export async function fetchAccountData(_uid?: string) {
   return { workers: await fetchFirestoreWorkers(uid()), trash: await fetchAccountTrash(uid()), settings: await fetchUserAccountSettings(uid()) };

@@ -1,9 +1,9 @@
 import { pgTable, serial, text, timestamp, integer } from 'drizzle-orm/pg-core';
 
-// Users table authenticated via Firebase Auth
+// Users table authenticated via Supabase Auth
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
-  uid: text('uid').notNull().unique(), // Firebase Auth UID
+  uid: text('uid').notNull().unique(), // Supabase Auth user ID
   email: text('email').notNull(),
   displayName: text('display_name'),
   role: text('role').default('user'),

@@ -9,7 +9,7 @@ import {
   syncDeletedWorkerToCloud,
   fetchGroupData,
   auth
-} from './src/lib/firebase';
+} from './src/lib/supabaseData';
 import { Header } from './components/Header';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
@@ -981,7 +981,7 @@ function App() {
         await syncWorkerToWorkspace(targetWsId, finalPerson);
         if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, finalPerson);
       }, {
-        detail: `${finalPerson.apellidosNombre} actualizado en Firebase Firestore.`
+        detail: `${finalPerson.apellidosNombre} actualizado en Supabase.`
       }).catch(err => console.error(err));
     } else if (googleUser?.uid && !isOffline) {
       syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => {
@@ -1036,7 +1036,7 @@ function App() {
           }
         }
       }, {
-        detail: `${selectedIds.length} trabajadores actualizados en Firestore.`
+        detail: `${selectedIds.length} trabajadores actualizados en Supabase.`
       }).catch(err => {
         console.error("Error syncing worker to workspace during bulk update:", err);
       });
