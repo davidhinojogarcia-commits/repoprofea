@@ -52,19 +52,9 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string | null) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      // Save or update user profile in Firestore
-      saveUserProfile(user).catch(err => console.warn('Could not auto-save user profile:', err));
-      if (onAuthSuccess) {
-        onAuthSuccess(user, cachedAccessToken);
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) {
-        onAuthFailure();
-      }
-    }
+  return onAuthStateChanged(auth, (user: User | null) => {
+    if (user) onAuthSuccess?.(user, null);
+    else onAuthFailure?.();
   });
 };
 
@@ -331,81 +321,40 @@ export interface UserAccountSettings {
  * Fetches a workspace by ID or by Owner Email
  */
 export async function getWorkspaceByIdOrEmail(idOrEmail: string): Promise<Workspace | null> {
-  if (!idOrEmail || typeof idOrEmail !== 'string') return null;
-  const trimmed = idOrEmail.trim();
-  if (!trimmed) return null;
-  const cleanKey = trimmed.includes('@') ? canonicalizeEmailKey(trimmed) : trimmed;
-  const workspaceRef = doc(db, 'workspaces', cleanKey);
-  try {
-    const snap = await getDoc(workspaceRef);
-    if (snap.exists()) {
-      return snap.data() as Workspace;
-    }
-    return null;
-  } catch (error) {
-    console.warn("Could not fetch workspace:", error);
-    return null;
-  }
+  const user = auth.currentUser;
+  if (!user) return null;
+  const requested = (idOrEmail || '').trim().toLowerCase();
+  if (!requested || (requested.includes('@') && requested !== (user.email || '').toLowerCase())) return null;
+  return getOrCreateUserWorkspace(user);
 }
 
 /**
  * Finds all workspaces where user email is listed as an authorized member
  */
 export async function fetchSharedWorkspacesForEmail(userEmail: string): Promise<Workspace[]> {
-  if (!userEmail) return [];
-  const cleanEmail = userEmail.trim().toLowerCase();
-  const workspacesRef = collection(db, 'workspaces');
-  try {
-    const snap = await getDocs(workspacesRef);
-    const results: Workspace[] = [];
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as Workspace;
-      if (
-        data.ownerEmail?.toLowerCase() === cleanEmail ||
-        data.sharedWithEmails?.some(e => e.toLowerCase() === cleanEmail) ||
-        data.sharedWith?.some(m => m.email?.toLowerCase() === cleanEmail)
-      ) {
-        results.push(data);
-      }
-    });
-    return results;
-  } catch (error) {
-    console.warn("Error fetching shared workspaces for email:", error);
-    return [];
-  }
+  const user = auth.currentUser;
+  if (!user || (user.email || '').toLowerCase() != (userEmail || '').trim().toLowerCase()) return [];
+  return [await getOrCreateUserWorkspace(user)];
 }
 
 /**
  * Finds a workspace by 6-digit access code
  */
-export async function findWorkspaceByAccessCode(code: string): Promise<Workspace | null> {
-  if (!code || code.trim().length < 4) return null;
-  const cleanCode = code.trim();
-  const workspacesRef = collection(db, 'workspaces');
-  try {
-    const snap = await getDocs(workspacesRef);
-    let matched: Workspace | null = null;
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as Workspace;
-      if (data.accessCode === cleanCode) {
-        matched = data;
-      }
-    });
-    return matched;
-  } catch (error) {
-    console.warn("Error finding workspace by code:", error);
-    return null;
-  }
-}
+export async function findWorkspaceByAccessCode(_code: string): Promise<Workspace | null> { return auth.currentUser ? getOrCreateUserWorkspace(auth.currentUser) : null; }
 
 /**
  * Gets or creates the primary Workspace for a user based on their Google account
  */
-export async function getOrCreateUserWorkspace(user: {
-  uid: string;
-  email: string;
-  displayName?: string | null;
-  photoURL?: string | null;
+export async function getOrCreateUserWorkspace(user: { uid: string; email: string; displayName?: string | null; photoURL?: string | null }): Promise<Workspace> {
+  const email = (user.email || '').trim().toLowerCase();
+  const id = canonicalizeEmailKey(email);
+  return {
+    id,
+    name: `Espacio de ${user.displayName || email.split('@')[0] || 'Usuario'}`,
+    ownerEmail: email, ownerUid: user.uid, ownerName: user.displayName || email.split('@')[0] || 'Usuario',
+    ownerPhoto: user.photoURL || '', sharedWith: [], sharedWithEmails: [email],
+    accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString()
+  };
 }): Promise<Workspace> {
   const workspaceId = canonicalizeEmailKey(user.email);
   const workspaceRef = doc(db, 'workspaces', workspaceId);
@@ -591,120 +540,29 @@ export const DEFAULT_WORKSPACE_ID = 'david_hinojo_garcia_dipucadiz_es';
 /**
  * Syncs a single worker to the shared workspace in the server store and Firestore
  */
-export async function syncWorkerToWorkspace(workspaceId: string, person: Person): Promise<void> {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  if (!cleanWsId || !person?.id) return;
-  const sanitized = sanitizeForFirestore(person);
-
-  // 1. Instantly persist to full-stack server database (shares instantly with all devices)
-  try {
-    await fetch('/api/database/save-worker', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: cleanWsId, worker: sanitized })
-    });
-  } catch (err) {
-    console.warn("Could not post worker to /api/database/save-worker:", err);
-  }
-
-  // 2. Also update Firestore if quota is available
-  if (isFirestoreQuotaExceeded) return;
-  try {
-    const workerRef = doc(db, 'workspaces', cleanWsId, 'workers', String(person.id));
-    await setDoc(workerRef, {
-      ...sanitized,
-      _lastUpdated: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `workspaces/${cleanWsId}/workers/${person.id}`);
-  }
-}
+export async function syncWorkerToWorkspace(_workspaceId: string, person: Person): Promise<void> { return createFirestoreWorker(auth.currentUser?.uid || '', person); }
 
 /**
  * Deletes a worker from the shared workspace in the server store and Firestore
  */
-export async function deleteWorkerFromWorkspace(workspaceId: string, personId: number, deletedRecord?: DeletedPerson): Promise<void> {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  if (!cleanWsId || !personId) return;
-
-  // 1. Server database
-  try {
-    await fetch('/api/database/delete-worker', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: cleanWsId, workerId: personId, deletedRecord })
-    });
-  } catch (err) {
-    console.warn("Could not post delete to /api/database/delete-worker:", err);
-  }
-
-  // 2. Firestore
-  if (isFirestoreQuotaExceeded) return;
-  try {
-    const workerRef = doc(db, 'workspaces', cleanWsId, 'workers', String(personId));
-    await deleteDoc(workerRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `workspaces/${cleanWsId}/workers/${personId}`);
-  }
-}
+export async function deleteWorkerFromWorkspace(_workspaceId: string, personId: number, deletedRecord?: DeletedPerson): Promise<void> { return deleteFirestoreWorker(auth.currentUser?.uid || '', personId, deletedRecord); }
 
 /**
  * Syncs a deleted worker to the workspace trash bin
  */
-export async function syncDeletedWorkerToWorkspace(workspaceId: string, deletedPerson: DeletedPerson): Promise<void> {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  if (!cleanWsId || !deletedPerson?.person?.id) return;
-
-  // 1. Server database
-  try {
-    await fetch('/api/database/delete-worker', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: cleanWsId, workerId: deletedPerson.person.id, deletedRecord: deletedPerson })
-    });
-  } catch (err) {
-    console.warn("Could not sync deleted worker to server database:", err);
-  }
-
-  // 2. Firestore
-  if (isFirestoreQuotaExceeded) return;
-  try {
-    const trashRef = doc(db, 'workspaces', cleanWsId, 'trash', String(deletedPerson.person.id));
-    const sanitizedPerson = sanitizeForFirestore(deletedPerson.person);
-    await setDoc(trashRef, {
-      person: sanitizedPerson,
-      fechaEliminacion: deletedPerson.fechaEliminacion || new Date().toISOString(),
-      _lastUpdated: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `workspaces/${cleanWsId}/trash/${deletedPerson.person.id}`);
-  }
-}
+export async function syncDeletedWorkerToWorkspace(_workspaceId: string, deletedPerson: DeletedPerson): Promise<void> { return syncDeletedWorkerToAccount(auth.currentUser?.uid || '', deletedPerson); }
 
 /**
  * Permanently removes a worker from the workspace trash bin
  */
-export async function deleteFromWorkspaceTrash(workspaceId: string, personId: number): Promise<void> {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  if (!cleanWsId || !personId) return;
-
-  if (isFirestoreQuotaExceeded) return;
-  try {
-    const trashRef = doc(db, 'workspaces', cleanWsId, 'trash', String(personId));
-    await deleteDoc(trashRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `workspaces/${cleanWsId}/trash/${personId}`);
-  }
-}
+export async function deleteFromWorkspaceTrash(_workspaceId: string, personId: number): Promise<void> { return deleteFromAccountTrash(auth.currentUser?.uid || '', personId); }
 
 /**
  * Fetches all workers, trash, settings and metadata for a workspace
  */
-export async function fetchWorkspaceData(workspaceId: string): Promise<{ 
-  workers: Person[]; 
-  trash: DeletedPerson[]; 
-  settings: UserAccountSettings | null;
-  workspace: Workspace | null;
+export async function fetchWorkspaceData(_workspaceId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null; workspace: Workspace | null }> {
+  const data = await fetchAccountData(auth.currentUser?.uid || '');
+  return { ...data, workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null };
 }> {
   const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
 
@@ -821,93 +679,12 @@ export async function triggerFirestoreDatabaseSync(workspaceId?: string): Promis
 /**
  * Subscribes to real-time changes in workers for a workspace (using both server polling and Firestore onSnapshot)
  */
-export function subscribeToWorkspaceWorkers(
-  workspaceId: string, 
-  onUpdate: (workers: Person[]) => void,
-  onError?: (err: any) => void
-): Unsubscribe {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  let isUnsubscribed = false;
-  let lastServerUpdated = '';
-
-  // Polling server endpoint for instant multi-device sync
-  const pollServer = async () => {
-    if (isUnsubscribed) return;
-    try {
-      const url = `/api/database/poll/${encodeURIComponent(cleanWsId)}${lastServerUpdated ? `?since=${encodeURIComponent(lastServerUpdated)}` : ''}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.hasChanged && Array.isArray(data.workers)) {
-          lastServerUpdated = data.lastUpdated || new Date().toISOString();
-          onUpdate(data.workers);
-        }
-      }
-    } catch {
-      // ignore transient network errors
-    }
-  };
-
-  // Initial poll
-  pollServer();
-  const pollTimer = setInterval(pollServer, 3000);
-
-  // Also hook Firestore snapshot
-  let unsubFirestore: Unsubscribe = () => {};
-  try {
-    const workersRef = collection(db, 'workspaces', cleanWsId, 'workers');
-    unsubFirestore = onSnapshot(workersRef, (snapshot) => {
-      const workers: Person[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        delete data._lastUpdated;
-        workers.push(data as Person);
-      });
-      if (workers.length > 0) {
-        onUpdate(workers);
-      }
-    }, (error) => {
-      console.warn("Firestore workers listener warning:", error);
-      if (onError) onError(error);
-    });
-  } catch (err) {
-    console.warn("Error setting up Firestore worker listener:", err);
-  }
-
-  return () => {
-    isUnsubscribed = true;
-    clearInterval(pollTimer);
-    try {
-      unsubFirestore();
-    } catch {}
-  };
-}
+export function subscribeToWorkspaceWorkers(_workspaceId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe { return subscribeToAccountWorkers(auth.currentUser?.uid || '', onUpdate, onError); }
 
 /**
  * Subscribes to real-time changes in trash for a workspace
  */
-export function subscribeToWorkspaceTrash(
-  workspaceId: string, 
-  onUpdate: (trash: DeletedPerson[]) => void,
-  onError?: (err: any) => void
-): Unsubscribe {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  if (!cleanWsId) return () => {};
-  const trashRef = collection(db, 'workspaces', cleanWsId, 'trash');
-
-  return onSnapshot(trashRef, (snapshot) => {
-    const trash: DeletedPerson[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      trash.push(data as DeletedPerson);
-    });
-    onUpdate(trash);
-  }, (error) => {
-    console.warn("Error subscribing to workspace trash:", error);
-    if (onError) onError(error);
-  });
-}
+export function subscribeToWorkspaceTrash(_workspaceId: string, onUpdate: (trash: DeletedPerson[]) => void, onError?: (err: any) => void): Unsubscribe { return subscribeToAccountTrash(auth.currentUser?.uid || '', onUpdate, onError); }
 
 /**
  * Saves custom catalogs/settings to the workspace in server store and Firestore
@@ -1089,31 +866,14 @@ export async function saveUserProfile(user: User): Promise<void> {
  * Syncs a single worker to the user's account in Firestore
  */
 export async function syncWorkerToAccount(userId: string, person: Person): Promise<void> {
-  if (!userId || !person?.id) return;
-  const workerRef = doc(db, 'users', userId, 'workers', String(person.id));
-  const sanitized = sanitizeForFirestore(person);
-
-  try {
-    await setDoc(workerRef, {
-      ...sanitized,
-      _lastUpdated: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `users/${userId}/workers/${person.id}`);
-  }
+  return createFirestoreWorker(userId, person);
 }
 
 /**
  * Deletes a worker from the user's account in Firestore
  */
 export async function deleteWorkerFromAccount(userId: string, personId: number): Promise<void> {
-  if (!userId || !personId) return;
-  const workerRef = doc(db, 'users', userId, 'workers', String(personId));
-  try {
-    await deleteDoc(workerRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/workers/${personId}`);
-  }
+  return deleteFirestoreWorker(userId, personId);
 }
 
 /**
@@ -1121,40 +881,28 @@ export async function deleteWorkerFromAccount(userId: string, personId: number):
  */
 export async function syncDeletedWorkerToAccount(userId: string, deletedPerson: DeletedPerson): Promise<void> {
   if (!userId || !deletedPerson?.person?.id) return;
-  const trashRef = doc(db, 'users', userId, 'trash', String(deletedPerson.person.id));
-  const sanitizedPerson = sanitizeForFirestore(deletedPerson.person);
-
-  try {
-    await setDoc(trashRef, {
-      person: sanitizedPerson,
-      fechaEliminacion: deletedPerson.fechaEliminacion || new Date().toISOString(),
-      _lastUpdated: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `users/${userId}/trash/${deletedPerson.person.id}`);
-  }
+  const worker = { ...deletedPerson.person, ownerId: auth.currentUser?.uid || userId };
+  await setDoc(doc(db, 'trash', String(deletedPerson.person.id)), sanitizeForFirestore({ person: worker, fechaEliminacion: deletedPerson.fechaEliminacion || new Date().toISOString(), ownerId: auth.currentUser?.uid || userId }));
 }
 
 /**
  * Permanently removes a worker from the trash bin in the user's account
  */
-export async function deleteFromAccountTrash(userId: string, personId: number): Promise<void> {
-  if (!userId || !personId) return;
-  const trashRef = doc(db, 'users', userId, 'trash', String(personId));
-  try {
-    await deleteDoc(trashRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/trash/${personId}`);
-  }
+export async function deleteFromAccountTrash(_userId: string, personId: number): Promise<void> {
+  await deleteDoc(doc(db, 'trash', String(personId)));
 }
 
 /**
  * Fetches all workers, trash, and settings from the user account in Firestore
  */
-export async function fetchAccountData(userId: string): Promise<{ 
-  workers: Person[]; 
-  trash: DeletedPerson[]; 
-  settings: UserAccountSettings | null 
+export async function fetchAccountData(userId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null }> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return { workers: [], trash: [], settings: null };
+  const workersSnap = await getDocs(collection(db, 'workers'));
+  const workers = workersSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as Person);
+  const trashSnap = await getDocs(collection(db, 'trash'));
+  const trash = trashSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson);
+  return { workers, trash, settings: null };
 }> {
   if (!userId) return { workers: [], trash: [], settings: null };
 
@@ -1203,51 +951,19 @@ export async function fetchAccountData(userId: string): Promise<{
 /**
  * Subscribes to real-time changes in workers for the user account
  */
-export function subscribeToAccountWorkers(
-  userId: string, 
-  onUpdate: (workers: Person[]) => void,
-  onError?: (err: any) => void
-): Unsubscribe {
-  if (!userId) return () => {};
-  const workersRef = collection(db, 'users', userId, 'workers');
-
-  return onSnapshot(workersRef, (snapshot) => {
-    const workers: Person[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      workers.push(data as Person);
-    });
-    onUpdate(workers);
-  }, (error) => {
-    console.error("Error subscribing to account workers:", error);
-    if (onError) onError(error);
-  });
+export function subscribeToAccountWorkers(userId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return () => {};
+  return onSnapshot(collection(db, 'workers'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), onError);
 }
 
 /**
  * Subscribes to real-time changes in trash for the user account
  */
-export function subscribeToAccountTrash(
-  userId: string, 
-  onUpdate: (trash: DeletedPerson[]) => void,
-  onError?: (err: any) => void
-): Unsubscribe {
-  if (!userId) return () => {};
-  const trashRef = collection(db, 'users', userId, 'trash');
-
-  return onSnapshot(trashRef, (snapshot) => {
-    const trash: DeletedPerson[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      trash.push(data as DeletedPerson);
-    });
-    onUpdate(trash);
-  }, (error) => {
-    console.error("Error subscribing to account trash:", error);
-    if (onError) onError(error);
-  });
+export function subscribeToAccountTrash(userId: string, onUpdate: (trash: DeletedPerson[]) => void, onError?: (err: any) => void): Unsubscribe {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return () => {};
+  return onSnapshot(collection(db, 'trash'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson)), onError);
 }
 
 /**
@@ -1611,176 +1327,61 @@ export async function deleteFirestoreAccount(accountId: string): Promise<void> {
  * CRUD: Create/Insert a worker in Firestore for a specific user
  */
 export async function createFirestoreWorker(userId: string, worker: Person): Promise<void> {
-  if (!userId || !worker || !worker.id) return;
-  const cleanUserId = canonicalizeEmailKey(userId);
-  const workerWithSync = sanitizeForFirestore({
-    ...worker,
-    sincronizadoEnNube: true,
-    ownerId: worker.ownerId || cleanUserId,
-    _lastUpdated: new Date().toISOString()
-  });
-
-  // Always persist instantly to server store
-  try {
-    await fetch('/api/database/save-worker', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: cleanUserId, worker: workerWithSync })
-    });
-  } catch (err) {
-    console.warn("Could not post worker to server store:", err);
-  }
-
-  if (isFirestoreQuotaExceeded) return;
-
-  try {
-    const wsWorkerRef = doc(db, 'workspaces', cleanUserId, 'workers', String(worker.id));
-    await setDoc(wsWorkerRef, workerWithSync, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `workspaces/${cleanUserId}/workers/${worker.id}`);
-  }
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !worker?.id) return;
+  const payload = sanitizeForFirestore({ ...worker, ownerId: worker.ownerId || uid, sincronizadoEnNube: true, _lastUpdated: new Date().toISOString() });
+  await setDoc(doc(db, 'workers', String(worker.id)), payload, { merge: true });
 }
 
 /**
  * CRUD: Update/Modify an existing worker in Firestore for a specific user
  */
-export async function updateFirestoreWorker(userId: string, worker: Person): Promise<void> {
-  await createFirestoreWorker(userId, worker);
-}
+export async function updateFirestoreWorker(userId: string, worker: Person): Promise<void> { return createFirestoreWorker(userId, worker); }
 
 /**
  * CRUD: Delete a worker in Firestore (moves to trash)
  */
-export async function deleteFirestoreWorker(
-  userId: string, 
-  workerId: number | string, 
-  deletedRecord?: DeletedPerson
-): Promise<void> {
-  if (!userId || !workerId) return;
-  const cleanUserId = canonicalizeEmailKey(userId);
-
-  // 1. Server database first
-  try {
-    await fetch('/api/database/delete-worker', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: cleanUserId, workerId, deletedRecord })
-    });
-  } catch (err) {
-    console.warn("Could not post delete to server database:", err);
-  }
-
-  if (isFirestoreQuotaExceeded) return;
-
-  try {
-    const wsWorkerRef = doc(db, 'workspaces', cleanUserId, 'workers', String(workerId));
-    await deleteDoc(wsWorkerRef);
-
-    if (deletedRecord) {
-      const wsTrashRef = doc(db, 'workspaces', cleanUserId, 'trash', String(workerId));
-      await setDoc(wsTrashRef, sanitizeForFirestore({
-        ...deletedRecord,
-        _lastUpdated: new Date().toISOString()
-      }));
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `workspaces/${cleanUserId}/workers/${workerId}`);
-  }
+export async function deleteFirestoreWorker(userId: string, workerId: number | string, deletedRecord?: DeletedPerson): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !workerId) return;
+  await deleteDoc(doc(db, 'workers', String(workerId)));
+  if (deletedRecord) await setDoc(doc(db, 'trash', String(workerId)), sanitizeForFirestore({ ...deletedRecord, ownerId: uid, _lastUpdated: new Date().toISOString() }));
 }
 
 /**
  * CRUD: Restore a worker from trash in Firestore
  */
 export async function restoreFirestoreWorker(userId: string, worker: Person): Promise<void> {
-  if (!userId || !worker || !worker.id) return;
-  const cleanUserId = canonicalizeEmailKey(userId);
-
-  if (isFirestoreQuotaExceeded) {
-    await createFirestoreWorker(userId, worker);
-    return;
-  }
-
-  try {
-    const wsTrashRef = doc(db, 'workspaces', cleanUserId, 'trash', String(worker.id));
-    await deleteDoc(wsTrashRef);
-    await createFirestoreWorker(userId, worker);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `workspaces/${cleanUserId}/trash/${worker.id}`);
-  }
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !worker?.id) return;
+  await deleteDoc(doc(db, 'trash', String(worker.id)));
+  await createFirestoreWorker(uid, worker);
 }
 
 /**
  * CRUD: Permanently delete a worker from Firestore trash
  */
-export async function permanentDeleteFirestoreWorker(userId: string, workerId: number | string): Promise<void> {
-  if (!userId || !workerId) return;
-  const cleanUserId = canonicalizeEmailKey(userId);
-
-  if (isFirestoreQuotaExceeded) return;
-
-  try {
-    const wsTrashRef = doc(db, 'workspaces', cleanUserId, 'trash', String(workerId));
-    await deleteDoc(wsTrashRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `workspaces/${cleanUserId}/trash/${workerId}`);
-  }
+export async function permanentDeleteFirestoreWorker(_userId: string, workerId: number | string): Promise<void> {
+  if (!workerId) return;
+  await deleteDoc(doc(db, 'trash', String(workerId)));
 }
 
 /**
  * CRUD: Read/List workers for a specific user from Firestore
  */
 export async function fetchFirestoreWorkers(userId: string): Promise<Person[]> {
-  if (!userId) return [];
-  const cleanUserId = canonicalizeEmailKey(userId);
-
-  try {
-    const workersRef = collection(db, 'users', cleanUserId, 'workers');
-    const snap = await getDocs(workersRef);
-    const list: Person[] = [];
-    snap.forEach((docSnap) => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      list.push({ ...data, sincronizadoEnNube: true } as Person);
-    });
-
-    if (list.length > 0) return list;
-
-    // Fallback check in workspaces
-    const wsRef = collection(db, 'workspaces', cleanUserId, 'workers');
-    const wsSnap = await getDocs(wsRef);
-    const wsList: Person[] = [];
-    wsSnap.forEach((docSnap) => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      wsList.push({ ...data, sincronizadoEnNube: true } as Person);
-    });
-    return wsList;
-  } catch (error) {
-    console.warn(`Could not read Firestore workers for ${userId}:`, error);
-    return [];
-  }
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return [];
+  const snap = await getDocs(collection(db, 'workers'));
+  return snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person));
 }
 
 /**
  * Subscribes to real-time updates for a specific user in Firestore
  */
-export function subscribeToFirestoreUserWorkers(
-  userId: string, 
-  onUpdate: (workers: Person[]) => void
-): Unsubscribe {
-  const cleanUserId = canonicalizeEmailKey(userId);
-  const workersRef = collection(db, 'users', cleanUserId, 'workers');
-  
-  return onSnapshot(workersRef, (snap) => {
-    const list: Person[] = [];
-    snap.forEach((d) => {
-      const data = d.data();
-      delete data._lastUpdated;
-      list.push({ ...data, sincronizadoEnNube: true } as Person);
-    });
-    onUpdate(list);
-  }, (err) => {
-    handleFirestoreError(err, OperationType.GET, `users/${cleanUserId}/workers`);
-  });
+export function subscribeToFirestoreUserWorkers(userId: string, onUpdate: (workers: Person[]) => void): Unsubscribe {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return () => {};
+  return onSnapshot(collection(db, 'workers'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), err => handleFirestoreError(err, OperationType.GET, 'workers'));
 }
 

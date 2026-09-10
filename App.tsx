@@ -178,16 +178,7 @@ function App() {
   });
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
-  const [people, setPeopleRaw] = useState<Person[]>(() => {
-    const saved = localStorage.getItem('personasPROFEA');
-    if (!saved) return [];
-    try {
-      const parsed: Person[] = JSON.parse(saved);
-      return ensureUniquePersonIds(parsed);
-    } catch {
-      return [];
-    }
-  });
+  const [people, setPeopleRaw] = useState<Person[]>([]);
 
   const setPeople = useCallback((action: React.SetStateAction<Person[]>) => {
     setPeopleRaw(prev => {
@@ -1014,7 +1005,7 @@ function App() {
     };
     const handleOffline = () => {
       setIsOffline(true);
-      setToast({ message: 'Sin conexión a internet. Los cambios se guardarán localmente.', type: 'error' });
+      setToast({ message: 'Sin conexión a internet. Los cambios se aplicarán cuando se recupere la conexión.', type: 'error' });
     };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -1136,304 +1127,22 @@ function App() {
     }
   }, [people, pendingPdfDni]);
 
-  // Register device session and subscribe to active sessions across devices
+  // Firestore is the permanent source of truth.
   useEffect(() => {
-    if (isOffline) {
-      setSessions([]);
-      return;
-    }
-
-    let activeSessionId = sessionId;
-    let isSubscribed = true;
-    let unsubSessions: (() => void) | null = null;
-    let unsubWorkers: (() => void) | null = null;
-    let unsubTrash: (() => void) | null = null;
-    let unsubSettings: (() => void) | null = null;
-    let unsubMeta: (() => void) | null = null;
-
-    const setupSync = async () => {
-      const userEmail = googleUser?.email || 'Usuario PROFEA';
-      const targetWsId = currentEffectiveWorkspaceId;
-
-      // Priority 1: Modern Workspace & Multidevice Sync
-      if (targetWsId) {
-        try {
-          const newSessionId = await registerWorkspaceSession(targetWsId, userEmail, activeSessionId);
-          if (isSubscribed && newSessionId) {
-            setSessionId(newSessionId);
-            activeSessionId = newSessionId;
-          }
-        } catch (err) {
-          console.error("Error registering workspace session:", err);
-        }
-
-        if (isSubscribed) {
-          // Perform automatic initial two-way synchronization on startup/connect
-          fetchWorkspaceData(targetWsId).then(async (wsData) => {
-            if (!isSubscribed) return;
-            const cloudWorkers = wsData.workers || [];
-            const cloudTrash = wsData.trash || [];
-
-            if (wsData.workspace) {
-              setActiveWorkspace(wsData.workspace);
-            }
-
-            // 1. If we have local workers not yet in workspace, sync them in a single batch to server store
-            const currentPeople = peopleRef.current || [];
-            const missingInCloud = currentPeople.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
-            if (missingInCloud.length > 0) {
-              try {
-                await fetch('/api/database/save-workers-batch', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ workspaceId: targetWsId, workers: missingInCloud })
-                });
-              } catch (e) {
-                console.warn("Could not batch save missing workers on startup:", e);
-              }
-
-              if (!isQuotaExceeded()) {
-                // If quota is healthy, sync up to 5 workers gradually to Firestore
-                for (const p of missingInCloud.slice(0, 5)) {
-                  await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-                }
-              }
-            }
-
-            // 2. If cloud has workers, merge them into local state
-            if (cloudWorkers.length > 0) {
-              setPeople(prev => {
-                const localOnly = prev.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
-                const cloudMapped = cloudWorkers.map(cw => ({ ...cw, sincronizadoEnNube: true }));
-                return [...localOnly, ...cloudMapped];
-              });
-            }
-
-            // 3. Merge trash if cloud has trash
-            if (cloudTrash.length > 0) {
-              setDeletedPeople(prev => {
-                const localOnly = prev.filter(dp => !cloudTrash.some(ct => ct.person.id === dp.person.id));
-                const cloudMapped = cloudTrash.map(ct => ({
-                  person: { ...ct.person, sincronizadoEnNube: true },
-                  fechaEliminacion: ct.fechaEliminacion
-                }));
-                return [...localOnly, ...cloudMapped];
-              });
-            }
-
-            // 4. Merge settings
-            if (wsData.settings) {
-              if (wsData.settings.savedObras && wsData.settings.savedObras.length > 0) {
-                setSavedObras(prev => {
-                  const combined = Array.from(new Set([...prev, ...(wsData.settings?.savedObras || [])]));
-                  return combined.sort((a, b) => a.localeCompare(b));
-                });
-              }
-              if (wsData.settings.savedCategorias && wsData.settings.savedCategorias.length > 0) {
-                setSavedCategorias(prev => {
-                  const combined = Array.from(new Set([...prev, ...(wsData.settings?.savedCategorias || [])]));
-                  return combined;
-                });
-              }
-              if (wsData.settings.savedLugares && wsData.settings.savedLugares.length > 0) {
-                setSavedLugares(prev => Array.from(new Set([...prev, ...(wsData.settings?.savedLugares || [])])));
-              }
-              if (wsData.settings.savedSitios && wsData.settings.savedSitios.length > 0) {
-                setSavedSitios(prev => Array.from(new Set([...prev, ...(wsData.settings?.savedSitios || [])])));
-              }
-              if (wsData.settings.savedTelefonos && wsData.settings.savedTelefonos.length > 0) {
-                setSavedTelefonos(prev => Array.from(new Set([...prev, ...(wsData.settings?.savedTelefonos || [])])));
-              }
-              if (wsData.settings.workStartHour) setWorkStartHour(wsData.settings.workStartHour);
-              if (wsData.settings.workEndHour) setWorkEndHour(wsData.settings.workEndHour);
-              if (wsData.settings.pdfCustomConfig) saveStoredPdfConfig(wsData.settings.pdfCustomConfig);
-              if (wsData.settings.subcontratas && Array.isArray(wsData.settings.subcontratas) && wsData.settings.subcontratas.length > 0) {
-                try {
-                  localStorage.setItem('profea_subcontratas_v1', JSON.stringify(wsData.settings.subcontratas));
-                  window.dispatchEvent(new CustomEvent('profea_subcontratas_synced', { detail: wsData.settings.subcontratas }));
-                } catch (e) {}
-              } else {
-                try {
-                  const raw = localStorage.getItem('profea_subcontratas_v1');
-                  if (raw) {
-                    const localSubs = JSON.parse(raw);
-                    if (Array.isArray(localSubs) && localSubs.length > 0) {
-                      syncWorkspaceSettings(targetWsId, {
-                        ...(wsData.settings || {}),
-                        subcontratas: localSubs
-                      }).catch(e => console.warn('Error uploading initial subcontratas:', e));
-                    }
-                  }
-                } catch (e) {}
-              }
-            }
-            setLastSyncTime(new Date());
-          }).catch(err => {
-            console.warn("Initial workspace sync error:", err);
-          });
-
-          unsubSessions = subscribeToWorkspaceSessions(targetWsId, (activeSessions) => {
-            if (isSubscribed) {
-              setSessions(activeSessions);
-            }
-          });
-
-          unsubWorkers = subscribeToWorkspaceWorkers(targetWsId, (cloudWorkers) => {
-            if (!isSubscribed) return;
-            setPeople(prev => {
-              const localOnly = prev.filter(p => !p.sincronizadoEnNube);
-              const cloudMerged = cloudWorkers.map(cw => ({
-                ...cw,
-                sincronizadoEnNube: true
-              }));
-
-              const combined = [...localOnly];
-              cloudMerged.forEach(cw => {
-                const idx = combined.findIndex(p => p.id === cw.id);
-                if (idx !== -1) {
-                  combined[idx] = cw;
-                } else {
-                  combined.push(cw);
-                }
-              });
-
-              const filtered = combined.filter(p => {
-                if (!p.sincronizadoEnNube) return true;
-                return cloudWorkers.some(cw => cw.id === p.id);
-              });
-              return ensureUniquePersonIds(filtered);
-            });
-            setLastSyncTime(new Date());
-          });
-
-          unsubTrash = subscribeToWorkspaceTrash(targetWsId, (cloudTrash) => {
-            if (!isSubscribed) return;
-            setDeletedPeople(prev => {
-              const localOnly = prev.filter(dp => !dp.person.sincronizadoEnNube);
-              const cloudTrashMerged = cloudTrash.map(ct => ({
-                person: { ...ct.person, sincronizadoEnNube: true },
-                fechaEliminacion: ct.fechaEliminacion
-              }));
-
-              const combined = [...localOnly];
-              cloudTrashMerged.forEach(ct => {
-                const idx = combined.findIndex(dp => dp.person.id === ct.person.id);
-                if (idx !== -1) {
-                  combined[idx] = ct;
-                } else {
-                  combined.push(ct);
-                }
-              });
-
-              return combined.filter(dp => {
-                if (!dp.person.sincronizadoEnNube) return true;
-                return cloudTrash.some(ct => ct.person.id === dp.person.id);
-              });
-            });
-            setLastSyncTime(new Date());
-          });
-
-          unsubSettings = subscribeToWorkspaceSettings(targetWsId, (cloudSettings) => {
-            if (!isSubscribed || !cloudSettings) return;
-            if (cloudSettings.savedObras && cloudSettings.savedObras.length > 0) setSavedObras(cloudSettings.savedObras);
-            if (cloudSettings.savedCategorias && cloudSettings.savedCategorias.length > 0) setSavedCategorias(cloudSettings.savedCategorias);
-            if (cloudSettings.savedLugares && cloudSettings.savedLugares.length > 0) setSavedLugares(cloudSettings.savedLugares);
-            if (cloudSettings.savedSitios && cloudSettings.savedSitios.length > 0) setSavedSitios(cloudSettings.savedSitios);
-            if (cloudSettings.savedTelefonos && cloudSettings.savedTelefonos.length > 0) setSavedTelefonos(cloudSettings.savedTelefonos);
-            if (cloudSettings.workStartHour) setWorkStartHour(cloudSettings.workStartHour);
-            if (cloudSettings.workEndHour) setWorkEndHour(cloudSettings.workEndHour);
-            if (cloudSettings.pdfCustomConfig) saveStoredPdfConfig(cloudSettings.pdfCustomConfig);
-            if (cloudSettings.subcontratas && Array.isArray(cloudSettings.subcontratas) && cloudSettings.subcontratas.length > 0) {
-              try {
-                localStorage.setItem('profea_subcontratas_v1', JSON.stringify(cloudSettings.subcontratas));
-                window.dispatchEvent(new CustomEvent('profea_subcontratas_synced', { detail: cloudSettings.subcontratas }));
-              } catch (e) {}
-            }
-          });
-
-          unsubMeta = subscribeToWorkspaceMeta(targetWsId, (meta) => {
-            if (isSubscribed && meta) {
-              setActiveWorkspace(meta);
-            }
-          });
-        }
-      } else if (isSyncing && groupId.trim()) {
-        // Fallback to legacy sync group if user used an invite code
-        try {
-          const newSessionId = await registerSession(groupId, userEmail, activeSessionId);
-          if (isSubscribed && newSessionId) {
-            setSessionId(newSessionId);
-            activeSessionId = newSessionId;
-          }
-        } catch (err) {
-          console.error("Error registering session:", err);
-        }
-
-        if (isSubscribed) {
-          unsubSessions = subscribeToSessions(groupId, (activeSessions) => {
-            if (isSubscribed) {
-              setSessions(activeSessions);
-            }
-          });
-
-          unsubWorkers = subscribeToWorkers(groupId, (cloudWorkers) => {
-            if (!isSubscribed) return;
-            setPeople(prev => {
-              const localOnly = prev.filter(p => !p.sincronizadoEnNube);
-              const cloudMerged = cloudWorkers.map(cw => ({
-                ...cw,
-                sincronizadoEnNube: true
-              }));
-              const combined = [...localOnly];
-              cloudMerged.forEach(cw => {
-                const idx = combined.findIndex(p => p.id === cw.id);
-                if (idx !== -1) combined[idx] = cw;
-                else combined.push(cw);
-              });
-              return combined.filter(p => {
-                if (!p.sincronizadoEnNube) return true;
-                return cloudWorkers.some(cw => cw.id === p.id);
-              });
-            });
-            setLastSyncTime(new Date());
-          });
-
-          unsubTrash = subscribeToTrash(groupId, (cloudTrash) => {
-            if (!isSubscribed) return;
-            setDeletedPeople(prev => {
-              const localOnly = prev.filter(dp => !dp.person.sincronizadoEnNube);
-              const cloudTrashMerged = cloudTrash.map(ct => ({
-                person: { ...ct.person, sincronizadoEnNube: true },
-                fechaEliminacion: ct.fechaEliminacion
-              }));
-              const combined = [...localOnly];
-              cloudTrashMerged.forEach(ct => {
-                const idx = combined.findIndex(dp => dp.person.id === ct.person.id);
-                if (idx !== -1) combined[idx] = ct;
-                else combined.push(ct);
-              });
-              return combined.filter(dp => {
-                if (!dp.person.sincronizadoEnNube) return true;
-                return cloudTrash.some(ct => ct.person.id === dp.person.id);
-              });
-            });
-            setLastSyncTime(new Date());
-          });
-        }
-      }
-    };
-
-    setupSync();
-
-    return () => {
-      isSubscribed = false;
-      if (unsubSessions) unsubSessions();
-      if (unsubWorkers) unsubWorkers();
-      if (unsubTrash) unsubTrash();
-      if (unsubSettings) unsubSettings();
-      if (unsubMeta) unsubMeta();
-    };
-  }, [currentEffectiveWorkspaceId, isSyncing, groupId, googleUser, isOffline]);
+    const uid = googleUser?.uid;
+    if (!uid) return;
+    const unsubscribe = subscribeToAccountWorkers(uid, workers => {
+      setPeople(workers.map(w => ({ ...w, sincronizadoEnNube: true })));
+      setLastSyncTime(new Date());
+    }, error => {
+      console.error('Error leyendo trabajadores de Firestore:', error);
+      setToast({ message: 'Error al leer los trabajadores desde Firebase.', type: 'error' });
+    });
+    const unsubscribeTrash = subscribeToAccountTrash(uid, trash => {
+      setDeletedPeople(trash);
+    });
+    return () => { unsubscribe(); unsubscribeTrash(); };
+  }, [googleUser?.uid]);
 
   const handleDisconnectSession = async () => {
     const targetWsId = currentEffectiveWorkspaceId;
