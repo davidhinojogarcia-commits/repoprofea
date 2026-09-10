@@ -2,9 +2,22 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
 
-// Compatibilidad temporal: algunos módulos legacy todavía invocan useCallback
-// como identificador global. Mantener este puente hasta retirar esas capas.
-(globalThis as any).useCallback = React.useCallback;
+// Puente de arranque temporal mientras se elimina el código legacy de sincronización.
+// Estos valores NO sincronizan datos ni sustituyen a Supabase: únicamente impiden que
+// referencias antiguas rompan el render antes de ser retiradas de App.tsx.
+Object.assign(globalThis as any, {
+  useCallback: React.useCallback,
+  isOffline: false,
+  isSyncing: false,
+  groupId: '',
+  syncMode: 'supabase',
+  currentEffectiveWorkspaceId: 'supabase',
+  setIsOffline: () => undefined,
+  executeDatabaseSync: async () => undefined,
+  handleSyncPendingToCloud: async () => undefined,
+  handleGoogleLogin: async () => { throw new Error('El acceso con Google está deshabilitado.'); },
+  handleGoogleLogout: async () => undefined,
+});
 
 const App = React.lazy(() => import('./App'));
 
