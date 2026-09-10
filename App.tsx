@@ -1,5 +1,15 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  syncWorkerToAccount,
+  syncWorkerToWorkspace,
+  DEFAULT_WORKSPACE_ID,
+  syncWorkerToCloud,
+  deleteWorkerFromCloud,
+  syncDeletedWorkerToCloud,
+  fetchGroupData,
+  auth
+} from './src/lib/firebase';
 import { Header } from './components/Header';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
@@ -19,13 +29,6 @@ import { AdminPanel } from './components/AdminPanel';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
-import {
-  createFirestoreWorker,
-  updateFirestoreWorker,
-  deleteFirestoreWorker,
-  restoreFirestoreWorker,
-  permanentDeleteFirestoreWorker,
-} from './src/lib/firebase';
 import * as pdfjsLib from 'pdfjs-dist';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -58,61 +61,6 @@ import {
   getStoredPdfConfig,
   saveStoredPdfConfig
 } from './src/lib/exportUtils';
-import { 
-  syncWorkerToAccount, 
-  deleteWorkerFromAccount, 
-  syncDeletedWorkerToAccount, 
-  deleteFromAccountTrash, 
-  fetchAccountData, 
-  subscribeToAccountWorkers, 
-  subscribeToAccountTrash,
-  syncAccountSettings,
-  subscribeToAccountSettings,
-  initAuth,
-  googleSignIn,
-  logoutGoogle,
-  registerAccountSession,
-  unregisterAccountSession,
-  subscribeToAccountSessions,
-  DeviceSession,
-  Workspace,
-  WorkspaceMember,
-  getOrCreateUserWorkspace,
-  addMemberToWorkspace,
-  updateMemberRoleInWorkspace,
-  removeMemberFromWorkspace,
-  getWorkspaceByIdOrEmail,
-  findWorkspaceByAccessCode,
-  fetchSharedWorkspacesForEmail,
-  subscribeToWorkspaceMeta,
-  syncWorkerToWorkspace,
-  deleteWorkerFromWorkspace,
-  syncDeletedWorkerToWorkspace,
-  deleteFromWorkspaceTrash,
-  fetchWorkspaceData,
-  subscribeToWorkspaceWorkers,
-  subscribeToWorkspaceTrash,
-  subscribeToWorkspaceSettings,
-  syncWorkspaceSettings,
-  registerWorkspaceSession,
-  unregisterWorkspaceSession,
-  subscribeToWorkspaceSessions,
-  canonicalizeEmailKey,
-  DEFAULT_WORKSPACE_ID,
-  isQuotaExceeded,
-  getOrCreateSyncGroup, 
-  syncWorkerToCloud, 
-  deleteWorkerFromCloud, 
-  syncDeletedWorkerToCloud, 
-  deleteFromCloudTrash, 
-  fetchGroupData, 
-  subscribeToWorkers, 
-  subscribeToTrash,
-  registerSession,
-  unregisterSession,
-  subscribeToSessions,
-  checkGroupExists
-} from './src/lib/firebase';
 import { registerServiceWorker, checkAndTriggerUpcomingAlerts, getNotificationAlertsSummary } from './src/lib/pushNotifications';
 import { 
   loadDriveBackupConfig, 
@@ -124,7 +72,6 @@ import {
   DriveAutoBackupConfig 
 } from './src/lib/driveBackup';
 import { compressToGzip } from './src/lib/compression';
-import { auth } from './src/lib/firebase';
 
 const WatermarkLogo = () => (
   <div className="fixed bottom-6 right-8 pointer-events-none select-none z-0">
@@ -143,7 +90,7 @@ const WatermarkLogo = () => (
   </div>
 );
 
-// Guarantee collision-free worker IDs across local state and cloud sync
+// Garantiza IDs numéricos únicos durante la compatibilidad con registros históricos
 const ensureUniquePersonIds = (list: Person[]): Person[] => {
   if (!Array.isArray(list)) return [];
   const seen = new Set<number>();
