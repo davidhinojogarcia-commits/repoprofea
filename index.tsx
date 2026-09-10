@@ -28,6 +28,7 @@ type RootErrorBoundaryProps = { children: React.ReactNode };
 type RootErrorBoundaryState = { error: Error | null };
 
 class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErrorBoundaryState> {
+  declare props: Readonly<RootErrorBoundaryProps>;
   state: RootErrorBoundaryState = { error: null };
   static getDerivedStateFromError(error: Error): RootErrorBoundaryState { return { error }; }
   componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('Error fatal de la aplicación', error, info); }
