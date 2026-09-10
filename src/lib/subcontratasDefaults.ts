@@ -345,6 +345,7 @@ export const saveStoredObraRecursoPreventivo = (
   obrasRecursosPreventivosCache = {
     ...obrasRecursosPreventivosCache,
     [obra.trim()]: {
+      obra: obra.trim(),
       recursoPreventivoNombre: recursoPreventivoNombre.trim(),
       recursoPreventivoCategoria: recursoPreventivoCategoria.trim() || 'Encargado de Obra'
     }

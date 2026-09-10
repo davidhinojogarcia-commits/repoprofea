@@ -108,7 +108,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   // produce a backup that differs from the database.
   const createBackupData = async () => {
     const [dbPeople, dbTrash, citas, subcontratas, reconocimientos, contrataciones, appSettings] = await Promise.all([
-      getDocuments<Person>('workers', { limitCount: 10000 }),
+      getDocuments<Person>('trabajadores', { limitCount: 10000 }),
       getDocuments<DeletedPerson>('trash', { limitCount: 10000 }),
       getDocuments<any>('citas', { limitCount: 10000 }),
       getDocuments<any>('subcontratas', { limitCount: 10000 }),

@@ -8,7 +8,7 @@ export async function buildSupabaseSystemBackup(accountEmail = '') {
   if (!data.user) throw new Error('Debes iniciar sesión para generar una copia de seguridad.');
 
   const [people, deletedPeople, citas, subcontratas, reconocimientos, contrataciones, settings, subPrefs] = await Promise.all([
-    getDocuments<any>('workers'),
+    getDocuments<any>('trabajadores'),
     getDocuments<any>('trash'),
     getDocuments<any>('citas'),
     getDocuments<any>('subcontratas'),

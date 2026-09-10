@@ -9,13 +9,14 @@ const TABLE_BY_COLLECTION: Record<string, string> = {
   medicalExams: 'reconocimientos', reconocimientos: 'reconocimientos',
   contracts: 'contrataciones', contratacion: 'contrataciones', contrataciones: 'contrataciones',
   works: 'obras', obras: 'obras',
+  workers: 'trabajadores', trabajadores: 'trabajadores',
 };
 
 const canonicalTable = (name: string) => TABLE_BY_COLLECTION[name] || name;
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value, (_k, v) => v === undefined ? null : v));
 const dateOrNull = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 const timeOrNull = (value: unknown) => typeof value === 'string' && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 8) : null;
-const isLegacyNumericTable = (table: string) => table === 'workers' || table === 'trash';
+const isLegacyNumericTable = (table: string) => table === 'trash';
 
 async function requireUser() {
   const { data } = await supabase.auth.getUser();
@@ -33,6 +34,19 @@ async function resolveObraId(obra: unknown): Promise<string | null> {
 async function serialize(table: string, value: DatabaseRecord) {
   const data = clean(value);
   if (isLegacyNumericTable(table)) return { data };
+  if (table === 'trabajadores') return {
+    obra_id: value.obraId || value.obra_id || await resolveObraId(value.obra),
+    supervisor_responsable: value.supervisorResponsable || '', num_oferta: value.numOferta || '', obra: value.obra || '',
+    categoria: value.categoria || '', quincena: value.quincena || '', apellidos_nombre: value.apellidosNombre || '', dni: value.dni || '',
+    fecha_nacimiento: value.fechaNacimiento || '', periodo_inicio: value.periodoInicio || '', periodo_fin: value.periodoFin || '',
+    telefono: value.telefono || '', calzado: value.calzado || '', formacion: value.formacion || '', lugar_formacion: value.lugarFormacion || null,
+    cita_dia: value.citaDia || '', cita_hora: value.citaHora || '', sitio_reconocimiento: value.sitioReconocimiento || '',
+    documentacion_completa: value.documentacionCompleta || '', observaciones: value.observaciones || null, fecha_registro: value.fechaRegistro || '',
+    necesita_reconocimiento: value.necesitaReconocimiento || null, aptitud_medica: value.aptitudMedica || null,
+    limitaciones_aptitud: value.limitacionesAptitud || null, reconocimiento_estado: value.reconocimientoEstado || null,
+    reconocimiento_fecha: value.reconocimientoFecha || null, reconocimiento_validez: value.reconocimientoValidez || null,
+    reconocimiento_limitaciones: value.reconocimientoLimitaciones || null, reconocimiento_observaciones: value.reconocimientoObservaciones || null, data
+  };
   if (table === 'obras') return {
     codigo: value.codigo || value.code || '',
     nombre: value.nombre || value.name || value.obra || '',
@@ -139,9 +153,11 @@ export async function createDocument<T extends DatabaseRecord>(collectionName: s
   const user = await requireUser();
   const table = canonicalTable(collectionName);
   const serialized = await serialize(table, data);
-  const body = isLegacyNumericTable(table)
+  const body = table === 'trabajadores'
     ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
-    : { id: String(id), ...serialized };
+    : isLegacyNumericTable(table)
+      ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
+      : { id: String(id), ...serialized };
   await supabase.query(table, { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body });
   if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), data);
 }
@@ -153,7 +169,7 @@ export async function updateDocument<T extends DatabaseRecord>(collectionName: s
   if (!current) throw new Error('El registro ya no existe o no tienes permiso para verlo.');
   const merged = { ...current, ...patch, id } as DatabaseRecord;
   const body: any = await serialize(table, merged);
-  if (isLegacyNumericTable(table)) body.updated_by = user.id;
+  if (isLegacyNumericTable(table) || table === 'trabajadores') body.updated_by = user.id;
   await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body });
   if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), merged);
 }

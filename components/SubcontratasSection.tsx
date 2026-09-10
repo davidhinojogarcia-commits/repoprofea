@@ -2224,9 +2224,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 id="form-firmas-reporte"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  saveStoredReporteTecnicoConfig(reporteConfig);
+                  void saveSubcontrataSettings({ reporteConfig }).then(() => onToast('Configuración de firmas del Reporte Técnico guardada correctamente.', 'success')).catch(error => { console.error(error); onToast('No se pudo guardar la configuración del Reporte Técnico.', 'error'); });
                   setIsFirmasModalOpen(false);
-                  onToast('Configuración de firmas del Reporte Técnico guardada correctamente.', 'success');
                 }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
               >

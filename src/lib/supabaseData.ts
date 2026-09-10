@@ -98,7 +98,7 @@ async function verifyWorkerPersisted(ownerId: string, personId: number) {
 
 // El propietario siempre se deriva de la sesión autenticada. Los parámetros _uid se conservan
 // solo para no romper firmas históricas mientras se eliminan esos imports del frontend.
-export async function createFirestoreWorker(_uid: string, person: Person) {
+export async function createWorkerRecord(_uid: string, person: Person) {
   const ownerId = uid();
   const personId = Number(person.id);
   if (!Number.isFinite(personId)) throw new Error('ID de trabajador inválido');
@@ -109,7 +109,7 @@ export async function createFirestoreWorker(_uid: string, person: Person) {
   });
   await verifyWorkerPersisted(ownerId, personId);
 }
-export async function updateFirestoreWorker(_uid: string, personId: number, person: Partial<Person>) {
+export async function updateWorkerRecord(_uid: string, personId: number, person: Partial<Person>) {
   const ownerId = uid();
   const currentRows = await supabase.query('trabajadores', {
     query: `select=data&owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}&limit=1`,
@@ -119,16 +119,16 @@ export async function updateFirestoreWorker(_uid: string, personId: number, pers
   await supabase.query('trabajadores', { method: 'PATCH', prefer: 'return=representation', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}`, body: { ...workerFields(merged), data: merged, updated_by: ownerId, updated_at: new Date().toISOString() } });
   await verifyWorkerPersisted(ownerId, personId);
 }
-export async function deleteFirestoreWorker(_uid: string, personId: number, deletedRecord?: DeletedPerson) {
+export async function deleteWorkerRecord(_uid: string, personId: number, deletedRecord?: DeletedPerson) {
   const ownerId = uid();
   if (deletedRecord) await syncDeletedWorkerToAccount(ownerId, deletedRecord);
   await supabase.query('trabajadores', { method: 'DELETE', prefer: 'return=minimal', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}` });
 }
-export async function restoreFirestoreWorker(_uid: string, person: Person) {
-  await createFirestoreWorker(uid(), person);
+export async function restoreWorkerRecord(_uid: string, person: Person) {
+  await createWorkerRecord(uid(), person);
   await deleteFromAccountTrash(uid(), person.id);
 }
-export async function permanentDeleteFirestoreWorker(_uid: string, personId: number) {
+export async function permanentDeleteWorkerRecord(_uid: string, personId: number) {
   await deleteFromAccountTrash(uid(), personId);
 }
 
@@ -144,7 +144,7 @@ function mapTrash(row: any): DeletedPerson {
   };
 }
 
-export async function fetchFirestoreWorkers(_uid: string) {
+export async function fetchWorkerRecords(_uid: string) {
   const rows = await supabase.query('trabajadores', { query: 'select=owner_id,id,data,created_by,created_at,updated_by,updated_at&order=updated_at.desc' });
   return (rows || []).map(mapWorker);
 }
@@ -173,7 +173,7 @@ export async function saveUserAccountSettings(_uid: string, settings: UserAccoun
   await supabase.query('user_settings', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { user_id: ownerId, settings: sanitizeForDatabase(settings), updated_by: ownerId, updated_at: new Date().toISOString() } });
 }
 export async function fetchAccountData(_uid?: string) {
-  return { workers: await fetchFirestoreWorkers(uid()), trash: await fetchAccountTrash(uid()), settings: await fetchUserAccountSettings(uid()) };
+  return { workers: await fetchWorkerRecords(uid()), trash: await fetchAccountTrash(uid()), settings: await fetchUserAccountSettings(uid()) };
 }
 
 function poll<T>(load: () => Promise<T>, cb: (v: T) => void, onError?: (e: Error) => void, interval = 3000) {
@@ -187,8 +187,8 @@ function poll<T>(load: () => Promise<T>, cb: (v: T) => void, onError?: (e: Error
   return () => { active = false; window.clearInterval(timer); };
 }
 
-export function subscribeToFirestoreWorkers(_uid: string, cb: (workers: Person[]) => void, onError?: (e: Error) => void) { return poll(() => fetchFirestoreWorkers(uid()), cb, onError); }
-export function subscribeToAccountWorkers(_uid: string, cb: (workers: Person[]) => void, onError?: (e: Error) => void) { return subscribeToFirestoreWorkers(uid(), cb, onError); }
+export function subscribeToWorkerRecords(_uid: string, cb: (workers: Person[]) => void, onError?: (e: Error) => void) { return poll(() => fetchWorkerRecords(uid()), cb, onError); }
+export function subscribeToAccountWorkers(_uid: string, cb: (workers: Person[]) => void, onError?: (e: Error) => void) { return subscribeToWorkerRecords(uid(), cb, onError); }
 export function subscribeToAccountTrash(_uid: string, cb: (trash: DeletedPerson[]) => void, onError?: (e: Error) => void) { return poll(() => fetchAccountTrash(uid()), cb, onError); }
 export async function syncAccountSettings(_uid: string, s: UserAccountSettings) { return saveUserAccountSettings(uid(), s); }
 export function subscribeToAccountSettings(_uid: string, cb: (s: UserAccountSettings) => void, onError?: (e: Error) => void) { return poll(() => fetchUserAccountSettings(uid()), cb, onError); }
@@ -205,8 +205,8 @@ export async function getUserAccountByEmail(email: string) {
   return u && u.email?.toLowerCase() === email.trim().toLowerCase() ? getOrCreateUserAccount({ uid: u.uid, email: u.email || email }) : null;
 }
 export async function fetchSharedAccountsForEmail(email: string) { const a = await getUserAccountByEmail(email); return a ? [a] : []; }
-export async function syncWorkerToAccount(_accountId: string, p: Person) { return createFirestoreWorker(uid(), p); }
-export async function deleteWorkerFromAccount(_accountId: string, id: number, d?: DeletedPerson) { return deleteFirestoreWorker(uid(), id, d); }
+export async function syncWorkerToAccount(_accountId: string, p: Person) { return createWorkerRecord(uid(), p); }
+export async function deleteWorkerFromAccount(_accountId: string, id: number, d?: DeletedPerson) { return deleteWorkerRecord(uid(), id, d); }
 
 export async function getOrCreateUserWorkspace(user: any): Promise<Workspace> {
   return { id: user.uid, name: user.displayName || user.email, ownerEmail: user.email, ownerUid: user.uid, ownerName: user.displayName || user.email, sharedWith: [], sharedWithEmails: [user.email], accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString() };
@@ -219,8 +219,8 @@ export async function updateMemberRoleInWorkspace(..._args: any[]) { throw new E
 export async function removeMemberFromWorkspace(..._args: any[]) { throw new Error('La compartición se gestiona desde Administración > Permisos.'); }
 export function subscribeToWorkspaceMeta(..._args: any[]) { return () => {}; }
 
-export async function syncWorkerToWorkspace(_workspaceId: string, p: Person) { return createFirestoreWorker(uid(), p); }
-export async function deleteWorkerFromWorkspace(_workspaceId: string, id: number, d?: DeletedPerson) { return deleteFirestoreWorker(uid(), id, d); }
+export async function syncWorkerToWorkspace(_workspaceId: string, p: Person) { return createWorkerRecord(uid(), p); }
+export async function deleteWorkerFromWorkspace(_workspaceId: string, id: number, d?: DeletedPerson) { return deleteWorkerRecord(uid(), id, d); }
 export async function syncDeletedWorkerToWorkspace(_workspaceId: string, d: DeletedPerson) { return syncDeletedWorkerToAccount(uid(), d); }
 export async function deleteFromWorkspaceTrash(_workspaceId: string, id: number) { return deleteFromAccountTrash(uid(), id); }
 export async function fetchWorkspaceData(_workspaceId: string) { return fetchAccountData(); }
@@ -233,8 +233,8 @@ export async function unregisterWorkspaceSession(..._args: any[]) {}
 export function subscribeToWorkspaceSessions(..._args: any[]) { return () => {}; }
 
 export async function getOrCreateSyncGroup(..._args: any[]) { return { id: uid(), ownerUid: uid() }; }
-export async function syncWorkerToCloud(_groupId: string, p: Person) { return createFirestoreWorker(uid(), p); }
-export async function deleteWorkerFromCloud(_groupId: string, id: number, d?: DeletedPerson) { return deleteFirestoreWorker(uid(), id, d); }
+export async function syncWorkerToCloud(_groupId: string, p: Person) { return createWorkerRecord(uid(), p); }
+export async function deleteWorkerFromCloud(_groupId: string, id: number, d?: DeletedPerson) { return deleteWorkerRecord(uid(), id, d); }
 export async function syncDeletedWorkerToCloud(_groupId: string, d: DeletedPerson) { return syncDeletedWorkerToAccount(uid(), d); }
 export async function deleteFromCloudTrash(_groupId: string, id: number) { return deleteFromAccountTrash(uid(), id); }
 export async function fetchGroupData(..._args: any[]) { return fetchAccountData(); }

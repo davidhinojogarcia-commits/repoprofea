@@ -1,15 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import {
-  syncWorkerToAccount,
-  syncWorkerToWorkspace,
-  DEFAULT_WORKSPACE_ID,
-  syncWorkerToCloud,
-  deleteWorkerFromCloud,
-  syncDeletedWorkerToCloud,
-  fetchGroupData,
-  auth
-} from './src/lib/supabaseData';
+import { auth } from './src/lib/supabaseData';
 import { Header } from './components/Header';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
@@ -430,7 +421,7 @@ function App() {
   // Supabase es la única fuente de verdad de trabajadores.
   useEffect(() => {
     if (!auth.currentUser?.uid) return;
-    const unsubscribe = subscribeToDocuments<Person>('workers', workers => {
+    const unsubscribe = subscribeToDocuments<Person>('trabajadores', workers => {
       setPeople(workers.map(worker => ({ ...worker, sincronizadoEnNube: true })));
     }, { includeShared: true }, error => {
       console.error('Error leyendo trabajadores de Supabase:', error);
@@ -818,7 +809,7 @@ function App() {
     };
 
     try {
-      await createDocument('workers', newPerson.id, newPerson as any);
+      await createDocument('trabajadores', newPerson.id, newPerson as any);
     } catch (error) {
       console.error('Error guardando trabajador en Supabase:', error);
       setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
@@ -910,7 +901,7 @@ function App() {
     const deletedObj: DeletedPerson = { person: personToDelete, fechaEliminacion: new Date().toISOString() };
     try {
       await createDocument('trash', id, deletedObj as any);
-      await deleteDocument('workers', id);
+      await deleteDocument('trabajadores', id);
       setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
     } catch (error) {
       console.error('Error enviando trabajador a papelera en Supabase:', error);
@@ -926,7 +917,7 @@ function App() {
     try {
       for (const person of peopleToDelete) {
         await createDocument('trash', person.id, { person, fechaEliminacion } as any);
-        await deleteDocument('workers', person.id);
+        await deleteDocument('trabajadores', person.id);
       }
       setToast({ message: `${peopleToDelete.length} registros enviados a la Papelera correctamente`, type: 'success' });
     } catch (error) {
@@ -939,7 +930,7 @@ function App() {
     const foundDeleted = deletedPeople.find(dp => dp.person.id === id);
     if (!foundDeleted) return;
     try {
-      await createDocument('workers', id, foundDeleted.person as any);
+      await createDocument('trabajadores', id, foundDeleted.person as any);
       await deleteDocument('trash', id);
       setToast({ message: `Registro de ${foundDeleted.person.apellidosNombre} restaurado correctamente`, type: 'success' });
     } catch (error) {
@@ -961,39 +952,31 @@ function App() {
     }
   };
 
+  const handleEmptyTrash = async () => {
+    if (!deletedPeople.length) return;
+    if (!window.confirm(`¿Está seguro de que desea vaciar la Papelera? Se eliminarán definitivamente ${deletedPeople.length} registros.`)) return;
+    try {
+      for (const item of deletedPeople) await deleteDocument('trash', item.person.id);
+      setToast({ message: 'Papelera vaciada correctamente', type: 'success' });
+    } catch (error) {
+      console.error('Error vaciando la papelera en Supabase:', error);
+      setToast({ message: 'No se pudo vaciar completamente la Papelera.', type: 'error' });
+    }
+  };
+
   const handleEdit = (person: Person) => {
     setEditingPerson(person);
   };
 
-  const handleUpdatePerson = (updatedPerson: Person) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid || !!currentEffectiveWorkspaceId) && syncMode === 'auto' && !isOffline;
-    const finalSyncStatus = (updatedPerson.sincronizadoEnNube && !isOffline) || isAutoSync;
-    const finalPerson = { ...updatedPerson, sincronizadoEnNube: finalSyncStatus };
-
-    setPeopleWithHistory(prev => prev.map(p => (p.id === updatedPerson.id ? finalPerson : p)));
-    updateAutocompleteLists(finalPerson);
-    setEditingPerson(null);
-    setToast({ message: 'Registro actualizado correctamente', type: 'success' });
-
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync(`Actualización: ${finalPerson.apellidosNombre}`, async () => {
-        await syncWorkerToWorkspace(targetWsId, finalPerson);
-        if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, finalPerson);
-      }, {
-        detail: `${finalPerson.apellidosNombre} actualizado en Supabase.`
-      }).catch(err => console.error(err));
-    } else if (googleUser?.uid && !isOffline) {
-      syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => {
-        console.error(err);
-      });
-    } else if (isSyncing && groupId.trim() && finalSyncStatus) {
-      syncWorkerToCloud(groupId, finalPerson).catch(err => {
-        console.error(err);
-        setPeople(prev => prev.map(p => p.id === finalPerson.id ? { ...p, sincronizadoEnNube: false } : p));
-      });
-    } else if (isSyncing && groupId.trim() && !finalSyncStatus && updatedPerson.sincronizadoEnNube && !isOffline) {
-      deleteWorkerFromCloud(groupId, updatedPerson.id).catch(err => console.error(err));
+  const handleUpdatePerson = async (updatedPerson: Person) => {
+    try {
+      await updateDocument('trabajadores', updatedPerson.id, updatedPerson as any);
+      updateAutocompleteLists(updatedPerson);
+      setEditingPerson(null);
+      setToast({ message: 'Registro actualizado correctamente', type: 'success' });
+    } catch (error) {
+      console.error('Error actualizando trabajador en Supabase:', error);
+      setToast({ message: 'No se pudo actualizar el registro.', type: 'error' });
     }
   };
 
@@ -1001,145 +984,23 @@ function App() {
     setBulkEditingPeople(selectedPeople);
   };
 
-  const handleUpdateMultiplePeople = (updates: Partial<Person>, selectedIds: number[]) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid || !!currentEffectiveWorkspaceId) && syncMode === 'auto' && !isOffline;
-
-    const updatedPeople = people.map(p => {
-      if (selectedIds.includes(p.id)) {
-        const updated = { ...p, ...updates };
-        const finalSyncStatus = (updated.sincronizadoEnNube && !isOffline) || isAutoSync;
-        const finalPerson = { ...updated, sincronizadoEnNube: finalSyncStatus };
-
-        return finalPerson;
-      }
-      return p;
-    });
-
-    setPeopleWithHistory(updatedPeople);
-
-    const samplePerson = updatedPeople.find(p => selectedIds.includes(p.id));
-    if (samplePerson) {
-      updateAutocompleteLists(samplePerson);
-    }
-
-    setBulkEditingPeople(null);
-    setToast({ message: `${selectedIds.length} registros actualizados correctamente`, type: 'success' });
-
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync(`Edición masiva (${selectedIds.length} trabajadores)`, async () => {
-        for (const pid of selectedIds) {
-          const personObj = updatedPeople.find(p => p.id === pid);
-          if (personObj) {
-            await syncWorkerToWorkspace(targetWsId, personObj);
-            if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, personObj);
-          }
-        }
-      }, {
-        detail: `${selectedIds.length} trabajadores actualizados en Supabase.`
-      }).catch(err => {
-        console.error("Error syncing worker to workspace during bulk update:", err);
-      });
-    } else if (googleUser?.uid && !isOffline) {
-      selectedIds.forEach(pid => {
-        const personObj = updatedPeople.find(p => p.id === pid);
-        if (personObj) syncWorkerToAccount(googleUser.uid, personObj).catch(err => console.error(err));
-      });
+  const handleUpdateMultiplePeople = async (updates: Partial<Person>, selectedIds: number[]) => {
+    const selected = people.filter(p => selectedIds.includes(p.id));
+    try {
+      const updated = selected.map(p => ({ ...p, ...updates }));
+      await Promise.all(updated.map(person => updateDocument('trabajadores', person.id, person as any)));
+      const samplePerson = updated[0];
+      if (samplePerson) updateAutocompleteLists(samplePerson);
+      setBulkEditingPeople(null);
+      setToast({ message: `${updated.length} registros actualizados correctamente`, type: 'success' });
+    } catch (error) {
+      console.error('Error en edición masiva en Supabase:', error);
+      setToast({ message: 'No se pudieron actualizar todos los registros.', type: 'error' });
     }
   };
 
-  const handleTogglePersonSync = async (id: number) => {
-    if (isOffline) {
-      setToast({ message: 'No se puede cambiar la configuración de compartición en la nube mientras estés sin conexión.', type: 'error' });
-      return;
-    }
-
-    const updated = people.map(p => {
-      if (p.id === id) {
-        const newSyncStatus = !p.sincronizadoEnNube;
-        
-        if (isSyncing && groupId.trim()) {
-          if (newSyncStatus) {
-            syncWorkerToCloud(groupId, { ...p, sincronizadoEnNube: true })
-              .then(() => setToast({ message: `Registro de ${p.apellidosNombre} compartido en la nube`, type: 'success' }))
-              .catch(() => setToast({ message: 'Error al sincronizar con la nube', type: 'error' }));
-          } else {
-            deleteWorkerFromCloud(groupId, p.id)
-              .then(() => setToast({ message: `Registro de ${p.apellidosNombre} guardado solo en local`, type: 'success' }))
-              .catch(() => setToast({ message: 'Error al eliminar de la nube', type: 'error' }));
-          }
-        } else {
-          setToast({ message: 'Sin conexión o cuenta para guardar en la base de datos en la nube', type: 'error' });
-        }
-        
-        return { ...p, sincronizadoEnNube: newSyncStatus };
-      }
-      return p;
-    });
-    setPeople(updated);
-  };
-
-  const handleSyncAllToCloud = async () => {
-    if (!isSyncing || !groupId.trim()) return;
-    
-    // Mark everyone as synced and upload them
-    const updated = people.map(p => ({ ...p, sincronizadoEnNube: true }));
-    setPeople(updated);
-    
-    for (const p of updated) {
-      await syncWorkerToCloud(groupId, p);
-    }
-    
-    // Sync trash too
-    for (const dp of deletedPeople) {
-      await syncDeletedWorkerToCloud(groupId, {
-        ...dp,
-        person: { ...dp.person, sincronizadoEnNube: true }
-      });
-    }
-  };
-
-  const handleSyncAllFromCloud = async () => {
-    if (!isSyncing || !groupId.trim()) return;
-    
-    const { workers: cloudWorkers, trash: cloudTrash } = await fetchGroupData(groupId);
-    
-    // Merge workers
-    setPeople(prev => {
-      const localOnly = prev.filter(p => !p.sincronizadoEnNube);
-      const cloudMerged = cloudWorkers.map(cw => ({ ...cw, sincronizadoEnNube: true }));
-      const combined = [...localOnly];
-      
-      cloudMerged.forEach(cw => {
-        const idx = combined.findIndex(p => p.id === cw.id);
-        if (idx !== -1) {
-          combined[idx] = cw;
-        } else {
-          combined.push(cw);
-        }
-      });
-      return combined;
-    });
-
-    // Merge trash
-    setDeletedPeople(prev => {
-      const localOnly = prev.filter(dp => !dp.person.sincronizadoEnNube);
-      const cloudTrashMerged = cloudTrash.map(ct => ({
-        person: { ...ct.person, sincronizadoEnNube: true },
-        fechaEliminacion: ct.fechaEliminacion
-      }));
-      const combined = [...localOnly];
-      
-      cloudTrashMerged.forEach(ct => {
-        const idx = combined.findIndex(dp => dp.person.id === ct.person.id);
-        if (idx !== -1) {
-          combined[idx] = ct;
-        } else {
-          combined.push(ct);
-        }
-      });
-      return combined;
-    });
+  const handleTogglePersonSync = async (_id: number) => {
+    setToast({ message: 'La compartición de registros se gestiona desde Administración > Permisos.', type: 'success' });
   };
 
   const stats: StatsData = useMemo(() => {
@@ -2324,7 +2185,7 @@ function App() {
                     return !original || JSON.stringify(original) !== JSON.stringify(p);
                   });
                   void Promise.all(changed.map(async p => {
-                    await updateDocument('workers', p.id, { ...p, sincronizadoEnNube: true } as any);
+                    await updateDocument('trabajadores', p.id, { ...p, sincronizadoEnNube: true } as any);
                     await persistMedicalRecognition(p);
                   })).then(() => {
                     setPeople(updatedPeople.map(p => ({ ...p, sincronizadoEnNube: true })));
@@ -2434,7 +2295,7 @@ function App() {
             onToast={(msg, type) => setToast({ message: msg, type })}
           />
 
-          {/* Database synchronization feedback alert (green for success, red for error) */}
+          {/* Persistencia directa en Supabase */}
 
           {toast && (
             <div aria-live="polite" role="status" className={`fixed top-5 right-5 z-[200] max-w-sm rounded-xl px-4 py-3 shadow-xl border text-sm font-semibold ${toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/40 dark:border-green-900 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'}`}>
