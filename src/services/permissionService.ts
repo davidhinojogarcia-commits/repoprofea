@@ -11,24 +11,26 @@ export interface DataPermission {
   canDelete: boolean;
 }
 
-function adminOnly(): void {
-  // Security is enforced by Firestore Rules/Cloud Functions; this check only avoids accidental UI calls.
+function requireSignedIn(): void {
   if (!auth.currentUser) throw new Error('Debes iniciar sesión.');
 }
 
+function permissionId(resourceType: string, resourceId: string, userId: string): string {
+  return `${resourceType}_${resourceId}_${userId}`;
+}
+
 export async function listPermissionsForResource(resourceType: string, resourceId: string): Promise<DataPermission[]> {
-  adminOnly();
+  requireSignedIn();
   const snap = await getDocs(query(collection(db, 'dataPermissions'), where('resourceType', '==', resourceType), where('resourceId', '==', resourceId)));
   return snap.docs.map(item => item.data() as DataPermission);
 }
 
 export async function grantDataPermission(permission: DataPermission): Promise<void> {
-  adminOnly();
-  const id = `${permission.resourceId}_${permission.userId}`;
-  await setDoc(doc(db, 'dataPermissions', id), permission);
+  requireSignedIn();
+  await setDoc(doc(db, 'dataPermissions', permissionId(permission.resourceType, permission.resourceId, permission.userId)), permission);
 }
 
-export async function revokeDataPermission(resourceId: string, userId: string): Promise<void> {
-  adminOnly();
-  await deleteDoc(doc(db, 'dataPermissions', `${resourceId}_${userId}`));
+export async function revokeDataPermission(resourceType: string, resourceId: string, userId: string): Promise<void> {
+  requireSignedIn();
+  await deleteDoc(doc(db, 'dataPermissions', permissionId(resourceType, resourceId, userId)));
 }
