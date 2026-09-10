@@ -78,15 +78,35 @@ function workerRow(p: Person, ownerId: string) {
   };
 }
 
+async function verifyWorkerPersisted(ownerId: string, personId: number) {
+  const rows = await supabase.query('workers', {
+    query: `select=owner_id,id&owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}&limit=1`,
+  });
+  if (!rows?.[0]) throw new Error(`Supabase no confirmó la persistencia del trabajador ${personId}.`);
+}
+
 // El propietario siempre se deriva de la sesión autenticada. Los parámetros _uid se conservan
 // solo para no romper firmas históricas mientras se eliminan esos imports del frontend.
 export async function createFirestoreWorker(_uid: string, person: Person) {
   const ownerId = uid();
-  await supabase.query('workers', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: workerRow(person, ownerId) });
+  const personId = Number(person.id);
+  if (!Number.isFinite(personId)) throw new Error('ID de trabajador inválido');
+  await supabase.query('workers', {
+    method: 'POST',
+    prefer: 'resolution=merge-duplicates,return=representation',
+    body: workerRow(person, ownerId),
+  });
+  await verifyWorkerPersisted(ownerId, personId);
 }
 export async function updateFirestoreWorker(_uid: string, personId: number, person: Partial<Person>) {
   const ownerId = uid();
-  await supabase.query('workers', { method: 'PATCH', prefer: 'return=minimal', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}`, body: { data: sanitizeForFirestore(person), updated_by: ownerId, updated_at: new Date().toISOString() } });
+  const currentRows = await supabase.query('workers', {
+    query: `select=data&owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}&limit=1`,
+  });
+  if (!currentRows?.[0]) throw new Error('El trabajador no existe o no tienes permiso para modificarlo.');
+  const merged = { ...(currentRows[0].data || {}), ...sanitizeForFirestore(person as any), id: personId };
+  await supabase.query('workers', { method: 'PATCH', prefer: 'return=representation', query: `owner_id=eq.${encodeURIComponent(ownerId)}&id=eq.${encodeURIComponent(personId)}`, body: { data: merged, updated_by: ownerId, updated_at: new Date().toISOString() } });
+  await verifyWorkerPersisted(ownerId, personId);
 }
 export async function deleteFirestoreWorker(_uid: string, personId: number, deletedRecord?: DeletedPerson) {
   const ownerId = uid();
