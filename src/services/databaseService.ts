@@ -78,7 +78,7 @@ export async function createDocument<T extends DatabaseRecord>(collectionName: s
   const body = isLegacyNumericTable(table)
     ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
     : { id: String(id), ...serialized };
-  await supabase.query(table, { method: 'POST', prefer: 'return=minimal', body });
+  await supabase.query(table, { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body });
 }
 
 export async function updateDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, patch: Partial<T>) {
