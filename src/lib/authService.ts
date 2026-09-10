@@ -30,16 +30,32 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
 
   try {
-    const token = await credential.user.getIdTokenResult();
-    if (token.claims.role !== 'admin') {
+    // The first account is created in Firebase Auth by the owner/admin. The callable
+    // backend then promotes only the configured INITIAL_ADMIN_EMAIL to the first admin.
+    let token = await credential.user.getIdTokenResult();
+    if (token.claims.role !== 'admin' && token.claims.role !== 'user') {
       try {
         await bootstrapFirstAdmin({});
-        await credential.user.getIdToken(true);
       } catch (error) {
         const code = (error as { code?: string })?.code;
-        if (code !== 'functions/permission-denied' && code !== 'functions/failed-precondition') throw error;
+        if (code !== 'functions/permission-denied' && code !== 'functions/failed-precondition') {
+          throw error;
+        }
       }
+
+      // Claims are written server-side, so the client must force a fresh token before
+      // deciding whether this account is authorized to enter the application.
+      await credential.user.getIdToken(true);
+      token = await credential.user.getIdTokenResult(true);
     }
+
+    const role = token.claims.role;
+    if (role !== 'admin' && role !== 'user') {
+      throw Object.assign(new Error('La cuenta existe en Firebase Auth, pero todavía no tiene un rol de aplicación.'), {
+        code: 'auth/missing-role',
+      });
+    }
+
     await touchLogin({});
     return credential.user;
   } catch (error) {
@@ -106,6 +122,8 @@ export function authErrorMessage(error: unknown): string {
       return 'Correo electrónico o contraseña incorrectos.';
     case 'auth/user-disabled':
       return 'Esta cuenta está desactivada. Contacta con un administrador.';
+    case 'auth/missing-role':
+      return 'La cuenta está creada, pero todavía no tiene un rol autorizado. Comprueba la configuración del administrador inicial.';
     case 'auth/too-many-requests':
       return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
     case 'auth/network-request-failed':
