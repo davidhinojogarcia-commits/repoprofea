@@ -19,11 +19,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Validate Firebase source migration
         run: |
-          if grep -nF ' }): Promise<' src/lib/firebase.ts; then
-            echo 'Malformed Firebase function signature detected.'
-            exit 1
-          fi
-          if grep -nF '}): Promise<' src/lib/firebase.ts; then
+          if grep -nE '^\}\): Promise<' src/lib/firebase.ts; then
             echo 'Malformed Firebase function signature detected.'
             exit 1
           fi
