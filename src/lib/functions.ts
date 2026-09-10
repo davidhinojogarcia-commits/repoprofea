@@ -1,27 +1,20 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from './firebase';
+import { supabase } from './supabase';
 
-export const functions = getFunctions(app);
-
-type EmptyPayload = Record<string, never>;
-type PermissionAction = 'read' | 'create' | 'update' | 'delete';
-type ModulePermissions = Record<PermissionAction, boolean>;
-type Modules = Record<string, ModulePermissions>;
-
-export const bootstrapFirstAdmin = httpsCallable<EmptyPayload, { ok: boolean; role: 'admin' }>(functions, 'bootstrapFirstAdmin');
-export const touchLogin = httpsCallable<EmptyPayload, { ok: boolean; email: string }>(functions, 'touchLogin');
-
-export const createManagedUser = httpsCallable<any, { uid: string; email: string; role: 'admin' | 'user' }>(functions, 'createManagedUser');
-export const updateManagedUserProfile = httpsCallable<any, { ok: boolean }>(functions, 'updateManagedUserProfile');
-export const updateManagedUserRole = httpsCallable<any, { ok: boolean }>(functions, 'updateManagedUserRole');
-export const setManagedUserRole = httpsCallable<any, { ok: boolean }>(functions, 'setManagedUserRole');
-export const updateManagedUserStatus = httpsCallable<any, { ok: boolean }>(functions, 'updateManagedUserStatus');
-export const setManagedUserActive = httpsCallable<any, { ok: boolean }>(functions, 'setManagedUserActive');
-export const deleteManagedUser = httpsCallable<any, { ok: boolean }>(functions, 'deleteManagedUser');
-export const updateManagedUserPermissions = httpsCallable<any, { ok: boolean }>(functions, 'updateManagedUserPermissions');
-export const updateManagedPermissions = httpsCallable<any, { ok: boolean }>(functions, 'updateManagedPermissions');
-export const resetManagedUserPassword = httpsCallable<any, { email: string; resetLink: string }>(functions, 'resetManagedUserPassword');
-export const sendManagedPasswordReset = httpsCallable<any, { email: string; resetLink: string }>(functions, 'sendManagedPasswordReset');
-export const setDataPermission = httpsCallable<any, { ok: boolean; permissionId: string }>(functions, 'setDataPermission');
-export const deleteDataPermission = httpsCallable<any, { ok: boolean }>(functions, 'deleteDataPermission');
-export const writeAuditEvent = httpsCallable<any, { ok: boolean }>(functions, 'writeAuditEvent');
+type CallResult<T>={data:T};
+async function call<T>(action:string,payload:any={}):Promise<CallResult<T>>{return {data:await supabase.edgeFunction('admin-users',{action,...payload})};}
+export const bootstrapFirstAdmin=async()=>({data:{ok:true,role:'admin' as const}});
+export const touchLogin=async()=>({data:{ok:true,email:(await supabase.auth.getUser()).data.user?.email||''}});
+export const createManagedUser=(payload:any)=>call<{uid:string;email:string;role:'admin'|'user'}>('create',payload);
+export const updateManagedUserProfile=(payload:any)=>call<{ok:boolean}>('update_profile',payload);
+export const updateManagedUserRole=(payload:any)=>call<{ok:boolean}>('role',payload);
+export const setManagedUserRole=updateManagedUserRole;
+export const updateManagedUserStatus=(payload:any)=>call<{ok:boolean}>('status',payload);
+export const setManagedUserActive=updateManagedUserStatus;
+export const deleteManagedUser=(payload:any)=>call<{ok:boolean}>('delete',payload);
+export const updateManagedUserPermissions=(payload:any)=>call<{ok:boolean}>('permissions',payload);
+export const updateManagedPermissions=updateManagedUserPermissions;
+export const resetManagedUserPassword=(payload:any)=>call<{email:string;resetLink:string}>('reset_password',payload);
+export const sendManagedPasswordReset=resetManagedUserPassword;
+export const setDataPermission=async(payload:any)=>{await supabase.query('data_permissions',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{resource_type:payload.resourceType,resource_id:String(payload.resourceId),owner_id:payload.ownerId,user_id:payload.userId,can_read:payload.canRead,can_update:payload.canUpdate,can_delete:payload.canDelete}});return {data:{ok:true,permissionId:`${payload.resourceType}_${payload.resourceId}_${payload.userId}`}};};
+export const deleteDataPermission=async(payload:any)=>{await supabase.query('data_permissions',{method:'DELETE',prefer:'return=minimal',query:`resource_type=eq.${encodeURIComponent(payload.resourceType)}&resource_id=eq.${encodeURIComponent(String(payload.resourceId))}&user_id=eq.${encodeURIComponent(payload.userId)}`});return {data:{ok:true}};};
+export const writeAuditEvent=async(payload:any)=>{const user=(await supabase.auth.getUser()).data.user;if(user)await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:user.id,user_email:user.email||'',action:payload.action,resource_type:payload.resourceType||'',resource_id:payload.resourceId||'',details:payload.details||{}}});return {data:{ok:true}};};
