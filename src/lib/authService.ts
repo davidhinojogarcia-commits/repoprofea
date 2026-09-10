@@ -31,18 +31,26 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const normalizedEmail = email.trim().toLowerCase();
   const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
 
-  if (normalizedEmail === INITIAL_ADMIN_EMAIL) {
-    try {
-      await bootstrapFirstAdmin({});
-      await credential.user.getIdToken(true);
-    } catch (error) {
-      const code = (error as { code?: string })?.code;
-      if (code !== 'functions/failed-precondition') throw error;
+  try {
+    // The first admin can be provisioned automatically, but do not call the
+    // bootstrap function on every subsequent login once the claim exists.
+    if (normalizedEmail === INITIAL_ADMIN_EMAIL) {
+      const token = await credential.user.getIdTokenResult();
+      const role = token.claims.role;
+      if (role !== 'admin') {
+        await bootstrapFirstAdmin({});
+        await credential.user.getIdToken(true);
+      }
     }
-  }
 
-  await touchLogin({});
-  return credential.user;
+    // Keep last-access/audit data server-side. If this fails, do not leave a
+    // partially authenticated session active in the UI.
+    await touchLogin({});
+    return credential.user;
+  } catch (error) {
+    await signOut(auth).catch(() => {});
+    throw error;
+  }
 }
 
 export async function signOutUser(): Promise<void> {
@@ -78,8 +86,11 @@ export function authErrorMessage(error: unknown): string {
       return 'La cuenta no tiene permisos de administrador configurados.';
     case 'functions/failed-precondition':
       return 'La configuración inicial de la cuenta no se ha podido completar.';
+    case 'functions/not-found':
     case 'functions/unavailable':
-      return 'El servicio de autenticación no está disponible temporalmente.';
+      return 'Firebase Auth ha aceptado el acceso, pero el servicio de autorización del servidor no está disponible. Hay que desplegar las Cloud Functions.';
+    case 'functions/internal':
+      return 'Firebase Auth ha aceptado el acceso, pero no se pudo completar la configuración del usuario en el servidor.';
     default:
       return 'No se ha podido iniciar sesión. Inténtalo de nuevo.';
   }
