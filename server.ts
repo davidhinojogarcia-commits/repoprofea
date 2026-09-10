@@ -6,7 +6,6 @@ import ExcelJS from "exceljs";
 import mammoth from "mammoth";
 import { databaseStore } from "./server/databaseStore";
 import { accountStore } from "./server/accountStore";
-import { syncFromFirestoreDatabase } from "./server/firestoreSync";
 
 // Helper to extract clean text/tables from Excel (.xlsx/.xls) and Word (.docx/.doc) buffers
 async function extractTextFromOfficeBuffer(buffer: Buffer, filename: string): Promise<string> {
@@ -327,35 +326,6 @@ async function startServer() {
       const { workspaceId, settings } = req.body;
       const data = databaseStore.saveSettings(workspaceId, settings || {});
       res.json({ success: true, lastUpdated: data.lastUpdated });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  // Endpoints for explicit and complete Firestore database synchronization
-  app.all(["/api/database/sync-from-firestore", "/api/database/sync-from-firestore/:workspaceId"], async (req, res) => {
-    try {
-      const wsId = (req.params.workspaceId || req.body?.workspaceId || req.query.workspaceId) as string | undefined;
-      const syncResult = await syncFromFirestoreDatabase(wsId);
-      res.json(syncResult);
-    } catch (err: any) {
-      console.error("[FirestoreSync Endpoint Error]:", err);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.get("/api/database/firestore-status", (req, res) => {
-    try {
-      const wsId = req.query.workspaceId as string | undefined;
-      const ws = databaseStore.getWorkspace(wsId);
-      res.json({
-        success: true,
-        databaseId: "ai-studio-sistemacontratac-6e2967df-5143-4870-8115-db3d280cbe25",
-        workersCount: ws.workers.length,
-        trashCount: ws.deletedPeople.length,
-        lastUpdated: ws.lastUpdated,
-        isOnline: true
-      });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
