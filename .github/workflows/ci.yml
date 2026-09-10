@@ -25,9 +25,3 @@ jobs:
           fi
       - name: Build application
         run: npm run build
-      - name: Install Firebase Functions dependencies
-        working-directory: functions
-        run: npm install --no-audit --no-fund
-      - name: Build Firebase Functions
-        working-directory: functions
-        run: npm run build
