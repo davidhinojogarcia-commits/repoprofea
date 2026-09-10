@@ -5,8 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def cut_function(text, marker):
     start = text.find(marker)
-    if start < 0:
-        return text
+    if start < 0: return text
     brace = text.find('{', start)
     if brace < 0: raise RuntimeError(f'Function body not found: {marker}')
     depth = 0; quote = None; esc = False
@@ -27,7 +26,14 @@ def cut_function(text, marker):
                 return text[:start] + text[j:]
     raise RuntimeError(f'Unbalanced function: {marker}')
 
-# App cleanup: authentication belongs exclusively to AuthGate.
+def remove_between(text, start_marker, end_marker):
+    start = text.find(start_marker)
+    if start < 0: return text
+    end = text.find(end_marker, start)
+    if end < 0: raise RuntimeError(f'End marker not found: {end_marker}')
+    return text[:start] + text[end:]
+
+# Remove legacy synchronization/workspace application handlers.
 app_path = ROOT / 'App.tsx'
 a = app_path.read_text()
 for marker in [
@@ -40,6 +46,9 @@ for marker in [
     '  const handleJoinWorkspaceByCodeOrEmail = async', '  const handleDisconnectSession = async',
 ]:
     a = cut_function(a, marker)
+# Remove the leftover computed workspace identifiers even when their handlers are gone.
+a = remove_between(a, '  // Compute effective sync email & workspace ID', '  const uploadToGoogleDrive = async')
+# Remove the legacy sync/workspace state section.
 start = a.find('  const [groupId, setGroupId]')
 if start >= 0:
     end = a.find('  const [autoSaveToDrive, setAutoSaveToDrive]', start)
@@ -48,12 +57,14 @@ if start >= 0:
 a = re.sub(r"\n  useEffect\(\(\) => \{\n    localStorage\.setItem\('personasPROFEA_(groupId|isSyncing|syncMode|sessionId|lastSyncTime|syncEmail|activeWorkspace|activeWorkspaceId)'.*?\n  \}, \[[^\]]+\]\);", '', a, flags=re.S)
 a = a.replace('setLastSyncTime(new Date());', '')
 a = re.sub(r"\n\s*<DatabaseSyncAlert\s*/>", '', a)
+# AuthGate is the only auth listener.
+a = re.sub(r"\n  useEffect\(\(\) => \{\n    const unsubscribe = initAuth\(.*?\n  \}, \[\]\);", '', a, count=1, flags=re.S)
 if "import { auth } from './src/lib/firebase';" not in a:
     a = a.replace("import { compressToGzip } from './src/lib/compression';\n", "import { compressToGzip } from './src/lib/compression';\nimport { auth } from './src/lib/firebase';\n", 1)
 a = a.replace('const uid = googleUser?.uid;', 'const uid = auth.currentUser?.uid;', 1)
 app_path.write_text(a)
 
-# PDF QR links no longer encode synchronization state.
+# Remove sync parameters from worker PDF QR links.
 export_path = ROOT / 'src/lib/exportUtils.ts'
 e = export_path.read_text()
 e = re.sub(r"\n\s*const groupId = typeof window !== 'undefined' \? window\.localStorage\.getItem\('personasPROFEA_groupId'\) \|\| '' : '';", '', e)
@@ -61,7 +72,7 @@ e = re.sub(r"\n\s*const isSyncActive = typeof window !== 'undefined' \? window\.
 e = re.sub(r"\n\s*if \(isSyncActive && groupId\) \{\n\s*qrText \+= `&sync=\$\{encodeURIComponent\(groupId\)\}`;\n\s*\}", '', e)
 export_path.write_text(e)
 
-# Firebase client: email/password only; remove manual sync API and Google Auth provider.
+# Remove manual sync API and Google Authentication provider from firebase.ts.
 firebase_path = ROOT / 'src/lib/firebase.ts'
 s = firebase_path.read_text()
 s = cut_function(s, 'export async function triggerFirestoreDatabaseSync')
@@ -71,4 +82,4 @@ s = re.sub(r"\nexport const getAccessToken = async \(\): Promise<string \| null>
 s = cut_function(s, 'export const googleSignIn = async')
 s = cut_function(s, 'export const logoutGoogle = async')
 firebase_path.write_text(s)
-print('Final migration pass complete.')
+print('Final legacy sync/auth cleanup applied.')
