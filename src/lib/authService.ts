@@ -1,123 +1,38 @@
-import {
-  browserLocalPersistence,
-  onAuthStateChanged,
-  setPersistence,
-  signInWithEmailAndPassword,
-  signOut,
-  type User,
-} from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { supabase, type SupabaseUser } from './supabase';
+import { auth } from './firebase';
 
 export type AppRole = 'admin' | 'user';
+export interface AuthProfile { uid:string; email:string; nombre?:string; apellidos?:string; role:AppRole; active:boolean; }
+export type User = SupabaseUser;
 
-export interface AuthProfile {
-  uid: string;
-  email: string;
-  nombre?: string;
-  apellidos?: string;
-  role: AppRole;
-  active: boolean;
+export async function configureAuthPersistence():Promise<void>{ await supabase.auth.getSession(); }
+
+async function readUserProfile(user:SupabaseUser):Promise<AuthProfile|null>{
+  const rows=await supabase.query('users',{query:`select=id,email,nombre,apellidos,role,active& id=eq.${encodeURIComponent(user.id)}`.replace('& id','&id')});
+  const data=rows?.[0];
+  if(!data || (data.role!=='admin' && data.role!=='user') || data.active!==true) return null;
+  return {uid:user.id,email:data.email||user.email||'',nombre:data.nombre||'',apellidos:data.apellidos||'',role:data.role,active:true};
 }
 
-export async function configureAuthPersistence(): Promise<void> {
-  await setPersistence(auth, browserLocalPersistence);
-}
-
-async function readUserProfile(user: User): Promise<AuthProfile | null> {
-  const snapshot = await getDoc(doc(db, 'users', user.uid));
-  if (!snapshot.exists()) return null;
-
-  const data = snapshot.data() as Partial<AuthProfile> & { email?: string; active?: boolean; role?: string };
-  if (data.role !== 'admin' && data.role !== 'user') return null;
-  if (data.active !== true) return null;
-
-  return {
-    uid: user.uid,
-    email: data.email || user.email || '',
-    nombre: data.nombre,
-    apellidos: data.apellidos,
-    role: data.role,
-    active: true,
-  };
-}
-
-export async function signInWithEmail(email: string, password: string): Promise<User> {
+export async function signInWithEmail(email:string,password:string):Promise<User>{
   await configureAuthPersistence();
-  const normalizedEmail = email.trim().toLowerCase();
-  const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-
-  try {
-    // Firebase Authentication proves the identity; the user's Firestore profile is
-    // the application's single source of truth for role and active status.
-    const profile = await readUserProfile(credential.user);
-    if (!profile) {
-      throw Object.assign(new Error('La cuenta existe en Firebase Auth, pero no tiene un perfil de usuario autorizado en Firestore.'), {
-        code: 'auth/missing-role',
-      });
-    }
-
-    return credential.user;
-  } catch (error) {
-    await signOut(auth).catch(() => {});
-    throw error;
-  }
+  const normalizedEmail=email.trim().toLowerCase();
+  try{
+    const {data,error}=await supabase.auth.signInWithPassword(normalizedEmail,password);
+    if(error) throw error;
+    const profile=await readUserProfile(data.user);
+    if(!profile) { await supabase.auth.signOut(); throw Object.assign(new Error('La cuenta existe, pero no tiene un perfil activo autorizado en Supabase.'),{code:'auth/missing-role'}); }
+    await supabase.query('users',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(data.user.id)}`,body:{last_access_at:new Date().toISOString()}});
+    await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:data.user.id,user_email:data.user.email||'',action:'LOGIN',resource_type:'auth',resource_id:data.user.id,details:{}}}).catch(()=>{});
+    auth.currentUser=data.user;
+    return data.user;
+  }catch(error){await supabase.auth.signOut().catch(()=>{});auth.currentUser=null;throw error;}
 }
-
-// Compatibility name kept for existing callers; both use the same email/password flow.
-export const signInWithEmailPassword = signInWithEmail;
-
-export async function signOutUser(): Promise<void> {
-  await signOut(auth);
-}
-
-export function subscribeToAuth(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, callback);
-}
-
-export async function getCurrentRole(): Promise<AppRole | null> {
-  const user = auth.currentUser;
-  if (!user) return null;
-  const profile = await readUserProfile(user);
-  return profile?.role || null;
-}
-
-export async function getUserProfile(): Promise<AuthProfile | null> {
-  const user = auth.currentUser;
-  if (!user) return null;
-  return readUserProfile(user);
-}
-
-export async function sendResetPassword(_email: string): Promise<void> {
-  // Public password reset is intentionally not exposed in the login UI.
-  throw Object.assign(new Error('El restablecimiento de contraseña debe gestionarlo un administrador.'), {
-    code: 'auth/admin-only-password-reset',
-  });
-}
-
-export async function registerEmailPassword(): Promise<never> {
-  throw Object.assign(new Error('El registro público está deshabilitado.'), { code: 'auth/operation-not-allowed' });
-}
-
-export function authErrorMessage(error: unknown): string {
-  const code = (error as { code?: string })?.code;
-  switch (code) {
-    case 'auth/invalid-credential':
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-      return 'Correo electrónico o contraseña incorrectos.';
-    case 'auth/user-disabled':
-      return 'Esta cuenta está desactivada. Contacta con un administrador.';
-    case 'auth/missing-role':
-      return 'La cuenta está creada, pero todavía no tiene un perfil autorizado en Firestore.';
-    case 'auth/too-many-requests':
-      return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
-    case 'auth/network-request-failed':
-      return 'Error de conexión con Firebase. Comprueba tu conexión a internet.';
-    case 'permission-denied':
-    case 'firestore/permission-denied':
-      return 'La cuenta no tiene permisos suficientes para completar la operación.';
-    default:
-      return 'No se ha podido iniciar sesión. Inténtalo de nuevo.';
-  }
-}
+export const signInWithEmailPassword=signInWithEmail;
+export async function signOutUser(){await supabase.auth.signOut();auth.currentUser=null;}
+export function subscribeToAuth(callback:(user:User|null)=>void){const sub=supabase.auth.onAuthStateChange(callback);return ()=>sub.data.subscription.unsubscribe();}
+export async function getCurrentRole():Promise<AppRole|null>{const user=(await supabase.auth.getUser()).data.user;if(!user)return null;const p=await readUserProfile(user);return p?.role||null;}
+export async function getUserProfile():Promise<AuthProfile|null>{const user=(await supabase.auth.getUser()).data.user;if(!user)return null;return readUserProfile(user);}
+export async function sendResetPassword(_email:string):Promise<void>{throw Object.assign(new Error('El restablecimiento de contraseña debe gestionarlo un administrador.'),{code:'auth/admin-only-password-reset'});}
+export async function registerEmailPassword():Promise<never>{throw Object.assign(new Error('El registro público está deshabilitado.'),{code:'auth/operation-not-allowed'});}
+export function authErrorMessage(error:unknown):string{const code=(error as any)?.code;const status=(error as any)?.status; if(code==='invalid_credentials'||code==='invalid_grant'||status===400)return 'Correo electrónico o contraseña incorrectos.';if(code==='auth/missing-role')return 'La cuenta está creada, pero no tiene un perfil activo autorizado en Supabase.';if(code==='user_banned')return 'Esta cuenta está desactivada. Contacta con un administrador.';if(code==='auth/network-request-failed')return 'Error de conexión con Supabase. Comprueba tu conexión a internet.';if(status===401||status===403)return 'La cuenta no tiene permisos suficientes para completar la operación.';return 'No se ha podido iniciar sesión. Inténtalo de nuevo.';}
