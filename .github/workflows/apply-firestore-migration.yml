@@ -23,9 +23,12 @@ jobs:
           python-version: '3.12'
       - name: Finalize application
         run: python scripts/finalize_multiusuario.py
+      - name: Remove obsolete sync components
+        run: |
+          rm -f components/DatabaseSyncAlert.tsx components/FirebaseSyncModal.tsx src/lib/syncNotifier.ts
       - name: Validate no manual synchronization remains
         run: |
-          if grep -RniE 'FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker' App.tsx components src --exclude='*.map'; then
+          if grep -RniE 'FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)' App.tsx components src --exclude='*.map'; then
             echo 'Legacy/manual synchronization code detected.'
             exit 1
           fi
@@ -37,6 +40,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add App.tsx components/Header.tsx src/lib/firebase.ts scripts/finalize_multiusuario.py .github/workflows/apply-firestore-migration.yml
+          git add -A
           git commit -m 'refactor: finalize Firebase multiuser migration [skip firestore migration]'
           git push origin feat/firebase-multiusuario
