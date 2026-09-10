@@ -1,0 +1,34 @@
+name: Temp medical persistence wiring
+
+on:
+  push:
+    branches: ['temp-medical-wiring']
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python .github/scripts/temp_medical_wiring.py
+      - name: Verify Supabase medical persistence
+        run: |
+          grep -n "persistMedicalRecognition" App.tsx
+          grep -n "updateDocument('workers'" App.tsx
+          ! grep -n "Error syncing during appointment update" App.tsx
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add App.tsx
+          git commit -m 'refactor: persist medical updates directly in Supabase'
+          git push origin HEAD:temp-medical-wiring
