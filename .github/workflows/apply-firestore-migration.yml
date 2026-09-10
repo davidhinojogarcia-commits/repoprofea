@@ -24,22 +24,7 @@ jobs:
       - name: Finalize App and Firebase client
         run: python scripts/finalize_multiusuario.py
       - name: Remove obsolete synchronization artifacts
-        run: |
-          rm -f components/DatabaseSyncAlert.tsx components/FirebaseSyncModal.tsx src/lib/syncNotifier.ts
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('App.tsx')
-          s = p.read_text()
-          for marker in [
-              'triggerFirestoreDatabaseSync', 'FirebaseSyncModal', 'DatabaseSyncAlert',
-              'handleForceSaveAllToCloud', 'handleForceSyncNow', 'handleUploadAllLocalToAccount',
-              'handleDownloadAllFromAccount', 'handleSyncPendingToCloud', 'handleUpdateSyncEmail',
-              'handleDisconnectSyncEmail', 'handleAddMember', 'handleRemoveMember', 'handleSelectWorkspace',
-              'personasPROFEA_groupId', 'personasPROFEA_activeWorkspaceId', 'personasPROFEA_syncEmail'
-          ]:
-              if marker in s:
-                  print('LEGACY MARKER:', marker)
-          PY
+        run: rm -f components/DatabaseSyncAlert.tsx components/FirebaseSyncModal.tsx src/lib/syncNotifier.ts
       - name: Validate source
         run: |
           if grep -RniE 'FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)' App.tsx components src --exclude='*.map'; then
