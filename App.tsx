@@ -477,7 +477,7 @@ function App() {
     };
   }, []);
 
-  // Effect to generate and render the worker PDF once the data is fully populated/synced
+  // Effect to generate the worker PDF once the data is populated
   useEffect(() => {
     if (!pendingPdfDni) return;
 
@@ -509,7 +509,6 @@ function App() {
     if (!uid) return;
     const unsubscribe = subscribeToAccountWorkers(uid, workers => {
       setPeople(workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-      setLastSyncTime(new Date());
     }, error => {
       console.error('Error leyendo trabajadores de Firestore:', error);
       setToast({ message: 'Error al leer los trabajadores desde Firebase.', type: 'error' });
