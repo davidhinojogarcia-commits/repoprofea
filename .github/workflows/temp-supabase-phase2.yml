@@ -1,0 +1,39 @@
+name: Temp Supabase phase 2
+
+on:
+  push:
+    branches:
+      - temp-supabase-repair-safe
+    paths:
+      - .github/temp-supabase-phase2-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply phase 2 repairs
+        run: python .github/scripts/temp_supabase_phase2.py
+      - name: Verify direct Supabase bindings
+        run: |
+          ! grep -nE "src/lib/firebase|firestoreService|firebase/firestore|desde Firebase|en Firestore" components/SubcontratasSection.tsx
+          grep -n "createDocument('workers'" App.tsx
+          grep -n "subscribeToDocuments<Subcontratista>('subcontratas'" components/SubcontratasSection.tsx
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Commit repaired files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add App.tsx components/SubcontratasSection.tsx
+          git commit -m "refactor: persist registrations and subcontratas directly in Supabase"
+          git push origin HEAD:temp-supabase-repair-safe
