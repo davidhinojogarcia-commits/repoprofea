@@ -55,11 +55,17 @@ const hasMeaningfulLegacyData = (value: Partial<AppBusinessSettings>) =>
   Boolean(value.savedObras?.length || value.savedLugares?.length || value.savedSitios?.length ||
     value.savedTelefonos?.length || value.savedCategorias?.length || value.workStartHour || value.workEndHour);
 
-export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
-  const user = supabase.auth.getUser();
-  if (!user) return { ...DEFAULTS, savedCategorias: [...DEFAULTS.savedCategorias] };
+async function requireUser() {
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) throw new Error('No hay una sesión autenticada.');
+  return data.user;
+}
 
-  const rows = await supabase.query<any[]>(`user_settings?user_id=eq.${encodeURIComponent(user.id)}&select=data&limit=1`);
+export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
+  const user = await requireUser();
+  const rows = await supabase.query('user_settings', {
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=data&limit=1`,
+  });
   const remote = rows?.[0]?.data?.app;
   if (remote && typeof remote === 'object') return normalize(remote);
 
@@ -72,10 +78,10 @@ export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
 }
 
 export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings>): Promise<void> {
-  const user = supabase.auth.getUser();
-  if (!user) throw new Error('No hay una sesión autenticada.');
-
-  const rows = await supabase.query<any[]>(`user_settings?user_id=eq.${encodeURIComponent(user.id)}&select=data&limit=1`);
+  const user = await requireUser();
+  const rows = await supabase.query('user_settings', {
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=data&limit=1`,
+  });
   const existing = normalize(rows?.[0]?.data?.app || DEFAULTS);
   const next = normalize({ ...existing, ...patch });
 
