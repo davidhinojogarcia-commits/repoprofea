@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, BarChart3, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, CloudLightning, Camera, Calendar, CalendarDays, Cloud, HardHat } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, BarChart3, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, Cloud, HardHat } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'sincronizacion' | 'citas' | 'subcontratas';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -49,7 +49,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
     { id: 'configuracion', label: 'Configuración', icon: Settings },
     { id: 'papelera', label: 'Papelera', icon: Trash2 },
-    { id: 'sincronizacion', label: 'Sincronizar', icon: CloudLightning },
   ];
 
   const handleNavClick = (id: ViewMode) => {

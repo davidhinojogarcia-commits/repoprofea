@@ -31,6 +31,8 @@ export interface Person {
   reconocimientoValidez?: string;
   reconocimientoLimitaciones?: string;
   reconocimientoObservaciones?: string;
+  ownerId?: string; // ID of user account that owns this worker
+  ownerDisplayName?: string; // Display name of the owner
 }
 
 export const getAptitudMedicaInfo = (p: Person): {
@@ -229,3 +231,20 @@ export interface SubcontrataAnalysisResponse {
   documentosIlegibles?: DocumentoIlegibleAlerta[];
   error?: string;
 }
+
+export type UserRole = 'admin' | 'user';
+
+export interface UserAccount {
+  id: string; // Unique identifier (e.g. user ID, email key, or username)
+  username: string; // Login username or email
+  email: string;
+  password?: string; // Optional password hash/string
+  displayName: string;
+  role: UserRole;
+  departamento?: string;
+  createdAt: string;
+  lastLoginAt?: string;
+  avatarUrl?: string;
+  workersCount?: number;
+}
+

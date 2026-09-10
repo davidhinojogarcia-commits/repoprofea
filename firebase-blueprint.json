@@ -86,6 +86,50 @@
       },
       "required": ["userId", "email", "lastSyncAt"]
     },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Represents a registered user account with username/password authentication and role.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user account."
+        },
+        "username": {
+          "type": "string",
+          "description": "Login username or email."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full name or display label."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user"],
+          "description": "Role determining permissions."
+        },
+        "departamento": {
+          "type": "string",
+          "description": "Department or work area."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last login timestamp."
+        }
+      },
+      "required": ["id", "username", "email", "displayName", "role", "createdAt"]
+    },
     "Person": {
       "title": "Person",
       "description": "Represents a worker registered in the PROFEA system.",
@@ -304,6 +348,10 @@
     }
   },
   "firestore": {
+    "/accounts/{accountId}": {
+      "schema": "UserAccount",
+      "description": "Registered user accounts for username/password login and administrative access."
+    },
     "/workspaces/{workspaceId}": {
       "schema": "Workspace",
       "description": "Multi-device and team workspaces synchronized in real time."

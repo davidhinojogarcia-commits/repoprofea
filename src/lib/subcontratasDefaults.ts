@@ -869,12 +869,12 @@ export const generateSubcontrataReportPDF = async (
       const boxW = 43.5;
       const gap = 2.6;
 
-      // Box 1: Supervisión de Obra
+      // Box 1: Supervisor de obra
       doc.roundedRect(marginLeft, sigY, boxW, 21, 1.5, 1.5, 'S');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(15, 23, 42);
-      doc.text('Supervisión de Obra:', marginLeft + 2, sigY + 4);
+      doc.text('Supervisor de obra:', marginLeft + 2, sigY + 4);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.8);
       doc.setTextColor(71, 85, 105);
@@ -926,12 +926,12 @@ export const generateSubcontrataReportPDF = async (
       doc.setTextColor(71, 85, 105);
       doc.text(`Fdo: ${effectiveCoordinador}`, sig4X + 2, sigY + 17, { maxWidth: boxW - 4 });
     } else {
-      // Box 1: Supervisión de Obra
+      // Box 1: Supervisor de obra
       doc.roundedRect(marginLeft, sigY, 58, 20, 1.5, 1.5, 'S');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.8);
       doc.setTextColor(15, 23, 42);
-      doc.text('Por el Supervisión de Obra:', marginLeft + 2.5, sigY + 4);
+      doc.text('Por el Supervisor de obra:', marginLeft + 2.5, sigY + 4);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.2);
       doc.setTextColor(71, 85, 105);
@@ -1729,12 +1729,12 @@ export const generateObraConsolidatedReportPDF = async (
     const boxW = 43.5;
     const gap = 2.6;
 
-    // Box 1: Supervisión de Obra
+    // Box 1: Supervisor de obra
     sigDoc.roundedRect(marginLeft, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
     sigDoc.setFont('helvetica', 'bold');
     sigDoc.setFontSize(6.5);
     sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Supervisión de Obra:', marginLeft + 2, sigBoxY + 4);
+    sigDoc.text('Supervisor de obra:', marginLeft + 2, sigBoxY + 4);
     sigDoc.setFont('helvetica', 'normal');
     sigDoc.setFontSize(5.8);
     sigDoc.setTextColor(71, 85, 105);
@@ -1789,12 +1789,12 @@ export const generateObraConsolidatedReportPDF = async (
     sigDoc.text(coordTxt, sig4X + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
   } else {
     // 3 Boxes fallback
-    // Box 1: Supervisión de Obra
+    // Box 1: Supervisor de obra
     sigDoc.roundedRect(marginLeft, sigBoxY, 58, 22, 1.5, 1.5, 'S');
     sigDoc.setFont('helvetica', 'bold');
     sigDoc.setFontSize(6.8);
     sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Por el Supervisión de Obra:', marginLeft + 2.5, sigBoxY + 4);
+    sigDoc.text('Por el Supervisor de obra:', marginLeft + 2.5, sigBoxY + 4);
     sigDoc.setFont('helvetica', 'normal');
     sigDoc.setFontSize(6.2);
     sigDoc.setTextColor(71, 85, 105);

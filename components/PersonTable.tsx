@@ -163,6 +163,11 @@ export const PersonTable: React.FC<PersonTableProps> = ({
                           Repetidor ({sameDniWorkers.length})
                         </span>
                       )}
+                      {person.ownerDisplayName && (
+                        <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 text-[9px] font-bold border border-purple-200 dark:border-purple-800/80" title={`Propietario del registro: ${person.ownerDisplayName}`}>
+                          👤 {person.ownerDisplayName}
+                        </span>
+                      )}
                     </div>
                   </td>
 

@@ -4,21 +4,9 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
-import {
-  getOrCreateUser,
-  getDbObras,
-  upsertDbObra,
-  deleteDbObra,
-  getDbWorkers,
-  upsertDbWorker,
-  deleteDbWorker,
-  getDbSubcontratistas,
-  upsertDbSubcontratista,
-  deleteDbSubcontratista,
-  getDbConfig,
-  setDbConfig
-} from "./src/db/operations.ts";
-import { optionalAuth, requireAuth, AuthRequest } from "./src/middleware/auth.ts";
+import { databaseStore } from "./server/databaseStore";
+import { accountStore } from "./server/accountStore";
+import { syncFromFirestoreDatabase } from "./server/firestoreSync";
 
 // Helper to extract clean text/tables from Excel (.xlsx/.xls) and Word (.docx/.doc) buffers
 async function extractTextFromOfficeBuffer(buffer: Buffer, filename: string): Promise<string> {
@@ -260,6 +248,223 @@ async function startServer() {
     (enhancedErr as any).originalError = lastError;
     throw enhancedErr;
   };
+
+  // --- REAL-TIME MULTI-DEVICE DATABASE SYNC ENDPOINTS ---
+  const handleGetWorkspace = (req: express.Request, res: express.Response) => {
+    try {
+      const wsId = req.params.workspaceId as string | undefined;
+      const data = databaseStore.getWorkspace(wsId);
+      res.json({ success: true, ...data });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+  app.get("/api/database/workspace", handleGetWorkspace);
+  app.get("/api/database/workspace/:workspaceId", handleGetWorkspace);
+
+  const handlePollWorkspace = (req: express.Request, res: express.Response) => {
+    try {
+      const wsId = req.params.workspaceId as string | undefined;
+      const since = req.query.since as string;
+      const data = databaseStore.getWorkspace(wsId);
+      const hasChanged = !since || new Date(data.lastUpdated).getTime() > new Date(since).getTime();
+      res.json({
+        success: true,
+        hasChanged,
+        lastUpdated: data.lastUpdated,
+        workers: hasChanged ? data.workers : undefined,
+        settings: hasChanged ? data.settings : undefined,
+        deletedPeople: hasChanged ? data.deletedPeople : undefined
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+  app.get("/api/database/poll", handlePollWorkspace);
+  app.get("/api/database/poll/:workspaceId", handlePollWorkspace);
+
+  app.post("/api/database/save-worker", (req, res) => {
+    try {
+      const { workspaceId, worker } = req.body;
+      if (!worker || !worker.id) {
+        return res.status(400).json({ success: false, error: "Trabajador no válido" });
+      }
+      const data = databaseStore.saveWorker(workspaceId, worker);
+      res.json({ success: true, lastUpdated: data.lastUpdated, workersCount: data.workers.length });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/database/save-workers-batch", (req, res) => {
+    try {
+      const { workspaceId, workers } = req.body;
+      if (!Array.isArray(workers)) {
+        return res.status(400).json({ success: false, error: "Lista de trabajadores no válida" });
+      }
+      const data = databaseStore.saveWorkersBatch(workspaceId, workers);
+      res.json({ success: true, lastUpdated: data.lastUpdated, workersCount: data.workers.length });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/database/delete-worker", (req, res) => {
+    try {
+      const { workspaceId, workerId, deletedRecord } = req.body;
+      if (!workerId) {
+        return res.status(400).json({ success: false, error: "ID de trabajador requerido" });
+      }
+      const data = databaseStore.deleteWorker(workspaceId, workerId, deletedRecord);
+      res.json({ success: true, lastUpdated: data.lastUpdated, workersCount: data.workers.length });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/database/save-settings", (req, res) => {
+    try {
+      const { workspaceId, settings } = req.body;
+      const data = databaseStore.saveSettings(workspaceId, settings || {});
+      res.json({ success: true, lastUpdated: data.lastUpdated });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Endpoints for explicit and complete Firestore database synchronization
+  app.all(["/api/database/sync-from-firestore", "/api/database/sync-from-firestore/:workspaceId"], async (req, res) => {
+    try {
+      const wsId = (req.params.workspaceId || req.body?.workspaceId || req.query.workspaceId) as string | undefined;
+      const syncResult = await syncFromFirestoreDatabase(wsId);
+      res.json(syncResult);
+    } catch (err: any) {
+      console.error("[FirestoreSync Endpoint Error]:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/database/firestore-status", (req, res) => {
+    try {
+      const wsId = req.query.workspaceId as string | undefined;
+      const ws = databaseStore.getWorkspace(wsId);
+      res.json({
+        success: true,
+        databaseId: "ai-studio-sistemacontratac-6e2967df-5143-4870-8115-db3d280cbe25",
+        workersCount: ws.workers.length,
+        trashCount: ws.deletedPeople.length,
+        lastUpdated: ws.lastUpdated,
+        isOnline: true
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // --- USER AUTHENTICATION & MULTI-ACCOUNT MANAGEMENT ENDPOINTS ---
+  app.post("/api/auth/login", (req, res) => {
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ success: false, error: "Usuario y contraseña requeridos" });
+      }
+      const user = accountStore.authenticate(username, password);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Usuario o contraseña incorrectos" });
+      }
+      res.json({ success: true, user });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/auth/register", (req, res) => {
+    try {
+      const { username, email, password, displayName, departamento, role } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ success: false, error: "Usuario y contraseña requeridos" });
+      }
+      const user = accountStore.createAccount({
+        username,
+        email: email || username,
+        password,
+        displayName: displayName || username,
+        departamento,
+        role: role === 'admin' ? 'admin' : 'user'
+      });
+      res.json({ success: true, user });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/auth/accounts", (req, res) => {
+    try {
+      const accounts = accountStore.getAccounts().map(acc => ({
+        ...acc,
+        workersCount: databaseStore.getWorkspaceWorkersCount(acc.id)
+      }));
+      res.json({ success: true, accounts });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/auth/accounts", (req, res) => {
+    try {
+      const { username, email, password, displayName, departamento, role } = req.body;
+      if (!username) {
+        return res.status(400).json({ success: false, error: "Nombre de usuario requerido" });
+      }
+      const newAcc = accountStore.createAccount({
+        username,
+        email: email || `${username}@profea.es`,
+        password: password || '123',
+        displayName: displayName || username,
+        departamento: departamento || 'PROFEA',
+        role: role || 'user'
+      });
+      res.json({ success: true, account: newAcc });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  app.put("/api/auth/accounts/:id", (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const updated = accountStore.updateAccount(id, req.body);
+      if (!updated) {
+        return res.status(404).json({ success: false, error: "Cuenta no encontrada" });
+      }
+      res.json({ success: true, account: updated });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.delete("/api/auth/accounts/:id", (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const deleted = accountStore.deleteAccount(id);
+      if (!deleted) {
+        return res.status(404).json({ success: false, error: "Cuenta no encontrada" });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Admin Consolidated View: All workers across all accounts
+  app.get("/api/database/admin/all-workers", (req, res) => {
+    try {
+      const allWorkers = databaseStore.getAllWorkersAcrossWorkspaces();
+      res.json({ success: true, workers: allWorkers, count: allWorkers.length });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 
   // API endpoint to recognize and extract worker details from document pages
   app.post("/api/recognize-workers", async (req, res) => {
@@ -1846,248 +2051,6 @@ Responde estrictamente en formato JSON según el esquema.`;
       res.status(500).json({ error: error.message || "Error procesando el análisis de documentación de subcontratas." });
     }
   });
-
-  // ==========================================
-  // CLOUD SQL POSTGRESQL DATABASE API ROUTES
-  // ==========================================
-
-  // Health check for database connection
-  app.get("/api/db/health", async (_req, res) => {
-    try {
-      const obrasList = await getDbObras();
-      const workersList = await getDbWorkers();
-      const subsList = await getDbSubcontratistas();
-      res.json({
-        status: "ok",
-        database: "Cloud SQL PostgreSQL",
-        counts: {
-          obras: obrasList.length,
-          workers: workersList.length,
-          subcontratistas: subsList.length,
-        },
-      });
-    } catch (error: any) {
-      console.error("DB health check error:", error);
-      res.status(500).json({ status: "error", message: error.message || "Database connection error" });
-    }
-  });
-
-  // Synchronize authenticated user with users table
-  app.post("/api/db/users/sync", requireAuth, async (req: AuthRequest, res) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const user = await getOrCreateUser(req.user.uid, req.user.email || "", req.user.name);
-      res.json({ success: true, user });
-    } catch (error: any) {
-      console.error("User sync error:", error);
-      res.status(500).json({ error: error.message || "Error synchronizing user" });
-    }
-  });
-
-  // Snapshot Full Sync: Export or Import entire dataset
-  app.get("/api/db/sync/all", optionalAuth, async (_req, res) => {
-    try {
-      const [obrasList, workersList, subsList, pdfCfg, repCfg, obrasRec] = await Promise.all([
-        getDbObras(),
-        getDbWorkers(),
-        getDbSubcontratistas(),
-        getDbConfig("pdf_config"),
-        getDbConfig("reporte_tecnico_config"),
-        getDbConfig("obras_recursos_preventivos"),
-      ]);
-
-      // Parse JSON fields in subcontratistas
-      const formattedSubs = subsList.map((s) => {
-        let checklist = [];
-        try {
-          checklist = JSON.parse(s.checklist);
-        } catch {
-          checklist = [];
-        }
-        return {
-          ...s,
-          checklist,
-        };
-      });
-
-      res.json({
-        success: true,
-        data: {
-          obras: obrasList,
-          workers: workersList,
-          subcontratistas: formattedSubs,
-          configs: {
-            pdf_config: pdfCfg,
-            reporte_tecnico_config: repCfg,
-            obras_recursos_preventivos: obrasRec,
-          },
-        },
-      });
-    } catch (error: any) {
-      console.error("Sync get error:", error);
-      res.status(500).json({ error: error.message || "Error retrieving database snapshot" });
-    }
-  });
-
-  app.post("/api/db/sync/all", optionalAuth, async (req, res) => {
-    try {
-      const { obras: obrasData, workers: workersData, subcontratistas: subsData, configs } = req.body || {};
-
-      if (Array.isArray(obrasData)) {
-        for (const o of obrasData) {
-          if (o && o.nombre) {
-            await upsertDbObra(o.nombre, o.recursoPreventivoNombre, o.recursoPreventivoCategoria);
-          }
-        }
-      }
-
-      if (Array.isArray(workersData)) {
-        for (const w of workersData) {
-          if (w && w.dni && w.apellidosNombre) {
-            await upsertDbWorker(w);
-          }
-        }
-      }
-
-      if (Array.isArray(subsData)) {
-        for (const s of subsData) {
-          if (s && s.id && s.nombreEmpresa) {
-            await upsertDbSubcontratista(s);
-          }
-        }
-      }
-
-      if (configs && typeof configs === "object") {
-        for (const [k, v] of Object.entries(configs)) {
-          if (v !== undefined) {
-            await setDbConfig(k, v);
-          }
-        }
-      }
-
-      res.json({ success: true, message: "Base de datos sincronizada correctamente." });
-    } catch (error: any) {
-      console.error("Sync post error:", error);
-      res.status(500).json({ error: error.message || "Error synchronizing database snapshot" });
-    }
-  });
-
-  // Obras Endpoints
-  app.get("/api/db/obras", async (_req, res) => {
-    try {
-      const list = await getDbObras();
-      res.json(list);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/db/obras", async (req, res) => {
-    try {
-      const { nombre, recursoPreventivoNombre, recursoPreventivoCategoria } = req.body;
-      if (!nombre) return res.status(400).json({ error: "Nombre de la obra es requerido." });
-      const saved = await upsertDbObra(nombre, recursoPreventivoNombre, recursoPreventivoCategoria);
-      res.json(saved);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete("/api/db/obras/:nombre", async (req, res) => {
-    try {
-      const { nombre } = req.params;
-      await deleteDbObra(nombre);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Workers Endpoints
-  app.get("/api/db/workers", async (_req, res) => {
-    try {
-      const list = await getDbWorkers();
-      res.json(list);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/db/workers", async (req, res) => {
-    try {
-      const worker = req.body;
-      const saved = await upsertDbWorker(worker);
-      res.json(saved);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete("/api/db/workers/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      await deleteDbWorker(id);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Subcontratistas Endpoints
-  app.get("/api/db/subcontratistas", async (_req, res) => {
-    try {
-      const list = await getDbSubcontratistas();
-      const parsed = list.map((s) => ({
-        ...s,
-        checklist: typeof s.checklist === "string" ? JSON.parse(s.checklist) : s.checklist,
-      }));
-      res.json(parsed);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/db/subcontratistas", async (req, res) => {
-    try {
-      const sub = req.body;
-      const saved = await upsertDbSubcontratista(sub);
-      res.json(saved);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete("/api/db/subcontratistas/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await deleteDbSubcontratista(id);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Config Endpoints
-  app.get("/api/db/config/:key", async (req, res) => {
-    try {
-      const val = await getDbConfig(req.params.key);
-      res.json({ key: req.params.key, value: val });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/db/config/:key", async (req, res) => {
-    try {
-      const saved = await setDbConfig(req.params.key, req.body.value);
-      res.json({ success: true, saved });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
 
   // Vite middleware setup
   if (process.env.NODE_ENV !== "production") {

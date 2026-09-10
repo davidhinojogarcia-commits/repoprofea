@@ -1,37 +1,23 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Trash2, Plus, Settings, MapPin, GraduationCap, Stethoscope, Phone, 
   Briefcase, Search, AlertCircle, Database, Download, FileJson, 
-  Clock, Cloud, CheckCircle, LogIn, LogOut, ExternalLink, 
+  Clock, CheckCircle, LogIn, LogOut, ExternalLink, 
   Upload, FileArchive, Layers, ShieldAlert, RefreshCw, Loader2,
-  FileText, Check, Eye, FileSignature, ShieldCheck, UserCheck, Edit3, Save, X, Building2, User
+  FileText, Check, Edit3, Save, X, Building2, UserCheck
 } from 'lucide-react';
 import { Person, DeletedPerson } from '../types';
 import { compressToGzip, decompressFromGzip, isCompressionSupported } from '../src/lib/compression';
 import { downloadPDF } from '../src/lib/exportUtils';
-import { syncAccountSettings } from '../src/lib/firebase';
-import { 
-  DriveAutoBackupConfig, 
-  loadDriveBackupConfig, 
-  saveDriveBackupConfig 
-} from '../src/lib/driveBackup';
-import { DriveAutoBackupSettings } from './DriveAutoBackupSettings';
 import {
   getStoredReporteTecnicoConfig,
   saveStoredReporteTecnicoConfig,
   getStoredObrasRecursosPreventivos,
   saveStoredObraRecursoPreventivo,
   deleteStoredObraRecursoPreventivo,
-  ReporteTecnicoConfig,
   ObraRecursoPreventivo
 } from '../src/lib/subcontratasDefaults';
-import {
-  checkDbHealth,
-  syncAllToDatabase,
-  fetchSnapshotFromDatabase,
-  DbHealthResponse,
-} from '../src/lib/dbClient';
 
 interface ConfiguracionProps {
   savedObras: string[];
@@ -52,16 +38,16 @@ interface ConfiguracionProps {
   setWorkStartHour: React.Dispatch<React.SetStateAction<string>>;
   workEndHour: string;
   setWorkEndHour: React.Dispatch<React.SetStateAction<string>>;
-  googleUser: any;
-  googleToken: string | null;
-  autoSaveToDrive: boolean;
-  setAutoSaveToDrive: (val: boolean) => void;
-  onGoogleLogin: () => void;
-  onGoogleLogout: () => void;
+  googleUser?: any;
+  googleToken?: string | null;
+  autoSaveToDrive?: boolean;
+  setAutoSaveToDrive?: (val: boolean) => void;
+  onGoogleLogin?: () => void;
+  onGoogleLogout?: () => void;
   autoThemeByTime: boolean;
   setAutoThemeByTime: (val: boolean) => void;
-  driveBackupConfig?: DriveAutoBackupConfig;
-  setDriveBackupConfig?: (config: DriveAutoBackupConfig) => void;
+  driveBackupConfig?: any;
+  setDriveBackupConfig?: (config: any) => void;
   onExecuteDriveBackupNow?: () => Promise<void>;
   isBackingUpToDrive?: boolean;
   setToast?: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' } | null>>;
@@ -86,32 +72,11 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   setWorkStartHour,
   workEndHour,
   setWorkEndHour,
-  googleUser,
-  googleToken,
-  autoSaveToDrive,
-  setAutoSaveToDrive,
-  onGoogleLogin,
-  onGoogleLogout,
   autoThemeByTime,
   setAutoThemeByTime,
-  driveBackupConfig,
-  setDriveBackupConfig,
-  onExecuteDriveBackupNow,
-  isBackingUpToDrive = false,
   setToast,
 }) => {
-  const [activeTab, setActiveTab] = useState<'obras' | 'lugares' | 'sitios' | 'telefonos' | 'categorias' | 'firmas' | 'backup' | 'jornada' | 'drive'>('obras');
-  const [localDriveConfig, setLocalDriveConfig] = useState<DriveAutoBackupConfig>(() => loadDriveBackupConfig());
-
-  const effectiveDriveConfig = driveBackupConfig || localDriveConfig;
-  const handleUpdateDriveConfig = (newCfg: DriveAutoBackupConfig) => {
-    if (setDriveBackupConfig) {
-      setDriveBackupConfig(newCfg);
-    } else {
-      setLocalDriveConfig(newCfg);
-      saveDriveBackupConfig(newCfg);
-    }
-  };
+  const [activeTab, setActiveTab] = useState<'obras' | 'lugares' | 'sitios' | 'telefonos' | 'categorias' | 'backup' | 'jornada'>('obras');
 
   const [newItem, setNewItem] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,9 +84,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const [deletingItem, setDeletingItem] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
-
-  // Firmas Reporte Técnico state
-  const [reporteConfig, setReporteConfig] = useState<ReporteTecnicoConfig>(() => getStoredReporteTecnicoConfig());
 
   // Recursos Preventivos por Obra state
   const [obrasRecursos, setObrasRecursos] = useState<Record<string, ObraRecursoPreventivo>>(() => getStoredObrasRecursosPreventivos());
@@ -136,238 +98,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   // State for parsed backup verification
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isDriveLoading, setIsDriveLoading] = useState(false);
-
-  // Cloud SQL Database states
-  const [dbHealth, setDbHealth] = useState<DbHealthResponse | null>(null);
-  const [isDbChecking, setIsDbChecking] = useState(false);
-  const [isDbSyncing, setIsDbSyncing] = useState(false);
-  const [isDbRestoring, setIsDbRestoring] = useState(false);
-
-  // Auto-check DB health on backup tab open
-  useEffect(() => {
-    if (activeTab === 'backup') {
-      checkDbHealth().then(res => setDbHealth(res)).catch(() => {});
-    }
-  }, [activeTab]);
-
-  const handleCheckDb = async () => {
-    setIsDbChecking(true);
-    try {
-      const res = await checkDbHealth();
-      setDbHealth(res);
-      if (res.status === 'ok') {
-        setToast?.({ message: 'Conectado a Cloud SQL PostgreSQL (europe-west2).', type: 'success' });
-      } else {
-        setToast?.({ message: res.message || 'Error conectando a la base de datos.', type: 'error' });
-      }
-    } finally {
-      setIsDbChecking(false);
-    }
-  };
-
-  const handleSyncToDb = async () => {
-    setIsDbSyncing(true);
-    try {
-      let currentSubs: any[] = [];
-      try {
-        const rawSubs = localStorage.getItem('profea_subcontratistas_list');
-        if (rawSubs) currentSubs = JSON.parse(rawSubs);
-      } catch (e) {
-        console.warn('Error reading subcontratistas:', e);
-      }
-
-      const obrasObj = getStoredObrasRecursosPreventivos();
-      const obrasPayload = savedObras.map(obraName => ({
-        nombre: obraName,
-        recursoPreventivoNombre: obrasObj[obraName]?.recursoPreventivoNombre || '',
-        recursoPreventivoCategoria: obrasObj[obraName]?.recursoPreventivoCategoria || 'Encargado de Obra',
-      }));
-
-      await syncAllToDatabase({
-        obras: obrasPayload,
-        workers: people,
-        subcontratistas: currentSubs,
-        configs: {
-          reporte_tecnico_config: getStoredReporteTecnicoConfig(),
-          obras_recursos_preventivos: obrasObj,
-        },
-      });
-
-      const res = await checkDbHealth();
-      setDbHealth(res);
-      setToast?.({ message: 'Base de datos Cloud SQL PostgreSQL sincronizada con éxito.', type: 'success' });
-    } catch (err: any) {
-      console.error('Error syncing to database:', err);
-      setToast?.({ message: err.message || 'Error al sincronizar con la base de datos.', type: 'error' });
-    } finally {
-      setIsDbSyncing(false);
-    }
-  };
-
-  const handleRestoreFromDb = async () => {
-    if (!window.confirm('¿Desea restaurar e integrar los registros almacenados en Cloud SQL PostgreSQL en la aplicación?')) {
-      return;
-    }
-    setIsDbRestoring(true);
-    try {
-      const snapshot = await fetchSnapshotFromDatabase();
-      if (snapshot && snapshot.data) {
-        const { obras: dbObras, workers: dbWorkers, subcontratistas: dbSubs, configs } = snapshot.data;
-
-        // Restore Obras
-        if (Array.isArray(dbObras) && dbObras.length > 0) {
-          const names = Array.from(new Set([...savedObras, ...dbObras.map(o => o.nombre)]));
-          setSavedObras(names);
-          localStorage.setItem('profea_obras', JSON.stringify(names));
-
-          dbObras.forEach(o => {
-            if (o.recursoPreventivoNombre) {
-              saveStoredObraRecursoPreventivo(o.nombre, o.recursoPreventivoNombre, o.recursoPreventivoCategoria || 'Encargado de Obra');
-            }
-          });
-        }
-
-        // Restore Workers
-        if (Array.isArray(dbWorkers) && dbWorkers.length > 0) {
-          const currentMap = new Map<string, Person>(people.map(p => [p.dni, p]));
-          dbWorkers.forEach(w => {
-            if (w.dni) {
-              const existing = currentMap.get(w.dni);
-              const merged = Object.assign({}, existing || {}, w) as Person;
-              currentMap.set(w.dni, merged);
-            }
-          });
-          const mergedWorkers = Array.from(currentMap.values());
-          setPeople(mergedWorkers);
-          localStorage.setItem('profea_trabajadores', JSON.stringify(mergedWorkers));
-        }
-
-        // Restore Subcontratistas
-        if (Array.isArray(dbSubs) && dbSubs.length > 0) {
-          localStorage.setItem('profea_subcontratistas_list', JSON.stringify(dbSubs));
-          window.dispatchEvent(new CustomEvent('profea_subcontratas_changed', { detail: dbSubs }));
-        }
-
-        // Restore configs
-        if (configs?.reporte_tecnico_config) {
-          saveStoredReporteTecnicoConfig(configs.reporte_tecnico_config);
-          setReporteConfig(configs.reporte_tecnico_config);
-        }
-
-        const res = await checkDbHealth();
-        setDbHealth(res);
-        setToast?.({ message: 'Datos restaurados con éxito desde Cloud SQL PostgreSQL.', type: 'success' });
-      }
-    } catch (err: any) {
-      console.error('Error restoring from database:', err);
-      setToast?.({ message: err.message || 'Error al restaurar desde la base de datos.', type: 'error' });
-    } finally {
-      setIsDbRestoring(false);
-    }
-  };
-
-  // Load Google APIs Scripts on mount
-  useEffect(() => {
-    if (!(window as any).gapi) {
-      const scriptGapi = document.createElement('script');
-      scriptGapi.src = 'https://apis.google.com/js/api.js';
-      scriptGapi.async = true;
-      scriptGapi.defer = true;
-      document.body.appendChild(scriptGapi);
-    }
-
-    if (!(window as any).google?.accounts) {
-      const scriptGis = document.createElement('script');
-      scriptGis.src = 'https://accounts.google.com/gsi/client';
-      scriptGis.async = true;
-      scriptGis.defer = true;
-      document.body.appendChild(scriptGis);
-    }
-  }, []);
-
-  const handleOpenGooglePicker = () => {
-    if (!googleToken) {
-      if (onGoogleLogin) {
-        onGoogleLogin();
-      } else {
-        alert('Por favor, inicie sesión en Google para usar el selector.');
-      }
-      return;
-    }
-
-    setIsDriveLoading(true);
-
-    try {
-      (window as any).gapi.load('picker', {
-        callback: () => {
-          const view = new (window as any).google.picker.DocsView((window as any).google.picker.ViewId.DOCS)
-            .setMimeTypes('application/json,application/x-gzip,application/gzip,application/octet-stream')
-            .setIncludeFolders(true)
-            .setSelectFolderEnabled(false);
-
-          const picker = new (window as any).google.picker.PickerBuilder()
-            .addView(view)
-            .setOAuthToken(googleToken)
-            .setDeveloperKey('AIzaSyCoLiLZXdWWYQklXwsWnf1LDjzbKxPST2g') // standard key
-            .setCallback(async (data: any) => {
-              if (data[(window as any).google.picker.Response.ACTION] === (window as any).google.picker.Action.PICKED) {
-                const docItem = data[(window as any).google.picker.Response.DOCUMENTS][0];
-                const fileId = docItem[(window as any).google.picker.Document.ID];
-                const fileName = docItem[(window as any).google.picker.Document.NAME];
-                const mimeType = docItem[(window as any).google.picker.Document.MIME_TYPE];
-
-                await handleImportBackupFromDrive(fileId, fileName, mimeType);
-              }
-            })
-            .build();
-          picker.setVisible(true);
-          setIsDriveLoading(false);
-        }
-      });
-    } catch (err) {
-      console.error('Error loading Google Picker:', err);
-      setIsDriveLoading(false);
-      alert('Error al abrir el selector de Google Drive.');
-    }
-  };
-
-  const handleImportBackupFromDrive = async (fileId: string, fileName: string, mimeType: string) => {
-    if (!googleToken) return;
-    setIsDriveLoading(true);
-
-    try {
-      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${googleToken}` }
-      });
-
-      if (!response.ok) {
-        throw new Error('No se pudo descargar el archivo de copia de seguridad de Google Drive.');
-      }
-
-      const blob = await response.blob();
-      let jsonText = '';
-
-      if (fileName.endsWith('.gz') || mimeType.includes('gzip') || mimeType.includes('octet-stream')) {
-        jsonText = await decompressFromGzip(blob);
-      } else {
-        jsonText = await blob.text();
-      }
-
-      const parsed = JSON.parse(jsonText);
-      if (parsed && (parsed.type === "profea_complete_backup" || parsed.people)) {
-        setLoadedBackup(parsed);
-      } else {
-        alert('⚠️ El archivo no parece ser una copia de seguridad válida de esta aplicación.');
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert('Error al restaurar copia desde Drive: ' + (err.message || err));
-    } finally {
-      setIsDriveLoading(false);
-    }
-  };
 
   // Helper to format a backup object with all local tables and trash
   const createBackupData = () => {
@@ -515,7 +245,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       }
       if (backupConfig.reporteTecnicoConfig) {
         saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
-        setReporteConfig(backupConfig.reporteTecnicoConfig);
       }
       if (backupConfig.obrasRecursosPreventivos) {
         try {
@@ -576,7 +305,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       if (backupConfig.categorias) setSavedCategorias(prev => mergeList(prev, backupConfig.categorias));
       if (backupConfig.reporteTecnicoConfig) {
         saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
-        setReporteConfig(backupConfig.reporteTecnicoConfig);
       }
       if (backupConfig.obrasRecursosPreventivos) {
         const currentRec = getStoredObrasRecursosPreventivos();
@@ -629,18 +357,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       setObrasRecursos(getStoredObrasRecursosPreventivos());
     }
     setDeletingItem(null);
-  };
-
-  const handleSaveReporteConfig = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!reporteConfig.tecnicoNombre.trim()) {
-      if (setToast) setToast({ message: 'El Nombre y Apellidos del Técnico es obligatorio.', type: 'error' });
-      return;
-    }
-    saveStoredReporteTecnicoConfig(reporteConfig);
-    if (setToast) {
-      setToast({ message: 'Configuración de firmas del Reporte Técnico guardada correctamente.', type: 'success' });
-    }
   };
 
   const handleAddObraWithRecurso = (e: React.FormEvent) => {
@@ -775,34 +491,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           <button
             onClick={() => {
-              setActiveTab('firmas');
-              setSearchTerm('');
-              setNewItem('');
-              setDeletingItem(null);
-              setSelectedItems([]);
-              setShowBulkConfirm(false);
-            }}
-            className={`
-              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
-              ${activeTab === 'firmas' 
-                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-              }
-            `}
-          >
-            <FileSignature className={`w-5 h-5 ${activeTab === 'firmas' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
-            <span className="flex-1 text-left">Firmas Reporte Técnico</span>
-            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
-              activeTab === 'firmas' 
-                ? 'bg-white/25 text-white' 
-                : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-900'
-            }`}>
-              PDF
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
               setActiveTab('jornada');
               setSearchTerm('');
               setNewItem('');
@@ -820,36 +508,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
           >
             <Clock className={`w-5 h-5 ${activeTab === 'jornada' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
             Jornada Laboral
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('drive');
-              setSearchTerm('');
-              setNewItem('');
-              setDeletingItem(null);
-              setSelectedItems([]);
-              setShowBulkConfirm(false);
-            }}
-            className={`
-              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
-              ${activeTab === 'drive' 
-                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-              }
-            `}
-          >
-            <Cloud className={`w-5 h-5 ${activeTab === 'drive' ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
-            <span className="flex-1 text-left">Google Drive</span>
-            {effectiveDriveConfig.enabled && (
-              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
-                activeTab === 'drive' 
-                  ? 'bg-white/25 text-white' 
-                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
-              }`}>
-                Auto
-              </span>
-            )}
           </button>
 
           <button
@@ -954,167 +612,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   </div>
                 </div>
 
-                {/* Cloud SQL PostgreSQL Database Integration Banner */}
-                <div id="cloud-sql-section" className="p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/20 flex flex-col gap-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-start sm:items-center gap-3.5">
-                      <div className="p-3 rounded-2xl shrink-0 bg-indigo-600 text-white shadow-md shadow-indigo-500/20">
-                        <Database className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                            Base de Datos Cloud SQL (PostgreSQL)
-                          </h4>
-                          {dbHealth?.status === 'ok' ? (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-full flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                              Conectada (europe-west2)
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 rounded-full">
-                              Verificando conexión...
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                          Instancia gestionada en Cloud SQL con Drizzle ORM para almacenamiento relacional seguro de obras, trabajadores, subcontratas y configuraciones.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={handleCheckDb}
-                        disabled={isDbChecking}
-                        className="px-3 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                        title="Verificar estado de conexión"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isDbChecking ? 'animate-spin' : ''}`} />
-                        {isDbChecking ? 'Comprobando...' : 'Comprobar'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* DB Stats & Action Controls */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-indigo-100/70 dark:border-indigo-900/40">
-                    <div className="p-3 bg-white/70 dark:bg-slate-900/60 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">Obras Registradas</span>
-                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
-                        {dbHealth?.counts ? dbHealth.counts.obras : savedObras.length}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-white/70 dark:bg-slate-900/60 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">Trabajadores en BD</span>
-                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
-                        {dbHealth?.counts ? dbHealth.counts.workers : people.length}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-white/70 dark:bg-slate-900/60 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">Subcontratas CAE</span>
-                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
-                        {dbHealth?.counts ? dbHealth.counts.subcontratistas : 'Activo'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleSyncToDb}
-                      disabled={isDbSyncing}
-                      className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isDbSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
-                      {isDbSyncing ? 'Sincronizando con PostgreSQL...' : 'Sincronizar a Base de Datos'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRestoreFromDb}
-                      disabled={isDbRestoring}
-                      className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isDbRestoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                      {isDbRestoring ? 'Cargando datos...' : 'Restaurar desde Base de Datos'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Google Drive Scheduled Backup Integration Banner */}
-                <div className="p-5 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/20 dark:bg-blue-950/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-start sm:items-center gap-3.5">
-                    <div className={`p-3 rounded-2xl shrink-0 ${
-                      effectiveDriveConfig.enabled 
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
-                    }`}>
-                      <Cloud className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          Copias Automáticas en la Nube (Google Drive)
-                        </h4>
-                        {effectiveDriveConfig.enabled ? (
-                          <span className="px-2 py-0.5 text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-full">
-                            Programación Activa
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 rounded-full">
-                            Desactivada
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                        {effectiveDriveConfig.enabled ? (
-                          <>
-                            Frecuencia: <strong className="text-slate-700 dark:text-slate-300">{
-                              effectiveDriveConfig.frequency === 'daily' ? `Diaria (${effectiveDriveConfig.hourOfDay ?? 20}:00h)` :
-                              effectiveDriveConfig.frequency === 'weekly' ? `Semanal (cada ${effectiveDriveConfig.dayOfWeek ?? 1})` :
-                              effectiveDriveConfig.frequency === 'monthly' ? `Mensual (día ${effectiveDriveConfig.dayOfMonth ?? 1})` :
-                              `Cada ${effectiveDriveConfig.customIntervalMinutes ?? 60} min`
-                            }</strong> en cuenta <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{effectiveDriveConfig.targetAccountEmail || googleUser?.email || 'Google conectada'}</span>.
-                            {effectiveDriveConfig.lastBackupDate && (
-                              <span className="block sm:inline sm:ml-2 text-slate-400">
-                                Última: {new Date(effectiveDriveConfig.lastBackupDate).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          'Programe respaldos automáticos periódicos directamente a una cuenta de Google Drive específica sin intervención manual.'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0">
-                    {effectiveDriveConfig.enabled && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (onExecuteDriveBackupNow) {
-                            await onExecuteDriveBackupNow();
-                          }
-                        }}
-                        disabled={isBackingUpToDrive || !googleToken}
-                        className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isBackingUpToDrive ? 'animate-spin' : ''}`} />
-                        {isBackingUpToDrive ? 'Subiendo...' : 'Hacer Copia Ahora'}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('drive')}
-                      className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                      Configurar Horarios
-                    </button>
-                  </div>
-                </div>
-
                 {/* Import / Restore Section */}
                 <div className="border-t border-slate-200/60 dark:border-slate-850 pt-6 space-y-4">
                   <div>
@@ -1123,15 +620,15 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                       Restaurar Copia de Seguridad
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Seleccione el origen desde donde restaurar su copia de seguridad previa (<strong className="font-bold text-slate-600 dark:text-slate-300">.json</strong> o <strong className="font-bold text-slate-600 dark:text-slate-300">.json.gz</strong>).
+                      Seleccione el archivo de respaldo previo (<strong className="font-bold text-slate-600 dark:text-slate-300">.json</strong> o <strong className="font-bold text-slate-600 dark:text-slate-300">.json.gz</strong>) para restaurar en este dispositivo.
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Drag-n-drop simulated/clickable Area */}
+                  <div>
+                    {/* Drag-n-drop clickable Area */}
                     <div 
                       onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-brand-primary dark:hover:border-blue-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-all group flex flex-col justify-center items-center"
+                      className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-brand-primary dark:hover:border-blue-500 rounded-2xl p-8 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-all group flex flex-col justify-center items-center"
                     >
                       <input 
                         type="file" 
@@ -1140,35 +637,14 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         accept=".json, .json.gz, .gz"
                         className="hidden"
                       />
-                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                        <Upload className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6 text-slate-500 dark:text-slate-400" />
                       </div>
-                      <span className="text-xs font-bold text-slate-750 dark:text-slate-300 block">
-                        Dispositivo Local
+                      <span className="text-sm font-bold text-slate-750 dark:text-slate-300 block">
+                        Seleccionar Archivo de Respaldo Local
                       </span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">
-                        Soporta .json y .json.gz locales
-                      </span>
-                    </div>
-
-                    {/* Google Drive Option */}
-                    <div 
-                      onClick={handleOpenGooglePicker}
-                      className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-all group flex flex-col justify-center items-center"
-                    >
-                      <div className="w-10 h-10 bg-amber-50 dark:bg-amber-950/20 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                        <Cloud className="w-5 h-5 text-amber-600 dark:text-amber-500" />
-                      </div>
-                      <span className="text-xs font-bold text-slate-750 dark:text-slate-300 block flex items-center gap-1.5 justify-center">
-                        Google Drive
-                        {googleToken && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" title="Conectado" />
-                        )}
-                      </span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">
-                        {googleToken 
-                          ? 'Busca copias en tus carpetas de Drive' 
-                          : 'Inicia sesión para restaurar desde Drive'}
+                      <span className="text-xs text-slate-400 dark:text-slate-500 block mt-1">
+                        Compatible con archivos de exportación .json y copias comprimidas .json.gz
                       </span>
                     </div>
                   </div>
@@ -1267,108 +743,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          ) : activeTab === 'drive' ? (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <Cloud className="w-6 h-6 text-brand-primary animate-pulse" />
-                  Configuración de Google Drive
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                  Guarde automáticamente copias de todos sus documentos generados (PDF y Excel) en la nube.
-                </p>
-              </div>
-
-              <div className="p-6 space-y-6">
-                {googleToken ? (
-                  <div className="space-y-6">
-                    {/* Connection Status Card */}
-                    <div className="p-5 rounded-2xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-500 text-white rounded-xl">
-                          <CheckCircle className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block">ESTADO DE LA CONEXIÓN</span>
-                          <span className="text-sm font-black text-slate-800 dark:text-slate-100 block">Conectado a Google Drive</span>
-                          {googleUser?.email && (
-                            <span className="text-xs text-slate-500 dark:text-slate-400 block font-medium mt-0.5">{googleUser.email}</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={onGoogleLogout}
-                        className="px-4 py-2 bg-white dark:bg-slate-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-xs cursor-pointer"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Desconectar
-                      </button>
-                    </div>
-
-                    {/* Automatic Backup Toggle Card */}
-                    <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 font-bold">Guardado Automático de Exportaciones</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                            Cuando esté activado, cada PDF o Excel que descargue de cualquier módulo (Directorio, Estadísticas, Calzado, etc.) se subirá automáticamente en segundo plano a su carpeta <strong className="font-bold">PROFEA_Cádiz</strong> en Google Drive.
-                          </p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={autoSaveToDrive}
-                            onChange={(e) => setAutoSaveToDrive(e.target.checked)}
-                          />
-                          <div className="w-11 h-6 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-primary/20 dark:peer-focus:ring-brand-primary/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-brand-primary"></div>
-                        </label>
-                      </div>
-
-                      <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 text-xs font-semibold leading-relaxed">
-                        📁 Los archivos se guardarán en: <strong>Mi unidad &gt; PROFEA_Cádiz &gt; [Nombre_Del_Archivo]</strong>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-10 space-y-6">
-                    <div className="mx-auto w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 dark:text-slate-500">
-                      <Cloud className="w-8 h-8" />
-                    </div>
-                    <div className="space-y-2 max-w-md mx-auto">
-                      <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Google Drive no conectado</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                        Conecte su cuenta de Google para habilitar el guardado automático de informes generados, estadísticas y listados directamente en su Drive personal en tiempo real.
-                      </p>
-                    </div>
-                    <button
-                      onClick={onGoogleLogin}
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-brand-primary/95 shadow-lg shadow-brand-primary/25 active:scale-95 transition-all cursor-pointer"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      Conectarse con Google
-                    </button>
-                  </div>
-                )}
-
-                {/* Programación de Copias de Seguridad Automáticas a Google Drive */}
-                <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800">
-                  <DriveAutoBackupSettings
-                    config={effectiveDriveConfig}
-                    onChangeConfig={handleUpdateDriveConfig}
-                    googleUser={googleUser}
-                    googleToken={googleToken}
-                    onGoogleLogin={onGoogleLogin}
-                    onExecuteBackupNow={async () => {
-                      if (onExecuteDriveBackupNow) {
-                        await onExecuteDriveBackupNow();
-                      }
-                    }}
-                    isBackingUpNow={isBackingUpToDrive}
-                  />
-                </div>
               </div>
             </div>
           ) : activeTab === 'jornada' ? (
@@ -1482,195 +856,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         </div>
                       );
                     })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : activeTab === 'firmas' ? (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <FileSignature className="w-6 h-6 text-brand-primary" />
-                    Firmas y Datos Predeterminados del Reporte Técnico PDF
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                    Configure el Nombre del Técnico, Coordinador de Seguridad y Salud y la Empresa de Coordinación que figurarán en el pie de firmas de los Reportes Técnicos oficiales en PDF.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSaveReporteConfig}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-brand-primary hover:bg-brand-primary/90 text-white text-xs font-bold rounded-xl shadow-md shadow-brand-primary/20 transition-all cursor-pointer shrink-0"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Configuración</span>
-                </button>
-              </div>
-
-              <div className="p-6 space-y-6">
-                <form onSubmit={handleSaveReporteConfig} className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Nombre y Apellidos del Técnico de Obra */}
-                  <div className="p-5 rounded-2xl border-2 border-blue-300 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-950/20 space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider">
-                      <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      Nombre y Apellidos del Técnico de Obra *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={reporteConfig.tecnicoNombre}
-                      onChange={(e) => setReporteConfig({ ...reporteConfig, tecnicoNombre: e.target.value })}
-                      placeholder="Ej: David Hinojo García"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                    />
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                      Este nombre se imprimirá en la casilla <strong>"Por el Técnico"</strong> en todos los Reportes Técnicos y consolidados en PDF.
-                    </p>
-                  </div>
-
-                  {/* Coordinador de Seguridad y Salud */}
-                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      Coordinador de Seguridad y Salud (CSS)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={reporteConfig.coordinadorNombre}
-                      onChange={(e) => setReporteConfig({ ...reporteConfig, coordinadorNombre: e.target.value })}
-                      placeholder="Ej: David Hinojo García"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-primary focus:outline-hidden"
-                    />
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                      Técnico competente responsable de la coordinación de seguridad y salud en fase de ejecución.
-                    </p>
-                  </div>
-
-                  {/* Empresa de Coordinación */}
-                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                      Empresa o Entidad de Coordinación
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={reporteConfig.empresaCoordinacion}
-                      onChange={(e) => setReporteConfig({ ...reporteConfig, empresaCoordinacion: e.target.value })}
-                      placeholder="Ej: Área de Cooperación - Excma. Diputación Provincial de Cádiz"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-primary focus:outline-hidden"
-                    />
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                      Razón social de la empresa o administración que se imprime junto al coordinador.
-                    </p>
-                  </div>
-
-                  {/* Supervisión de Obra / D.F. */}
-                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                      Supervisión de Obra / Dirección Facultativa
-                    </label>
-                    <input
-                      type="text"
-                      value={reporteConfig.supervisorNombre}
-                      onChange={(e) => setReporteConfig({ ...reporteConfig, supervisorNombre: e.target.value })}
-                      placeholder="Ej: David Hinojo García"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-primary focus:outline-hidden"
-                    />
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                      Nombre que encabeza la primera casilla de Supervisión Técnica de Obra.
-                    </p>
-                  </div>
-                </form>
-
-                {/* Live Signature Preview */}
-                <div className="border-t border-slate-200 dark:border-slate-800 pt-6 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                      <Eye className="w-4 h-4 text-brand-primary" />
-                      Vista Previa de la Sección de Firmas (Reporte Técnico PDF)
-                    </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                      4 Casillas Oficiales
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
-                    {/* Box 1: Supervisión */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs">
-                      <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
-                        SUPERVISIÓN DE OBRA
-                      </div>
-                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                        [Espacio para Firma]
-                      </div>
-                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                          Fdo: {reporteConfig.supervisorNombre || 'David Hinojo García'}
-                        </span>
-                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
-                          Supervisión Técnica
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Box 2: Recurso Preventivo */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs">
-                      <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
-                        RECURSO PREVENTIVO
-                      </div>
-                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                        [Espacio para Firma]
-                      </div>
-                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                          Fdo: [Recurso de cada Obra]
-                        </span>
-                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
-                          Encargado de Obra
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Box 3: Por el Técnico */}
-                    <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 dark:border-blue-400 rounded-xl overflow-hidden flex flex-col justify-between shadow-xs">
-                      <div className="bg-blue-700 text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase flex items-center justify-center gap-1">
-                        <UserCheck className="w-3 h-3" />
-                        POR EL TÉCNICO
-                      </div>
-                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                        [Espacio para Firma]
-                      </div>
-                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-blue-50/50 dark:bg-blue-950/40">
-                        <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 block truncate">
-                          Fdo: {reporteConfig.tecnicoNombre || 'David Hinojo García'}
-                        </span>
-                        <span className="text-[9px] text-blue-600 dark:text-blue-400 block truncate">
-                          Técnico de Obra
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Box 4: Coordinador CSS */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs">
-                      <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
-                        COORDINACIÓN SEG. Y SALUD
-                      </div>
-                      <div className="h-16 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                        [Espacio para Firma y Sello]
-                      </div>
-                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                          Fdo: {reporteConfig.coordinadorNombre || 'David Hinojo García'}
-                        </span>
-                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate" title={reporteConfig.empresaCoordinacion}>
-                          {reporteConfig.empresaCoordinacion || 'Empresa de Coordinación'}
-                        </span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -2270,14 +1455,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
           )}
         </div>
       </div>
-
-      {/* Loading Overlay */}
-      {isDriveLoading && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm text-white">
-          <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-          <p className="mt-4 text-sm font-semibold">Descargando copia de seguridad desde Google Drive...</p>
-        </div>
-      )}
     </div>
   );
 };

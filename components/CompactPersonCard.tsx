@@ -189,6 +189,15 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
               </span>
             )}
 
+            {person.ownerDisplayName && (
+              <span 
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 text-[10px] font-bold border border-purple-200 dark:border-purple-800/80"
+                title={`Propietario del registro: ${person.ownerDisplayName}`}
+              >
+                👤 {person.ownerDisplayName}
+              </span>
+            )}
+
             {/* Aptitud Médica Badge */}
             {aptInfo.estado === 'Apto' ? (
               <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">

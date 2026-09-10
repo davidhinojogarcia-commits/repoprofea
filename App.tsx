@@ -18,6 +18,17 @@ import { SubcontratasSection } from './components/SubcontratasSection';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
+import { DatabaseSyncAlert } from './components/DatabaseSyncAlert';
+import { FirebaseSyncModal } from './components/FirebaseSyncModal';
+import { executeDatabaseSync, notifyDatabaseSync } from './src/lib/syncNotifier';
+import {
+  createFirestoreWorker,
+  updateFirestoreWorker,
+  deleteFirestoreWorker,
+  restoreFirestoreWorker,
+  permanentDeleteFirestoreWorker,
+  triggerFirestoreDatabaseSync
+} from './src/lib/firebase';
 import * as pdfjsLib from 'pdfjs-dist';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -46,7 +57,6 @@ import {
   getStoredPdfConfig,
   saveStoredPdfConfig
 } from './src/lib/exportUtils';
-import { Sincronizacion } from './components/Sincronizacion';
 import { 
   syncWorkerToAccount, 
   deleteWorkerFromAccount, 
@@ -87,6 +97,8 @@ import {
   unregisterWorkspaceSession,
   subscribeToWorkspaceSessions,
   canonicalizeEmailKey,
+  DEFAULT_WORKSPACE_ID,
+  isQuotaExceeded,
   getOrCreateSyncGroup, 
   syncWorkerToCloud, 
   deleteWorkerFromCloud, 
@@ -395,6 +407,65 @@ function App() {
   });
 
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isFirebaseSyncModalOpen, setIsFirebaseSyncModalOpen] = useState(false);
+  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
+
+  const handlePerformFirebaseSync = async (): Promise<number> => {
+    setIsSyncingFirebase(true);
+    try {
+      const result = await triggerFirestoreDatabaseSync(currentEffectiveWorkspaceId);
+      if (result.workers && result.workers.length > 0) {
+        setPeople(result.workers.map(w => ({ ...w, sincronizadoEnNube: true })));
+      }
+      if (result.trash && result.trash.length > 0) {
+        setDeletedPeople(result.trash.map(t => ({
+          person: { ...t.person, sincronizadoEnNube: true },
+          fechaEliminacion: t.fechaEliminacion
+        })));
+      }
+      if (result.settings?.savedObras && result.settings.savedObras.length > 0) {
+        setSavedObras(prev => Array.from(new Set([...prev, ...result.settings!.savedObras!])).sort((a, b) => a.localeCompare(b)));
+      }
+      setLastSyncTime(new Date());
+      setToast({
+        message: `Se han leído y sincronizado ${result.count} trabajadores desde Firebase Firestore.`,
+        type: 'success'
+      });
+      return result.count;
+    } catch (err: any) {
+      setToast({
+        message: `Error al sincronizar con Firebase Firestore: ${err?.message || 'Error de conexión'}`,
+        type: 'error'
+      });
+      throw err;
+    } finally {
+      setIsSyncingFirebase(false);
+    }
+  };
+
+  const handleForceSaveAllToCloud = async (): Promise<void> => {
+    const currentList = peopleRef.current || [];
+    try {
+      await fetch('/api/database/save-workers-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentEffectiveWorkspaceId,
+          workers: currentList
+        })
+      });
+      setToast({
+        message: 'Todos los trabajadores se han consolidado en la base de datos de Firebase Firestore.',
+        type: 'success'
+      });
+    } catch (err: any) {
+      setToast({
+        message: `Error al guardar en la base de datos: ${err?.message || 'Error'}`,
+        type: 'error'
+      });
+      throw err;
+    }
+  };
 
   const notificationAlertsCount = useMemo(() => {
     if (!people || people.length === 0) return 0;
@@ -548,12 +619,16 @@ function App() {
     }
   };
 
+  // Compute effective sync email & workspace ID
   const effectiveSyncEmail = (
     typeof googleUser?.email === 'string' ? googleUser.email : (typeof syncEmail === 'string' ? syncEmail : '')
   ).trim().toLowerCase();
-  const currentEffectiveWorkspaceId = effectiveSyncEmail 
-    ? canonicalizeEmailKey(effectiveSyncEmail) 
-    : (typeof activeWorkspaceId === 'string' ? activeWorkspaceId.trim() : '');
+
+  const currentEffectiveWorkspaceId = (
+    effectiveSyncEmail 
+      ? canonicalizeEmailKey(effectiveSyncEmail) 
+      : (typeof activeWorkspaceId === 'string' && activeWorkspaceId.trim() ? activeWorkspaceId.trim() : DEFAULT_WORKSPACE_ID)
+  );
 
   const handleUpdateSyncEmail = async (newEmail: string) => {
     const clean = newEmail.trim().toLowerCase();
@@ -617,9 +692,22 @@ function App() {
         const cloudTrash = wsData.trash || [];
 
         // 1. Upload local workers not in workspace
-        for (const p of people) {
-          if (!cloudWorkers.some(cw => cw.id === p.id)) {
-            await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
+        const missingInCloud = people.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
+        if (missingInCloud.length > 0) {
+          try {
+            await fetch('/api/database/save-workers-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workspaceId: targetWsId, workers: missingInCloud })
+            });
+          } catch (e) {
+            console.warn("Could not batch upload to server:", e);
+          }
+
+          if (!isQuotaExceeded()) {
+            for (const p of missingInCloud) {
+              await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
+            }
           }
         }
 
@@ -707,15 +795,30 @@ function App() {
     setIsSyncingNow(true);
     try {
       if (targetWsId) {
-        for (const p of people) {
-          await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-        }
-        for (const dp of deletedPeople) {
-          await syncDeletedWorkerToWorkspace(targetWsId, {
-            ...dp,
-            person: { ...dp.person, sincronizadoEnNube: true }
+        // 1. Instant server batch save (preserves all data across devices with 0 Firestore writes)
+        try {
+          await fetch('/api/database/save-workers-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId: targetWsId, workers: people })
           });
+        } catch (e) {
+          console.warn("Could not batch upload to server store:", e);
         }
+
+        // 2. Sync to Firestore if quota allows
+        if (!isQuotaExceeded()) {
+          for (const p of people) {
+            await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
+          }
+          for (const dp of deletedPeople) {
+            await syncDeletedWorkerToWorkspace(targetWsId, {
+              ...dp,
+              person: { ...dp.person, sincronizadoEnNube: true }
+            });
+          }
+        }
+
         await syncWorkspaceSettings(targetWsId, {
           savedObras,
           savedCategorias,
@@ -1075,11 +1178,25 @@ function App() {
               setActiveWorkspace(wsData.workspace);
             }
 
-            // 1. If we have local workers not yet in workspace, auto-upload them
+            // 1. If we have local workers not yet in workspace, sync them in a single batch to server store
             const currentPeople = peopleRef.current || [];
-            for (const p of currentPeople) {
-              if (!cloudWorkers.some(cw => cw.id === p.id)) {
-                await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
+            const missingInCloud = currentPeople.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
+            if (missingInCloud.length > 0) {
+              try {
+                await fetch('/api/database/save-workers-batch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ workspaceId: targetWsId, workers: missingInCloud })
+                });
+              } catch (e) {
+                console.warn("Could not batch save missing workers on startup:", e);
+              }
+
+              if (!isQuotaExceeded()) {
+                // If quota is healthy, sync up to 5 workers gradually to Firestore
+                for (const p of missingInCloud.slice(0, 5)) {
+                  await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
+                }
               }
             }
 
@@ -1366,6 +1483,9 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const visiblePeople = people;
+  const visibleDeletedPeople = deletedPeople;
+
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [bulkEditingPeople, setBulkEditingPeople] = useState<Person[] | null>(null);
   const [savedObras, setSavedObras] = useState<string[]>(() => JSON.parse(localStorage.getItem('obrasGuardadas') || '[]'));
@@ -1557,7 +1677,7 @@ function App() {
 
   // Auto-sync catalogs and settings to user workspace in Firestore
   useEffect(() => {
-    const targetId = currentEffectiveWorkspaceId;
+    const targetId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
     if (!targetId || isOffline) return;
     const timer = setTimeout(() => {
       let subcontratasData: any[] = [];
@@ -1566,19 +1686,8 @@ function App() {
         if (raw) subcontratasData = JSON.parse(raw);
       } catch (e) {}
 
-      syncWorkspaceSettings(targetId, {
-        savedObras,
-        savedLugares,
-        savedSitios,
-        savedTelefonos,
-        savedCategorias,
-        workStartHour,
-        workEndHour,
-        subcontratas: subcontratasData
-      }).catch(err => console.warn('Error auto-syncing settings to Firestore:', err));
-
-      if (googleUser?.uid) {
-        syncAccountSettings(googleUser.uid, {
+      executeDatabaseSync('Configuraciones y Obras', async () => {
+        await syncWorkspaceSettings(targetId, {
           savedObras,
           savedLugares,
           savedSitios,
@@ -1587,8 +1696,22 @@ function App() {
           workStartHour,
           workEndHour,
           subcontratas: subcontratasData
-        }).catch(err => console.warn('Error auto-syncing account settings:', err));
-      }
+        });
+        if (googleUser?.uid) {
+          await syncAccountSettings(googleUser.uid, {
+            savedObras,
+            savedLugares,
+            savedSitios,
+            savedTelefonos,
+            savedCategorias,
+            workStartHour,
+            workEndHour,
+            subcontratas: subcontratasData
+          });
+        }
+      }, {
+        detail: 'Catálogos y configuración actualizados en Firestore.'
+      }).catch(err => console.warn('Error auto-syncing settings to Firestore:', err));
     }, 800);
     return () => clearTimeout(timer);
   }, [currentEffectiveWorkspaceId, googleUser?.uid, isOffline, savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
@@ -1596,19 +1719,26 @@ function App() {
   // Real-time listener for local subcontratas changes to sync to workspace
   useEffect(() => {
     const handleSubChange = (e: any) => {
-      const targetId = currentEffectiveWorkspaceId;
+      const targetId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
       if (!targetId || isOffline) return;
       const subs = e.detail;
-      syncWorkspaceSettings(targetId, {
-        savedObras,
-        savedLugares,
-        savedSitios,
-        savedTelefonos,
-        savedCategorias,
-        workStartHour,
-        workEndHour,
-        subcontratas: subs
-      }).catch(err => console.warn('Error auto-syncing subcontratas:', err));
+      
+      executeDatabaseSync('Subcontratas y Checklist CAE', async () => {
+        await syncWorkspaceSettings(targetId, {
+          savedObras,
+          savedLugares,
+          savedSitios,
+          savedTelefonos,
+          savedCategorias,
+          workStartHour,
+          workEndHour,
+          subcontratas: subs
+        });
+      }, {
+        detail: 'Documentación CAE y subcontratas sincronizadas con éxito.'
+      }).catch(err => {
+        console.warn('Error auto-syncing subcontratas:', err);
+      });
     };
     window.addEventListener('profea_subcontratas_changed', handleSubChange);
     return () => window.removeEventListener('profea_subcontratas_changed', handleSubChange);
@@ -1754,13 +1884,18 @@ function App() {
     updateAutocompleteLists(finalPersonData);
     setToast({ message: 'Registro guardado correctamente', type: 'success' });
 
-    if (currentEffectiveWorkspaceId && !isOffline) {
-      syncWorkerToWorkspace(currentEffectiveWorkspaceId, newPerson).catch(err => {
+    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+    if (targetWsId && !isOffline) {
+      executeDatabaseSync(`Alta: ${newPerson.apellidosNombre}`, async () => {
+        await syncWorkerToWorkspace(targetWsId, newPerson);
+        if (googleUser?.uid) {
+          await syncWorkerToAccount(googleUser.uid, newPerson);
+        }
+      }, {
+        detail: `${newPerson.apellidosNombre} guardado en Firebase Firestore.`
+      }).catch(err => {
         console.error("Error syncing new worker to workspace:", err);
       });
-      if (googleUser?.uid) {
-        syncWorkerToAccount(googleUser.uid, newPerson).catch(err => console.error(err));
-      }
     } else if (googleUser?.uid && !isOffline) {
       syncWorkerToAccount(googleUser.uid, newPerson).catch(err => {
         console.error("Error syncing new worker to user account:", err);
@@ -1812,12 +1947,17 @@ function App() {
       setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores correctamente`, type: 'success' });
     }
 
-    if (currentEffectiveWorkspaceId && !isOffline) {
-      formattedWorkers.forEach(newPerson => {
-        syncWorkerToWorkspace(currentEffectiveWorkspaceId, newPerson).catch(err => {
-          console.error("Error syncing new worker to workspace:", err);
-        });
-        if (googleUser?.uid) syncWorkerToAccount(googleUser.uid, newPerson).catch(err => console.error(err));
+    const targetImportWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+    if (targetImportWsId && !isOffline) {
+      executeDatabaseSync(`Importación de ${formattedWorkers.length} trabajadores`, async () => {
+        for (const newPerson of formattedWorkers) {
+          await syncWorkerToWorkspace(targetImportWsId, newPerson);
+          if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, newPerson);
+        }
+      }, {
+        detail: `${formattedWorkers.length} trabajadores subidos a Firebase Firestore.`
+      }).catch(err => {
+        console.error("Error syncing imported workers to workspace:", err);
       });
     } else if (googleUser?.uid && !isOffline) {
       formattedWorkers.forEach(newPerson => {
@@ -1870,19 +2010,24 @@ function App() {
         setDeletedPeople(prev => [...prev, deletedObj]);
         setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
 
-        if (currentEffectiveWorkspaceId && !isOffline) {
-          deleteWorkerFromWorkspace(currentEffectiveWorkspaceId, id).catch(err => console.error(err));
-          syncDeletedWorkerToWorkspace(currentEffectiveWorkspaceId, {
-            ...deletedObj,
-            person: { ...deletedObj.person, sincronizadoEnNube: true }
-          }).catch(err => console.error(err));
-          if (googleUser?.uid) {
-            deleteWorkerFromAccount(googleUser.uid, id).catch(err => console.error(err));
-            syncDeletedWorkerToAccount(googleUser.uid, {
+        const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+        if (targetWsId && !isOffline) {
+          executeDatabaseSync(`Baja: ${personToDelete.apellidosNombre}`, async () => {
+            await deleteWorkerFromWorkspace(targetWsId, id);
+            await syncDeletedWorkerToWorkspace(targetWsId, {
               ...deletedObj,
               person: { ...deletedObj.person, sincronizadoEnNube: true }
-            }).catch(err => console.error(err));
-          }
+            });
+            if (googleUser?.uid) {
+              await deleteWorkerFromAccount(googleUser.uid, id);
+              await syncDeletedWorkerToAccount(googleUser.uid, {
+                ...deletedObj,
+                person: { ...deletedObj.person, sincronizadoEnNube: true }
+              });
+            }
+          }, {
+            detail: `${personToDelete.apellidosNombre} movido a la papelera en Firestore.`
+          }).catch(err => console.error(err));
         } else if (googleUser?.uid && !isOffline) {
           deleteWorkerFromAccount(googleUser.uid, id).catch(err => console.error(err));
           syncDeletedWorkerToAccount(googleUser.uid, {
@@ -1918,21 +2063,26 @@ function App() {
       setDeletedPeople(prev => [...prev, ...deletedObjs]);
       setToast({ message: `${ids.length} registros enviados a la Papelera correctamente`, type: 'success' });
 
-      if (currentEffectiveWorkspaceId && !isOffline) {
-        peopleToDelete.forEach(p => {
-          deleteWorkerFromWorkspace(currentEffectiveWorkspaceId, p.id).catch(err => console.error(err));
-          syncDeletedWorkerToWorkspace(currentEffectiveWorkspaceId, {
-            person: { ...p, sincronizadoEnNube: true },
-            fechaEliminacion: todayStr
-          }).catch(err => console.error(err));
-          if (googleUser?.uid) {
-            deleteWorkerFromAccount(googleUser.uid, p.id).catch(err => console.error(err));
-            syncDeletedWorkerToAccount(googleUser.uid, {
+      const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+      if (targetWsId && !isOffline) {
+        executeDatabaseSync(`Baja de ${peopleToDelete.length} registros`, async () => {
+          for (const p of peopleToDelete) {
+            await deleteWorkerFromWorkspace(targetWsId, p.id);
+            await syncDeletedWorkerToWorkspace(targetWsId, {
               person: { ...p, sincronizadoEnNube: true },
               fechaEliminacion: todayStr
-            }).catch(err => console.error(err));
+            });
+            if (googleUser?.uid) {
+              await deleteWorkerFromAccount(googleUser.uid, p.id);
+              await syncDeletedWorkerToAccount(googleUser.uid, {
+                person: { ...p, sincronizadoEnNube: true },
+                fechaEliminacion: todayStr
+              });
+            }
           }
-        });
+        }, {
+          detail: `${peopleToDelete.length} registros enviados a la papelera en Firestore.`
+        }).catch(err => console.error(err));
       } else if (googleUser?.uid && !isOffline) {
         peopleToDelete.forEach(p => {
           deleteWorkerFromAccount(googleUser.uid, p.id).catch(err => console.error(err));
@@ -1962,13 +2112,18 @@ function App() {
       setPeopleWithHistory(prev => [...prev, foundDeleted.person]);
       setToast({ message: `Registro de ${foundDeleted.person.apellidosNombre} restaurado correctamente`, type: 'success' });
 
-      if (currentEffectiveWorkspaceId && !isOffline) {
-        deleteFromWorkspaceTrash(currentEffectiveWorkspaceId, id).catch(err => console.error(err));
-        syncWorkerToWorkspace(currentEffectiveWorkspaceId, foundDeleted.person).catch(err => console.error(err));
-        if (googleUser?.uid) {
-          deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
-          syncWorkerToAccount(googleUser.uid, foundDeleted.person).catch(err => console.error(err));
-        }
+      const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+      if (targetWsId && !isOffline) {
+        executeDatabaseSync(`Restaurar: ${foundDeleted.person.apellidosNombre}`, async () => {
+          await deleteFromWorkspaceTrash(targetWsId, id);
+          await syncWorkerToWorkspace(targetWsId, foundDeleted.person);
+          if (googleUser?.uid) {
+            await deleteFromAccountTrash(googleUser.uid, id);
+            await syncWorkerToAccount(googleUser.uid, foundDeleted.person);
+          }
+        }, {
+          detail: `${foundDeleted.person.apellidosNombre} restaurado en Firestore.`
+        }).catch(err => console.error(err));
       } else if (googleUser?.uid && !isOffline) {
         deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
         syncWorkerToAccount(googleUser.uid, foundDeleted.person).catch(err => console.error(err));
@@ -1988,11 +2143,16 @@ function App() {
         setDeletedPeople(prev => prev.filter(dp => dp.person.id !== id));
         setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
 
-        if (currentEffectiveWorkspaceId && !isOffline) {
-          deleteFromWorkspaceTrash(currentEffectiveWorkspaceId, id).catch(err => console.error(err));
-          if (googleUser?.uid) {
-            deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
-          }
+        const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+        if (targetWsId && !isOffline) {
+          executeDatabaseSync(`Eliminación permanente: ${foundDeleted.person.apellidosNombre}`, async () => {
+            await deleteFromWorkspaceTrash(targetWsId, id);
+            if (googleUser?.uid) {
+              await deleteFromAccountTrash(googleUser.uid, id);
+            }
+          }, {
+            detail: `${foundDeleted.person.apellidosNombre} eliminado definitivamente de Firestore.`
+          }).catch(err => console.error(err));
         } else if (googleUser?.uid && !isOffline) {
           deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
         } else if (isSyncing && groupId.trim()) {
@@ -2003,13 +2163,18 @@ function App() {
   };
 
   const handleEmptyTrash = () => {
-    if (currentEffectiveWorkspaceId && !isOffline) {
-      deletedPeople.forEach(dp => {
-        deleteFromWorkspaceTrash(currentEffectiveWorkspaceId, dp.person.id).catch(err => console.error(err));
-        if (googleUser?.uid) {
-          deleteFromAccountTrash(googleUser.uid, dp.person.id).catch(err => console.error(err));
+    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+    if (targetWsId && !isOffline) {
+      executeDatabaseSync('Vaciar papelera', async () => {
+        for (const dp of deletedPeople) {
+          await deleteFromWorkspaceTrash(targetWsId, dp.person.id);
+          if (googleUser?.uid) {
+            await deleteFromAccountTrash(googleUser.uid, dp.person.id);
+          }
         }
-      });
+      }, {
+        detail: 'Papelera vaciada completamente en Firestore.'
+      }).catch(err => console.error(err));
     } else if (googleUser?.uid && !isOffline) {
       deletedPeople.forEach(dp => {
         deleteFromAccountTrash(googleUser.uid, dp.person.id).catch(err => console.error(err));
@@ -2037,9 +2202,14 @@ function App() {
     setEditingPerson(null);
     setToast({ message: 'Registro actualizado correctamente', type: 'success' });
 
-    if (currentEffectiveWorkspaceId && !isOffline) {
-      syncWorkerToWorkspace(currentEffectiveWorkspaceId, finalPerson).catch(err => console.error(err));
-      if (googleUser?.uid) syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => console.error(err));
+    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+    if (targetWsId && !isOffline) {
+      executeDatabaseSync(`Actualización: ${finalPerson.apellidosNombre}`, async () => {
+        await syncWorkerToWorkspace(targetWsId, finalPerson);
+        if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, finalPerson);
+      }, {
+        detail: `${finalPerson.apellidosNombre} actualizado en Firebase Firestore.`
+      }).catch(err => console.error(err));
     } else if (googleUser?.uid && !isOffline) {
       syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => {
         console.error(err);
@@ -2067,23 +2237,6 @@ function App() {
         const finalSyncStatus = (updated.sincronizadoEnNube && !isOffline) || isAutoSync;
         const finalPerson = { ...updated, sincronizadoEnNube: finalSyncStatus };
 
-        if (currentEffectiveWorkspaceId && !isOffline) {
-          syncWorkerToWorkspace(currentEffectiveWorkspaceId, finalPerson).catch(err => {
-            console.error("Error syncing worker to workspace during bulk update:", err);
-          });
-          if (googleUser?.uid) syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => console.error(err));
-        } else if (googleUser?.uid && !isOffline) {
-          syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => {
-            console.error("Error syncing worker to account during bulk update:", err);
-          });
-        } else if (isSyncing && groupId.trim() && finalSyncStatus) {
-          syncWorkerToCloud(groupId, finalPerson).catch(err => {
-            console.error("Error syncing worker to cloud during bulk update:", err);
-          });
-        } else if (isSyncing && groupId.trim() && !finalSyncStatus && p.sincronizadoEnNube && !isOffline) {
-          deleteWorkerFromCloud(groupId, p.id).catch(err => console.error(err));
-        }
-
         return finalPerson;
       }
       return p;
@@ -2098,6 +2251,28 @@ function App() {
 
     setBulkEditingPeople(null);
     setToast({ message: `${selectedIds.length} registros actualizados correctamente`, type: 'success' });
+
+    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
+    if (targetWsId && !isOffline) {
+      executeDatabaseSync(`Edición masiva (${selectedIds.length} trabajadores)`, async () => {
+        for (const pid of selectedIds) {
+          const personObj = updatedPeople.find(p => p.id === pid);
+          if (personObj) {
+            await syncWorkerToWorkspace(targetWsId, personObj);
+            if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, personObj);
+          }
+        }
+      }, {
+        detail: `${selectedIds.length} trabajadores actualizados en Firestore.`
+      }).catch(err => {
+        console.error("Error syncing worker to workspace during bulk update:", err);
+      });
+    } else if (googleUser?.uid && !isOffline) {
+      selectedIds.forEach(pid => {
+        const personObj = updatedPeople.find(p => p.id === pid);
+        if (personObj) syncWorkerToAccount(googleUser.uid, personObj).catch(err => console.error(err));
+      });
+    }
   };
 
   const handleTogglePersonSync = async (id: number) => {
@@ -2121,7 +2296,7 @@ function App() {
               .catch(() => setToast({ message: 'Error al eliminar de la nube', type: 'error' }));
           }
         } else {
-          setToast({ message: isSyncing ? 'Sincronización inactiva' : 'Vincula tu dispositivo en el menú Sincronizar para guardar en la nube', type: 'error' });
+          setToast({ message: 'Sin conexión o cuenta para guardar en la base de datos en la nube', type: 'error' });
         }
         
         return { ...p, sincronizadoEnNube: newSyncStatus };
@@ -2198,7 +2373,7 @@ function App() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    let filteredPeople = [...people];
+    let filteredPeople = [...visiblePeople];
 
     // Filtro por obra
     if (!statsObraFilter.includes('Todas')) {
@@ -2294,9 +2469,9 @@ function App() {
       desgloseQuincena,
       desgloseObra
     };
-  }, [people, statsFilterMode, statsStartDate, statsEndDate, statsObraFilter]);
+  }, [visiblePeople, statsFilterMode, statsStartDate, statsEndDate, statsObraFilter]);
 
-  const uniqueQuincenas = useMemo(() => Array.from(new Set(people.map(p => p.quincena))).sort(), [people]);
+  const uniqueQuincenas = useMemo(() => Array.from(new Set(visiblePeople.map(p => p.quincena))).sort(), [visiblePeople]);
 
   const handleExportPRLExcel = async (dataToExport: Person[]) => {
     const filteredData = dataToExport.filter(p => p.formacion === 'No');
@@ -3149,6 +3324,9 @@ function App() {
             canRedo={canRedo}
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
+            onOpenFirebaseSync={() => setIsFirebaseSyncModalOpen(true)}
+            isSyncingFirebase={isSyncingFirebase}
+            firebaseWorkersCount={people.length}
           />
           
           {/* Offline Banner and Sync Queue Visualizer */}
@@ -3246,7 +3424,7 @@ function App() {
                    savedSitios={savedSitios} 
                    savedTelefonos={savedTelefonos}
                    savedCategorias={savedCategorias}
-                   people={people}
+                   people={visiblePeople}
                  />
               </div>
 
@@ -3269,7 +3447,7 @@ function App() {
                 />
                 <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
                   <PersonList 
-                    people={people} 
+                    people={visiblePeople} 
                     onDelete={handleDelete} 
                     onEdit={handleEdit} 
                     onDeleteMultiple={handleDeleteMultiple}
@@ -3317,7 +3495,7 @@ function App() {
                  savedSitios={savedSitios} 
                  savedTelefonos={savedTelefonos}
                  savedCategorias={savedCategorias}
-                 people={people}
+                 people={visiblePeople}
                />
             </div>
           )}
@@ -3326,7 +3504,7 @@ function App() {
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
                 <PersonList 
-                  people={people} 
+                  people={visiblePeople} 
                   onDelete={handleDelete} 
                   onEdit={handleEdit} 
                   onDeleteMultiple={handleDeleteMultiple}
@@ -3423,7 +3601,7 @@ function App() {
           {activeView === 'papelera' && (
             <div className="max-w-6xl mx-auto">
               <Papelera
-                deletedPeople={deletedPeople}
+                deletedPeople={visibleDeletedPeople}
                 onRestore={handleRestorePerson}
                 onPermanentDelete={handlePermanentDelete}
                 onEmptyTrash={handleEmptyTrash}
@@ -3431,51 +3609,10 @@ function App() {
             </div>
           )}
 
-          {activeView === 'sincronizacion' && (
-            <div className="max-w-6xl mx-auto">
-              <Sincronizacion
-                syncEmail={syncEmail}
-                onUpdateSyncEmail={handleUpdateSyncEmail}
-                onDisconnectSyncEmail={handleDisconnectSyncEmail}
-                googleUser={googleUser}
-                onGoogleLogin={handleGoogleLogin}
-                onGoogleLogout={handleGoogleLogout}
-                isOffline={isOffline}
-                people={people}
-                deletedPeople={deletedPeople}
-                savedObras={savedObras}
-                savedCategorias={savedCategorias}
-                subcontratasCount={(() => {
-                  try {
-                    const raw = localStorage.getItem('profea_subcontratas_v1');
-                    return raw ? JSON.parse(raw).length : 0;
-                  } catch (e) {
-                    return 0;
-                  }
-                })()}
-                sessions={sessions}
-                currentSessionId={sessionId}
-                lastSyncTime={lastSyncTime}
-                isSyncingNow={isSyncingNow}
-                onForceSyncNow={() => handleForceSyncNow()}
-                onUploadAllLocalToAccount={handleUploadAllLocalToAccount}
-                onDownloadAllFromAccount={handleDownloadAllFromAccount}
-                onToast={(message, type) => setToast({ message, type })}
-                activeWorkspace={activeWorkspace}
-                sharedWorkspaces={sharedWorkspaces}
-                onAddMember={handleAddMember}
-                onUpdateMemberRole={handleUpdateMemberRole}
-                onRemoveMember={handleRemoveMember}
-                onSelectWorkspace={handleSelectWorkspace}
-                onJoinWorkspaceByCodeOrEmail={handleJoinWorkspaceByCodeOrEmail}
-              />
-            </div>
-          )}
-
           {activeView === 'calendario' && (
             <div className="max-w-7xl mx-auto">
               <CalendarioIntegrado
-                people={people}
+                people={visiblePeople}
                 savedObras={savedObras}
                 onEditPerson={(p) => setEditingPerson(p)}
                 onToast={(message, type) => setToast({ message, type })}
@@ -3488,7 +3625,7 @@ function App() {
           {activeView === 'citas' && (
             <div className="max-w-6xl mx-auto">
               <GestionCitas
-                people={people}
+                people={visiblePeople}
                 savedSitios={savedSitios}
                 savedTelefonos={savedTelefonos}
                 onUpdateSavedTelefonos={setSavedTelefonos}
@@ -3522,7 +3659,7 @@ function App() {
                 savedObras={savedObras}
                 onUpdateSavedObras={setSavedObras}
                 supervisoresDisponibles={supervisoresDisponibles}
-                workers={people}
+                workers={visiblePeople}
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>
@@ -3608,9 +3745,24 @@ function App() {
           <PushNotificationManagerModal
             isOpen={isNotificationModalOpen}
             onClose={() => setIsNotificationModalOpen(false)}
-            people={people}
+            people={visiblePeople}
             onToast={(msg, type) => setToast({ message: msg, type })}
           />
+
+          <FirebaseSyncModal
+            isOpen={isFirebaseSyncModalOpen}
+            onClose={() => setIsFirebaseSyncModalOpen(false)}
+            workersCount={people.length}
+            trashCount={deletedPeople.length}
+            activeWorkspaceId={currentEffectiveWorkspaceId}
+            lastSyncTime={lastSyncTime}
+            onPerformSync={handlePerformFirebaseSync}
+            onForceSaveAllToCloud={handleForceSaveAllToCloud}
+            userEmail={syncEmail || 'davidhinojogarcia@gmail.com'}
+          />
+
+          {/* Database synchronization feedback alert (green for success, red for error) */}
+          <DatabaseSyncAlert />
 
           {/* Footer Copyright */}
           <footer className="mt-16 text-center border-t border-slate-200 dark:border-slate-800/85 pt-6 text-xs text-slate-400 dark:text-slate-500 font-medium">

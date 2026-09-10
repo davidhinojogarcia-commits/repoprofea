@@ -1,6 +1,16 @@
 
 import React from 'react';
-import { Menu, Sun, Moon, Cloud, CloudOff, Undo2, Redo2, Bell, BellRing } from 'lucide-react';
+import { 
+  Menu, 
+  Sun, 
+  Moon, 
+  Cloud, 
+  CloudOff, 
+  Undo2, 
+  Redo2, 
+  Bell,
+  Database
+} from 'lucide-react';
 import { BUTTON_GHOST } from '../constants';
 
 interface HeaderProps {
@@ -15,6 +25,9 @@ interface HeaderProps {
   canRedo?: boolean;
   onOpenNotificationManager?: () => void;
   alertsCount?: number;
+  onOpenFirebaseSync?: () => void;
+  isSyncingFirebase?: boolean;
+  firebaseWorkersCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -28,7 +41,10 @@ export const Header: React.FC<HeaderProps> = ({
   canUndo = false,
   canRedo = false,
   onOpenNotificationManager,
-  alertsCount = 0
+  alertsCount = 0,
+  onOpenFirebaseSync,
+  isSyncingFirebase = false,
+  firebaseWorkersCount = 0
 }) => {
   return (
     <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-2xl shadow-sm mb-8 border border-slate-200 dark:border-slate-800/80 transition-all duration-300 relative flex flex-col items-center overflow-hidden no-print app-navigation-panel">
@@ -108,6 +124,27 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
             </div>
+          )}
+
+          {/* Sincronizar con Firebase Firestore & Auth Button */}
+          {onOpenFirebaseSync && (
+            <button
+              onClick={onOpenFirebaseSync}
+              disabled={isSyncingFirebase}
+              className="py-2 px-3 sm:px-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer no-print shrink-0"
+              title="Sincronizar con Firebase Firestore & Auth"
+              aria-label="Sincronizar con Firebase Firestore & Auth"
+              id="btn-sync-firebase-firestore"
+            >
+              <Database className={`w-3.5 h-3.5 ${isSyncingFirebase ? 'animate-spin' : 'animate-pulse'}`} />
+              <span className="hidden sm:inline">Sincronizar con Firebase Firestore &amp; Auth</span>
+              <span className="sm:hidden">Firestore &amp; Auth</span>
+              {firebaseWorkersCount > 0 && (
+                <span className="bg-black/25 text-white text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold">
+                  {firebaseWorkersCount}
+                </span>
+              )}
+            </button>
           )}
 
           {/* Connection Status Badge */}

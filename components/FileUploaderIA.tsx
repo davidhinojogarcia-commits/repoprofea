@@ -9,6 +9,7 @@ import {
 import { 
   Subcontratista, 
   SubcontrataDocItem, 
+  SubcontrataDocEstado, 
   SubcontrataEstadoExpediente, 
   SubcontrataDocAnalysisResult,
   Person,
@@ -17,6 +18,8 @@ import {
   DocumentoIlegibleAlerta
 } from '../types';
 import { getSubcontrataCompliance } from '../src/lib/subcontratasDefaults';
+import { ChecklistReviewModal, ProposedChecklistChange } from './ChecklistReviewModal';
+import { notifyDatabaseSync } from '../src/lib/syncNotifier';
 
 interface FileUploaderIAProps {
   subcontrata: Subcontratista;
@@ -54,6 +57,11 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
     alertasCaducidad?: string[];
     documentosIlegibles?: DocumentoIlegibleAlerta[];
   } | null>(null);
+
+  // Review & Confirmation Modal States
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [proposedChanges, setProposedChanges] = useState<ProposedChecklistChange[]>([]);
+  const [pendingAnalysisData, setPendingAnalysisData] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -200,29 +208,33 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
         throw new Error(data.error || 'No se pudo completar el análisis de los documentos.');
       }
 
-      // Match recognized documents against the legal checklist
+      // Match recognized documents against the legal checklist and prepare proposal
       const analyzedDocs: SubcontrataDocAnalysisResult[] = data.documentosAnalizados || [];
       const illegibleDocs: DocumentoIlegibleAlerta[] = data.documentosIlegibles || [];
-      const updatedChecklist = [...subcontrata.checklist];
-
-      let recognizedCount = 0;
-      let expiredCount = 0;
-      let illegibleCount = illegibleDocs.length;
+      const proposedList: ProposedChecklistChange[] = [];
 
       analyzedDocs.forEach((doc) => {
-        const targetIndex = updatedChecklist.findIndex(item => item.id === doc.docId);
-        if (targetIndex !== -1) {
-          recognizedCount++;
-          if (doc.estaCaducado) expiredCount++;
-          if (doc.esLegible === false || doc.solicitarReintento || doc.confianza === 'baja') {
-            illegibleCount++;
-          }
-
-          let finalEstado = doc.estaCaducado ? 'caducado' : (doc.estado || 'entregado');
+        const item = subcontrata.checklist.find(i => i.id === doc.docId);
+        if (item) {
+          let finalEstado: SubcontrataDocEstado = doc.estaCaducado ? 'caducado' : (doc.estado || 'entregado');
           if (doc.esLegible === false || doc.solicitarReintento) {
             finalEstado = 'incompleto';
           }
-          
+
+          let observaciones = '';
+          if (doc.estaCaducado) {
+            observaciones = `[INCIDENCIA / CADUCADO]: ${doc.motivoCaducidad || 'Documento vencido según normativa'}. Archivo: '${doc.archivoOrigen || ''}'. Requiere subsanación o renovación urgente.`;
+          } else if (doc.esLegible === false || doc.solicitarReintento) {
+            observaciones = `[INCIDENCIA / ILEGIBLE]: ${doc.motivoIlegible || 'Documento ilegible o con datos incompletos'}. Archivo: '${doc.archivoOrigen || ''}'. Requiere subsanación.`;
+          } else if (doc.esProximaCaducidad) {
+            observaciones = `[PRÓXIMA CADUCIDAD]: ${doc.motivoCaducidad || 'Vence en menos de 30 días'}. Archivo: '${doc.archivoOrigen || ''}'.`;
+          } else {
+            observaciones = doc.observaciones || `[VERIFICADO CONFORME]: Documento en vigor y conforme a normativa. Archivo: '${doc.archivoOrigen || ''}'.`;
+          }
+
+          const fechaEntrega = doc.fechaEmision || item.fechaEntrega || new Date().toISOString().slice(0, 10);
+          const fechaCaducidad = doc.fechaCaducidad || item.fechaCaducidad || '';
+
           let validezText = 'Verificado por IA';
           if (doc.esLegible === false || doc.solicitarReintento) {
             validezText = 'ILEGIBLE / SOLICITAR REINTENTO';
@@ -234,39 +246,36 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
             validezText = `Cotejado por IA (${doc.confianza})`;
           }
 
-          updatedChecklist[targetIndex] = {
-            ...updatedChecklist[targetIndex],
-            estado: finalEstado,
-            fechaEntrega: doc.fechaEmision || new Date().toISOString().slice(0, 10),
-            fechaCaducidad: doc.fechaCaducidad || updatedChecklist[targetIndex].fechaCaducidad,
-            observaciones: doc.solicitarReintento || doc.esLegible === false
-              ? `[REINTENTO REQUERIDO - DOCUMENTO ILEGIBLE/BORROSO]: ${doc.motivoIlegible || 'No se pudieron extraer fechas de validez con alta confianza'}. Archivo: '${doc.archivoOrigen || ''}'.`
-              : (doc.motivoCaducidad 
-                ? `[ALERTA LEGAL]: ${doc.motivoCaducidad}. Archivo: '${doc.archivoOrigen || ''}'.`
-                : (doc.observaciones || `Verificado y cotejado con IA a partir de '${doc.archivoOrigen || ''}'.`)),
-            detectadoPorIA: true,
-            validezIA: validezText,
+          proposedList.push({
+            docId: item.id,
+            nombre: item.nombre,
+            categoria: item.categoria,
+            normativa: item.normativa,
+            obligatorio: item.obligatorio,
+            estadoActual: item.estado,
+            estadoPropuesto: finalEstado,
+            fechaEntregaActual: item.fechaEntrega,
+            fechaEntregaPropuesta: fechaEntrega,
+            fechaCaducidadActual: item.fechaCaducidad,
+            fechaCaducidadPropuesta: fechaCaducidad,
+            observacionesActuales: item.observaciones,
+            observacionesPropuestas: observaciones,
+            archivoOrigen: doc.archivoOrigen,
+            estaCaducado: doc.estaCaducado,
+            diasCaducado: doc.diasCaducado,
+            diasRestantes: doc.diasRestantes,
+            esProximaCaducidad: doc.esProximaCaducidad,
+            motivoCaducidad: doc.motivoCaducidad,
+            motivoIlegible: doc.motivoIlegible,
             esLegible: doc.esLegible !== undefined ? doc.esLegible : true,
-            solicitarReintento: !!(doc.solicitarReintento || doc.esLegible === false)
-          };
+            validezIA: validezText,
+            confianza: doc.confianza,
+            selected: true
+          });
         }
       });
 
-      // Recalculate status
-      const tempSub = { ...subcontrata, checklist: updatedChecklist };
-      const comp = getSubcontrataCompliance(tempSub);
-
-      const newEstadoExpediente: SubcontrataEstadoExpediente = 
-        data.veredictoAcceso === 'APTO' ? 'apto' : 
-        data.veredictoAcceso === 'DENEGADO' ? 'denegado' : 'condicionado';
-
-      // Save to parent
-      onChecklistUpdate(
-        updatedChecklist,
-        newEstadoExpediente || comp.estadoSugerido,
-        data.resumenDiagnostico || 'Cotejo completado con éxito.'
-      );
-
+      // Update diagnostic display tabs
       setLastAnalysisResults({
         resumen: data.resumenDiagnostico || 'Cotejo documental completado con éxito.',
         veredicto: data.veredictoAcceso || 'CONDICIONADO',
@@ -277,26 +286,26 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
         documentosIlegibles: illegibleDocs
       });
 
-      // Default to appropriate tab if warnings exist
-      if (illegibleDocs.length > 0 || illegibleCount > 0) {
+      // Select diagnostic tab based on issues found
+      if (illegibleDocs.length > 0) {
         setActiveResultTab('legibilidad');
       } else if (data.comparativaTrabajadores && data.comparativaTrabajadores.noRegistradosEnObra?.length > 0) {
         setActiveResultTab('operarios');
-      } else if (expiredCount > 0) {
+      } else if (proposedList.some(p => p.estaCaducado)) {
         setActiveResultTab('caducidades');
       } else {
         setActiveResultTab('resumen');
       }
 
-      let toastMsg = `Cotejo finalizado: ${recognizedCount} doc(s) cotejados.`;
-      if (illegibleCount > 0) {
-        toastMsg += ` ⚠️ ${illegibleCount} archivo(s) no legibles/borrosos (solicitar reintento).`;
+      // Check if we have proposed changes to show for user review
+      if (proposedList.length > 0) {
+        setProposedChanges(proposedList);
+        setPendingAnalysisData(data);
+        setIsReviewModalOpen(true);
+        onToast(`Análisis completado: Revisa los cambios propuestos en el checklist para ${subcontrata.nombreEmpresa}.`, 'success');
+      } else {
+        onToast('Análisis finalizado, pero no se identificaron documentos aplicables al checklist legal.', 'error');
       }
-      if (expiredCount > 0) {
-        toastMsg += ` ⚠️ ${expiredCount} caducado(s).`;
-      }
-      onToast(toastMsg, illegibleCount > 0 || expiredCount > 0 ? 'error' : 'success');
-      setSelectedFiles([]); // Clear queue upon success
     } catch (err: any) {
       console.error('Error during AI verification:', err);
       onToast(err.message || 'Error al cotejar los documentos con IA.', 'error');
@@ -304,6 +313,54 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
       setIsAnalyzing(false);
       setAnalysisProgress('');
     }
+  };
+
+  const handleApplyReviewedChanges = (confirmedChanges: ProposedChecklistChange[]) => {
+    if (confirmedChanges.length === 0) {
+      setIsReviewModalOpen(false);
+      onToast('No se aplicó ningún cambio al checklist.', 'error');
+      return;
+    }
+
+    const updatedChecklist = subcontrata.checklist.map(item => {
+      const confirmed = confirmedChanges.find(c => c.docId === item.id);
+      if (!confirmed) return item;
+
+      return {
+        ...item,
+        estado: confirmed.estadoPropuesto,
+        fechaEntrega: confirmed.fechaEntregaPropuesta || item.fechaEntrega || new Date().toISOString().slice(0, 10),
+        fechaCaducidad: confirmed.fechaCaducidadPropuesta || item.fechaCaducidad,
+        observaciones: confirmed.observacionesPropuestas || item.observaciones,
+        detectadoPorIA: true,
+        validezIA: confirmed.validezIA || (confirmed.estadoPropuesto === 'caducado' ? 'CADUCADO' : 'Verificado por IA'),
+        esLegible: confirmed.esLegible !== undefined ? confirmed.esLegible : true,
+        solicitarReintento: !!(confirmed.estadoPropuesto === 'incompleto' || confirmed.esLegible === false)
+      };
+    });
+
+    // Recalculate status
+    const tempSub = { ...subcontrata, checklist: updatedChecklist };
+    const comp = getSubcontrataCompliance(tempSub);
+
+    const hasExpiredOrIncomplete = updatedChecklist.some(
+      it => it.obligatorio && (it.estado === 'caducado' || it.estado === 'incompleto' || it.estado === 'pendiente')
+    );
+
+    const newEstadoExpediente: SubcontrataEstadoExpediente = hasExpiredOrIncomplete
+      ? (pendingAnalysisData?.veredictoAcceso === 'DENEGADO' ? 'denegado' : 'condicionado')
+      : (comp.estadoSugerido || 'apto');
+
+    // Save to parent and trigger auto-sync
+    onChecklistUpdate(
+      updatedChecklist,
+      newEstadoExpediente,
+      pendingAnalysisData?.resumenDiagnostico || 'Cotejo y cambios confirmados por el usuario.'
+    );
+
+    setIsReviewModalOpen(false);
+    setSelectedFiles([]); // Clear queue upon successful apply
+    onToast(`Checklist de ${subcontrata.nombreEmpresa} actualizado con ${confirmedChanges.length} documento(s).`, 'success');
   };
 
   const expiredDocsCount = lastAnalysisResults?.analizados.filter(d => d.estaCaducado).length || 0;
@@ -1065,6 +1122,18 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
           </div>
         )}
       </div>
+
+      {/* Confirmation & Manual Review Modal for AI Proposed Checklist Changes */}
+      <ChecklistReviewModal
+        isOpen={isReviewModalOpen}
+        subcontrata={subcontrata}
+        proposedChanges={proposedChanges}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          onToast('Cambios descartados. El checklist no ha sido modificado.', 'error');
+        }}
+        onApplyChanges={handleApplyReviewedChanges}
+      />
     </div>
   );
 };

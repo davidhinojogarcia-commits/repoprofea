@@ -4,9 +4,10 @@ import {
   Sparkles, UploadCloud, FileText, Download, Copy, Trash2, Plus,
   Search, Filter, Building2, Calendar, UserCheck, FileWarning,
   ShieldCheck, MessageSquare, Edit3, Save, RefreshCw, ChevronRight,
-  AlertCircle, Phone, Mail, Check, X, Info, BarChart3, SlidersHorizontal
+  AlertCircle, Phone, Mail, Check, X, Info, BarChart3, SlidersHorizontal,
+  FileSignature, Eye, Briefcase
 } from 'lucide-react';
-import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, Person } from '../types';
+import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, Person, ReporteTecnicoConfig } from '../types';
 import { 
   createNewSubcontratista, 
   getSubcontrataCompliance, 
@@ -18,6 +19,7 @@ import {
   saveStoredChecklistTemplate,
   syncSubcontrataChecklistWithTemplate,
   getStoredReporteTecnicoConfig,
+  saveStoredReporteTecnicoConfig,
   getStoredObrasRecursosPreventivos,
   saveStoredObraRecursoPreventivo,
   deleteStoredObraRecursoPreventivo,
@@ -116,6 +118,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isRequerimientoModalOpen, setIsRequerimientoModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isFirmasModalOpen, setIsFirmasModalOpen] = useState(false);
+  const [reporteConfig, setReporteConfig] = useState<ReporteTecnicoConfig>(() => getStoredReporteTecnicoConfig());
   const [checklistTemplate, setChecklistTemplate] = useState<SubcontrataDocItem[]>(() => getStoredChecklistTemplate());
   const [aiAnalysisSummary, setAiAnalysisSummary] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -661,6 +665,17 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
           >
             <Download className="w-4 h-4 text-blue-700 dark:text-blue-400" />
             <span>Reporte Técnico PDF</span>
+          </button>
+
+          <button
+            id="btn-firmas-reporte-top"
+            type="button"
+            onClick={() => setIsFirmasModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
+            title="Configurar firmas oficiales para el reporte técnico (Técnico, Coordinador CSS, Supervisor de obra)"
+          >
+            <FileSignature className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+            <span>Firmas Reporte Técnico</span>
           </button>
 
           <button
@@ -2181,6 +2196,233 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Confirmar Eliminación</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Firmas y Datos Predeterminados del Reporte Técnico PDF */}
+      {isFirmasModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 my-auto">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 rounded-xl">
+                  <FileSignature className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    Firmas y Datos Predeterminados del Reporte Técnico PDF
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Configure el Técnico de Obra, Coordinador de Seguridad y Salud, Empresa de Coordinación y Supervisor de obra.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFirmasModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              <form
+                id="form-firmas-reporte"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveStoredReporteTecnicoConfig(reporteConfig);
+                  setIsFirmasModalOpen(false);
+                  onToast('Configuración de firmas del Reporte Técnico guardada correctamente.', 'success');
+                }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                {/* Nombre y Apellidos del Técnico de Obra */}
+                <div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-950/20 space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider">
+                    <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    Nombre y Apellidos del Técnico de Obra *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={reporteConfig.tecnicoNombre}
+                    onChange={(e) => setReporteConfig({ ...reporteConfig, tecnicoNombre: e.target.value })}
+                    placeholder="Ej: David Hinojo García"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                    Este nombre se imprimirá en la casilla <strong>"Por el Técnico"</strong> en todos los Reportes Técnicos oficiales en PDF.
+                  </p>
+                </div>
+
+                {/* Coordinador de Seguridad y Salud */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    Coordinador de Seguridad y Salud (CSS)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={reporteConfig.coordinadorNombre}
+                    onChange={(e) => setReporteConfig({ ...reporteConfig, coordinadorNombre: e.target.value })}
+                    placeholder="Ej: David Hinojo García"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                    Técnico competente responsable de la coordinación de seguridad y salud en fase de ejecución.
+                  </p>
+                </div>
+
+                {/* Empresa de Coordinación */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    Empresa o Entidad de Coordinación
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={reporteConfig.empresaCoordinacion}
+                    onChange={(e) => setReporteConfig({ ...reporteConfig, empresaCoordinacion: e.target.value })}
+                    placeholder="Ej: Área de Cooperación - Excma. Diputación Provincial de Cádiz"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                    Razón social de la empresa o administración pública que se imprime junto al coordinador.
+                  </p>
+                </div>
+
+                {/* Supervisor de obra */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    Supervisor de obra
+                  </label>
+                  <input
+                    type="text"
+                    value={reporteConfig.supervisorNombre}
+                    onChange={(e) => setReporteConfig({ ...reporteConfig, supervisorNombre: e.target.value })}
+                    placeholder="Ej: David Hinojo García"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                    Nombre del Supervisor de obra que encabeza la primera casilla oficial en los informes.
+                  </p>
+                </div>
+              </form>
+
+              {/* Live Signature Preview */}
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    Vista Previa de la Sección de Firmas (Reporte Técnico PDF)
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    4 Casillas Oficiales
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                  {/* Box 1: Supervisor de obra */}
+                  <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
+                    <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
+                      SUPERVISOR DE OBRA
+                    </div>
+                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                      [Espacio para Firma]
+                    </div>
+                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                      <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
+                        Fdo: {reporteConfig.supervisorNombre || 'David Hinojo García'}
+                      </span>
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
+                        Supervisor de obra
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Box 2: Recurso Preventivo */}
+                  <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
+                    <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
+                      RECURSO PREVENTIVO
+                    </div>
+                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                      [Espacio para Firma]
+                    </div>
+                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                      <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
+                        Fdo: [Recurso de cada Obra]
+                      </span>
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
+                        Encargado de Obra
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Box 3: Por el Técnico */}
+                  <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 dark:border-blue-400 rounded-lg overflow-hidden flex flex-col justify-between shadow-xs">
+                    <div className="bg-blue-700 text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase flex items-center justify-center gap-1">
+                      <UserCheck className="w-3 h-3" />
+                      POR EL TÉCNICO
+                    </div>
+                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                      [Espacio para Firma]
+                    </div>
+                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-blue-50/50 dark:bg-blue-950/40">
+                      <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 block truncate">
+                        Fdo: {reporteConfig.tecnicoNombre || 'David Hinojo García'}
+                      </span>
+                      <span className="text-[9px] text-blue-600 dark:text-blue-400 block truncate">
+                        Técnico de Obra
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Box 4: Coordinador CSS */}
+                  <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
+                    <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
+                      COORDINACIÓN SEG. Y SALUD
+                    </div>
+                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
+                      [Espacio para Firma]
+                    </div>
+                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                      <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
+                        Fdo: {reporteConfig.coordinadorNombre || 'David Hinojo García'}
+                      </span>
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
+                        Coordinador CSS
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsFirmasModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="form-firmas-reporte"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Guardar Configuración</span>
               </button>
             </div>
           </div>
