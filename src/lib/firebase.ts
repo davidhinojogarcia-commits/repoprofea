@@ -1171,3 +1171,5 @@ export function subscribeToFirestoreUserWorkers(userId: string, onUpdate: (worke
   return onSnapshot(query(collection(db, 'workers'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), err => handleFirestoreError(err, OperationType.GET, 'workers'));
 }
 
+
+export const googleSignIn = async (): Promise<never> => { throw new Error('Google Sign-In está deshabilitado. Usa correo electrónico y contraseña.'); };
