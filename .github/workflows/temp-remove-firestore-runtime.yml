@@ -21,6 +21,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: python .github/scripts/temp_remove_firestore_runtime.py
+      - name: Verify Firestore runtime removal
+        run: |
+          test ! -f server/firestoreSync.ts
+          ! grep -n "syncFromFirestoreDatabase\|sync-from-firestore\|firestore-status" server.ts
       - name: Remove Firebase web SDK dependency if no runtime imports remain
         run: |
           if ! grep -RInE "from ['\"]firebase(/|['\"])|from ['\"]firebase/app['\"]|from ['\"]firebase/firestore['\"]" --include='*.ts' --include='*.tsx' . --exclude-dir=node_modules --exclude-dir=.git; then
