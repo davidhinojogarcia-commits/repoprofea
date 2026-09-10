@@ -1,0 +1,30 @@
+name: Temp migration audit
+
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+    paths:
+      - '.github/workflows/temp-migration-audit.yml'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remaining Firebase references
+        run: grep -RInE 'Firebase|Firestore|firebase|firestore' App.tsx components src server api 2>/dev/null --include='*.ts' --include='*.tsx' || true
+      - name: Remaining localStorage references
+        run: grep -RIn 'localStorage' App.tsx components src server api 2>/dev/null --include='*.ts' --include='*.tsx' || true
+      - name: Remaining workers table references
+        run: grep -RInE "['\"]workers['\"]|public\.workers" App.tsx components src server api supabase 2>/dev/null --include='*.ts' --include='*.tsx' --include='*.sql' || true
+      - name: Manual sync references
+        run: grep -RInEi 'manual.?sync|sincronizaci[oó]n manual|sync modal|database sync|trigger.*sync' App.tsx components src server api 2>/dev/null --include='*.ts' --include='*.tsx' || true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Lint diagnostics
+        run: npm run lint || true
+      - name: Production build
+        run: npm run build
