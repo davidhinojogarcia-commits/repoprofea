@@ -1,36 +1,5 @@
-import { collection, deleteDoc, doc, getDocs, query, where, setDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-
-export interface DataPermission {
-  resourceType: string;
-  resourceId: string;
-  ownerId: string;
-  userId: string;
-  canRead: boolean;
-  canUpdate: boolean;
-  canDelete: boolean;
-}
-
-function requireSignedIn(): void {
-  if (!auth.currentUser) throw new Error('Debes iniciar sesión.');
-}
-
-function permissionId(resourceType: string, resourceId: string, userId: string): string {
-  return `${resourceType}_${resourceId}_${userId}`;
-}
-
-export async function listPermissionsForResource(resourceType: string, resourceId: string): Promise<DataPermission[]> {
-  requireSignedIn();
-  const snap = await getDocs(query(collection(db, 'dataPermissions'), where('resourceType', '==', resourceType), where('resourceId', '==', resourceId)));
-  return snap.docs.map(item => item.data() as DataPermission);
-}
-
-export async function grantDataPermission(permission: DataPermission): Promise<void> {
-  requireSignedIn();
-  await setDoc(doc(db, 'dataPermissions', permissionId(permission.resourceType, permission.resourceId, permission.userId)), permission);
-}
-
-export async function revokeDataPermission(resourceType: string, resourceId: string, userId: string): Promise<void> {
-  requireSignedIn();
-  await deleteDoc(doc(db, 'dataPermissions', permissionId(resourceType, resourceId, userId)));
-}
+import {supabase} from '../lib/supabase';
+export interface DataPermission{resourceType:string;resourceId:string;ownerId:string;userId:string;canRead:boolean;canUpdate:boolean;canDelete:boolean;}
+export async function listPermissionsForResource(resourceType:string,resourceId:string):Promise<DataPermission[]>{const rows=await supabase.query('data_permissions',{query:`select=resource_type,resource_id,owner_id,user_id,can_read,can_update,can_delete&resource_type=eq.${encodeURIComponent(resourceType)}&resource_id=eq.${encodeURIComponent(resourceId)}`});return (rows||[]).map((r:any)=>({resourceType:r.resource_type,resourceId:r.resource_id,ownerId:r.owner_id,userId:r.user_id,canRead:r.can_read,canUpdate:r.can_update,canDelete:r.can_delete}));}
+export async function grantDataPermission(permission:DataPermission){await supabase.query('data_permissions',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{resource_type:permission.resourceType,resource_id:permission.resourceId,owner_id:permission.ownerId,user_id:permission.userId,can_read:permission.canRead,can_update:permission.canUpdate,can_delete:permission.canDelete}});}
+export async function revokeDataPermission(resourceType:string,resourceId:string,userId:string){await supabase.query('data_permissions',{method:'DELETE',prefer:'return=minimal',query:`resource_type=eq.${encodeURIComponent(resourceType)}&resource_id=eq.${encodeURIComponent(resourceId)}&user_id=eq.${encodeURIComponent(userId)}`});}
