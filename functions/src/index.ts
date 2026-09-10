@@ -8,6 +8,8 @@ const db = getFirestore();
 const auth = getAuth();
 type Role = 'admin' | 'user';
 
+const INITIAL_ADMIN_EMAIL = 'davidhinojogarcia@gmail.com';
+
 const defaultModules = {
   contratacion: { read: true, create: true, update: true, delete: true },
   trabajadores: { read: true, create: true, update: true, delete: true },
@@ -33,14 +35,11 @@ async function audit(adminUid: string, action: string, resourceType: string, res
   });
 }
 
-/** One-time bootstrap for an already-created Firebase Auth account.
- * Set INITIAL_ADMIN_EMAIL in the Functions environment before deployment.
- */
 export const bootstrapFirstAdmin = onCall(async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
-  const configuredEmail = (process.env.INITIAL_ADMIN_EMAIL || '').trim().toLowerCase();
   const callerEmail = (request.auth.token.email || '').trim().toLowerCase();
-  if (!configuredEmail || callerEmail !== configuredEmail) throw new HttpsError('permission-denied', 'Esta cuenta no está autorizada para el alta inicial.');
+  const configuredEmail = (process.env.INITIAL_ADMIN_EMAIL || INITIAL_ADMIN_EMAIL).trim().toLowerCase();
+  if (callerEmail !== configuredEmail) throw new HttpsError('permission-denied', 'Esta cuenta no está autorizada para el alta inicial.');
 
   const admins = await db.collection('users').where('role', '==', 'admin').limit(1).get();
   if (!admins.empty) throw new HttpsError('failed-precondition', 'El administrador inicial ya está configurado.');
@@ -55,7 +54,7 @@ export const bootstrapFirstAdmin = onCall(async request => {
     role: 'admin',
     active: true,
     createdAt: FieldValue.serverTimestamp(),
-    bootstrap: true,
+    createdBy: request.auth.uid,
   }, { merge: true });
   await db.doc(`userPermissions/${request.auth.uid}`).set({ modules: defaultModules }, { merge: false });
   await audit(request.auth.uid, 'BOOTSTRAP_ADMIN', 'user', request.auth.uid);
