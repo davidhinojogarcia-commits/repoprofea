@@ -11,8 +11,6 @@ import { bootstrapFirstAdmin, touchLogin } from './functions';
 
 export type AppRole = 'admin' | 'user';
 
-const INITIAL_ADMIN_EMAIL = 'davidhinojogarcia@gmail.com';
-
 export interface AuthProfile {
   uid: string;
   email: string;
@@ -32,19 +30,16 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
 
   try {
-    // The first admin can be provisioned automatically, but do not call the
-    // bootstrap function on every subsequent login once the claim exists.
-    if (normalizedEmail === INITIAL_ADMIN_EMAIL) {
-      const token = await credential.user.getIdTokenResult();
-      const role = token.claims.role;
-      if (role !== 'admin') {
+    const token = await credential.user.getIdTokenResult();
+    if (token.claims.role !== 'admin') {
+      try {
         await bootstrapFirstAdmin({});
         await credential.user.getIdToken(true);
+      } catch (error) {
+        const code = (error as { code?: string })?.code;
+        if (code !== 'functions/permission-denied' && code !== 'functions/failed-precondition') throw error;
       }
     }
-
-    // Keep last-access/audit data server-side. If this fails, do not leave a
-    // partially authenticated session active in the UI.
     await touchLogin({});
     return credential.user;
   } catch (error) {
@@ -83,14 +78,14 @@ export function authErrorMessage(error: unknown): string {
     case 'auth/network-request-failed':
       return 'Error de conexión con Firebase. Comprueba tu conexión a internet.';
     case 'functions/permission-denied':
-      return 'La cuenta no tiene permisos de administrador configurados.';
+      return 'La cuenta no tiene permisos suficientes para completar la operación.';
     case 'functions/failed-precondition':
-      return 'La configuración inicial de la cuenta no se ha podido completar.';
+      return 'La configuración inicial de Firebase no se ha podido completar.';
     case 'functions/not-found':
     case 'functions/unavailable':
-      return 'Firebase Auth ha aceptado el acceso, pero el servicio de autorización del servidor no está disponible. Hay que desplegar las Cloud Functions.';
+      return 'El servicio de autorización del servidor no está disponible. Hay que desplegar las Cloud Functions.';
     case 'functions/internal':
-      return 'Firebase Auth ha aceptado el acceso, pero no se pudo completar la configuración del usuario en el servidor.';
+      return 'Firebase Auth ha aceptado el acceso, pero el servidor no pudo completar la operación.';
     default:
       return 'No se ha podido iniciar sesión. Inténtalo de nuevo.';
   }
