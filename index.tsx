@@ -2,26 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
 
-// Puente de arranque temporal mientras se elimina el código legacy de sincronización.
-// Estos valores NO reactivan Firebase ni sincronización manual. Las operaciones que aún
-// pasan por executeDatabaseSync se ejecutan directamente y terminan en los servicios Supabase.
-Object.assign(globalThis as any, {
-  useCallback: React.useCallback,
-  isOffline: false,
-  isSyncing: false,
-  groupId: '',
-  syncMode: 'supabase',
-  currentEffectiveWorkspaceId: 'supabase',
-  setIsOffline: () => undefined,
-  executeDatabaseSync: async (_label: unknown, operation?: unknown) => {
-    if (typeof operation === 'function') return await (operation as () => unknown)();
-    return undefined;
-  },
-  handleSyncPendingToCloud: async () => undefined,
-  handleGoogleLogin: async () => { throw new Error('El acceso con Google está deshabilitado.'); },
-  handleGoogleLogout: async () => undefined,
-});
-
 const App = React.lazy(() => import('./App'));
 
 type RootErrorBoundaryProps = { children: React.ReactNode };
