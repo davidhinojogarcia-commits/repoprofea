@@ -22,6 +22,7 @@ export const supabase={
   onAuthStateChange(callback:(user:SupabaseUser|null)=>void){listeners.add(callback);queueMicrotask(()=>callback(session?.user||null));return{data:{subscription:{unsubscribe:()=>listeners.delete(callback)}}};},
  },
  async query(table:string,options:{method?:string;query?:string;body?:any;prefer?:string}={}){const current=await ensureFreshSession();const headers:Record<string,string>={};if(options.prefer)headers.Prefer=options.prefer;return request(`/rest/v1/${table}${options.query?`?${options.query}`:''}`,{method:options.method||'GET',headers,body:options.body===undefined?undefined:JSON.stringify(options.body)},current?.access_token||SUPABASE_KEY);},
+ async rpc(name:string,body:any={}){const current=await ensureFreshSession();if(!current?.access_token)throw Object.assign(new Error('Debes iniciar sesión para ejecutar esta operación.'),{status:401});return request(`/rest/v1/rpc/${name}`,{method:'POST',body:JSON.stringify(body)},current.access_token);},
  async edgeFunction(name:string,body:any){const current=await ensureFreshSession();if(!current?.access_token)throw Object.assign(new Error('Debes iniciar sesión para ejecutar esta operación.'),{status:401});return request(`/functions/v1/${name}`,{method:'POST',body:JSON.stringify(body)},current.access_token);},
 };
 export{SUPABASE_URL,SUPABASE_KEY,STORAGE_KEY};
