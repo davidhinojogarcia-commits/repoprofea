@@ -24,9 +24,11 @@ function requireAdmin(request: CallableRequest<unknown>): void {
   if (request.auth.token.role !== 'admin') throw new HttpsError('permission-denied', 'Solo un administrador puede realizar esta operación.');
 }
 
-async function audit(adminUid: string, action: string, resourceType: string, resourceId: string, details?: unknown) {
+async function audit(userId: string, action: string, resourceType: string, resourceId: string, details?: unknown) {
+  const user = await auth.getUser(userId);
   await db.collection('auditLogs').add({
-    userId: adminUid,
+    userId,
+    userEmail: user.email || '',
     action,
     resourceType,
     resourceId,
@@ -35,11 +37,11 @@ async function audit(adminUid: string, action: string, resourceType: string, res
   });
 }
 
+/** One-time bootstrap for the already-created initial Firebase Auth account. */
 export const bootstrapFirstAdmin = onCall(async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
   const callerEmail = (request.auth.token.email || '').trim().toLowerCase();
-  const configuredEmail = (process.env.INITIAL_ADMIN_EMAIL || INITIAL_ADMIN_EMAIL).trim().toLowerCase();
-  if (callerEmail !== configuredEmail) throw new HttpsError('permission-denied', 'Esta cuenta no está autorizada para el alta inicial.');
+  if (callerEmail !== INITIAL_ADMIN_EMAIL) throw new HttpsError('permission-denied', 'Esta cuenta no está autorizada para el alta inicial.');
 
   const admins = await db.collection('users').where('role', '==', 'admin').limit(1).get();
   if (!admins.empty) throw new HttpsError('failed-precondition', 'El administrador inicial ya está configurado.');
@@ -57,7 +59,7 @@ export const bootstrapFirstAdmin = onCall(async request => {
     createdBy: request.auth.uid,
   }, { merge: true });
   await db.doc(`userPermissions/${request.auth.uid}`).set({ modules: defaultModules }, { merge: false });
-  await audit(request.auth.uid, 'BOOTSTRAP_ADMIN', 'user', request.auth.uid);
+  await audit(request.auth.uid, 'CREATE_USER', 'user', request.auth.uid, { bootstrap: true });
   return { ok: true, role: 'admin' };
 });
 
@@ -72,8 +74,8 @@ export const createManagedUser = onCall(async request => {
     const batch = db.batch();
     batch.set(db.doc(`users/${created.uid}`), { uid: created.uid, email: created.email, nombre: String(nombre).trim(), apellidos: String(apellidos).trim(), role: safeRole, active: true, createdAt: FieldValue.serverTimestamp(), createdBy: request.auth!.uid });
     batch.set(db.doc(`userPermissions/${created.uid}`), { modules: defaultModules });
-    batch.set(db.collection('auditLogs').doc(), { userId: request.auth!.uid, action: 'CREATE_USER', resourceType: 'user', resourceId: created.uid, timestamp: FieldValue.serverTimestamp(), details: { email: created.email, role: safeRole } });
     await batch.commit();
+    await audit(request.auth!.uid, 'CREATE_USER', 'user', created.uid, { email: created.email, role: safeRole });
     return { uid: created.uid, email: created.email, role: safeRole };
   } catch (error: any) {
     if (error?.code === 'auth/email-already-exists') throw new HttpsError('already-exists', 'Ya existe un usuario con ese correo.');
