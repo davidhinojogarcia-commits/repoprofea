@@ -52,10 +52,6 @@ export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
-export const logoutGoogle = async () => {
-  await auth.signOut();
-  cachedAccessToken = null;
-};
 
 // Initialize Firestore (utilizing long polling in browser contexts to avoid WebChannel stream drops)
 export const db = (() => {
