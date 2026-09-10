@@ -33,6 +33,8 @@ jobs:
         run: python scripts/repair_firestore_migration.py
       - name: Finalize Firestore business persistence
         run: python scripts/finalize_firestore_migration.py
+      - name: Remove legacy sync UI
+        run: python scripts/remove_legacy_sync_ui.py
       - name: Commit migration
         run: |
           if git diff --quiet; then
@@ -41,6 +43,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package-lock.json App.tsx src/lib/firebase.ts components/SubcontratasSection.tsx components/GestionCitas.tsx scripts/repair_firestore_migration.py scripts/finalize_firestore_migration.py .github/workflows/apply-firestore-migration.yml
+          git add package-lock.json App.tsx components/Header.tsx src/lib/firebase.ts components/SubcontratasSection.tsx components/GestionCitas.tsx scripts/repair_firestore_migration.py scripts/finalize_firestore_migration.py scripts/remove_legacy_sync_ui.py .github/workflows/apply-firestore-migration.yml
           git commit -m 'refactor: use Firestore as permanent data source [skip firestore migration]'
           git push origin feat/firebase-multiusuario
