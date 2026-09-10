@@ -77,4 +77,21 @@ s = replace_between(
 }'''
 )
 
+# Temporary compatibility export for the old App sync modal. It reads directly from
+# Firestore; it does not write to a server-side mirror or localStorage.
+trigger_block = '''export async function triggerFirestoreDatabaseSync(_workspaceId?: string): Promise<{
+  workers: Person[];
+  trash: DeletedPerson[];
+  settings: UserAccountSettings | null;
+  count: number;
+}> {
+  const data = await fetchAccountData(auth.currentUser?.uid || '');
+  return { ...data, count: data.workers.length };
+}'''
+if 'export async function triggerFirestoreDatabaseSync' not in s:
+    marker = 'export function subscribeToWorkspaceWorkers'
+    if marker not in s:
+        raise RuntimeError('Could not place Firestore sync compatibility export')
+    s = s.replace(marker, trigger_block + '\n\n' + marker, 1)
+
 path.write_text(s)
