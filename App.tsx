@@ -381,19 +381,6 @@ function App() {
 
 
 
-  // Compute effective sync email & workspace ID
-  const effectiveSyncEmail = (
-    typeof googleUser?.email === 'string' ? googleUser.email : (typeof syncEmail === 'string' ? syncEmail : '')
-  ).trim().toLowerCase();
-
-  const currentEffectiveWorkspaceId = (
-    effectiveSyncEmail 
-      ? canonicalizeEmailKey(effectiveSyncEmail) 
-      : (typeof activeWorkspaceId === 'string' && activeWorkspaceId.trim() ? activeWorkspaceId.trim() : DEFAULT_WORKSPACE_ID)
-  );
-
-
-
   const uploadToGoogleDrive = async (blob: Blob, filename: string, showToastOnSuccess = true) => {
     if (!googleToken || !autoSaveToDrive) {
       return;

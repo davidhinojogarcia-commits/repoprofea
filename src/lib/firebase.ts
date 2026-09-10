@@ -18,13 +18,7 @@ import {
   where,
   updateDoc
 } from 'firebase/firestore';
-import { 
-  getAuth, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  User 
-} from 'firebase/auth';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { Person, DeletedPerson, PdfCustomConfig, UserAccount } from '../../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -34,7 +28,6 @@ export const app = initializeApp(firebaseConfig);
 // Initialize Auth
 export const auth = getAuth(app);
 
-// Initialize Provider with full Drive, Sheets, Gmail & Calendar scopes
 
 // Auth listeners
 export const initAuth = (
@@ -48,9 +41,7 @@ export const initAuth = (
 };
 
 
-export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
-};
+export const getAccessToken = async (): Promise<string | null> => null;
 
 
 // Initialize Firestore (utilizing long polling in browser contexts to avoid WebChannel stream drops)
