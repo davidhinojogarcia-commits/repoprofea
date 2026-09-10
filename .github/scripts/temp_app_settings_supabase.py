@@ -20,15 +20,12 @@ for old, new in repls.items():
     if old not in s: raise SystemExit('No encontrado bloque settings: ' + old[:50])
     s = s.replace(old, new, 1)
 
-# Eliminar efectos que persistían catálogos/horario en localStorage.
 s, n = re.subn(r"\n  useEffect\(\(\) => \{\n    localStorage\.setItem\('obrasGuardadas'.*?\n  \}, \[savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias\]\);\n\n  useEffect\(\(\) => \{\n    localStorage\.setItem\('workStartHour'.*?\n  \}, \[workStartHour, workEndHour\]\);\n", "\n", s, count=1, flags=re.S)
 if n != 1: raise SystemExit('No se encontró persistencia local de catálogos/horario')
 
-# La caducidad de papelera debe eliminar en Supabase, no ocultar solo del estado local.
 s, n = re.subn(r"\n  // Limpieza automática de registros de papelera que lleven más de 30 días\n  useEffect\(\(\) => \{.*?\n  \}, \[\]\);\n", "\n", s, count=1, flags=re.S)
 if n != 1: raise SystemExit('No se encontró limpieza local de papelera')
 
-# Inserta carga/migración única y persistencia Supabase tras estados de horario.
 marker = "  const [workEndHour, setWorkEndHour] = useState<string>('15:00');\n"
 block = """
   const businessSettingsHydratedRef = useRef(false);
@@ -84,29 +81,5 @@ block = """
 """
 if marker not in s: raise SystemExit('No se encontró marcador horario')
 s = s.replace(marker, marker + block, 1)
-
-# Elimina imports no usados de ./src/lib/firebase, conservando auth y cualquier símbolo realmente usado.
-# Primero borra todos esos imports y calcula usos sobre el resto del archivo.
-pat = re.compile(r"import \{(?P<body>.*?)\} from './src/lib/firebase';\n", re.S)
-matches = list(pat.finditer(s))
-all_names=[]
-for m in matches:
-    for part in m.group('body').split(','):
-        name=part.strip()
-        if name and re.match(r'^[A-Za-z_$][\w$]*(?:\s+as\s+[A-Za-z_$][\w$]*)?$', name):
-            all_names.append(name)
-without = pat.sub('', s)
-keep=[]
-for item in all_names:
-    local = item.split(' as ')[-1].strip()
-    if re.search(rf'\b{re.escape(local)}\b', without):
-        keep.append(item)
-# dedupe while preserving order
-keep=list(dict.fromkeys(keep))
-imp = "import { " + ", ".join(keep) + " } from './src/lib/firebase';\n" if keep else ''
-# Insert after React import.
-first_nl = without.find('\n') + 1
-without = without[:first_nl] + imp + without[first_nl:]
-s = without
 
 p.write_text(s)
