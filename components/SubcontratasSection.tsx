@@ -15,20 +15,14 @@ import {
   generateSubcontrataReportPDF,
   generateObraConsolidatedReportPDF,
   DEFAULT_SUBCONTRATA_CHECKLIST,
-  getStoredChecklistTemplate,
-  saveStoredChecklistTemplate,
-  syncSubcontrataChecklistWithTemplate,
-  getStoredReporteTecnicoConfig,
-  saveStoredReporteTecnicoConfig,
-  getStoredObrasRecursosPreventivos,
-  saveStoredObraRecursoPreventivo,
-  deleteStoredObraRecursoPreventivo,
-  updateStoredObraNameInRecursos
+  DEFAULT_REPORTE_TECNICO_CONFIG,
+  syncSubcontrataChecklistWithTemplate
 } from '../src/lib/subcontratasDefaults';
 import { formatDate } from '../src/lib/exportUtils';
 import { FileUploaderIA } from './FileUploaderIA';
 import { ChecklistConfigModal } from './ChecklistConfigModal';
 import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/databaseService';
+import { loadSubcontrataSettings, saveSubcontrataSettings } from '../src/services/subcontrataSettingsService';
 
 interface SubcontratasSectionProps {
   savedObras: string[];
@@ -103,8 +97,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const [isRequerimientoModalOpen, setIsRequerimientoModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isFirmasModalOpen, setIsFirmasModalOpen] = useState(false);
-  const [reporteConfig, setReporteConfig] = useState<ReporteTecnicoConfig>(() => getStoredReporteTecnicoConfig());
-  const [checklistTemplate, setChecklistTemplate] = useState<SubcontrataDocItem[]>(() => getStoredChecklistTemplate());
+  const [reporteConfig, setReporteConfig] = useState<ReporteTecnicoConfig>(() => ({ ...DEFAULT_REPORTE_TECNICO_CONFIG }));
+  const [checklistTemplate, setChecklistTemplate] = useState<SubcontrataDocItem[]>(() => DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item })));
   const [aiAnalysisSummary, setAiAnalysisSummary] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [checklistCategoryFilter, setChecklistCategoryFilter] = useState<'todos' | 'empresa' | 'trabajadores' | 'maquinaria'>('todos');
@@ -112,7 +106,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
   // Obra Management States
   const [isManageObrasModalOpen, setIsManageObrasModalOpen] = useState(false);
-  const [obrasRecursos, setObrasRecursos] = useState(() => getStoredObrasRecursosPreventivos());
+  const [obrasRecursos, setObrasRecursos] = useState<Record<string, any>>({});
   const [editingObraState, setEditingObraState] = useState<{
     oldName: string;
     newName: string;
@@ -129,12 +123,19 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const [newObraRecurso, setNewObraRecurso] = useState('');
   const [newObraCategoria, setNewObraCategoria] = useState('Encargado de Obra');
 
-  // Keep obrasRecursos in sync whenever ManageObrasModal is opened
   useEffect(() => {
-    if (isManageObrasModalOpen) {
-      setObrasRecursos(getStoredObrasRecursosPreventivos());
-    }
-  }, [isManageObrasModalOpen]);
+    let cancelled = false;
+    loadSubcontrataSettings().then(settings => {
+      if (cancelled) return;
+      if (settings.reporteConfig) setReporteConfig({ ...DEFAULT_REPORTE_TECNICO_CONFIG, ...settings.reporteConfig });
+      if (Array.isArray(settings.checklistTemplate) && settings.checklistTemplate.length > 0) setChecklistTemplate(settings.checklistTemplate);
+      if (settings.obrasRecursos) setObrasRecursos(settings.obrasRecursos);
+    }).catch(error => {
+      console.error('Error cargando configuración de subcontratas desde Supabase:', error);
+      onToast('No se pudo cargar la configuración de subcontratas desde Supabase.', 'error');
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Form states for new subcontrata
   const [newForm, setNewForm] = useState({
@@ -281,7 +282,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     }
 
     const created = createNewSubcontratista(newForm.obra, newForm.supervisorResponsable, {
-      ...newForm
+      ...newForm,
+      checklist: checklistTemplate.map(item => ({ ...item }))
     });
 
     setSubcontratistas(prev => [created, ...prev]);
@@ -353,13 +355,19 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   };
 
   // Save and propagate legal checklist configuration
-  const handleSaveChecklistTemplate = (
+  const handleSaveChecklistTemplate = async (
     newTemplate: SubcontrataDocItem[],
     applyToActive: boolean,
     applyToAll: boolean
   ) => {
-    saveStoredChecklistTemplate(newTemplate);
-    setChecklistTemplate(newTemplate);
+    try {
+      await saveSubcontrataSettings({ checklistTemplate: newTemplate });
+      setChecklistTemplate(newTemplate);
+    } catch (error) {
+      console.error('Error guardando checklist en Supabase:', error);
+      onToast('No se pudo guardar el checklist en Supabase.', 'error');
+      return;
+    }
 
     if (applyToAll) {
       setSubcontratistas(prev => prev.map(sub => {
@@ -454,8 +462,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     }
     const updated = [...savedObras, name];
     persistObrasList(updated);
-    saveStoredObraRecursoPreventivo(name, recurso, categoria);
-    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    const nextRecursos = { ...obrasRecursos, [name]: { recursoPreventivoNombre: recurso, recursoPreventivoCategoria: categoria } };
+    setObrasRecursos(nextRecursos);
+    void saveSubcontrataSettings({ obrasRecursos: nextRecursos }).catch(error => {
+      console.error('Error guardando recurso preventivo en Supabase:', error);
+      onToast('No se pudo guardar el recurso preventivo en Supabase.', 'error');
+    });
     setNewObraInput('');
     setNewObraRecurso('');
     setNewObraCategoria('Encargado de Obra');
@@ -501,11 +513,14 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     persistObrasList(updatedObras);
 
     // 2. Update recurso preventivo and rename if needed
-    if (trimmedNew !== oldName) {
-      updateStoredObraNameInRecursos(oldName, trimmedNew);
-    }
-    saveStoredObraRecursoPreventivo(trimmedNew, trimmedRec, categoria.trim());
-    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    const nextRecursos = { ...obrasRecursos };
+    if (trimmedNew !== oldName) delete nextRecursos[oldName];
+    nextRecursos[trimmedNew] = { recursoPreventivoNombre: trimmedRec, recursoPreventivoCategoria: categoria.trim() || 'Encargado de Obra' };
+    setObrasRecursos(nextRecursos);
+    void saveSubcontrataSettings({ obrasRecursos: nextRecursos }).catch(error => {
+      console.error('Error actualizando recurso preventivo en Supabase:', error);
+      onToast('No se pudo actualizar el recurso preventivo en Supabase.', 'error');
+    });
 
     // 3. Update all subcontratas
     setSubcontratistas(prev => prev.map(s => {
@@ -565,8 +580,13 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     // 2. Remove from catalog and delete preventive resource
     const updatedObras = savedObras.filter(o => o !== obraName);
     persistObrasList(updatedObras);
-    deleteStoredObraRecursoPreventivo(obraName);
-    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    const nextRecursos = { ...obrasRecursos };
+    delete nextRecursos[obraName];
+    setObrasRecursos(nextRecursos);
+    void saveSubcontrataSettings({ obrasRecursos: nextRecursos }).catch(error => {
+      console.error('Error eliminando recurso preventivo en Supabase:', error);
+      onToast('No se pudo actualizar la configuración de recursos en Supabase.', 'error');
+    });
 
     // 3. Update filter if matching
     if (selectedObra === obraName) {

@@ -459,7 +459,7 @@ export const createNewSubcontratista = (
     recursoPreventivo: data?.recursoPreventivo || '',
     numeroTrabajadoresPrevistos: data?.numeroTrabajadoresPrevistos || 1,
     estadoExpediente: 'pendiente',
-    checklist: getStoredChecklistTemplate().map(item => ({ ...item })),
+    checklist: data?.checklist ? data.checklist.map(item => ({ ...item })) : DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item })),
     fechaRegistro: now,
     fechaActualizacion: now,
     notas: data?.notas || ''
