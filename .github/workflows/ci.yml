@@ -6,62 +6,11 @@ on:
   pull_request:
     branches: ['main']
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply direct Supabase repairs
-        if: github.event_name == 'push' && github.event.head_commit.message == 'chore: run direct Supabase repair pass'
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('App.tsx')
-          s = p.read_text()
-          anchor = "import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';"
-          if "./src/services/databaseService" not in s:
-              s = s.replace(anchor, anchor + "\nimport { createDocument } from './src/services/databaseService';", 1)
-          s = s.replace("  const commitAddMultipleWorkers = (\n", "  const commitAddMultipleWorkers = async (\n", 1)
-          marker = "    setPeopleWithHistory(prev => [...prev, ...formattedWorkers]);\n"
-          if marker in s and "Error persistiendo trabajadores importados en Supabase" not in s:
-              insert = """    setPeopleWithHistory(prev => [...prev, ...formattedWorkers]);\n\n    try {\n      await Promise.all(formattedWorkers.map(person =>\n        createDocument('workers', person.id, person as any)\n      ));\n    } catch (error) {\n      const importedIds = new Set(formattedWorkers.map(person => person.id));\n      setPeopleWithHistory(prev => prev.filter(person => !importedIds.has(person.id)), false);\n      console.error('Error persistiendo trabajadores importados en Supabase:', error);\n      setToast({ message: 'La importación no se ha guardado en la base de datos. No se han aplicado cambios.', type: 'error' });\n      return;\n    }\n"""
-              s = s.replace(marker, insert, 1)
-          start = s.find("    const targetImportWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();")
-          end = s.find("\n  };\n\n  const handleAddMultipleWorkers", start)
-          if start >= 0 and end >= 0:
-              s = s[:start] + s[end:]
-          s = s.replace("  const handleAddMultipleWorkers = (\n", "  const handleAddMultipleWorkers = async (\n", 1)
-          s = s.replace("    commitAddMultipleWorkers(newWorkers, 0);\n", "    await commitAddMultipleWorkers(newWorkers, 0);\n", 1)
-          s = s.replace("                commitAddMultipleWorkers(unique, skipped);", "                void commitAddMultipleWorkers(unique, skipped);")
-          s = s.replace("                commitAddMultipleWorkers(all, 0);", "                void commitAddMultipleWorkers(all, 0);")
-          p.write_text(s)
-
-          p = Path('components/GestionCitas.tsx')
-          s = p.read_text()
-          if "../src/lib/firebase" in s:
-              s = s.replace("import React, { useState, useEffect, useMemo } from 'react';", "import React, { useState, useEffect, useMemo, useCallback } from 'react';", 1)
-              s = s.replace("import { auth } from '../src/lib/firebase';\nimport { createDocument, subscribeToDocuments } from '../src/services/firestoreService';\nimport type { Unsubscribe } from 'firebase/firestore';", "import { createDocument, deleteDocument, subscribeToDocuments } from '../src/services/databaseService';", 1)
-              s = s.replace("interface ScheduledCita {\n  citaDia: string;", "interface ScheduledCita {\n  id?: string;\n  citaDia: string;", 1)
-              s = s.replace("  // Persist generated anonymous tickets history in localStorage", "  // Persistencia directa de citaciones en Supabase", 1)
-              s = s.replace("    const uid = auth.currentUser?.uid;\n    if (!uid) return;\n    const unsubscribe: Unsubscribe = subscribeToDocuments<ScheduledCita>('appointments', items => {", "    const unsubscribe = subscribeToDocuments<ScheduledCita>('citas', items => {", 1)
-              s = s.replace("      console.error('Error leyendo citas de Firestore:', error);\n      onToast('No se pudieron cargar las citas desde Firebase.', 'error');", "      console.error('Error leyendo citas de Supabase:', error);\n      onToast('No se pudieron cargar las citas desde Supabase.', 'error');", 1)
-              old = """      if (!suppressCitaPersistenceRef.current && hydratedCitasRef.current && auth.currentUser) {\n        const uid = auth.currentUser.uid;\n        void Promise.all(next.map((item, index) => {\n          const stableId = (item as ScheduledCita & { id?: string }).id || `${uid}_${item.citaDia}_${item.citaHora}_${index}`.replace(/[^a-zA-Z0-9_-]/g, '_');\n          return createDocument('appointments', stableId, item as any);\n        })).catch(error => {\n          console.error('Error guardando citas en Firestore:', error);\n          onToast('No se pudieron guardar las citas en Firebase.', 'error');\n        });\n      }\n      return next;"""
-              new = """      const withIds = next.map(item => item.id ? item : { ...item, id: crypto.randomUUID() });\n      if (!suppressCitaPersistenceRef.current && hydratedCitasRef.current) {\n        const nextIds = new Set(withIds.map(item => item.id));\n        const removed = previous.filter(item => item.id && !nextIds.has(item.id));\n        void Promise.all([\n          ...withIds.map(item => createDocument('citas', item.id!, item as any)),\n          ...removed.map(item => deleteDocument('citas', item.id!)),\n        ]).catch(error => {\n          console.error('Error guardando citas en Supabase:', error);\n          onToast('No se pudieron guardar las citas en Supabase.', 'error');\n        });\n      }\n      return withIds;"""
-              if old in s:
-                  s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add App.tsx components/GestionCitas.tsx
-          if ! git diff --cached --quiet; then
-            git commit -m 'fix: persist imports and move citas directly to Supabase'
-            git push origin HEAD:feat/firebase-multiusuario
-          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
