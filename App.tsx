@@ -35,6 +35,7 @@ import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilte
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
+import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
 import { CheckCircle, AlertTriangle, Cloud, RefreshCw } from 'lucide-react';
@@ -529,7 +530,7 @@ function App() {
 
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [bulkEditingPeople, setBulkEditingPeople] = useState<Person[] | null>(null);
-  const [savedObras, setSavedObras] = useState<string[]>(() => JSON.parse(localStorage.getItem('obrasGuardadas') || '[]'));
+  const [savedObras, setSavedObras] = useState<string[]>([]);
   
   // Estados para filtros de resumen/estadísticas
   const [statsFilterMode, setStatsFilterMode] = useState<'origen' | 'fechas' | 'mes_actual' | 'ano_actual'>('origen');
@@ -538,16 +539,64 @@ function App() {
   const [statsObraFilter, setStatsObraFilter] = useState<string[]>(['Todas']);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
-  const [savedLugares, setSavedLugares] = useState<string[]>(() => JSON.parse(localStorage.getItem('lugaresFormacion') || '[]'));
-  const [savedSitios, setSavedSitios] = useState<string[]>(() => JSON.parse(localStorage.getItem('sitiosReconocimiento') || '[]'));
-  const [savedTelefonos, setSavedTelefonos] = useState<string[]>(() => JSON.parse(localStorage.getItem('telefonosGuardados') || '[]'));
-  const [savedCategorias, setSavedCategorias] = useState<string[]>(() => {
-    const saved = localStorage.getItem('categoriasGuardadas');
-    return saved ? JSON.parse(saved) : ['Peón', 'Oficial de 1ª', 'Encargado'];
-  });
+  const [savedLugares, setSavedLugares] = useState<string[]>([]);
+  const [savedSitios, setSavedSitios] = useState<string[]>([]);
+  const [savedTelefonos, setSavedTelefonos] = useState<string[]>([]);
+  const [savedCategorias, setSavedCategorias] = useState<string[]>(['Peón', 'Oficial de 1ª', 'Encargado']);
 
-  const [workStartHour, setWorkStartHour] = useState<string>(() => localStorage.getItem('workStartHour') || '08:00');
-  const [workEndHour, setWorkEndHour] = useState<string>(() => localStorage.getItem('workEndHour') || '15:00');
+  const [workStartHour, setWorkStartHour] = useState<string>('08:00');
+  const [workEndHour, setWorkEndHour] = useState<string>('15:00');
+
+  const businessSettingsHydratedRef = useRef(false);
+  const businessSettingsSaveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAppBusinessSettings().then(settings => {
+      if (cancelled) return;
+      setSavedObras(settings.savedObras);
+      setSavedLugares(settings.savedLugares);
+      setSavedSitios(settings.savedSitios);
+      setSavedTelefonos(settings.savedTelefonos);
+      setSavedCategorias(settings.savedCategorias);
+      setWorkStartHour(settings.workStartHour);
+      setWorkEndHour(settings.workEndHour);
+      businessSettingsHydratedRef.current = true;
+      clearLegacyBusinessSettings();
+    }).catch(error => {
+      console.error('Error cargando configuración empresarial desde Supabase:', error);
+      setToast({ message: 'No se pudo cargar la configuración desde Supabase.', type: 'error' });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!businessSettingsHydratedRef.current) return;
+    if (businessSettingsSaveTimerRef.current) window.clearTimeout(businessSettingsSaveTimerRef.current);
+    businessSettingsSaveTimerRef.current = window.setTimeout(() => {
+      void saveAppBusinessSettings({
+        savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias,
+        workStartHour, workEndHour,
+      }).catch(error => {
+        console.error('Error guardando configuración empresarial en Supabase:', error);
+        setToast({ message: 'No se pudo guardar la configuración en Supabase.', type: 'error' });
+      });
+    }, 250);
+    return () => {
+      if (businessSettingsSaveTimerRef.current) window.clearTimeout(businessSettingsSaveTimerRef.current);
+    };
+  }, [savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
+
+  useEffect(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const expiredIds = deletedPeople
+      .filter(item => new Date(item.fechaEliminacion).getTime() < cutoff)
+      .map(item => item.person.id);
+    if (!expiredIds.length) return;
+    void Promise.all(expiredIds.map(id => deleteDocument('trash', id))).catch(error => {
+      console.error('Error purgando papelera caducada en Supabase:', error);
+    });
+  }, [deletedPeople]);
 
   /**
    * Ejecuta una copia de seguridad íntegra de todos los datos a la cuenta de Google Drive configurada
@@ -741,32 +790,7 @@ function App() {
 
 
 
-  // Limpieza automática de registros de papelera que lleven más de 30 días
-  useEffect(() => {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    setDeletedPeople(prev => {
-      const active = prev.filter(p => new Date(p.fechaEliminacion) >= thirtyDaysAgo);
-      if (active.length !== prev.length) {
-        return active;
-      }
-      return prev;
-    });
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('obrasGuardadas', JSON.stringify(savedObras));
-    localStorage.setItem('lugaresFormacion', JSON.stringify(savedLugares));
-    localStorage.setItem('sitiosReconocimiento', JSON.stringify(savedSitios));
-    localStorage.setItem('telefonosGuardados', JSON.stringify(savedTelefonos));
-    localStorage.setItem('categoriasGuardadas', JSON.stringify(savedCategorias));
-  }, [savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias]);
-
-  useEffect(() => {
-    localStorage.setItem('workStartHour', workStartHour);
-    localStorage.setItem('workEndHour', workEndHour);
-  }, [workStartHour, workEndHour]);
 
   useEffect(() => {
     localStorage.setItem('selectedObraFilter', JSON.stringify(selectedObraFilter));
