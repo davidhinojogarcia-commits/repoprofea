@@ -32,7 +32,7 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
-import { createDocument, updateDocument } from './src/services/databaseService';
+import { createDocument, updateDocument, subscribeToDocuments } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { Person, StatsData, DeletedPerson } from './types';
@@ -452,22 +452,6 @@ function App() {
   };
 
 
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOffline(false);
-      setToast({ message: 'Conexión recuperada.', type: 'success' });
-    };
-    const handleOffline = () => {
-      setIsOffline(true);
-      setToast({ message: 'Sin conexión a internet. Los cambios se aplicarán cuando se recupere la conexión.', type: 'error' });
-    };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Effect to generate the worker PDF once the data is populated
   useEffect(() => {
@@ -495,15 +479,14 @@ function App() {
     }
   }, [people, pendingPdfDni]);
 
-  // Firestore is the permanent source of truth.
+  // Supabase es la única fuente de verdad de trabajadores.
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    const unsubscribe = subscribeToAccountWorkers(uid, workers => {
-      setPeople(workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-    }, error => {
-      console.error('Error leyendo trabajadores de Firestore:', error);
-      setToast({ message: 'Error al leer los trabajadores desde Firebase.', type: 'error' });
+    if (!auth.currentUser?.uid) return;
+    const unsubscribe = subscribeToDocuments<Person>('workers', workers => {
+      setPeople(workers.map(worker => ({ ...worker, sincronizadoEnNube: true })));
+    }, { includeShared: true }, error => {
+      console.error('Error leyendo trabajadores de Supabase:', error);
+      setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
   }, []);
