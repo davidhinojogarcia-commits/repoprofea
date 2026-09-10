@@ -35,20 +35,6 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Provider with full Drive, Sheets, Gmail & Calendar scopes
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/drive');
-provider.addScope('https://www.googleapis.com/auth/drive.file');
-provider.addScope('https://www.googleapis.com/auth/drive.metadata.readonly');
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-provider.addScope('https://www.googleapis.com/auth/spreadsheets.readonly');
-provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-provider.addScope('https://www.googleapis.com/auth/gmail.send');
-provider.addScope('https://www.googleapis.com/auth/gmail.compose');
-provider.addScope('https://www.googleapis.com/auth/gmail.modify');
-provider.addScope('https://www.googleapis.com/auth/calendar.events');
-
-let isSigningIn = false;
-let cachedAccessToken: string | null = null;
 
 // Auth listeners
 export const initAuth = (
@@ -61,36 +47,6 @@ export const initAuth = (
   });
 };
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      cachedAccessToken = credential.accessToken;
-    }
-    
-    // Save user profile metadata in Firestore
-    if (result.user) {
-      await saveUserProfile(result.user);
-    }
-
-    return { user: result.user, accessToken: cachedAccessToken || '' };
-  } catch (error: any) {
-    if (
-      error?.code === 'auth/popup-closed-by-user' ||
-      error?.code === 'auth/cancelled-popup-request' ||
-      error?.message?.includes('popup-closed-by-user')
-    ) {
-      // User closed the authentication popup - gracefully return null without error
-      return null;
-    }
-    console.error('Sign in error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
-};
 
 export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
@@ -531,12 +487,7 @@ export async function fetchWorkspaceData(_workspaceId: string): Promise<{
   };
 }
 
-export async function triggerFirestoreDatabaseSync(_workspaceId?: string): Promise<{
-  workers: Person[];
-  trash: DeletedPerson[];
-  settings: UserAccountSettings | null;
-  count: number;
-}> {
+> {
   const data = await fetchAccountData(auth.currentUser?.uid || '');
   return { ...data, count: data.workers.length };
 }

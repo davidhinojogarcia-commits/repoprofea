@@ -24,7 +24,6 @@ import {
   deleteFirestoreWorker,
   restoreFirestoreWorker,
   permanentDeleteFirestoreWorker,
-  triggerFirestoreDatabaseSync
 } from './src/lib/firebase';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -120,6 +119,7 @@ import {
   DriveAutoBackupConfig 
 } from './src/lib/driveBackup';
 import { compressToGzip } from './src/lib/compression';
+import { auth } from './src/lib/firebase';
 
 const WatermarkLogo = () => (
   <div className="fixed bottom-6 right-8 pointer-events-none select-none z-0">
@@ -298,86 +298,6 @@ function App() {
     allWorkers: Omit<Person, 'id' | 'fechaRegistro'>[];
   } | null>(null);
 
-  const [groupId, setGroupId] = useState<string>(() => {
-    return localStorage.getItem('personasPROFEA_groupId') || '';
-  });
-
-  const [isSyncing, setIsSyncing] = useState<boolean>(() => {
-    return localStorage.getItem('personasPROFEA_isSyncing') === 'true';
-  });
-
-  const [syncMode, setSyncMode] = useState<'auto' | 'manual'>(() => {
-    return (localStorage.getItem('personasPROFEA_syncMode') as 'auto' | 'manual') || 'auto';
-  });
-
-  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
-
-  const [syncEmail, setSyncEmail] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const urlEmail = params.get('syncEmail');
-      if (urlEmail) {
-        localStorage.setItem('personasPROFEA_syncEmail', urlEmail.trim().toLowerCase());
-        return urlEmail.trim().toLowerCase();
-      }
-    }
-    const saved = localStorage.getItem('personasPROFEA_syncEmail');
-    if (saved) return saved.trim().toLowerCase();
-    return 'davidhinojogarcia@gmail.com';
-  });
-
-  useEffect(() => {
-    if (syncEmail) {
-      localStorage.setItem('personasPROFEA_syncEmail', syncEmail.trim().toLowerCase());
-    }
-  }, [syncEmail]);
-
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(() => {
-    const saved = localStorage.getItem('personasPROFEA_activeWorkspace');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const paramWs = params.get('workspace');
-      if (paramWs) return paramWs;
-    }
-    return localStorage.getItem('personasPROFEA_activeWorkspaceId') || '';
-  });
-
-  const [sharedWorkspaces, setSharedWorkspaces] = useState<Workspace[]>([]);
-
-  const [sessionId, setSessionId] = useState<string>(() => {
-    return localStorage.getItem('personasPROFEA_sessionId') || '';
-  });
-
-  const [sessions, setSessions] = useState<DeviceSession[]>([]);
-
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => {
-    const saved = localStorage.getItem('personasPROFEA_lastSyncTime');
-    return saved ? new Date(saved) : null;
-  });
-  const [isSyncingNow, setIsSyncingNow] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (lastSyncTime) {
-      localStorage.setItem('personasPROFEA_lastSyncTime', lastSyncTime.toISOString());
-    }
-  }, [lastSyncTime]);
-
-  useEffect(() => {
-    if (activeWorkspace) {
-      localStorage.setItem('personasPROFEA_activeWorkspace', JSON.stringify(activeWorkspace));
-    }
-  }, [activeWorkspace]);
-
-  useEffect(() => {
-    if (activeWorkspaceId) {
-      localStorage.setItem('personasPROFEA_activeWorkspaceId', activeWorkspaceId);
-    }
-  }, [activeWorkspaceId]);
-
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [autoSaveToDrive, setAutoSaveToDrive] = useState<boolean>(() => {
@@ -395,30 +315,6 @@ function App() {
   });
 
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
-
-  const handleForceSaveAllToCloud = async (): Promise<void> => {
-    const currentList = peopleRef.current || [];
-    try {
-      await fetch('/api/database/save-workers-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: currentEffectiveWorkspaceId,
-          workers: currentList
-        })
-      });
-      setToast({
-        message: 'Todos los trabajadores se han consolidado en la base de datos de Firebase Firestore.',
-        type: 'success'
-      });
-    } catch (err: any) {
-      setToast({
-        message: `Error al guardar en la base de datos: ${err?.message || 'Error'}`,
-        type: 'error'
-      });
-      throw err;
-    }
-  };
 
   const notificationAlertsCount = useMemo(() => {
     if (!people || people.length === 0) return 0;
@@ -441,32 +337,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('personasPROFEA_autoSaveToDrive', String(autoSaveToDrive));
   }, [autoSaveToDrive]);
-
-  // Check URL parameters for direct workspace link or PIN code
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const wsParam = params.get('workspace');
-      const codeParam = params.get('code');
-      if (wsParam) {
-        getWorkspaceByIdOrEmail(wsParam).then(ws => {
-          if (ws) {
-            setActiveWorkspace(ws);
-            setActiveWorkspaceId(ws.id);
-            setToast({ message: `Conectado al espacio: ${ws.name}`, type: 'success' });
-          }
-        });
-      } else if (codeParam) {
-        findWorkspaceByAccessCode(codeParam).then(ws => {
-          if (ws) {
-            setActiveWorkspace(ws);
-            setActiveWorkspaceId(ws.id);
-            setToast({ message: `Conectado al espacio: ${ws.name}`, type: 'success' });
-          }
-        });
-      }
-    }
-  }, []);
 
   // Register Service Worker on startup
   useEffect(() => {
@@ -506,32 +376,6 @@ function App() {
     return () => clearInterval(intervalId);
   }, [autoThemeByTime]);
 
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (currentUser, accessToken) => {
-        setGoogleUser(currentUser);
-        setGoogleToken(accessToken);
-        if (currentUser && currentUser.email) {
-          getOrCreateUserWorkspace(currentUser).then(ws => {
-            setActiveWorkspace(ws);
-            setActiveWorkspaceId(ws.id);
-          });
-          fetchSharedWorkspacesForEmail(currentUser.email).then(list => {
-            setSharedWorkspaces(list);
-          });
-        }
-      },
-      () => {
-        setGoogleUser(null);
-        setGoogleToken(null);
-      }
-    );
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, []);
 
   const handleGoogleLogin = async () => {
     try {
@@ -583,316 +427,7 @@ function App() {
       : (typeof activeWorkspaceId === 'string' && activeWorkspaceId.trim() ? activeWorkspaceId.trim() : DEFAULT_WORKSPACE_ID)
   );
 
-  const handleUpdateSyncEmail = async (newEmail: string) => {
-    const clean = newEmail.trim().toLowerCase();
-    if (!clean || !clean.includes('@') || !clean.includes('.')) {
-      setToast({ message: 'Por favor, introduce un correo electrónico válido.', type: 'error' });
-      return;
-    }
-    setSyncEmail(clean);
-    localStorage.setItem('personasPROFEA_syncEmail', clean);
-    const targetWsId = canonicalizeEmailKey(clean);
-    setActiveWorkspaceId(targetWsId);
-    localStorage.setItem('personasPROFEA_activeWorkspaceId', targetWsId);
 
-    try {
-      const ws = await getOrCreateUserWorkspace({
-        uid: targetWsId,
-        email: clean,
-        displayName: clean.split('@')[0]
-      });
-      setActiveWorkspace(ws);
-    } catch (e) {
-      console.warn("Could not setup user workspace:", e);
-    }
-
-    setToast({ message: `¡Sincronización vinculada a ${clean}!`, type: 'success' });
-    await handleForceSyncNow(targetWsId);
-  };
-
-  const handleDisconnectSyncEmail = async () => {
-    const prevWsId = currentEffectiveWorkspaceId;
-    setSyncEmail('');
-    localStorage.removeItem('personasPROFEA_syncEmail');
-    setActiveWorkspaceId('');
-    localStorage.removeItem('personasPROFEA_activeWorkspaceId');
-    setActiveWorkspace(null);
-    if (prevWsId && sessionId) {
-      try {
-        await unregisterWorkspaceSession(prevWsId, sessionId);
-      } catch (e) {}
-    }
-    setToast({ message: 'Sincronización desvinculada de este dispositivo.', type: 'success' });
-  };
-
-  const handleForceSyncNow = async (explicitWsId?: unknown) => {
-    const validExplicitId = (typeof explicitWsId === 'string' && explicitWsId.trim()) ? explicitWsId.trim() : '';
-    const targetWsId = validExplicitId || (typeof currentEffectiveWorkspaceId === 'string' ? currentEffectiveWorkspaceId.trim() : '');
-    if (!targetWsId && !googleUser?.uid) {
-      setToast({ message: 'Introduce tu correo electrónico para sincronizar todos tus dispositivos.', type: 'error' });
-      return;
-    }
-    if (isOffline) {
-      setToast({ message: 'Sin conexión a internet para sincronizar.', type: 'error' });
-      return;
-    }
-
-    setIsSyncingNow(true);
-    try {
-      if (targetWsId) {
-        const wsData = await fetchWorkspaceData(targetWsId);
-        const cloudWorkers = wsData.workers || [];
-        const cloudTrash = wsData.trash || [];
-
-        // 1. Upload local workers not in workspace
-        const missingInCloud = people.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
-        if (missingInCloud.length > 0) {
-          try {
-            await fetch('/api/database/save-workers-batch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ workspaceId: targetWsId, workers: missingInCloud })
-            });
-          } catch (e) {
-            console.warn("Could not batch upload to server:", e);
-          }
-
-          if (!isQuotaExceeded()) {
-            for (const p of missingInCloud) {
-              await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-            }
-          }
-        }
-
-        // 2. Merge cloud workers locally
-        setPeople(prev => {
-          const merged = [...prev];
-          cloudWorkers.forEach(cw => {
-            const idx = merged.findIndex(p => p.id === cw.id);
-            if (idx !== -1) {
-              merged[idx] = { ...cw, sincronizadoEnNube: true };
-            } else {
-              merged.push({ ...cw, sincronizadoEnNube: true });
-            }
-          });
-          return merged;
-        });
-
-        // 3. Merge trash
-        setDeletedPeople(prev => {
-          const merged = [...prev];
-          cloudTrash.forEach(ct => {
-            const idx = merged.findIndex(dp => dp.person.id === ct.person.id);
-            if (idx !== -1) {
-              merged[idx] = { ...ct, person: { ...ct.person, sincronizadoEnNube: true } };
-            } else {
-              merged.push({ ...ct, person: { ...ct.person, sincronizadoEnNube: true } });
-            }
-          });
-          return merged;
-        });
-
-        // 4. Subcontratas sync
-        let localSubs: any[] = [];
-        try {
-          const raw = localStorage.getItem('profea_subcontratas_v1');
-          if (raw) localSubs = JSON.parse(raw);
-        } catch (e) {}
-
-        const cloudSubs = wsData.settings?.subcontratas || [];
-        let finalSubs = localSubs;
-        if (cloudSubs.length > 0) {
-          finalSubs = cloudSubs;
-          localStorage.setItem('profea_subcontratas_v1', JSON.stringify(cloudSubs));
-          window.dispatchEvent(new CustomEvent('profea_subcontratas_synced', { detail: cloudSubs }));
-        }
-
-        // 5. Save settings
-        await syncWorkspaceSettings(targetWsId, {
-          savedObras,
-          savedCategorias,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          workStartHour,
-          workEndHour,
-          subcontratas: finalSubs
-        });
-
-        if (wsData.workspace) {
-          setActiveWorkspace(wsData.workspace);
-        }
-      }
-
-      setLastSyncTime(new Date());
-      setToast({ message: '¡Datos sincronizados y actualizados en todos tus dispositivos!', type: 'success' });
-    } catch (err) {
-      console.error('Error during force sync:', err);
-      setToast({ message: 'Error al sincronizar con la nube.', type: 'error' });
-    } finally {
-      setIsSyncingNow(false);
-    }
-  };
-
-  const handleUploadAllLocalToAccount = async () => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId && !googleUser?.uid) {
-      setToast({ message: 'Inicia sesión con tu cuenta de Google para subir todos los datos.', type: 'error' });
-      return;
-    }
-    if (isOffline) {
-      setToast({ message: 'Sin conexión a internet.', type: 'error' });
-      return;
-    }
-
-    setIsSyncingNow(true);
-    try {
-      if (targetWsId) {
-        // 1. Instant server batch save (preserves all data across devices with 0 Firestore writes)
-        try {
-          await fetch('/api/database/save-workers-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId: targetWsId, workers: people })
-          });
-        } catch (e) {
-          console.warn("Could not batch upload to server store:", e);
-        }
-
-        // 2. Sync to Firestore if quota allows
-        if (!isQuotaExceeded()) {
-          for (const p of people) {
-            await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-          }
-          for (const dp of deletedPeople) {
-            await syncDeletedWorkerToWorkspace(targetWsId, {
-              ...dp,
-              person: { ...dp.person, sincronizadoEnNube: true }
-            });
-          }
-        }
-
-        await syncWorkspaceSettings(targetWsId, {
-          savedObras,
-          savedCategorias,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          workStartHour,
-          workEndHour
-        });
-      }
-
-      setPeople(prev => prev.map(p => ({ ...p, sincronizadoEnNube: true })));
-      setLastSyncTime(new Date());
-      setToast({ message: 'Todos los datos locales han sido subidos a tu espacio compartido.', type: 'success' });
-    } catch (err) {
-      console.error('Error uploading local to workspace:', err);
-      setToast({ message: 'Error al subir los datos al espacio.', type: 'error' });
-    } finally {
-      setIsSyncingNow(false);
-    }
-  };
-
-  const handleDownloadAllFromAccount = async () => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId && !googleUser?.uid) {
-      setToast({ message: 'Inicia sesión con tu cuenta de Google para descargar los datos.', type: 'error' });
-      return;
-    }
-    if (isOffline) {
-      setToast({ message: 'Sin conexión a internet.', type: 'error' });
-      return;
-    }
-
-    setIsSyncingNow(true);
-    try {
-      if (targetWsId) {
-        const wsData = await fetchWorkspaceData(targetWsId);
-        if (wsData.workers && wsData.workers.length > 0) {
-          setPeople(wsData.workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-        }
-        if (wsData.trash && wsData.trash.length > 0) {
-          setDeletedPeople(wsData.trash.map(t => ({ ...t, person: { ...t.person, sincronizadoEnNube: true } })));
-        }
-        if (wsData.settings) {
-          if (wsData.settings.savedObras) setSavedObras(wsData.settings.savedObras);
-          if (wsData.settings.savedCategorias) setSavedCategorias(wsData.settings.savedCategorias);
-          if (wsData.settings.savedLugares) setSavedLugares(wsData.settings.savedLugares);
-          if (wsData.settings.savedSitios) setSavedSitios(wsData.settings.savedSitios);
-          if (wsData.settings.savedTelefonos) setSavedTelefonos(wsData.settings.savedTelefonos);
-          if (wsData.settings.workStartHour) setWorkStartHour(wsData.settings.workStartHour);
-          if (wsData.settings.workEndHour) setWorkEndHour(wsData.settings.workEndHour);
-          if (wsData.settings.pdfCustomConfig) saveStoredPdfConfig(wsData.settings.pdfCustomConfig);
-        }
-        if (wsData.workspace) {
-          setActiveWorkspace(wsData.workspace);
-        }
-      }
-      setLastSyncTime(new Date());
-      setToast({ message: 'Datos descargados y actualizados correctamente desde tu espacio compartido.', type: 'success' });
-    } catch (err) {
-      console.error('Error downloading from workspace:', err);
-      setToast({ message: 'Error al descargar los datos desde el espacio.', type: 'error' });
-    } finally {
-      setIsSyncingNow(false);
-    }
-  };
-
-  const handleAddMember = async (email: string, role: 'editor' | 'viewer') => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId) return;
-    await addMemberToWorkspace(targetWsId, email, role);
-    const updated = await getWorkspaceByIdOrEmail(targetWsId);
-    if (updated) setActiveWorkspace(updated);
-  };
-
-  const handleUpdateMemberRole = async (email: string, newRole: 'editor' | 'viewer') => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId) return;
-    await updateMemberRoleInWorkspace(targetWsId, email, newRole);
-    const updated = await getWorkspaceByIdOrEmail(targetWsId);
-    if (updated) setActiveWorkspace(updated);
-  };
-
-  const handleRemoveMember = async (email: string) => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId) return;
-    await removeMemberFromWorkspace(targetWsId, email);
-    const updated = await getWorkspaceByIdOrEmail(targetWsId);
-    if (updated) setActiveWorkspace(updated);
-  };
-
-  const handleSelectWorkspace = async (workspaceId: string) => {
-    if (!workspaceId) return;
-    setActiveWorkspaceId(workspaceId);
-    const ws = await getWorkspaceByIdOrEmail(workspaceId);
-    if (ws) {
-      setActiveWorkspace(ws);
-      setToast({ message: `Cambiado al espacio: ${ws.name}`, type: 'success' });
-    }
-  };
-
-  const handleJoinWorkspaceByCodeOrEmail = async (codeOrEmail: string): Promise<boolean> => {
-    let ws: Workspace | null = null;
-    if (codeOrEmail.includes('@')) {
-      ws = await getWorkspaceByIdOrEmail(codeOrEmail);
-    } else {
-      ws = await findWorkspaceByAccessCode(codeOrEmail);
-      if (!ws) {
-        ws = await getWorkspaceByIdOrEmail(codeOrEmail);
-      }
-    }
-
-    if (ws) {
-      setActiveWorkspace(ws);
-      setActiveWorkspaceId(ws.id);
-      localStorage.setItem('personasPROFEA_activeWorkspaceId', ws.id);
-      localStorage.setItem('personasPROFEA_activeWorkspace', JSON.stringify(ws));
-      return true;
-    }
-    return false;
-  };
 
   const uploadToGoogleDrive = async (blob: Blob, filename: string, showToastOnSuccess = true) => {
     if (!googleToken || !autoSaveToDrive) {
@@ -963,7 +498,7 @@ function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
-      setToast({ message: 'Conexión recuperada. Sincronización disponible.', type: 'success' });
+      setToast({ message: 'Conexión recuperada.', type: 'success' });
     };
     const handleOffline = () => {
       setIsOffline(true);
@@ -975,92 +510,6 @@ function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
-
-  const handleSyncPendingToCloud = async () => {
-    if (!isSyncing || !groupId.trim() || isOffline) return;
-    
-    // Find who is not synced
-    const unsyncedList = people.filter(p => !p.sincronizadoEnNube);
-    if (unsyncedList.length === 0) return;
-
-    // Update state to marked as synced
-    setPeople(prev => prev.map(p => {
-      if (unsyncedList.some(up => up.id === p.id)) {
-        return { ...p, sincronizadoEnNube: true };
-      }
-      return p;
-    }));
-
-    // Upload them
-    for (const p of unsyncedList) {
-      await syncWorkerToCloud(groupId, { ...p, sincronizadoEnNube: true });
-    }
-  };
-
-  // Auto sync on connection recovery
-  useEffect(() => {
-    if (!isOffline && isSyncing && syncMode === 'auto' && groupId.trim()) {
-      const unsyncedCount = people.filter(p => !p.sincronizadoEnNube).length;
-      if (unsyncedCount > 0) {
-        setToast({ message: `Conexión recuperada. Sincronizando ${unsyncedCount} registros pendientes automáticamente...`, type: 'success' });
-        handleSyncPendingToCloud().catch(err => {
-          console.error("Error doing auto-recovery sync:", err);
-        });
-      }
-    }
-  }, [isOffline]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_groupId', groupId);
-    if (groupId.trim()) {
-      // Provision/get the group when connected
-      getOrCreateSyncGroup(groupId).catch(err => console.error("Error creating group:", err));
-    }
-  }, [groupId]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_isSyncing', String(isSyncing));
-  }, [isSyncing]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_syncMode', syncMode);
-  }, [syncMode]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_sessionId', sessionId);
-  }, [sessionId]);
-
-  // Handle URL automatic join via QR Code or link scanning
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const syncParam = params.get('sync');
-    const viewDni = params.get('view-worker-pdf');
-
-    if (syncParam && syncParam.trim()) {
-      const cleanParam = syncParam.trim().toUpperCase();
-      setGroupId(cleanParam);
-      setIsSyncing(true);
-      setToast({ message: `¡Conectado al grupo de sincronización '${cleanParam}' mediante enlace!`, type: 'success' });
-    }
-
-    if (viewDni && viewDni.trim()) {
-      const cleanDni = viewDni.trim().toUpperCase().replace(/[\s-]/g, '');
-      setPendingPdfDni(cleanDni);
-    }
-
-    // Clean up parameters safely without deleting view-worker-pdf until it's loaded!
-    const newParams = new URLSearchParams(window.location.search);
-    let updated = false;
-    if (newParams.has('sync')) {
-      newParams.delete('sync');
-      updated = true;
-    }
-    if (updated) {
-      const searchStr = newParams.toString();
-      const newUrl = window.location.origin + window.location.pathname + (searchStr ? `?${searchStr}` : '');
-      window.history.replaceState({}, document.title, newUrl);
-    }
   }, []);
 
   // Effect to generate and render the worker PDF once the data is fully populated/synced
@@ -1091,7 +540,7 @@ function App() {
 
   // Firestore is the permanent source of truth.
   useEffect(() => {
-    const uid = googleUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) return;
     const unsubscribe = subscribeToAccountWorkers(uid, workers => {
       setPeople(workers.map(w => ({ ...w, sincronizadoEnNube: true })));
@@ -1100,36 +549,9 @@ function App() {
       console.error('Error leyendo trabajadores de Firestore:', error);
       setToast({ message: 'Error al leer los trabajadores desde Firebase.', type: 'error' });
     });
-    const unsubscribeTrash = subscribeToAccountTrash(uid, trash => {
-      setDeletedPeople(trash);
-    });
-    return () => { unsubscribe(); unsubscribeTrash(); };
-  }, [googleUser?.uid]);
+    return () => unsubscribe();
+  }, []);
 
-  const handleDisconnectSession = async () => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (targetWsId && sessionId) {
-      try {
-        await unregisterWorkspaceSession(targetWsId, sessionId);
-      } catch (e) {
-        console.error("Error unregistering workspace session:", e);
-      }
-    } else if (googleUser?.uid && sessionId) {
-      try {
-        await unregisterAccountSession(googleUser.uid, sessionId);
-      } catch (e) {
-        console.error("Error unregistering account session:", e);
-      }
-    } else if (groupId.trim() && sessionId) {
-      try {
-        await unregisterSession(groupId, sessionId);
-      } catch (e) {
-        console.error("Error unregistering session:", e);
-      }
-    }
-    setSessionId('');
-    localStorage.removeItem('personasPROFEA_sessionId');
-  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedObraFilter, setSelectedObraFilter] = useState<string[]>(() => {
@@ -3418,7 +2840,6 @@ function App() {
           />
 
           {/* Database synchronization feedback alert (green for success, red for error) */}
-          <DatabaseSyncAlert />
 
           {/* Footer Copyright */}
           <footer className="mt-16 text-center border-t border-slate-200 dark:border-slate-800/85 pt-6 text-xs text-slate-400 dark:text-slate-500 font-medium">

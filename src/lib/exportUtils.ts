@@ -1339,13 +1339,8 @@ export const generateWorkerIDCardPDF = async (selectedPerson: Person, allPeople:
   const history = allPeople.filter(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === cleanDni);
 
   const appUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : 'https://ais-dev-z7d4v355a6bfwlbnq24eyg-269075130225.europe-west2.run.app';
-  const groupId = typeof window !== 'undefined' ? window.localStorage.getItem('personasPROFEA_groupId') || '' : '';
-  const isSyncActive = typeof window !== 'undefined' ? window.localStorage.getItem('personasPROFEA_isSyncing') === 'true' : false;
 
   let qrText = `${appUrl}?view-worker-pdf=${cleanDni}`;
-  if (isSyncActive && groupId) {
-    qrText += `&sync=${encodeURIComponent(groupId)}`;
-  }
   
   let qrCodeDataUrl = '';
   try {
