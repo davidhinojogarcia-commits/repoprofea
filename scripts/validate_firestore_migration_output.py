@@ -5,11 +5,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 checks = {
     'App.tsx': [
-        ('manual sync modal import', r"FirebaseSyncModal|DatabaseSyncAlert|syncNotifier"),
-        ('manual sync header props', r"onOpenFirebaseSync|isSyncingFirebase|firebaseWorkersCount"),
+        ('manual sync module imports', r"^import .*?(?:FirebaseSyncModal|DatabaseSyncAlert|syncNotifier).*?;$"),
+        ('manual sync header props', r"onOpenFirebaseSync\s*=|isSyncingFirebase\s*=|firebaseWorkersCount\s*=|\bonOpenFirebaseSync\b.*(?:Header|<Header)"),
     ],
     'components/Header.tsx': [
-        ('dangling sync button JSX', r"\{onOpenFirebaseSync &&|id=\"btn-sync-firebase-firestore\"|\n\s*</button>\n\s*\)\}"),
+        ('manual sync props', r"onOpenFirebaseSync|isSyncingFirebase|firebaseWorkersCount"),
+        ('dangling sync button JSX', r"\{onOpenFirebaseSync &&|id=\"btn-sync-firebase-firestore\""),
     ],
     'components/SubcontratasSection.tsx': [
         ('business localStorage database', r"localStorage\.getItem\(STORAGE_KEY\)|localStorage\.setItem\(STORAGE_KEY|localStorage\.getItem\('personasPROFEA'\)"),
@@ -23,7 +24,7 @@ errors = []
 for filename, patterns in checks.items():
     text = (ROOT / filename).read_text()
     for label, pattern in patterns:
-        if re.search(pattern, text):
+        if re.search(pattern, text, re.M):
             errors.append(f'{filename}: {label}')
 
 if errors:
