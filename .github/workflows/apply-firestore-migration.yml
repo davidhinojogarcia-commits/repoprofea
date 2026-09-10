@@ -21,12 +21,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Finalize application
+      - name: Finalize App and Firebase client
         run: python scripts/finalize_multiusuario.py
-      - name: Remove obsolete sync components
+      - name: Remove obsolete synchronization artifacts
         run: |
           rm -f components/DatabaseSyncAlert.tsx components/FirebaseSyncModal.tsx src/lib/syncNotifier.ts
-      - name: Validate no manual synchronization remains
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('App.tsx')
+          s = p.read_text()
+          for marker in [
+              'triggerFirestoreDatabaseSync', 'FirebaseSyncModal', 'DatabaseSyncAlert',
+              'handleForceSaveAllToCloud', 'handleForceSyncNow', 'handleUploadAllLocalToAccount',
+              'handleDownloadAllFromAccount', 'handleSyncPendingToCloud', 'handleUpdateSyncEmail',
+              'handleDisconnectSyncEmail', 'handleAddMember', 'handleRemoveMember', 'handleSelectWorkspace',
+              'personasPROFEA_groupId', 'personasPROFEA_activeWorkspaceId', 'personasPROFEA_syncEmail'
+          ]:
+              if marker in s:
+                  print('LEGACY MARKER:', marker)
+          PY
+      - name: Validate source
         run: |
           if grep -RniE 'FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)' App.tsx components src --exclude='*.map'; then
             echo 'Legacy/manual synchronization code detected.'
@@ -34,10 +48,7 @@ jobs:
           fi
       - name: Commit finalization
         run: |
-          if git diff --quiet; then
-            echo 'No changes to commit.'
-            exit 0
-          fi
+          if git diff --quiet; then echo 'No changes to commit.'; exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
