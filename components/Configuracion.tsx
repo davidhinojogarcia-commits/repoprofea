@@ -19,6 +19,7 @@ import {
   getStoredObrasRecursosPreventivos,
   saveStoredObraRecursoPreventivo,
   deleteStoredObraRecursoPreventivo,
+  replaceStoredObrasRecursosPreventivos,
   ObraRecursoPreventivo
 } from '../src/lib/subcontratasDefaults';
 
@@ -291,10 +292,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
       }
       if (backupConfig.obrasRecursosPreventivos) {
-        try {
-          localStorage.setItem('profea_obras_recursos_preventivos', JSON.stringify(backupConfig.obrasRecursosPreventivos));
-          setObrasRecursos(backupConfig.obrasRecursosPreventivos);
-        } catch {}
+        replaceStoredObrasRecursosPreventivos(backupConfig.obrasRecursosPreventivos);
+        setObrasRecursos(backupConfig.obrasRecursosPreventivos);
       }
 
       setLoadedBackup(null);

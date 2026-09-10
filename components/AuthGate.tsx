@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
+import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
 
 
 interface AuthGateProps { children: React.ReactNode; }
@@ -36,6 +37,11 @@ export function AuthGate({ children }: AuthGateProps) {
     if (currentUser) {
       try {
         const currentRole = await getCurrentRole();
+        if (currentRole) {
+          await hydrateStoredSubcontratasPreferences().catch(error =>
+            console.warn('No se pudieron precargar preferencias de subcontratas:', error)
+          );
+        }
         setRole(currentRole);
         if (!currentRole) {
           await signOutUser();
