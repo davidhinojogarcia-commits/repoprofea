@@ -13,7 +13,10 @@ import {
   getDocs, 
   onSnapshot, 
   deleteDoc,
-  Unsubscribe
+  Unsubscribe,
+  query,
+  where,
+  updateDoc
 } from 'firebase/firestore';
 import { 
   getAuth, 
@@ -740,15 +743,24 @@ export async function deleteWorkerFromAccount(userId: string, personId: number):
  */
 export async function syncDeletedWorkerToAccount(userId: string, deletedPerson: DeletedPerson): Promise<void> {
   if (!userId || !deletedPerson?.person?.id) return;
-  const worker = { ...deletedPerson.person, ownerId: auth.currentUser?.uid || userId };
-  await setDoc(doc(db, 'trash', String(deletedPerson.person.id)), sanitizeForFirestore({ person: worker, fechaEliminacion: deletedPerson.fechaEliminacion || new Date().toISOString(), ownerId: auth.currentUser?.uid || userId }));
+  const ownerId = auth.currentUser?.uid || userId;
+  const cleanTrash = sanitizeForFirestore({
+    ...deletedPerson,
+    person: { ...deletedPerson.person, ownerId },
+    ownerId,
+    _lastUpdated: new Date().toISOString()
+  });
+  await setDoc(doc(db, 'trash', `${ownerId}_${deletedPerson.person.id}`), cleanTrash);
 }
 
 /**
  * Permanently removes a worker from the trash bin in the user's account
  */
-export async function deleteFromAccountTrash(_userId: string, personId: number): Promise<void> {
-  await deleteDoc(doc(db, 'trash', String(personId)));
+export async function deleteFromAccountTrash(userId: string, personId: number): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !personId) return;
+  const snapshot = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid), where('person.id', '==', personId)));
+  await Promise.all(snapshot.docs.map(item => deleteDoc(item.ref)));
 }
 
 /**
@@ -775,7 +787,7 @@ export async function fetchAccountData(userId: string): Promise<{
 export function subscribeToAccountWorkers(userId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
-  return onSnapshot(collection(db, 'workers'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), onError);
+  return onSnapshot(query(collection(db, 'workers'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), onError);
 }
 
 /**
@@ -784,7 +796,7 @@ export function subscribeToAccountWorkers(userId: string, onUpdate: (workers: Pe
 export function subscribeToAccountTrash(userId: string, onUpdate: (trash: DeletedPerson[]) => void, onError?: (err: any) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
-  return onSnapshot(collection(db, 'trash'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson)), onError);
+  return onSnapshot(query(collection(db, 'trash'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => d.data() as DeletedPerson)), onError);
 }
 
 /**
@@ -1150,14 +1162,34 @@ export async function deleteFirestoreAccount(accountId: string): Promise<void> {
 export async function createFirestoreWorker(userId: string, worker: Person): Promise<void> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid || !worker?.id) return;
-  const payload = sanitizeForFirestore({ ...worker, ownerId: worker.ownerId || uid, sincronizadoEnNube: true, _lastUpdated: new Date().toISOString() });
-  await setDoc(doc(db, 'workers', String(worker.id)), payload, { merge: true });
+  const ownerId = worker.ownerId || uid;
+  if (ownerId !== uid) throw new Error('No puedes guardar un trabajador a nombre de otro usuario.');
+  const payload = sanitizeForFirestore({
+    ...worker,
+    ownerId,
+    createdBy: worker.createdBy || uid,
+    updatedBy: uid,
+    createdAt: worker.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    sincronizadoEnNube: true,
+  });
+  await setDoc(doc(db, 'workers', `${uid}_${worker.id}`), payload, { merge: true });
 }
 
 /**
  * CRUD: Update/Modify an existing worker in Firestore for a specific user
  */
-export async function updateFirestoreWorker(userId: string, worker: Person): Promise<void> { return createFirestoreWorker(userId, worker); }
+export async function updateFirestoreWorker(userId: string, worker: Person): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !worker?.id) return;
+  const snapshot = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid), where('id', '==', worker.id)));
+  const payload = sanitizeForFirestore({ ...worker, ownerId: uid, updatedBy: uid, updatedAt: new Date().toISOString(), sincronizadoEnNube: true });
+  if (snapshot.empty) {
+    await setDoc(doc(db, 'workers', `${uid}_${worker.id}`), { ...payload, createdBy: uid, createdAt: new Date().toISOString() });
+  } else {
+    await Promise.all(snapshot.docs.map(item => updateDoc(item.ref, payload)));
+  }
+}
 
 /**
  * CRUD: Delete a worker in Firestore (moves to trash)
@@ -1165,8 +1197,11 @@ export async function updateFirestoreWorker(userId: string, worker: Person): Pro
 export async function deleteFirestoreWorker(userId: string, workerId: number | string, deletedRecord?: DeletedPerson): Promise<void> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid || !workerId) return;
-  await deleteDoc(doc(db, 'workers', String(workerId)));
-  if (deletedRecord) await setDoc(doc(db, 'trash', String(workerId)), sanitizeForFirestore({ ...deletedRecord, ownerId: uid, _lastUpdated: new Date().toISOString() }));
+  const workers = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid), where('id', '==', Number(workerId))));
+  if (workers.empty) throw new Error('El trabajador que intentas eliminar no existe.');
+  const trashPayload = deletedRecord ? sanitizeForFirestore({ ...deletedRecord, ownerId: uid, _lastUpdated: new Date().toISOString() }) : null;
+  if (trashPayload) await setDoc(doc(db, 'trash', `${uid}_${workerId}`), trashPayload);
+  await Promise.all(workers.docs.map(item => deleteDoc(item.ref)));
 }
 
 /**
@@ -1175,16 +1210,19 @@ export async function deleteFirestoreWorker(userId: string, workerId: number | s
 export async function restoreFirestoreWorker(userId: string, worker: Person): Promise<void> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid || !worker?.id) return;
-  await deleteDoc(doc(db, 'trash', String(worker.id)));
+  const trash = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid), where('person.id', '==', worker.id)));
+  await Promise.all(trash.docs.map(item => deleteDoc(item.ref)));
   await createFirestoreWorker(uid, worker);
 }
 
 /**
  * CRUD: Permanently delete a worker from Firestore trash
  */
-export async function permanentDeleteFirestoreWorker(_userId: string, workerId: number | string): Promise<void> {
-  if (!workerId) return;
-  await deleteDoc(doc(db, 'trash', String(workerId)));
+export async function permanentDeleteFirestoreWorker(userId: string, workerId: number | string): Promise<void> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid || !workerId) return;
+  const trash = await getDocs(query(collection(db, 'trash'), where('ownerId', '==', uid), where('person.id', '==', Number(workerId))));
+  await Promise.all(trash.docs.map(item => deleteDoc(item.ref)));
 }
 
 /**
@@ -1193,8 +1231,8 @@ export async function permanentDeleteFirestoreWorker(_userId: string, workerId: 
 export async function fetchFirestoreWorkers(userId: string): Promise<Person[]> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return [];
-  const snap = await getDocs(collection(db, 'workers'));
-  return snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person));
+  const snap = await getDocs(query(collection(db, 'workers'), where('ownerId', '==', uid)));
+  return snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person));
 }
 
 /**
@@ -1203,6 +1241,6 @@ export async function fetchFirestoreWorkers(userId: string): Promise<Person[]> {
 export function subscribeToFirestoreUserWorkers(userId: string, onUpdate: (workers: Person[]) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
-  return onSnapshot(collection(db, 'workers'), snap => onUpdate(snap.docs.filter(d => d.data().ownerId === uid).map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), err => handleFirestoreError(err, OperationType.GET, 'workers'));
+  return onSnapshot(query(collection(db, 'workers'), where('ownerId', '==', uid)), snap => onUpdate(snap.docs.map(d => ({ ...d.data(), sincronizadoEnNube: true } as Person))), err => handleFirestoreError(err, OperationType.GET, 'workers'));
 }
 
