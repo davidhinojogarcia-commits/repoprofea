@@ -54,11 +54,13 @@ if start >= 0:
 a = re.sub(r"\n  useEffect\(\(\) => \{\n    localStorage\.setItem\('personasPROFEA_(groupId|isSyncing|syncMode|sessionId|lastSyncTime|syncEmail|activeWorkspace|activeWorkspaceId)'.*?\n  \}, \[[^\]]+\]\);", '', a, flags=re.S)
 a = a.replace('setLastSyncTime(new Date());', '')
 a = re.sub(r"\n\s*<DatabaseSyncAlert\s*/>", '', a)
+a = a.replace('Sincronización activa', 'Conectado')
 if "import { auth } from './src/lib/firebase';" not in a:
     a = a.replace("import { compressToGzip } from './src/lib/compression';\n", "import { compressToGzip } from './src/lib/compression';\nimport { auth } from './src/lib/firebase';\n", 1)
 a = a.replace('const uid = googleUser?.uid;', 'const uid = auth.currentUser?.uid;', 1)
 app_path.write_text(a)
 
+# Remove sync fields from QR generation.
 export_path = ROOT / 'src/lib/exportUtils.ts'
 e = export_path.read_text()
 e = re.sub(r"\n\s*const groupId = typeof window !== 'undefined' \? window\.localStorage\.getItem\('personasPROFEA_groupId'\) \|\| '' : '';", '', e)
@@ -66,15 +68,16 @@ e = re.sub(r"\n\s*const isSyncActive = typeof window !== 'undefined' \? window\.
 e = re.sub(r"\n\s*if \(isSyncActive && groupId\) \{\n\s*qrText \+= `&sync=\$\{encodeURIComponent\(groupId\)\}`;\n\s*\}", '', e)
 export_path.write_text(e)
 
+# Firebase Auth remains email/password only. Google helpers are retained as compatibility
+# shims for unrelated calendar code, but they cannot sign the application in.
 firebase_path = ROOT / 'src/lib/firebase.ts'
 s = firebase_path.read_text()
 s = cut_function(s, 'export async function triggerFirestoreDatabaseSync')
 s = re.sub(r"import \{\s*getAuth,.*?\n\} from 'firebase/auth';", "import { getAuth, onAuthStateChanged, User } from 'firebase/auth';", s, count=1, flags=re.S)
-s = re.sub(r"\n// Initialize Provider with full Drive, Sheets, Gmail & Calendar scopes\n", '\n', s, count=1)
 s = re.sub(r"\nexport const getAccessToken = async \(\): Promise<string \| null> => \{.*?\n\};", "\nexport const getAccessToken = async (): Promise<string | null> => null;", s, count=1, flags=re.S)
 s = cut_function(s, 'export const googleSignIn = async')
 s = cut_function(s, 'export const logoutGoogle = async')
-# A previous migration pass left an orphaned JSX-like fragment in the legacy workspace facade.
-s = s.replace('\n> {\n  const data = await fetchAccountData(auth.currentUser?.uid || \'\');\n  return { ...data, count: data.workers.length };\n}\n', '\n')
+shim = "\nexport const googleSignIn = async (): Promise<never> => { throw new Error('Google Sign-In está deshabilitado. Usa correo electrónico y contraseña.'); };\n"
+s += shim
 firebase_path.write_text(s)
 print('Final migration cleanup complete.')
