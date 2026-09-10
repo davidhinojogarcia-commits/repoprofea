@@ -1,0 +1,30 @@
+name: Temp phase 3
+on:
+  push:
+    branches: ['temp-phase3']
+    paths: ['.github/temp-phase3-trigger.txt']
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python .github/scripts/temp_phase3.py
+      - name: Verify
+        run: |
+          grep -n "importWorkersAtomic(formattedWorkers)" App.tsx
+          grep -n 'const itemId = `${subcontrataId}:${sourceId}`' src/services/databaseService.ts
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add App.tsx src/services/databaseService.ts
+          git commit -m "fix: make imports atomic and namespace checklist rows"
+          git push origin HEAD:temp-phase3
