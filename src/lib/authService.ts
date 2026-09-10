@@ -36,7 +36,7 @@ export async function signInWithEmail(email:string,password:string):Promise<User
 }
 export const signInWithEmailPassword=signInWithEmail;
 export async function signOutUser(){await supabase.auth.signOut();auth.currentUser=null;}
-export function subscribeToAuth(callback:(user:User|null)=>void){const sub=supabase.auth.onAuthStateChange(callback);return ()=>sub.data.subscription.unsubscribe();}
+export function subscribeToAuth(callback:(user:User|null)=>void){const sub=supabase.auth.onAuthStateChange(user=>{auth.currentUser=user;callback(user);});return ()=>sub.data.subscription.unsubscribe();}
 export async function getCurrentRole():Promise<AppRole|null>{const user=(await supabase.auth.getUser()).data.user;if(!user)return null;const p=await readUserProfile(user);return p?.role||null;}
 export async function getUserProfile():Promise<AuthProfile|null>{const user=(await supabase.auth.getUser()).data.user;if(!user)return null;return readUserProfile(user);}
 export async function sendResetPassword(_email:string):Promise<void>{throw Object.assign(new Error('El restablecimiento de contraseña debe gestionarlo un administrador.'),{code:'auth/admin-only-password-reset'});}
