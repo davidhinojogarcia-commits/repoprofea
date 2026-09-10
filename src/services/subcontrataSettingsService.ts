@@ -21,14 +21,9 @@ export async function loadSubcontrataSettings(): Promise<SubcontrataSettings> {
   return settings.subcontratas || {};
 }
 
-export async function saveSubcontrataSettings(patch: Partial<SubcontrataSettings>): Promise<void> {
+export async function saveSubcontrataSettings(patch: Partial<SubcontrataSettings>): Promise<SubcontrataSettings> {
   const current = await loadSubcontrataSettings();
-  await supabase.rpc('patch_user_settings', {
-    p_patch: {
-      subcontratas: {
-        ...current,
-        ...patch,
-      },
-    },
-  });
+  const next = { ...current, ...patch };
+  await supabase.rpc('patch_user_settings', { p_patch: { subcontratas: next } });
+  return next;
 }
