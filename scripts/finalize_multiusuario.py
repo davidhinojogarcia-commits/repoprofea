@@ -5,10 +5,10 @@ ROOT = Path(__file__).resolve().parents[1]
 app = ROOT / 'App.tsx'
 a = app.read_text()
 
-# Remove explicit manual/batch sync API import.
+# Remove explicit manual sync API import.
 a = re.sub(r"\n\s*triggerFirestoreDatabaseSync,?", '', a, count=1)
 
-# Remove manual sync handlers while preserving the existing PROFEA UI.
+# Remove all old sync/workspace handler sections by stable markers.
 def remove_between(start_marker, end_marker):
     global a
     start = a.find(start_marker)
@@ -24,29 +24,18 @@ remove_between('  // Check URL parameters for direct workspace link or PIN code'
 remove_between('  const handleForceSyncNow = async', '  const uploadToGoogleDrive = async')
 remove_between('  const handleSyncPendingToCloud = async', '  // Effect to generate and render the worker PDF')
 
-# Remove synchronization/workspace state declarations.
-state_patterns = [
-    r"\n  const \[groupId, setGroupId\] = useState<string>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[isSyncing, setIsSyncing\] = useState<boolean>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[syncMode, setSyncMode\] = useState<'auto' \| 'manual'>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[syncEmail, setSyncEmail\] = useState<string>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[activeWorkspace, setActiveWorkspace\] = useState<Workspace \| null>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[activeWorkspaceId, setActiveWorkspaceId\] = useState<string>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[sharedWorkspaces, setSharedWorkspaces\] = useState<Workspace\[\]>\(\[\]\);",
-    r"\n  const \[sessionId, setSessionId\] = useState<string>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[sessions, setSessions\] = useState<DeviceSession\[\]>\(\[\]\);",
-    r"\n  const \[lastSyncTime, setLastSyncTime\] = useState<Date \| null>\(\(\) => \{.*?\n  \}\);",
-    r"\n  const \[isSyncingNow, setIsSyncingNow\] = useState<boolean>\(false\);",
-]
-for pattern in state_patterns:
-    a, _ = re.subn(pattern, '\n', a, count=1, flags=re.S)
+# Remove the entire legacy sync/workspace state block in one deterministic operation.
+start = a.find('  const [groupId, setGroupId]')
+if start >= 0:
+    end = a.find('  const [googleUser, setGoogleUser]', start)
+    if end < 0:
+        raise RuntimeError('Could not locate end of legacy sync state block')
+    a = a[:start] + a[end:]
 
-# Remove sync/workspace persistence effects.
+# Remove persistence effects for deleted sync state and obsolete session handler.
 a = re.sub(r"\n  useEffect\(\(\) => \{\n    localStorage\.setItem\('personasPROFEA_(groupId|isSyncing|syncMode|sessionId|lastSyncTime|syncEmail|activeWorkspace|activeWorkspaceId)'.*?\n  \}, \[[^\]]+\]\);", '', a, flags=re.S)
-
-# Remove workspace/session handlers.
+a = re.sub(r"\n  const handleDisconnectSession = async \(\) => \{.*?\n  \};", '', a, count=1, flags=re.S)
 for pattern in [
-    r"\n  const handleDisconnectSession = async \(\) => \{.*?\n  \};",
     r"\n  const handleAddMember = async .*?\n  \};",
     r"\n  const handleUpdateMemberRole = async .*?\n  \};",
     r"\n  const handleRemoveMember = async .*?\n  \};",
@@ -57,19 +46,32 @@ for pattern in [
 ]:
     a = re.sub(pattern, '', a, count=1, flags=re.S)
 
-# Firestore authoritative subscription uses the Firebase Auth session.
+# Remove the old App-owned Firebase auth listener. AuthGate owns the session.
+a = re.sub(r"\n  useEffect\(\(\) => \{\n    const unsubscribe = initAuth\(.*?\n  \}, \[\]\);", '', a, count=1, flags=re.S)
+
+# The authoritative worker subscription uses Firebase Auth directly.
 a = a.replace('const uid = googleUser?.uid;', 'const uid = auth.currentUser?.uid;', 1)
 a = re.sub(r"\n    const unsubscribeTrash = subscribeToAccountTrash\(uid, trash => \{\n      setDeletedPeople\(trash\);\n    \}\);", '', a, count=1)
 a = re.sub(r"\n    return \(\) => \{ unsubscribe\(\); unsubscribeTrash\(\); \};\n  \}, \[googleUser\?\.uid\]\);", "\n    return () => unsubscribe();\n  }, []);", a, count=1)
 if "import { auth } from './src/lib/firebase';" not in a:
     a = a.replace("import { compressToGzip } from './src/lib/compression';\n", "import { compressToGzip } from './src/lib/compression';\nimport { auth } from './src/lib/firebase';\n", 1)
 
-# Remove the explicit sync alert render.
+# Remove sync-specific render and wording.
 a = re.sub(r"\n\s*<DatabaseSyncAlert\s*/>", '', a)
+a = a.replace('Conexión recuperada. Sincronización disponible.', 'Conexión recuperada.')
+a = a.replace('Sincronización activa', 'Conectado')
+
+# Remove obsolete QR sync query generation; keep direct worker PDF links.
+export_utils = ROOT / 'src/lib/exportUtils.ts'
+e = export_utils.read_text()
+e = re.sub(r"\n\s*const groupId = typeof window !== 'undefined' \? window\.localStorage\.getItem\('personasPROFEA_groupId'\) \|\| '' : '';", '', e)
+e = re.sub(r"\n\s*const isSyncActive = typeof window !== 'undefined' \? window\.localStorage\.getItem\('personasPROFEA_isSyncing'\) === 'true' : false;", '', e)
+e = re.sub(r"\n\s*if \(isSyncActive && groupId\) \{\n\s*qrText \+= `&sync=\$\{encodeURIComponent\(groupId\)\}`;\n\s*\}", '', e)
+export_utils.write_text(e)
 
 app.write_text(a)
 
-# Remove the legacy manual sync function from firebase.ts.
+# Remove the obsolete manual sync implementation from firebase.ts.
 firebase = ROOT / 'src/lib/firebase.ts'
 s = firebase.read_text()
 def remove_function(text, marker):
@@ -97,5 +99,10 @@ def remove_function(text, marker):
                 return text[:start] + text[j:]
     raise RuntimeError(f'Unbalanced function: {marker}')
 s = remove_function(s, 'export async function triggerFirestoreDatabaseSync')
+# Email/password authentication only. Remove the Google provider implementation,
+# while leaving unrelated Google Drive code untouched elsewhere in the application.
+s = re.sub(r"\nconst provider = new GoogleAuthProvider\(\);.*?\n\nlet isSigningIn = false;\nlet cachedAccessToken: string \| null = null;", '', s, count=1, flags=re.S)
+s = s.replace('  signInWithPopup,\n  GoogleAuthProvider,\n', '')
+s = re.sub(r"\nexport const googleSignIn = async .*?\n\};", '', s, count=1, flags=re.S)
 firebase.write_text(s)
 print('Multiuser finalization applied.')
