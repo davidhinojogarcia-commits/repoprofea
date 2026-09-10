@@ -48,6 +48,9 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 }
 
+// Compatibility name kept for existing callers; both use the same email/password flow.
+export const signInWithEmailPassword = signInWithEmail;
+
 export async function signOutUser(): Promise<void> {
   await signOut(auth);
 }
@@ -62,6 +65,36 @@ export async function getCurrentRole(): Promise<AppRole | null> {
   const token = await user.getIdTokenResult();
   const role = token.claims.role;
   return role === 'admin' || role === 'user' ? role : null;
+}
+
+export async function getUserProfile(): Promise<AuthProfile | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+  const token = await user.getIdTokenResult();
+  const role = token.claims.role;
+  if (role !== 'admin' && role !== 'user') return null;
+  return {
+    uid: user.uid,
+    email: user.email || '',
+    role,
+    active: !user.disabled,
+    nombre: user.displayName || undefined,
+  };
+}
+
+export async function sendResetPassword(_email: string): Promise<void> {
+  // Public password reset is intentionally not exposed in the login UI.
+  throw Object.assign(new Error('El restablecimiento de contraseña debe gestionarlo un administrador.'), {
+    code: 'auth/admin-only-password-reset',
+  });
+}
+
+export async function registerEmailPassword(): Promise<never> {
+  throw Object.assign(new Error('El registro público está deshabilitado.'), { code: 'auth/operation-not-allowed' });
+}
+
+export async function bootstrapAdminIfNeeded(): Promise<void> {
+  await bootstrapFirstAdmin({});
 }
 
 export function authErrorMessage(error: unknown): string {
