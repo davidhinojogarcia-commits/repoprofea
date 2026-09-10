@@ -356,6 +356,16 @@ export async function getOrCreateUserWorkspace(user: { uid: string; email: strin
     accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString()
   };
 }): Promise<Workspace> {
+  const email = (user.email || '').trim().toLowerCase();
+  const id = canonicalizeEmailKey(email);
+  return {
+    id,
+    name: `Espacio de ${user.displayName || email.split('@')[0] || 'Usuario'}`,
+    ownerEmail: email, ownerUid: user.uid, ownerName: user.displayName || email.split('@')[0] || 'Usuario',
+    ownerPhoto: user.photoURL || '', sharedWith: [], sharedWithEmails: [email],
+    accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString()
+  };
+}): Promise<Workspace> {
   const workspaceId = canonicalizeEmailKey(user.email);
   const workspaceRef = doc(db, 'workspaces', workspaceId);
 
@@ -561,6 +571,9 @@ export async function deleteFromWorkspaceTrash(_workspaceId: string, personId: n
  * Fetches all workers, trash, settings and metadata for a workspace
  */
 export async function fetchWorkspaceData(_workspaceId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null; workspace: Workspace | null }> {
+  const data = await fetchAccountData(auth.currentUser?.uid || '');
+  return { ...data, workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null };
+}> {
   const data = await fetchAccountData(auth.currentUser?.uid || '');
   return { ...data, workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null };
 }> {
@@ -896,6 +909,14 @@ export async function deleteFromAccountTrash(_userId: string, personId: number):
  * Fetches all workers, trash, and settings from the user account in Firestore
  */
 export async function fetchAccountData(userId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null }> {
+  const uid = auth.currentUser?.uid || userId;
+  if (!uid) return { workers: [], trash: [], settings: null };
+  const workersSnap = await getDocs(collection(db, 'workers'));
+  const workers = workersSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as Person);
+  const trashSnap = await getDocs(collection(db, 'trash'));
+  const trash = trashSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson);
+  return { workers, trash, settings: null };
+}> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return { workers: [], trash: [], settings: null };
   const workersSnap = await getDocs(collection(db, 'workers'));
