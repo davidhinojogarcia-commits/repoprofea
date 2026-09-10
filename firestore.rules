@@ -4,8 +4,17 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.role == 'admin'; }
     function active() { return signedIn() && request.auth.token.role in ['admin', 'user']; }
-    function hasModule(module, action) {
-      return isAdmin() || (active() && get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.modules[module][action] == true);
+    function moduleFor(collectionName) {
+      return collectionName == 'workers' || collectionName == 'trash' ? 'trabajadores' :
+             collectionName == 'works' || collectionName == 'obras' ? 'obras' :
+             collectionName == 'medicalExams' || collectionName == 'recognitions' || collectionName == 'reconocimientos' ? 'reconocimientos' :
+             collectionName == 'subcontractors' || collectionName == 'subcontratas' ? 'subcontratas' :
+             collectionName == 'appointments' || collectionName == 'citas' ? 'citas' :
+             collectionName == 'contracts' || collectionName == 'contratos' ? 'contratacion' :
+             'contratacion';
+    }
+    function hasModule(collectionName, action) {
+      return isAdmin() || (active() && get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.modules[moduleFor(collectionName)][action] == true);
     }
     function shared(resourceType, resourceId, action) {
       return active() && get(/databases/$(database)/documents/dataPermissions/$(resourceType + '_' + resourceId + '_' + request.auth.uid)).data.userId == request.auth.uid && get(/databases/$(database)/documents/dataPermissions/$(resourceType + '_' + resourceId + '_' + request.auth.uid)).data[action] == true;
