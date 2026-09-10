@@ -202,3 +202,5 @@ if start >= 0:
         a = a[:start] + replacement + a[end:]
 a = a.replace("setToast({ message: 'Sin conexión a internet. Los cambios se guardarán localmente.', type: 'error' });", "setToast({ message: 'Sin conexión a internet. Los cambios se aplicarán cuando se recupere la conexión.', type: 'error' });")
 app.write_text(a)
+
+# Intentionally no EOF shell marker: this file is executed directly by Python in CI.
