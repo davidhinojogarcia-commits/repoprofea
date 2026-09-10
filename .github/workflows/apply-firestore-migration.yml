@@ -27,6 +27,8 @@ jobs:
         run: npm install --package-lock-only --ignore-scripts
       - name: Apply migration
         run: python scripts/migrate_firestore_source.py
+      - name: Repair migration output
+        run: python scripts/repair_firestore_migration.py
       - name: Commit migration
         run: |
           if git diff --quiet; then
@@ -35,6 +37,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package-lock.json App.tsx src/lib/firebase.ts
+          git add package-lock.json App.tsx src/lib/firebase.ts scripts/repair_firestore_migration.py .github/workflows/apply-firestore-migration.yml
           git commit -m 'refactor: use Firestore as permanent data source [skip firestore migration]'
           git push origin feat/firebase-multiusuario
