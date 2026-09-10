@@ -17,6 +17,21 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
+      - name: Validate Firebase source migration
+        run: |
+          if grep -nF ' }): Promise<' src/lib/firebase.ts; then
+            echo 'Malformed Firebase function signature detected.'
+            exit 1
+          fi
+          if grep -nF '}): Promise<' src/lib/firebase.ts; then
+            echo 'Malformed Firebase function signature detected.'
+            exit 1
+          fi
+          count=$(grep -c '^export async function getOrCreateUserWorkspace' src/lib/firebase.ts || true)
+          if [ "$count" -ne 1 ]; then
+            echo "Expected exactly one getOrCreateUserWorkspace declaration, found $count."
+            exit 1
+          fi
       - run: npm run build
       - name: Install Firebase Functions dependencies
         working-directory: functions
