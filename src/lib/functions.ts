@@ -2,7 +2,17 @@ import { supabase } from './supabase';
 
 type CallResult<T>={data:T};
 async function call<T>(action:string,payload:any={}):Promise<CallResult<T>>{return {data:await supabase.edgeFunction('admin-users',{action,...payload})};}
-export const bootstrapFirstAdmin=async()=>({data:{ok:true,role:'admin' as const}});
+
+// Compatibilidad con llamadas antiguas: ya no crea ni presume un primer administrador.
+// El rol procede exclusivamente del perfil activo almacenado en Supabase.
+export const bootstrapFirstAdmin=async()=>{
+  const user=(await supabase.auth.getUser()).data.user;
+  if(!user)return {data:{ok:false,role:null as 'admin'|'user'|null}};
+  const rows=await supabase.query('profiles',{query:`select=role,active&id=eq.${encodeURIComponent(user.id)}&limit=1`});
+  const profile=rows?.[0];
+  const role=profile?.active===true&&(profile.role==='admin'||profile.role==='user')?profile.role:null;
+  return {data:{ok:role!==null,role}};
+};
 export const touchLogin=async()=>({data:{ok:true,email:(await supabase.auth.getUser()).data.user?.email||''}});
 export const createManagedUser=(payload:any)=>call<{uid:string;email:string;role:'admin'|'user'}>('create',payload);
 export const updateManagedUserProfile=(payload:any)=>call<{ok:boolean}>('update_profile',payload);
