@@ -18,6 +18,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Rebase onto latest branch tip
+        run: |
+          git fetch origin feat/firebase-multitenant
+          git rebase origin/feat/firebase-multitenant
       - name: Apply migration
         run: node scripts/apply-firebase-multitenant.mjs
       - name: Commit migration
@@ -30,4 +34,4 @@ jobs:
             exit 0
           fi
           git commit -m "chore(firebase-migration): make Firestore the canonical backend"
-          git push origin HEAD:feat/firebase-multitenant
+          git push --force-with-lease origin HEAD:feat/firebase-multitenant
