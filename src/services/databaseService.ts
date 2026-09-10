@@ -72,6 +72,49 @@ async function serialize(table: string, value: DatabaseRecord) {
   return { data };
 }
 
+async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRecord) {
+  const checklist = Array.isArray(value.checklist) ? value.checklist : [];
+  const existing = await supabase.query('subcontrata_documentos', {
+    query: `select=id&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
+  });
+  const nextIds = new Set<string>();
+
+  for (let index = 0; index < checklist.length; index += 1) {
+    const item = checklist[index] || {};
+    const itemId = String(item.id || `${subcontrataId}_${index + 1}`);
+    nextIds.add(itemId);
+    await supabase.query('subcontrata_documentos', {
+      method: 'POST',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+      body: {
+        id: itemId,
+        subcontrata_id: subcontrataId,
+        categoria: item.categoria || 'empresa',
+        nombre: item.nombre || '',
+        descripcion: item.descripcion || '',
+        normativa: item.normativa || '',
+        obligatorio: item.obligatorio !== false,
+        estado: item.estado || 'pendiente',
+        fecha_entrega: dateOrNull(item.fechaEntrega),
+        fecha_caducidad: dateOrNull(item.fechaCaducidad),
+        observaciones: item.observaciones || '',
+        documento_nombre: item.documentoNombre || '',
+        data: clean(item),
+      },
+    });
+  }
+
+  for (const row of existing || []) {
+    if (!nextIds.has(String(row.id))) {
+      await supabase.query('subcontrata_documentos', {
+        method: 'DELETE',
+        prefer: 'return=minimal',
+        query: `id=eq.${encodeURIComponent(String(row.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
+      });
+    }
+  }
+}
+
 function hydrate(row: any, table: string): any {
   if (table === 'obras') return {
     id: row.id,
@@ -99,6 +142,7 @@ export async function createDocument<T extends DatabaseRecord>(collectionName: s
     ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
     : { id: String(id), ...serialized };
   await supabase.query(table, { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body });
+  if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), data);
 }
 
 export async function updateDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, patch: Partial<T>) {
@@ -110,6 +154,7 @@ export async function updateDocument<T extends DatabaseRecord>(collectionName: s
   const body: any = await serialize(table, merged);
   if (isLegacyNumericTable(table)) body.updated_by = user.id;
   await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body });
+  if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), merged);
 }
 
 export async function deleteDocument(collectionName: string, id: string | number) {
