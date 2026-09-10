@@ -1,7 +1,7 @@
 import type { DeletedPerson, Person } from '../../types';
 import { supabase } from '../lib/supabase';
 import { createDocument } from './databaseService';
-import { saveAppBusinessSettings } from './appSettingsService';
+import { loadAppBusinessSettings, saveAppBusinessSettings } from './appSettingsService';
 
 export type RestoreMode = 'replace' | 'merge';
 
@@ -43,6 +43,16 @@ function backupCollection(payload: ProfeaBackupPayload, key: keyof ProfeaBackupP
   return [];
 }
 
+const mergeList = (current: string[], incoming: unknown): string[] => {
+  if (!Array.isArray(incoming)) return current;
+  const map = new Map(current.map(item => [item.trim().toLocaleLowerCase('es'), item]));
+  for (const raw of incoming) {
+    const item = String(raw || '').trim();
+    if (item && !map.has(item.toLocaleLowerCase('es'))) map.set(item.toLocaleLowerCase('es'), item);
+  }
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'es'));
+};
+
 export async function restoreBackupToSupabase(payload: ProfeaBackupPayload, mode: RestoreMode) {
   const ownerId = await currentUserId();
   const workers = Array.isArray(payload.people) ? payload.people : [];
@@ -65,15 +75,25 @@ export async function restoreBackupToSupabase(payload: ProfeaBackupPayload, mode
   }
 
   const config = payload.config || {};
-  await saveAppBusinessSettings({
-    savedObras: Array.isArray(config.obras) ? config.obras : undefined,
-    savedLugares: Array.isArray(config.lugares) ? config.lugares : undefined,
-    savedSitios: Array.isArray(config.sitios) ? config.sitios : undefined,
-    savedTelefonos: Array.isArray(config.telefonos) ? config.telefonos : undefined,
-    savedCategorias: Array.isArray(config.categorias) ? config.categorias : undefined,
-    workStartHour: config.workStartHour || undefined,
-    workEndHour: config.workEndHour || undefined,
-  });
+  const current = await loadAppBusinessSettings();
+  const settings = mode === 'merge' ? {
+    savedObras: mergeList(current.savedObras, config.obras),
+    savedLugares: mergeList(current.savedLugares, config.lugares),
+    savedSitios: mergeList(current.savedSitios, config.sitios),
+    savedTelefonos: mergeList(current.savedTelefonos, config.telefonos),
+    savedCategorias: mergeList(current.savedCategorias, config.categorias),
+    workStartHour: current.workStartHour,
+    workEndHour: current.workEndHour,
+  } : {
+    savedObras: Array.isArray(config.obras) ? config.obras : [],
+    savedLugares: Array.isArray(config.lugares) ? config.lugares : [],
+    savedSitios: Array.isArray(config.sitios) ? config.sitios : [],
+    savedTelefonos: Array.isArray(config.telefonos) ? config.telefonos : [],
+    savedCategorias: Array.isArray(config.categorias) ? config.categorias : current.savedCategorias,
+    workStartHour: config.workStartHour || '08:00',
+    workEndHour: config.workEndHour || '15:00',
+  };
+  await saveAppBusinessSettings(settings);
 
-  return restored;
+  return { restored, settings };
 }
