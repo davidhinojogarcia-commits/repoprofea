@@ -14,6 +14,7 @@ const canonicalTable = (name: string) => TABLE_BY_COLLECTION[name] || name;
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value, (_k, v) => v === undefined ? null : v));
 const dateOrNull = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 const timeOrNull = (value: unknown) => typeof value === 'string' && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 8) : null;
+const isLegacyNumericTable = (table: string) => table === 'workers' || table === 'trash';
 
 async function requireUser() {
   const { data } = await supabase.auth.getUser();
@@ -29,6 +30,7 @@ async function resolveObraId(obra: unknown): Promise<string | null> {
 
 async function serialize(table: string, value: DatabaseRecord) {
   const data = clean(value);
+  if (isLegacyNumericTable(table)) return { data };
   const obraId = value.obraId || value.obra_id || await resolveObraId(value.obra);
   if (table === 'citas') return {
     obra_id: obraId, trabajador_id: value.trabajadorId ?? value.trabajador_id ?? null,
@@ -70,18 +72,24 @@ function hydrate(row: any): any {
 }
 
 export async function createDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, data: T) {
-  await requireUser();
+  const user = await requireUser();
   const table = canonicalTable(collectionName);
-  await supabase.query(table, { method: 'POST', prefer: 'return=minimal', body: { id: String(id), ...(await serialize(table, data)) } });
+  const serialized = await serialize(table, data);
+  const body = isLegacyNumericTable(table)
+    ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
+    : { id: String(id), ...serialized };
+  await supabase.query(table, { method: 'POST', prefer: 'return=minimal', body });
 }
 
 export async function updateDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, patch: Partial<T>) {
-  await requireUser();
+  const user = await requireUser();
   const table = canonicalTable(collectionName);
   const current = await getDocument<T>(collectionName, id);
   if (!current) throw new Error('El registro ya no existe o no tienes permiso para verlo.');
   const merged = { ...current, ...patch, id } as DatabaseRecord;
-  await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body: await serialize(table, merged) });
+  const body: any = await serialize(table, merged);
+  if (isLegacyNumericTable(table)) body.updated_by = user.id;
+  await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body });
 }
 
 export async function deleteDocument(collectionName: string, id: string | number) {
