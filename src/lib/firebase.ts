@@ -528,6 +528,16 @@ export async function fetchWorkspaceData(_workspaceId: string): Promise<{
   };
 }
 
+export async function triggerFirestoreDatabaseSync(_workspaceId?: string): Promise<{
+  workers: Person[];
+  trash: DeletedPerson[];
+  settings: UserAccountSettings | null;
+  count: number;
+}> {
+  const data = await fetchAccountData(auth.currentUser?.uid || '');
+  return { ...data, count: data.workers.length };
+}
+
 export function subscribeToWorkspaceWorkers(_workspaceId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe { return subscribeToAccountWorkers(auth.currentUser?.uid || '', onUpdate, onError); }
 
 /**
