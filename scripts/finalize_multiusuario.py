@@ -3,15 +3,12 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Final migration pass: Firestore remains the sole business-data source.
-
 def cut_function(text, marker):
     start = text.find(marker)
     if start < 0:
         return text
     brace = text.find('{', start)
-    if brace < 0:
-        raise RuntimeError(f'Function body not found: {marker}')
+    if brace < 0: raise RuntimeError(f'Function body not found: {marker}')
     depth = 0; quote = None; esc = False
     for i in range(brace, len(text)):
         ch = text[i]
@@ -30,6 +27,7 @@ def cut_function(text, marker):
                 return text[:start] + text[j:]
     raise RuntimeError(f'Unbalanced function: {marker}')
 
+# App cleanup: authentication belongs exclusively to AuthGate.
 app_path = ROOT / 'App.tsx'
 a = app_path.read_text()
 for marker in [
@@ -55,6 +53,7 @@ if "import { auth } from './src/lib/firebase';" not in a:
 a = a.replace('const uid = googleUser?.uid;', 'const uid = auth.currentUser?.uid;', 1)
 app_path.write_text(a)
 
+# PDF QR links no longer encode synchronization state.
 export_path = ROOT / 'src/lib/exportUtils.ts'
 e = export_path.read_text()
 e = re.sub(r"\n\s*const groupId = typeof window !== 'undefined' \? window\.localStorage\.getItem\('personasPROFEA_groupId'\) \|\| '' : '';", '', e)
@@ -62,12 +61,14 @@ e = re.sub(r"\n\s*const isSyncActive = typeof window !== 'undefined' \? window\.
 e = re.sub(r"\n\s*if \(isSyncActive && groupId\) \{\n\s*qrText \+= `&sync=\$\{encodeURIComponent\(groupId\)\}`;\n\s*\}", '', e)
 export_path.write_text(e)
 
+# Firebase client: email/password only; remove manual sync API and Google Auth provider.
 firebase_path = ROOT / 'src/lib/firebase.ts'
 s = firebase_path.read_text()
 s = cut_function(s, 'export async function triggerFirestoreDatabaseSync')
-s = s.replace('  signInWithPopup,\n  GoogleAuthProvider,\n', '')
+s = re.sub(r"import \{\s*getAuth,.*?\n\} from 'firebase/auth';", "import { getAuth, onAuthStateChanged, User } from 'firebase/auth';", s, count=1, flags=re.S)
+s = re.sub(r"\n// Initialize Provider with full Drive, Sheets, Gmail & Calendar scopes\n", '\n', s, count=1)
+s = re.sub(r"\nexport const getAccessToken = async \(\): Promise<string \| null> => \{.*?\n\};", "\nexport const getAccessToken = async (): Promise<string | null> => null;", s, count=1, flags=re.S)
 s = cut_function(s, 'export const googleSignIn = async')
 s = cut_function(s, 'export const logoutGoogle = async')
-s = re.sub(r"\nconst provider = new GoogleAuthProvider\(\);.*?\n\nlet isSigningIn = false;\nlet cachedAccessToken: string \| null = null;", '', s, count=1, flags=re.S)
 firebase_path.write_text(s)
 print('Final migration pass complete.')
