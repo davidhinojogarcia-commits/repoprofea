@@ -9,8 +9,6 @@ content = content.replace("// Capa temporal de compatibilidad para imports hist�
 content = content.replace('sanitizeForFirestore', 'sanitizeForDatabase')
 Path('src/lib/supabaseData.ts').write_text(content)
 
-# Cambia imports de la fachada Firebase a la fachada Supabase y los imports del alias Firestore
-# al servicio de base de datos real.
 for p in list(root.rglob('*.ts')) + list(root.rglob('*.tsx')):
     if any(part in {'node_modules', '.git'} for part in p.parts):
         continue
@@ -18,21 +16,26 @@ for p in list(root.rglob('*.ts')) + list(root.rglob('*.tsx')):
         continue
     s = p.read_text()
     before = s
-    s = s.replace("./src/lib/firebase'", "./src/lib/supabaseData'")
-    s = s.replace('"./src/lib/firebase"', '"./src/lib/supabaseData"')
-    s = s.replace("../src/lib/firebase'", "../src/lib/supabaseData'")
-    s = s.replace('"../src/lib/firebase"', '"../src/lib/supabaseData"')
-    s = s.replace("../lib/firebase'", "../lib/supabaseData'")
-    s = s.replace('"../lib/firebase"', '"../lib/supabaseData"')
-    s = s.replace("./lib/firebase'", "./lib/supabaseData'")
-    s = s.replace('"./lib/firebase"', '"./lib/supabaseData"')
-    s = s.replace("../src/services/firestoreService'", "../src/services/databaseService'")
-    s = s.replace('"../src/services/firestoreService"', '"../src/services/databaseService"')
-    s = s.replace("./src/services/firestoreService'", "./src/services/databaseService'")
-    s = s.replace('"./src/services/firestoreService"', '"./src/services/databaseService"')
-    s = s.replace("./firestoreService'", "./databaseService'")
-    s = s.replace('"./firestoreService"', '"./databaseService"')
-    # Mensajes visibles obsoletos.
+    replacements = {
+        "./src/lib/firebase'": "./src/lib/supabaseData'",
+        '"./src/lib/firebase"': '"./src/lib/supabaseData"',
+        "../src/lib/firebase'": "../src/lib/supabaseData'",
+        '"../src/lib/firebase"': '"../src/lib/supabaseData"',
+        "../lib/firebase'": "../lib/supabaseData'",
+        '"../lib/firebase"': '"../lib/supabaseData"',
+        "./lib/firebase'": "./lib/supabaseData'",
+        '"./lib/firebase"': '"./lib/supabaseData"',
+        "./firebase'": "./supabaseData'",
+        '"./firebase"': '"./supabaseData"',
+        "../src/services/firestoreService'": "../src/services/databaseService'",
+        '"../src/services/firestoreService"': '"../src/services/databaseService"',
+        "./src/services/firestoreService'": "./src/services/databaseService'",
+        '"./src/services/firestoreService"': '"./src/services/databaseService"',
+        "./firestoreService'": "./databaseService'",
+        '"./firestoreService"': '"./databaseService"',
+    }
+    for a, b in replacements.items():
+        s = s.replace(a, b)
     s = s.replace('actualizado en Firebase Firestore.', 'actualizado en Supabase.')
     s = s.replace('actualizados en Firestore.', 'actualizados en Supabase.')
     s = s.replace('Error de Firestore', 'Error de Supabase')
@@ -45,7 +48,6 @@ alias = Path('src/services/firestoreService.ts')
 if alias.exists():
     alias.unlink()
 
-# Comentarios de esquema que aún describían Firebase Auth.
 schema = Path('src/db/schema.ts')
 if schema.exists():
     s = schema.read_text().replace('authenticated via Firebase Auth', 'authenticated via Supabase Auth').replace('Firebase Auth UID', 'Supabase Auth user ID')
