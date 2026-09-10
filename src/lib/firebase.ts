@@ -351,83 +351,18 @@ export async function getOrCreateUserWorkspace(user: { uid: string; email: strin
   return {
     id,
     name: `Espacio de ${user.displayName || email.split('@')[0] || 'Usuario'}`,
-    ownerEmail: email, ownerUid: user.uid, ownerName: user.displayName || email.split('@')[0] || 'Usuario',
-    ownerPhoto: user.photoURL || '', sharedWith: [], sharedWithEmails: [email],
-    accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString()
+    ownerEmail: email,
+    ownerUid: user.uid,
+    ownerName: user.displayName || email.split('@')[0] || 'Usuario',
+    ownerPhoto: user.photoURL || '',
+    sharedWith: [],
+    sharedWithEmails: [email],
+    accessCode: '',
+    createdAt: new Date().toISOString(),
+    lastSyncAt: new Date().toISOString()
   };
-}): Promise<Workspace> {
-  const email = (user.email || '').trim().toLowerCase();
-  const id = canonicalizeEmailKey(email);
-  return {
-    id,
-    name: `Espacio de ${user.displayName || email.split('@')[0] || 'Usuario'}`,
-    ownerEmail: email, ownerUid: user.uid, ownerName: user.displayName || email.split('@')[0] || 'Usuario',
-    ownerPhoto: user.photoURL || '', sharedWith: [], sharedWithEmails: [email],
-    accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString()
-  };
-}): Promise<Workspace> {
-  const email = (user.email || '').trim().toLowerCase();
-  const id = canonicalizeEmailKey(email);
-  return {
-    id,
-    name: `Espacio de ${user.displayName || email.split('@')[0] || 'Usuario'}`,
-    ownerEmail: email, ownerUid: user.uid, ownerName: user.displayName || email.split('@')[0] || 'Usuario',
-    ownerPhoto: user.photoURL || '', sharedWith: [], sharedWithEmails: [email],
-    accessCode: '', createdAt: new Date().toISOString(), lastSyncAt: new Date().toISOString()
-  };
-}): Promise<Workspace> {
-  const workspaceId = canonicalizeEmailKey(user.email);
-  const workspaceRef = doc(db, 'workspaces', workspaceId);
-
-  try {
-    const snap = await getDoc(workspaceRef);
-    if (snap.exists()) {
-      const data = snap.data() as Workspace;
-      // Ensure sharedWith arrays exist
-      return {
-        ...data,
-        sharedWith: data.sharedWith || [],
-        sharedWithEmails: data.sharedWithEmails || [user.email.toLowerCase()]
-      };
-    } else {
-      const newWorkspace: Workspace = {
-        id: workspaceId,
-        name: `Espacio de ${user.displayName || user.email.split('@')[0]}`,
-        ownerEmail: user.email.toLowerCase(),
-        ownerUid: user.uid,
-        ownerName: user.displayName || user.email.split('@')[0] || 'Usuario',
-        ownerPhoto: user.photoURL || '',
-        sharedWith: [],
-        sharedWithEmails: [user.email.toLowerCase()],
-        accessCode: Math.floor(100000 + Math.random() * 900000).toString(),
-        createdAt: new Date().toISOString(),
-        lastSyncAt: new Date().toISOString()
-      };
-      await setDoc(workspaceRef, newWorkspace);
-      return newWorkspace;
-    }
-  } catch (error) {
-    console.warn("Workspace offline or not reachable, using local fallback:", error);
-    // Return fallback workspace
-    return {
-      id: workspaceId,
-      name: `Espacio de ${user.displayName || user.email.split('@')[0]}`,
-      ownerEmail: user.email.toLowerCase(),
-      ownerUid: user.uid,
-      ownerName: user.displayName || user.email.split('@')[0] || 'Usuario',
-      ownerPhoto: user.photoURL || '',
-      sharedWith: [],
-      sharedWithEmails: [user.email.toLowerCase()],
-      accessCode: '123456',
-      createdAt: new Date().toISOString(),
-      lastSyncAt: new Date().toISOString()
-    };
-  }
 }
 
-/**
- * Adds an authorized coworker email to a workspace
- */
 export async function addMemberToWorkspace(
   workspaceId: string, 
   memberEmail: string, 
@@ -580,131 +515,19 @@ export async function deleteFromWorkspaceTrash(_workspaceId: string, personId: n
 /**
  * Fetches all workers, trash, settings and metadata for a workspace
  */
-export async function fetchWorkspaceData(_workspaceId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null; workspace: Workspace | null }> {
-  const data = await fetchAccountData(auth.currentUser?.uid || '');
-  return { ...data, workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null };
-}> {
-  const data = await fetchAccountData(auth.currentUser?.uid || '');
-  return { ...data, workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null };
-}> {
-  const data = await fetchAccountData(auth.currentUser?.uid || '');
-  return { ...data, workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null };
-}> {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-
-  // 1. Try local server database first (guarantees cross-device data immediately)
-  try {
-    const res = await fetch(`/api/database/workspace/${encodeURIComponent(cleanWsId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.workers) && data.workers.length > 0) {
-        return {
-          workers: data.workers,
-          trash: data.deletedPeople || [],
-          settings: data.settings || null,
-          workspace: null
-        };
-      }
-    }
-  } catch (err) {
-    console.warn("Could not fetch workspace from server endpoint, falling back to Firestore:", err);
-  }
-
-  // 2. Fallback to Firestore
-  let workspace: Workspace | null = null;
-  try {
-    const wsSnap = await getDoc(doc(db, 'workspaces', cleanWsId));
-    if (wsSnap.exists()) {
-      workspace = wsSnap.data() as Workspace;
-    }
-  } catch (e) {
-    console.warn("Could not fetch workspace metadata:", e);
-  }
-
-  const workers: Person[] = [];
-  try {
-    const workersRef = collection(db, 'workspaces', cleanWsId, 'workers');
-    const workersSnap = await getDocs(workersRef);
-    workersSnap.forEach(docSnap => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      workers.push(data as Person);
-    });
-  } catch (error) {
-    console.warn(`Could not fetch workspace workers (workspaces/${cleanWsId}/workers):`, error);
-  }
-
-  const trash: DeletedPerson[] = [];
-  try {
-    const trashRef = collection(db, 'workspaces', cleanWsId, 'trash');
-    const trashSnap = await getDocs(trashRef);
-    trashSnap.forEach(docSnap => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      trash.push(data as DeletedPerson);
-    });
-  } catch (error) {
-    console.warn(`Could not fetch workspace trash (workspaces/${cleanWsId}/trash):`, error);
-  }
-
-  let settings: UserAccountSettings | null = null;
-  try {
-    const settingsDoc = await getDoc(doc(db, 'workspaces', cleanWsId, 'settings', 'app_config'));
-    if (settingsDoc.exists()) {
-      settings = settingsDoc.data() as UserAccountSettings;
-    }
-  } catch (e) {
-    console.warn("Could not fetch workspace settings:", e);
-  }
-
-  return { workers, trash, settings, workspace };
-}
-
-/**
- * Triggers a comprehensive live sync and reload from Firebase Firestore database.
- * Pulls all workers, trash, and settings across all Firestore collections.
- */
-export async function triggerFirestoreDatabaseSync(workspaceId?: string): Promise<{
+export async function fetchWorkspaceData(_workspaceId: string): Promise<{
   workers: Person[];
   trash: DeletedPerson[];
   settings: UserAccountSettings | null;
-  count: number;
+  workspace: Workspace | null;
 }> {
-  const cleanWsId = (workspaceId || DEFAULT_WORKSPACE_ID).trim();
-  try {
-    const res = await fetch(`/api/database/sync-from-firestore/${encodeURIComponent(cleanWsId)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: cleanWsId })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.workers)) {
-        return {
-          workers: data.workers,
-          trash: data.trash || [],
-          settings: data.settings || null,
-          count: data.workersCount || data.workers.length
-        };
-      }
-    }
-  } catch (err) {
-    console.warn("Error calling /api/database/sync-from-firestore:", err);
-  }
-
-  // Fallback to direct workspace fetch
-  const fallback = await fetchWorkspaceData(cleanWsId);
+  const data = await fetchAccountData(auth.currentUser?.uid || '');
   return {
-    workers: fallback.workers,
-    trash: fallback.trash,
-    settings: fallback.settings,
-    count: fallback.workers.length
+    ...data,
+    workspace: auth.currentUser ? await getOrCreateUserWorkspace(auth.currentUser) : null
   };
 }
 
-/**
- * Subscribes to real-time changes in workers for a workspace (using both server polling and Firestore onSnapshot)
- */
 export function subscribeToWorkspaceWorkers(_workspaceId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe { return subscribeToAccountWorkers(auth.currentUser?.uid || '', onUpdate, onError); }
 
 /**
@@ -921,78 +744,24 @@ export async function deleteFromAccountTrash(_userId: string, personId: number):
 /**
  * Fetches all workers, trash, and settings from the user account in Firestore
  */
-export async function fetchAccountData(userId: string): Promise<{ workers: Person[]; trash: DeletedPerson[]; settings: UserAccountSettings | null }> {
-  const uid = auth.currentUser?.uid || userId;
-  if (!uid) return { workers: [], trash: [], settings: null };
-  const workersSnap = await getDocs(collection(db, 'workers'));
-  const workers = workersSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as Person);
-  const trashSnap = await getDocs(collection(db, 'trash'));
-  const trash = trashSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson);
-  return { workers, trash, settings: null };
+export async function fetchAccountData(userId: string): Promise<{
+  workers: Person[];
+  trash: DeletedPerson[];
+  settings: UserAccountSettings | null;
 }> {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return { workers: [], trash: [], settings: null };
   const workersSnap = await getDocs(collection(db, 'workers'));
-  const workers = workersSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as Person);
+  const workers = workersSnap.docs
+    .filter(d => d.data().ownerId === uid)
+    .map(d => d.data() as Person);
   const trashSnap = await getDocs(collection(db, 'trash'));
-  const trash = trashSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson);
+  const trash = trashSnap.docs
+    .filter(d => d.data().ownerId === uid)
+    .map(d => d.data() as DeletedPerson);
   return { workers, trash, settings: null };
-}> {
-  const uid = auth.currentUser?.uid || userId;
-  if (!uid) return { workers: [], trash: [], settings: null };
-  const workersSnap = await getDocs(collection(db, 'workers'));
-  const workers = workersSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as Person);
-  const trashSnap = await getDocs(collection(db, 'trash'));
-  const trash = trashSnap.docs.filter(d => d.data().ownerId === uid).map(d => d.data() as DeletedPerson);
-  return { workers, trash, settings: null };
-}> {
-  if (!userId) return { workers: [], trash: [], settings: null };
-
-  // 1. Workers
-  const workers: Person[] = [];
-  try {
-    const workersRef = collection(db, 'users', userId, 'workers');
-    const workersSnap = await getDocs(workersRef);
-    workersSnap.forEach(docSnap => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      workers.push(data as Person);
-    });
-  } catch (error) {
-    console.warn(`Could not fetch account workers (users/${userId}/workers):`, error);
-  }
-
-  // 2. Trash
-  const trash: DeletedPerson[] = [];
-  try {
-    const trashRef = collection(db, 'users', userId, 'trash');
-    const trashSnap = await getDocs(trashRef);
-    trashSnap.forEach(docSnap => {
-      const data = docSnap.data();
-      delete data._lastUpdated;
-      trash.push(data as DeletedPerson);
-    });
-  } catch (error) {
-    console.warn(`Could not fetch account trash (users/${userId}/trash):`, error);
-  }
-
-  // 3. Settings
-  let settings: UserAccountSettings | null = null;
-  try {
-    const settingsDoc = await getDoc(doc(db, 'users', userId, 'settings', 'app_config'));
-    if (settingsDoc.exists()) {
-      settings = settingsDoc.data() as UserAccountSettings;
-    }
-  } catch (e) {
-    console.warn("Could not fetch user settings:", e);
-  }
-
-  return { workers, trash, settings };
 }
 
-/**
- * Subscribes to real-time changes in workers for the user account
- */
 export function subscribeToAccountWorkers(userId: string, onUpdate: (workers: Person[]) => void, onError?: (err: any) => void): Unsubscribe {
   const uid = auth.currentUser?.uid || userId;
   if (!uid) return () => {};
