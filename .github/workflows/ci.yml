@@ -17,25 +17,14 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
-      - name: Validate Firebase source migration
+      - name: Validate no manual synchronization
         run: |
-          if grep -nE '^\}\): Promise<' src/lib/firebase.ts; then
-            echo 'Malformed Firebase function signature detected.'
+          if grep -RniE 'FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)' App.tsx components src --exclude='*.map'; then
+            echo 'Legacy/manual synchronization code detected.'
             exit 1
           fi
-          count=$(grep -c '^export async function getOrCreateUserWorkspace' src/lib/firebase.ts || true)
-          if [ "$count" -ne 1 ]; then
-            echo "Expected exactly one getOrCreateUserWorkspace declaration, found $count."
-            exit 1
-          fi
-          sync_count=$(grep -c '^export async function triggerFirestoreDatabaseSync' src/lib/firebase.ts || true)
-          if [ "$sync_count" -ne 1 ]; then
-            echo "Expected exactly one temporary Firestore compatibility sync declaration, found $sync_count."
-            exit 1
-          fi
-      # This push-triggered CI run validates the branch after the migration workflow
-      # has materialized its generated Firestore source changes.
-      - run: npm run build
+      - name: Build application
+        run: npm run build
       - name: Install Firebase Functions dependencies
         working-directory: functions
         run: npm install --no-audit --no-fund
