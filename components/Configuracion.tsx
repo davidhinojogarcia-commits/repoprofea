@@ -10,6 +10,8 @@ import {
 import { Person, DeletedPerson } from '../types';
 import { compressToGzip, decompressFromGzip, isCompressionSupported } from '../src/lib/compression';
 import { restoreBackupToSupabase } from '../src/services/backupRestoreService';
+import { getDocuments } from '../src/services/databaseService';
+import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { downloadPDF } from '../src/lib/exportUtils';
 import {
   getStoredReporteTecnicoConfig,
@@ -100,32 +102,44 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper to format a backup object with all local tables and trash
-  const createBackupData = () => {
-    let subcontratasData: any[] = [];
-    try {
-      const raw = localStorage.getItem('profea_subcontratas_v1');
-      if (raw) subcontratasData = JSON.parse(raw);
-    } catch {}
+  // Build a complete backup from Supabase, the application's source of truth.
+  // UI state is deliberately not used for business records so a stale render can never
+  // produce a backup that differs from the database.
+  const createBackupData = async () => {
+    const [dbPeople, dbTrash, citas, subcontratas, reconocimientos, contrataciones, appSettings] = await Promise.all([
+      getDocuments<Person>('workers', { limitCount: 10000 }),
+      getDocuments<DeletedPerson>('trash', { limitCount: 10000 }),
+      getDocuments<any>('citas', { limitCount: 10000 }),
+      getDocuments<any>('subcontratas', { limitCount: 10000 }),
+      getDocuments<any>('reconocimientos', { limitCount: 10000 }),
+      getDocuments<any>('contrataciones', { limitCount: 10000 }),
+      loadAppBusinessSettings(),
+    ]);
 
     return {
       type: "profea_complete_backup",
       system: "Sistema de Gestión PROFEA",
-      version: "2.0.0",
+      version: "3.0.0",
+      storage: "supabase",
       exportDate: new Date().toISOString(),
-      totalRecords: people.length,
-      totalTrashRecords: deletedPeople.length,
-      people: people,
-      deletedPeople: deletedPeople,
+      totalRecords: dbPeople.length,
+      totalTrashRecords: dbTrash.length,
+      people: dbPeople,
+      deletedPeople: dbTrash,
+      citas,
+      subcontratas,
+      reconocimientos,
+      contrataciones,
       config: {
-        obras: savedObras,
-        lugares: savedLugares,
-        sitios: savedSitios,
-        telefonos: savedTelefonos,
-        categorias: savedCategorias,
-        workStartHour,
-        workEndHour,
-        subcontratas: subcontratasData,
+        obras: appSettings.savedObras,
+        lugares: appSettings.savedLugares,
+        sitios: appSettings.savedSitios,
+        telefonos: appSettings.savedTelefonos,
+        categorias: appSettings.savedCategorias,
+        workStartHour: appSettings.workStartHour,
+        workEndHour: appSettings.workEndHour,
+        // Backward compatibility for backups created before v3.
+        subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
         obrasRecursosPreventivos: getStoredObrasRecursosPreventivos()
       }
@@ -137,11 +151,11 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     try {
       if (!isCompressionSupported()) {
         // Fallback to standard JSON if CompressionStream is not available
-        handleDownloadBackupNormal();
+        await handleDownloadBackupNormal();
         return;
       }
 
-      const backupObj = createBackupData();
+      const backupObj = await createBackupData();
       const jsonStr = JSON.stringify(backupObj);
       const blob = await compressToGzip(jsonStr);
 
@@ -165,9 +179,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   };
 
   // 2. Download Standard JSON Backup (Uncompressed fallback/alternative)
-  const handleDownloadBackupNormal = () => {
+  const handleDownloadBackupNormal = async () => {
     try {
-      const backupObj = createBackupData();
+      const backupObj = await createBackupData();
       const jsonStr = JSON.stringify(backupObj, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
 
