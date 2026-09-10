@@ -1,0 +1,33 @@
+name: Apply Firebase multiuser migration
+
+on:
+  push:
+    branches: [feat/firebase-multitenant]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: !startsWith(github.event.head_commit.message, 'chore(firebase-migration):')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply migration
+        run: node scripts/apply-firebase-multitenant.mjs
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add App.tsx src/lib/firebase.ts
+          if git diff --cached --quiet; then
+            echo "No migration changes required"
+            exit 0
+          fi
+          git commit -m "chore(firebase-migration): make Firestore the canonical backend"
+          git push origin HEAD:feat/firebase-multitenant
