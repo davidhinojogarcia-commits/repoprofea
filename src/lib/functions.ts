@@ -3,7 +3,14 @@ import { app } from './firebase';
 
 export const functions = getFunctions(app);
 
-export const bootstrapFirstAdmin = httpsCallable<void, { ok: boolean; role: 'admin' }>(
+type EmptyPayload = Record<string, never>;
+
+export const bootstrapFirstAdmin = httpsCallable<EmptyPayload, { ok: boolean; role: 'admin' }>(
   functions,
   'bootstrapFirstAdmin'
+);
+
+export const touchLogin = httpsCallable<EmptyPayload, { ok: boolean; email: string }>(
+  functions,
+  'touchLogin'
 );
