@@ -1,0 +1,116 @@
+import { supabase } from '../lib/supabase';
+
+export type DatabaseRecord = Record<string, any> & { id?: string | number; ownerId?: string };
+type ListOptions = { includeShared?: boolean; limitCount?: number };
+
+const TABLE_BY_COLLECTION: Record<string, string> = {
+  appointments: 'citas', citas: 'citas',
+  subcontractors: 'subcontratas', subcontratas: 'subcontratas',
+  medicalExams: 'reconocimientos', reconocimientos: 'reconocimientos',
+  contracts: 'contrataciones', contratacion: 'contrataciones', contrataciones: 'contrataciones',
+};
+
+const canonicalTable = (name: string) => TABLE_BY_COLLECTION[name] || name;
+const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value, (_k, v) => v === undefined ? null : v));
+const dateOrNull = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
+const timeOrNull = (value: unknown) => typeof value === 'string' && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 8) : null;
+
+async function requireUser() {
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) throw new Error('Debes iniciar sesión para realizar esta operación.');
+  return data.user;
+}
+
+async function resolveObraId(obra: unknown): Promise<string | null> {
+  if (!obra || typeof obra !== 'string') return null;
+  const rows = await supabase.query('obras', { query: `select=id&nombre=ilike.${encodeURIComponent(obra.trim())}&limit=1` });
+  return rows?.[0]?.id || null;
+}
+
+async function serialize(table: string, value: DatabaseRecord) {
+  const data = clean(value);
+  const obraId = value.obraId || value.obra_id || await resolveObraId(value.obra);
+  if (table === 'citas') return {
+    obra_id: obraId, trabajador_id: value.trabajadorId ?? value.trabajador_id ?? null,
+    cita_dia: dateOrNull(value.citaDia), cita_hora: timeOrNull(value.citaHora),
+    sitio_reconocimiento: value.sitioReconocimiento || '', num_oferta: value.numOferta || '',
+    quincena: value.quincena || '', supervisor_responsable: value.supervisorResponsable || '',
+    telefono_supervisor: value.telefonoSupervisor || '', dia_comienzo: dateOrNull(value.diaComienzo),
+    dia_fin_contrato: dateOrNull(value.diaFinContrato), dia_contratacion: dateOrNull(value.diaContratacion), data
+  };
+  if (table === 'subcontratas') return {
+    obra_id: obraId, nombre_empresa: value.nombreEmpresa || '', cif: value.cif || '', municipio: value.municipio || '',
+    persona_contacto: value.personaContacto || '', telefono: value.telefono || '', email: value.email || '',
+    actividad_gremio: value.actividadGremio || '', fecha_inicio_prevista: dateOrNull(value.fechaInicioPrevista),
+    supervisor_responsable: value.supervisorResponsable || '', recurso_preventivo: value.recursoPreventivo || '',
+    numero_trabajadores_previstos: Number.isFinite(Number(value.numeroTrabajadoresPrevistos)) ? Number(value.numeroTrabajadoresPrevistos) : null,
+    estado_expediente: value.estadoExpediente || 'pendiente', notas: value.notas || '', data
+  };
+  if (table === 'reconocimientos') return {
+    obra_id: obraId, trabajador_id: value.matchedPersonId ?? value.trabajadorId ?? value.trabajador_id ?? null,
+    dni: value.dni || '', apellidos_nombre: value.apellidosNombre || '', resultado: value.resultado || value.reconocimientoEstado || 'Pendiente',
+    limitaciones: value.limitaciones || value.reconocimientoLimitaciones || '', fecha_reconocimiento: dateOrNull(value.fechaReconocimiento || value.reconocimientoFecha),
+    validez: value.validez || value.reconocimientoValidez || '', centro_medico: value.centroMedico || value.sitioReconocimiento || '',
+    observaciones: value.observaciones || value.reconocimientoObservaciones || '', data
+  };
+  if (table === 'contrataciones') return {
+    obra_id: obraId, trabajador_id: value.trabajadorId ?? value.trabajador_id ?? value.idTrabajador ?? null,
+    num_oferta: value.numOferta || '', categoria: value.categoria || '', periodo_inicio: dateOrNull(value.periodoInicio),
+    periodo_fin: dateOrNull(value.periodoFin), quincena: value.quincena || '', estado: value.estado || '',
+    observaciones: value.observaciones || '', data
+  };
+  return { data };
+}
+
+function hydrate(row: any): any {
+  return {
+    ...(row.data || {}), id: row.id, ownerId: row.owner_id, obraId: row.obra_id,
+    createdBy: row.created_by, createdAt: row.created_at, updatedBy: row.updated_by, updatedAt: row.updated_at,
+  };
+}
+
+export async function createDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, data: T) {
+  await requireUser();
+  const table = canonicalTable(collectionName);
+  await supabase.query(table, { method: 'POST', prefer: 'return=minimal', body: { id: String(id), ...(await serialize(table, data)) } });
+}
+
+export async function updateDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, patch: Partial<T>) {
+  await requireUser();
+  const table = canonicalTable(collectionName);
+  const current = await getDocument<T>(collectionName, id);
+  if (!current) throw new Error('El registro ya no existe o no tienes permiso para verlo.');
+  const merged = { ...current, ...patch, id } as DatabaseRecord;
+  await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body: await serialize(table, merged) });
+}
+
+export async function deleteDocument(collectionName: string, id: string | number) {
+  await requireUser();
+  await supabase.query(canonicalTable(collectionName), { method: 'DELETE', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}` });
+}
+
+export async function getDocument<T = DatabaseRecord>(collectionName: string, id: string | number): Promise<T | null> {
+  await requireUser();
+  const rows = await supabase.query(canonicalTable(collectionName), { query: `select=*&id=eq.${encodeURIComponent(String(id))}&limit=1` });
+  return rows?.[0] ? hydrate(rows[0]) as T : null;
+}
+
+export async function getDocuments<T = DatabaseRecord>(collectionName: string, options: ListOptions = {}): Promise<T[]> {
+  await requireUser();
+  const limit = options.limitCount ? `&limit=${options.limitCount}` : '';
+  const rows = await supabase.query(canonicalTable(collectionName), { query: `select=*&order=updated_at.desc${limit}` });
+  return (rows || []).map((row: any) => hydrate(row) as T);
+}
+
+export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string, onUpdate: (items: T[]) => void, options: ListOptions = {}, onError?: (error: Error) => void) {
+  let active = true;
+  const run = async () => {
+    try { if (active) onUpdate(await getDocuments<T>(collectionName, options)); }
+    catch (error) { onError?.(error instanceof Error ? error : new Error(String(error))); }
+  };
+  void run();
+  const timer = window.setInterval(() => void run(), 3000);
+  return () => { active = false; window.clearInterval(timer); };
+}
+
+export const getSharedDocuments = getDocuments;

@@ -1,0 +1,4 @@
+-- Migración reproducible para tablas de negocio principales.
+-- La migración homónima ya fue aplicada al proyecto Supabase.
+-- El esquema incluye citas, subcontratas, reconocimientos y contrataciones,
+-- con ownership, obra_id, trazabilidad, RLS y permisos por módulo/obra/recurso.
