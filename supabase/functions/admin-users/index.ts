@@ -64,7 +64,6 @@ Deno.serve(async (req: Request) => {
         await admin.auth.admin.deleteUser(data.user.id).catch(() => undefined);
         throw profileError;
       }
-      await admin.from("users").update({ email, nombre: profile.nombre, apellidos: profile.apellidos, role, active: profile.active, created_by: callerData.user.id }).eq("id", data.user.id);
       await admin.from("user_permissions").upsert({ user_id: data.user.id }, { onConflict: "user_id" });
       await audit(admin, callerData.user, "CREATE_USER", data.user.id, { email, role });
       return json({ ok: true, uid: data.user.id, email, role });
@@ -84,7 +83,6 @@ Deno.serve(async (req: Request) => {
       if (authError) throw authError;
       const { error } = await admin.from("profiles").update(patch).eq("id", uid);
       if (error) throw error;
-      await admin.from("users").update(patch).eq("id", uid);
       await audit(admin, callerData.user, "UPDATE_USER", uid, { fields: ["email", "nombre", "apellidos"] });
       return json({ ok: true });
     }
@@ -96,7 +94,6 @@ Deno.serve(async (req: Request) => {
       if (authError) throw authError;
       const { error } = await admin.from("profiles").update({ role }).eq("id", uid);
       if (error) throw error;
-      await admin.from("users").update({ role }).eq("id", uid);
       await audit(admin, callerData.user, "UPDATE_USER", uid, { role });
       return json({ ok: true });
     }
@@ -106,7 +103,6 @@ Deno.serve(async (req: Request) => {
       if (uid === callerData.user.id && !active) return json({ error: "No puedes desactivar tu propia cuenta" }, 400);
       const { error } = await admin.from("profiles").update({ active }).eq("id", uid);
       if (error) throw error;
-      await admin.from("users").update({ active }).eq("id", uid);
       await audit(admin, callerData.user, "UPDATE_USER", uid, { active });
       return json({ ok: true });
     }
@@ -150,7 +146,7 @@ async function audit(admin: ReturnType<typeof createClient>, user: { id: string;
     user_id: user.id,
     user_email: user.email || "",
     action,
-    resource_type: "users",
+    resource_type: "profiles",
     resource_id: resourceId,
     details,
   });
