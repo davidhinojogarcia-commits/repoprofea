@@ -1,6 +1,3 @@
-import legacyWorkers from '../../data/initial_workers.json';
-import legacySettings from '../../data/initial_settings.json';
-
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_bvx-RBb1Kvz9sfo0LXY3iQ_WHzw6ee2';
 const STORAGE_KEY = 'profea-supabase-session';
@@ -26,43 +23,4 @@ export const supabase={
  async query(table:string,options:{method?:string;query?:string;body?:any;prefer?:string}={}){const headers:Record<string,string>={};if(options.prefer)headers.Prefer=options.prefer;return request(`/rest/v1/${table}${options.query?`?${options.query}`:''}`,{method:options.method||'GET',headers,body:options.body===undefined?undefined:JSON.stringify(options.body)});},
  async edgeFunction(name:string,body:any){return request(`/functions/v1/${name}`,{method:'POST',body:JSON.stringify(body)});},
 };
-
-let legacyMigrationPromise:Promise<void>|null=null;
-async function migrateLegacyDataIfNeeded(user:SupabaseUser):Promise<void>{
-  if(!user?.id)return;
-  if(legacyMigrationPromise)return legacyMigrationPromise;
-  legacyMigrationPromise=(async()=>{
-    const current=await supabase.query('user_settings',{query:`select=settings&user_id=eq.${encodeURIComponent(user.id)}&limit=1`});
-    const existingSettings=current?.[0]?.settings&&typeof current[0].settings==='object'?current[0].settings:{};
-    if(existingSettings.legacyMigrationVersion===1)return;
-
-    const existingWorkers=await supabase.query('workers',{query:`select=id&owner_id=eq.${encodeURIComponent(user.id)}&limit=1`});
-    if((existingWorkers||[]).length>0){
-      await supabase.query('user_settings',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{user_id:user.id,settings:{...existingSettings,legacyMigrationVersion:1,legacyMigrationAt:new Date().toISOString()},updated_by:user.id,updated_at:new Date().toISOString()}});
-      return;
-    }
-
-    const workers=Array.isArray(legacyWorkers)?legacyWorkers as any[]:[];
-    const now=new Date().toISOString();
-    for(let i=0;i<workers.length;i+=50){
-      const batch=workers.slice(i,i+50).filter(w=>w&&w.id!==undefined&&w.id!==null).map(w=>({
-        owner_id:user.id,
-        id:Number(w.id),
-        data:w,
-        created_by:user.id,
-        created_at:w.fechaRegistro||now,
-        updated_by:user.id,
-        updated_at:w._lastUpdated||w.fechaRegistro||now
-      }));
-      if(batch.length)await supabase.query('workers',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:batch});
-    }
-
-    const importedSettings=legacySettings&&typeof legacySettings==='object'?legacySettings as Record<string,any>:{};
-    await supabase.query('user_settings',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{user_id:user.id,settings:{...importedSettings,legacyMigrationVersion:1,legacyMigrationAt:new Date().toISOString()},updated_by:user.id,updated_at:new Date().toISOString()}});
-  })().catch(error=>{console.error('Migración automática de datos legacy a Supabase fallida:',error);throw error;}).finally(()=>{legacyMigrationPromise=null;});
-  return legacyMigrationPromise;
-}
-
-export function migrateLegacyDataForCurrentUser(user:SupabaseUser|null){return user?migrateLegacyDataIfNeeded(user):Promise.resolve();}
-
 export{SUPABASE_URL,SUPABASE_KEY,STORAGE_KEY};
