@@ -57,6 +57,24 @@ export async function resetEmailPassword(email: string) {
 }
 
 // Compatibility exports kept only so legacy UI code compiles. No Google provider exists.
+export async function emailPasswordSignIn(email: string, password: string) {
+  const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+  await saveUserProfile(result.user);
+  return result.user;
+}
+
+export async function registerEmailPassword(email: string, password: string, displayName?: string) {
+  const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+  if (displayName?.trim()) await updateProfile(result.user, { displayName: displayName.trim() });
+  await saveUserProfile(result.user);
+  return result.user;
+}
+
+export async function resetEmailPassword(email: string) {
+  return sendPasswordResetEmail(auth, email.trim());
+}
+
+// Compatibility exports kept only so legacy UI code compiles. No Google provider exists.
 export const googleSignIn = async () => {
   throw new Error('Google Sign-In está deshabilitado. Usa correo electrónico y contraseña.');
 };
