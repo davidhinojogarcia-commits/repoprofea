@@ -29,6 +29,21 @@ type ListOptions = {
   limitCount?: number;
 };
 
+const MODULE_BY_COLLECTION: Record<string, string> = {
+  workers: 'trabajadores',
+  trash: 'trabajadores',
+  contracts: 'contratacion',
+  contratacion: 'contratacion',
+  works: 'obras',
+  obras: 'obras',
+  medicalExams: 'reconocimientos',
+  reconocimientos: 'reconocimientos',
+  subcontractors: 'subcontratas',
+  subcontratas: 'subcontratas',
+  appointments: 'citas',
+  citas: 'citas',
+};
+
 function requireUserId(): string {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Debes iniciar sesión para realizar esta operación.');
@@ -44,6 +59,29 @@ async function isAdmin(): Promise<boolean> {
 
 function withId<T = DocumentData>(item: { id: string; data: () => DocumentData }): T {
   return { id: item.id, ...item.data() } as T;
+}
+
+function moduleFor(collectionName: string): string {
+  return MODULE_BY_COLLECTION[collectionName] || collectionName;
+}
+
+async function writeAudit(
+  action: 'CREATE' | 'UPDATE' | 'DELETE',
+  collectionName: string,
+  resourceId: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  await setDoc(doc(collection(db, 'auditLogs')), {
+    userId: user.uid,
+    userEmail: user.email || '',
+    action,
+    resourceType: collectionName,
+    resourceId,
+    timestamp: serverTimestamp(),
+    details: details || {},
+  });
 }
 
 export async function createDocument<T extends FirestoreRecord>(
@@ -65,6 +103,7 @@ export async function createDocument<T extends FirestoreRecord>(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAudit('CREATE', collectionName, id, { module: moduleFor(collectionName) });
 }
 
 export async function updateDocument<T extends DocumentData>(
@@ -88,11 +127,13 @@ export async function updateDocument<T extends DocumentData>(
     updatedBy: uid,
     updatedAt: serverTimestamp(),
   });
+  await writeAudit('UPDATE', collectionName, id, { module: moduleFor(collectionName) });
 }
 
 export async function deleteDocument(collectionName: string, id: string): Promise<void> {
   requireUserId();
   await deleteDoc(doc(db, collectionName, id));
+  await writeAudit('DELETE', collectionName, id, { module: moduleFor(collectionName) });
 }
 
 export async function getDocument<T = DocumentData>(collectionName: string, id: string): Promise<T | null> {
@@ -119,7 +160,7 @@ export async function getDocuments<T = DocumentData>(collectionName: string, opt
 export function subscribeToDocuments<T = DocumentData>(
   collectionName: string,
   onUpdate: (items: T[]) => void,
-  options: { allForAdmin?: boolean } = {},
+  options: { allForAdmin?: boolean; includeShared?: boolean } = {},
   onError?: (error: Error) => void,
 ): Unsubscribe {
   const uid = requireUserId();
@@ -131,13 +172,13 @@ export function subscribeToDocuments<T = DocumentData>(
       if (!active) return;
       try {
         const own = snapshot.docs.map(item => withId<T>(item));
-        if (options.allForAdmin || !(await isAdmin())) {
-          const shared = options.allForAdmin ? [] : await getSharedDocuments<T>(collectionName);
-          const seen = new Set(own.map(item => String((item as DocumentData).id)));
-          onUpdate([...own, ...shared.filter(item => !seen.has(String((item as DocumentData).id)))]);
-        } else {
+        if (options.allForAdmin || !options.includeShared) {
           onUpdate(own);
+          return;
         }
+        const shared = await getSharedDocuments<T>(collectionName);
+        const seen = new Set(own.map(item => String((item as DocumentData).id)));
+        onUpdate([...own, ...shared.filter(item => !seen.has(String((item as DocumentData).id)))]);
       } catch (error) {
         onError?.(error instanceof Error ? error : new Error(String(error)));
       }
