@@ -1172,4 +1172,6 @@ export function subscribeToFirestoreUserWorkers(userId: string, onUpdate: (worke
 }
 
 
+
+
 export const googleSignIn = async (): Promise<never> => { throw new Error('Google Sign-In está deshabilitado. Usa correo electrónico y contraseña.'); };
