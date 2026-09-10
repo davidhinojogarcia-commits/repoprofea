@@ -377,44 +377,9 @@ function App() {
   }, [autoThemeByTime]);
 
 
-  const handleGoogleLogin = async () => {
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        setGoogleUser(result.user);
-        setGoogleToken(result.accessToken);
-        if (result.user && result.user.email) {
-          const ws = await getOrCreateUserWorkspace(result.user);
-          setActiveWorkspace(ws);
-          setActiveWorkspaceId(ws.id);
-          const list = await fetchSharedWorkspacesForEmail(result.user.email);
-          setSharedWorkspaces(list);
-        }
-        setToast({ message: 'Conectado correctamente con Google y sincronización activada', type: 'success' });
-      }
-    } catch (error: any) {
-      if (
-        error?.code === 'auth/popup-closed-by-user' ||
-        error?.code === 'auth/cancelled-popup-request' ||
-        error?.message?.includes('popup-closed-by-user')
-      ) {
-        return;
-      }
-      console.error('Error Google Sign-in:', error);
-      setToast({ message: 'Error al conectar con Google', type: 'error' });
-    }
-  };
 
-  const handleGoogleLogout = async () => {
-    try {
-      await logoutGoogle();
-      setGoogleUser(null);
-      setGoogleToken(null);
-      setToast({ message: 'Sesión de Google cerrada', type: 'success' });
-    } catch (error) {
-      console.error('Error Google Sign-out:', error);
-    }
-  };
+
+
 
   // Compute effective sync email & workspace ID
   const effectiveSyncEmail = (
