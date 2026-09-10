@@ -1,48 +1,77 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User Accounts & Authentication Profiles
-    match /accounts/{accountId} {
-      allow read, write: if true;
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Shared Workspaces & Multi-Device Sync
-    match /workspaces/{workspaceId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc(request.auth.uid).data.role == 'admin' && userDoc(request.auth.uid).data.active == true;
+    }
+
+    function isActiveUser() {
+      return signedIn() && userDoc(request.auth.uid).data.active == true;
+    }
+
+    function hasPermission(module) {
+      return isAdmin() || (isActiveUser() && userDoc(request.auth.uid).data.permissions[module] == true);
+    }
+
+    // User profile. A signed-in user can read/update their own profile, while admins
+    // manage all profiles. Clients cannot grant themselves admin privileges.
+    match /users/{uid} {
+      allow create: if isSelf(uid) && request.resource.data.uid == uid
+        && request.resource.data.role == 'user';
+      allow read: if isSelf(uid) || isAdmin();
+      allow update: if isAdmin() || (isSelf(uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.permissions == resource.data.permissions);
+      allow delete: if isAdmin() && uid != request.auth.uid;
+
+      match /workers/{workerId} {
+        allow read: if hasPermission('trabajadores');
+        allow create, update, delete: if hasPermission('trabajadores');
+      }
+
+      match /trash/{workerId} {
+        allow read, write: if hasPermission('papelera');
+      }
+
+      match /settings/{settingsId} {
+        allow read, write: if hasPermission('configuracion');
+      }
+
+      match /sessions/{sessionId} {
+        allow read, write: if isSelf(uid) || isAdmin();
       }
     }
 
-    // User Accounts & Multi-device Sync
-    match /users/{userId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
+    // Append-only audit trail. Users can create audit records for themselves;
+    // administrators can read the complete audit trail.
+    match /auditLogs/{logId} {
+      allow create: if isActiveUser()
+        && request.resource.data.uid == request.auth.uid;
+      allow read: if isAdmin() || (isActiveUser() && resource.data.uid == request.auth.uid);
+      allow update, delete: if false;
     }
 
-    // Email-based Sync Vaults
-    match /email_vaults/{emailKey} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
+    // Legacy collections are intentionally closed. The application no longer uses
+    // workspaces, sync groups or email vaults as a source of truth.
+    match /workspaces/{document=**} { allow read, write: if false; }
+    match /accounts/{document=**} { allow read, write: if false; }
+    match /email_vaults/{document=**} { allow read, write: if false; }
+    match /sync_groups/{document=**} { allow read, write: if false; }
 
-    // Legacy Sync Groups
-    match /sync_groups/{groupId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
-    // Global fallback
-    match /{document=**} {
-      allow read, write: if true;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
-
