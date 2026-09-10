@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { Eye, EyeOff, Loader2, LogIn, ShieldCheck } from 'lucide-react';
 import { AdminPanel } from './AdminPanel';
-import { authErrorMessage, getCurrentRole, signInWithEmail, subscribeToAuth, type AppRole } from '../src/lib/authService';
+import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
 
 interface AuthGateProps { children: React.ReactNode; }
 
@@ -19,9 +19,20 @@ export function AuthGate({ children }: AuthGateProps) {
 
   useEffect(() => subscribeToAuth(async currentUser => {
     setUser(currentUser);
+    setError('');
     if (currentUser) {
-      try { setRole(await getCurrentRole()); }
-      catch { setRole(null); }
+      try {
+        const currentRole = await getCurrentRole();
+        setRole(currentRole);
+        if (!currentRole) {
+          await signOutUser();
+          setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
+        }
+      } catch {
+        setRole(null);
+        await signOutUser().catch(() => undefined);
+        setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
+      }
     } else {
       setRole(null);
       setAdminOpen(false);
@@ -33,14 +44,19 @@ export function AuthGate({ children }: AuthGateProps) {
     event.preventDefault(); setError('');
     if (!email.trim() || !password) { setError('Introduce tu correo electrónico y contraseña.'); return; }
     setSubmitting(true);
-    try { await signInWithEmail(email, password); }
-    catch (err) { setError(authErrorMessage(err)); }
-    finally { setSubmitting(false); }
+    try {
+      await signInWithEmail(email, password);
+      setPassword('');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><Loader2 className="h-8 w-8 animate-spin text-slate-600" /></div>;
 
-  if (user) return <div className="min-h-screen"><>{children}</>{role === 'admin' && <><button type="button" onClick={() => setAdminOpen(true)} className="fixed bottom-5 left-5 z-[90] rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><ShieldCheck size={17}/> Administración</button>{adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}</>}</div>;
+  if (user && role) return <div className="min-h-screen"><>{children}</>{role === 'admin' && <><button type="button" onClick={() => setAdminOpen(true)} className="fixed bottom-5 left-5 z-[90] rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><ShieldCheck size={17}/> Administración</button>{adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}</>}</div>;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
