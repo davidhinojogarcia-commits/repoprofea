@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { AuthChangeEvent } from '@supabase/supabase-js';
 import type { SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
@@ -36,60 +37,80 @@ export function AuthGate({ children }: AuthGateProps) {
   const explicitSignOutRef = useRef(false);
   const authValidationRef = useRef(0);
   const roleRef = useRef<AppRole | null>(null);
+  const authTaskTimerRef = useRef<number | null>(null);
 
   useEffect(() => { roleRef.current = role; }, [role]);
 
-  useEffect(() => subscribeToAuth(async (currentUser, event) => {
-    const validationId = ++authValidationRef.current;
-    setUser(currentUser);
+  useEffect(() => {
+    const validateAuthenticatedUser = async (currentUser: SupabaseUser, event: AuthChangeEvent) => {
+      const validationId = ++authValidationRef.current;
+      setUser(currentUser);
 
-    if (!currentUser) {
-      setRole(null);
-      setSigningOut(false);
-      setLoading(false);
-      if (explicitSignOutRef.current) {
-        explicitSignOutRef.current = false;
-        setEmail('');
-        setPassword('');
-        setShowPassword(false);
-        setError('');
+      // Una renovación de JWT no es actividad humana y nunca debe provocar logout/login.
+      if (event === 'TOKEN_REFRESHED' && roleRef.current) {
+        setLoading(false);
+        return;
       }
-      return;
-    }
 
-    if (event === 'SIGNED_IN') initializeUserActivity(currentUser.id);
-    if (event === 'TOKEN_REFRESHED' && roleRef.current) {
-      setLoading(false);
-      return;
-    }
-
-    setError('');
-    try {
-      const currentRole = await getCurrentRole();
-      if (validationId !== authValidationRef.current) return;
-      if (currentRole) {
-        await Promise.all([
-          hydrateStoredSubcontratasPreferences().catch(err => console.warn('No se pudieron precargar preferencias de subcontratas:', err)),
-          hydrateStoredPdfConfig().catch(err => console.warn('No se pudo precargar la configuración PDF:', err)),
-        ]);
+      setError('');
+      try {
+        const currentRole = await getCurrentRole();
         if (validationId !== authValidationRef.current) return;
+        if (currentRole) {
+          await Promise.all([
+            hydrateStoredSubcontratasPreferences().catch(err => console.warn('No se pudieron precargar preferencias de subcontratas:', err)),
+            hydrateStoredPdfConfig().catch(err => console.warn('No se pudo precargar la configuración PDF:', err)),
+          ]);
+          if (validationId !== authValidationRef.current) return;
+        }
+        setRole(currentRole);
+        if (!currentRole) {
+          setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
+          await signOutUser();
+        } else if (window.location.pathname === '/login') {
+          window.history.replaceState({}, '', '/');
+        }
+      } catch {
+        if (validationId !== authValidationRef.current) return;
+        setRole(null);
+        setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
+        await signOutUser().catch(() => undefined);
+      } finally {
+        if (validationId === authValidationRef.current) setLoading(false);
       }
-      setRole(currentRole);
-      if (!currentRole) {
-        setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
-        await signOutUser();
-      } else if (window.location.pathname === '/login') {
-        window.history.replaceState({}, '', '/');
+    };
+
+    const unsubscribe = subscribeToAuth((currentUser, event) => {
+      if (!currentUser) {
+        ++authValidationRef.current;
+        setUser(null);
+        setRole(null);
+        setSigningOut(false);
+        setLoading(false);
+        if (explicitSignOutRef.current) {
+          explicitSignOutRef.current = false;
+          setEmail('');
+          setPassword('');
+          setShowPassword(false);
+          setError('');
+        }
+        return;
       }
-    } catch {
-      if (validationId !== authValidationRef.current) return;
-      setRole(null);
-      setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
-      await signOutUser().catch(() => undefined);
-    } finally {
-      if (validationId === authValidationRef.current) setLoading(false);
-    }
-  }), []);
+
+      // No hacemos llamadas al propio cliente Supabase dentro del callback síncrono
+      // de onAuthStateChange. Se difieren al siguiente turno para evitar bloqueos.
+      if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
+      authTaskTimerRef.current = window.setTimeout(() => {
+        authTaskTimerRef.current = null;
+        void validateAuthenticatedUser(currentUser, event);
+      }, 0);
+    });
+
+    return () => {
+      unsubscribe();
+      if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
+    };
+  }, []);
 
   const handleIdleTimeout = useCallback(async () => {
     if (!user) return;
@@ -120,6 +141,7 @@ export function AuthGate({ children }: AuthGateProps) {
     setSubmitting(true);
     try {
       const signedInUser = await signInWithEmail(email, password);
+      // Solo un login explícito del usuario inicia a cero el reloj de inactividad.
       initializeUserActivity(signedInUser.id);
       setPassword('');
       window.history.replaceState({}, '', '/');
@@ -160,7 +182,7 @@ export function AuthGate({ children }: AuthGateProps) {
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-title">
             <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl dark:border-amber-900 dark:bg-slate-900">
               <h2 id="idle-title" className="text-xl font-bold text-slate-900 dark:text-white">Tu sesión está a punto de cerrarse por inactividad.</h2>
-              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Tu sesión se cerrará en aproximadamente 2 minutos por inactividad.</p>
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Tu sesión se cerrará en 2 minutos por inactividad.</p>
               <p className="mt-2 text-sm font-semibold text-amber-700 dark:text-amber-300">Tiempo restante: {minutes}:{secs}</p>
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button type="button" onClick={handleSignOut} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cerrar sesión</button>
