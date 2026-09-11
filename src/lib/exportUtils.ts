@@ -32,24 +32,10 @@ const normalizePdfConfig = (value?: Partial<PdfCustomConfig>): Required<PdfCusto
 
 export const hydrateStoredPdfConfig = async (): Promise<void> => {
   if (pdfPreferencesHydrated) return;
-  let remote = await loadPdfPreferences();
-
-  // Migración única desde la preferencia histórica del navegador.
-  if ((!remote || Object.keys(remote).length === 0) && typeof window !== 'undefined') {
-    try {
-      const legacyRaw = localStorage.getItem('pdfCustomConfig');
-      if (legacyRaw) {
-        remote = JSON.parse(legacyRaw);
-        await savePdfPreferences(normalizePdfConfig(remote));
-      }
-    } catch (error) {
-      console.warn('No se pudo migrar la configuración PDF local:', error);
-    }
-  }
+  const remote = await loadPdfPreferences();
 
   pdfConfigCache = normalizePdfConfig(remote);
   pdfPreferencesHydrated = true;
-  if (typeof window !== 'undefined') localStorage.removeItem('pdfCustomConfig');
 };
 
 export const getStoredPdfConfig = (): Required<PdfCustomConfig> => ({ ...pdfConfigCache });

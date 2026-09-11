@@ -166,7 +166,7 @@ export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] = [
   }
 ];
 
-// Local storage key for customized checklist requirements template
+// Legacy key name retained only for source compatibility; no browser storage is read or written
 export const CHECKLIST_TEMPLATE_STORAGE_KEY = 'profea_subcontratas_checklist_template';
 let checklistTemplateCache: SubcontrataDocItem[] = DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
 
@@ -229,7 +229,7 @@ export const getStoredChecklistTemplate = (): SubcontrataDocItem[] =>
   checklistTemplateCache.map(item => ({ ...item }));
 
 /**
- * Saves a new customized checklist template to localStorage
+ * Saves a new customized checklist template to Supabase
  */
 export const saveStoredChecklistTemplate = (template: SubcontrataDocItem[]): void => {
   checklistTemplateCache = template.map(item => ({ ...item, estado: item.estado || 'pendiente' }));
@@ -271,24 +271,6 @@ export const hydrateStoredSubcontratasPreferences = async (): Promise<void> => {
   const remote = await loadSubcontratasPreferences();
   let effective = remote;
 
-  // Migración única desde las claves históricas del navegador. Supabase queda como
-  // única fuente de verdad; las claves locales se eliminan solo tras persistir con éxito.
-  const hasRemote = Boolean(remote.checklistTemplate || remote.reporteTecnicoConfig || remote.obrasRecursosPreventivos);
-  if (!hasRemote && typeof window !== 'undefined') {
-    const legacy: any = {};
-    try {
-      const checklist = localStorage.getItem(CHECKLIST_TEMPLATE_STORAGE_KEY);
-      const report = localStorage.getItem(REPORTE_TECNICO_CONFIG_STORAGE_KEY);
-      const recursos = localStorage.getItem(OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY);
-      if (checklist) legacy.checklistTemplate = JSON.parse(checklist);
-      if (report) legacy.reporteTecnicoConfig = JSON.parse(report);
-      if (recursos) legacy.obrasRecursosPreventivos = JSON.parse(recursos);
-    } catch (error) {
-      console.warn('No se pudieron leer preferencias locales antiguas de subcontratas:', error);
-    }
-    if (Object.keys(legacy).length) effective = await saveSubcontratasPreferences(legacy);
-  }
-
   if (Array.isArray(effective.checklistTemplate) && effective.checklistTemplate.length) {
     checklistTemplateCache = effective.checklistTemplate.map((item: any) => ({ ...item, estado: item.estado || 'pendiente' }));
   }
@@ -302,8 +284,6 @@ export const hydrateStoredSubcontratasPreferences = async (): Promise<void> => {
 
   subcontratasPreferencesHydrated = true;
   if (typeof window !== 'undefined') {
-    [CHECKLIST_TEMPLATE_STORAGE_KEY, REPORTE_TECNICO_CONFIG_STORAGE_KEY, OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY]
-      .forEach(key => localStorage.removeItem(key));
     window.dispatchEvent(new CustomEvent('profea_reporte_tecnico_config_changed', { detail: reporteTecnicoConfigCache }));
     window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: obrasRecursosPreventivosCache }));
   }
