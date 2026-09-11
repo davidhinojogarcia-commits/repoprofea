@@ -264,9 +264,10 @@ body {
   }
 
   /* Mobile sidebar: use the dynamic viewport instead of h-screen (100vh), which on
-     iOS Safari can extend underneath the bottom address/toolbar. The navigation area
-     remains the scrollable flex child while session/footer controls stay reachable. */
-  #root .app-navigation-panel {
+     iOS Safari can extend underneath the bottom address/toolbar. Scope this strictly
+     to the aside element: the sticky page Header intentionally shares the
+     app-navigation-panel class for print/navigation semantics. */
+  #root aside.app-navigation-panel {
     height: 100dvh !important;
     max-height: 100dvh !important;
     min-height: 0 !important;
@@ -275,13 +276,13 @@ body {
     box-sizing: border-box;
   }
 
-  #root .app-navigation-panel > nav {
+  #root aside.app-navigation-panel > nav {
     min-height: 0 !important;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
 
-  #root .app-navigation-panel > div:last-child {
+  #root aside.app-navigation-panel > div:last-child {
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
   }
 }
