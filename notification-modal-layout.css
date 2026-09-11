@@ -1,14 +1,42 @@
-/* Global modal layout: every full-screen application modal is constrained to the
-   main content area so the navigation sidebar remains visible and usable. The
-   mobile-menu backdrop itself (lg:hidden) is excluded deliberately. */
+/*
+ * Global application modal layout.
+ *
+ * Every application overlay that uses the shared `fixed inset-0` convention is kept
+ * inside the workspace: below the application header and to the right of the desktop
+ * sidebar. This is deliberately centralised so individual modals do not need their
+ * own offsets/z-index workarounds.
+ *
+ * The mobile navigation backdrop (`lg:hidden`) is excluded because it belongs to the
+ * navigation itself, not to the modal system.
+ */
 
+:root {
+  --profea-modal-header-offset: 4.75rem;
+  --profea-modal-gap: 1rem;
+}
+
+/* Navigation always remains above application modals. */
 #root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel {
   z-index: 50 !important;
 }
 
-/* Keep modal overlays below the sidebar, regardless of their original Tailwind z-index. */
+/* Shared geometry for every application modal/overlay. */
 #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
   z-index: 40 !important;
+  top: var(--profea-modal-header-offset) !important;
+  bottom: 0 !important;
+  right: 0 !important;
+  box-sizing: border-box !important;
+  padding: var(--profea-modal-gap) !important;
+  overflow: hidden !important;
+}
+
+/* A modal panel can never grow beyond the workspace that contains it. Width remains
+   owned by the component (max-w-md, max-w-4xl, etc.), so small and large dialogs keep
+   their intended proportions. */
+#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) > :first-child {
+  max-height: 100% !important;
+  min-height: 0 !important;
 }
 
 @media (min-width: 1024px) {
@@ -26,13 +54,18 @@
 }
 
 @media (max-width: 1023px) {
-  /* On mobile the sidebar remains the top navigation layer. Modals stay in the
-     application content layer and therefore never hide or close the menu. */
+  :root {
+    --profea-modal-header-offset: 0.5rem;
+    --profea-modal-gap: 0.5rem;
+  }
+
+  /* The mobile drawer stays the uppermost navigation layer. */
   #root aside.app-navigation-panel {
     z-index: 50 !important;
   }
 
   #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
+    left: 0 !important;
     z-index: 40 !important;
   }
 }
