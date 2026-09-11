@@ -16,7 +16,14 @@ export const bootstrapFirstAdmin=async()=>{
 export const touchLogin=async()=>({data:{ok:true,email:(await supabase.auth.getUser()).data.user?.email||''}});
 export const createManagedUser=(payload:any)=>call<{uid:string;email:string;role:'admin'|'user'}>('create',payload);
 export const updateManagedUserProfile=(payload:any)=>call<{ok:boolean}>('update_profile',payload);
-export const updateManagedUserRole=(payload:any)=>call<{ok:boolean}>('role',payload);
+export const updateManagedUserRole=async(payload:any)=>{
+  const result=await call<{ok:boolean;selfRoleChange?:boolean;role?:'admin'|'user'}>('role',payload);
+  if(result.data?.selfRoleChange===true&&result.data?.role!=='admin'){
+    await supabase.auth.signOut({scope:'local'});
+    if(typeof window!=='undefined')window.location.replace('/login');
+  }
+  return result;
+};
 export const setManagedUserRole=updateManagedUserRole;
 export const updateManagedUserStatus=(payload:any)=>call<{ok:boolean}>('status',payload);
 export const setManagedUserActive=updateManagedUserStatus;
