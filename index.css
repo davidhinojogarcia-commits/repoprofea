@@ -115,6 +115,34 @@ body {
     flex-wrap: wrap !important;
     row-gap: 0.25rem !important;
   }
+
+  /* Subcontratas (CAE): align the desktop master/detail cards on the same baseline. */
+  #root #subcontratas-section-container > .grid.grid-cols-1.lg\:grid-cols-12 {
+    align-items: stretch !important;
+  }
+
+  #root #subcontratas-section-container > .grid.grid-cols-1.lg\:grid-cols-12 > .lg\:col-span-4,
+  #root #subcontratas-section-container > .grid.grid-cols-1.lg\:grid-cols-12 > .lg\:col-span-8 {
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  /* The left column has its section title above the card; offset the empty detail card
+     by the same amount so both visible rectangles start on exactly the same line. */
+  #root #subcontratas-section-container > .grid.grid-cols-1.lg\:grid-cols-12 > .lg\:col-span-8 > .p-12.text-center {
+    margin-top: 1.75rem !important;
+    min-height: 11.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  #root #subcontratas-section-container > .grid.grid-cols-1.lg\:grid-cols-12 > .lg\:col-span-4 > .border-dashed {
+    min-height: 11.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
 }
 
 /* Avoid fixed two-column groups overflowing on narrow screens. */
