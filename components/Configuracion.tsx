@@ -80,7 +80,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   setAutoThemeByTime,
   setToast,
 }) => {
-  const [activeTab, setActiveTab] = useState<'obras' | 'lugares' | 'sitios' | 'telefonos' | 'categorias' | 'backup' | 'jornada'>('obras');
+  const [activeTab, setActiveTab] = useState<'obras' | 'lugares' | 'sitios' | 'telefonos' | 'categorias' | 'backup' | 'jornada'>('lugares');
 
   const [newItem, setNewItem] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -316,7 +316,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   };
 
   const tabs = [
-    { id: 'obras', label: 'Obras', icon: MapPin, list: savedObras, setter: setSavedObras },
     { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },
     { id: 'sitios', label: 'Sitios Reconocimiento', icon: Stethoscope, list: savedSitios, setter: setSavedSitios },
     { id: 'telefonos', label: 'Teléfonos', icon: Phone, list: savedTelefonos, setter: setSavedTelefonos },
