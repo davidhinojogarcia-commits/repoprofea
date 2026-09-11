@@ -60,6 +60,47 @@ body {
     padding-right: 1rem !important;
   }
 
+  /* Global safeguard for text buttons across all application sections. */
+  #root button {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #root button:not([aria-label]) {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: auto;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  #root button > svg,
+  #root button > span > svg {
+    flex: 0 0 auto;
+  }
+
+  #root button > span {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+
+  /* Generous desktop padding is often what makes action labels overflow on phones. */
+  #root button.px-4,
+  #root button.px-5,
+  #root button.px-6,
+  #root button.px-8 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  #root .flex.flex-wrap > button,
+  #root .grid > button {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   /* Person list/export toolbar: make controls readable instead of squeezing labels. */
   #root h2.text-\[\#00548E\] + div {
     width: 100% !important;
