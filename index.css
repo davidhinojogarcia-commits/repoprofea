@@ -294,6 +294,68 @@ body {
   z-index: -1 !important;
 }
 
+/* Long-form application modals: keep them as contained work windows instead of
+   stretching edge-to-edge. The overlay itself is already constrained to the main
+   content area by notification-modal-layout.css. */
+#root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] {
+  width: min(64rem, calc(100% - 2rem)) !important;
+  max-width: 64rem !important;
+  max-height: calc(100dvh - 3rem) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Header stays visible; only the long form body scrolls. */
+#root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] > :first-child {
+  flex: 0 0 auto;
+  position: relative !important;
+  top: auto !important;
+}
+
+#root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] > :nth-child(2) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Forms such as Editar trabajador keep their action row visible while reviewing
+   content, without covering inputs because it remains part of the scroll container. */
+#root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] form > div:last-child:has(button[type="submit"]) {
+  position: sticky;
+  bottom: -2rem;
+  z-index: 20;
+  margin-left: -2rem;
+  margin-right: -2rem;
+  padding: 1rem 2rem 2rem !important;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgb(226 232 240) !important;
+  backdrop-filter: blur(10px);
+}
+
+.dark #root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] form > div:last-child:has(button[type="submit"]) {
+  background: rgba(15, 23, 42, 0.96);
+  border-top-color: rgb(51 65 85) !important;
+}
+
+@media (max-width: 639px) {
+  #root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] {
+    width: calc(100% - 0.75rem) !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 1rem) !important;
+    border-radius: 1.25rem !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"] > [class~="max-h-[90vh]"] form > div:last-child:has(button[type="submit"]) {
+    bottom: -1.5rem;
+    margin-left: -1.5rem;
+    margin-right: -1.5rem;
+    padding: 0.875rem 1.5rem 1.5rem !important;
+  }
+}
+
 @media print {
   #root .app-navigation-panel {
     position: static !important;
