@@ -9,6 +9,7 @@ import { CalendarEventInput } from '../src/lib/googleCalendar';
 import { VirtualPersonList } from './VirtualPersonList';
 import { PersonTable } from './PersonTable';
 import { CompactPersonCard } from './CompactPersonCard';
+import { BulkShareButton } from './BulkShareButton';
 
 interface PersonListProps {
   people: Person[];
@@ -117,7 +118,6 @@ export const PersonList: React.FC<PersonListProps> = ({
     try {
       const saved = localStorage.getItem('profea_personlist_view');
       if (saved === 'compact' || saved === 'cards' || saved === 'table') return saved;
-      // Default to compact card view on small screens (< 768px) for optimal readability
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
         return 'compact';
       }
@@ -136,7 +136,6 @@ export const PersonList: React.FC<PersonListProps> = ({
     }
   };
 
-  // Google Calendar Modal State
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [modalCalendarEvents, setModalCalendarEvents] = useState<CalendarEventInput[]>([]);
   const [modalTitle, setModalTitle] = useState("Añadir a Google Calendar");
@@ -144,7 +143,6 @@ export const PersonList: React.FC<PersonListProps> = ({
   const buildWorkerCalendarEvents = (person: Person): CalendarEventInput[] => {
     const events: CalendarEventInput[] = [];
 
-    // 1. Contract event if start & end exist
     if (person.periodoInicio) {
       events.push({
         summary: `Contrato PROFEA: ${person.apellidosNombre} (${person.obra || 'Obra'})`,
@@ -155,7 +153,6 @@ export const PersonList: React.FC<PersonListProps> = ({
       });
     }
 
-    // 2. Medical appointment event if present
     if (person.citaDia && person.necesitaReconocimiento !== 'No') {
       events.push({
         summary: `Cita Reconocimiento Médico PROFEA: ${person.apellidosNombre}`,
@@ -212,7 +209,6 @@ export const PersonList: React.FC<PersonListProps> = ({
     setIsCalendarModalOpen(true);
   };
 
-  // Load Google APIs Scripts for Google Picker
   useEffect(() => {
     if (!(window as any).gapi) {
       const scriptGapi = document.createElement('script');
@@ -261,7 +257,7 @@ export const PersonList: React.FC<PersonListProps> = ({
           const picker = new (window as any).google.picker.PickerBuilder()
             .addView(view)
             .setOAuthToken(googleToken)
-            .setDeveloperKey('AIzaSyCoLiLZXdWWYQklXwsWnf1LDjzbKxPST2g') // standard key
+            .setDeveloperKey('AIzaSyCoLiLZXdWWYQklXwsWnf1LDjzbKxPST2g')
             .setCallback(async (data: any) => {
               if (data[(window as any).google.picker.Response.ACTION] === (window as any).google.picker.Action.PICKED) {
                 const docItem = data[(window as any).google.picker.Response.DOCUMENTS][0];
@@ -351,7 +347,6 @@ export const PersonList: React.FC<PersonListProps> = ({
     if (file) {
       onImport(file);
     }
-    // Reset input so the same file can be selected again if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -500,7 +495,6 @@ export const PersonList: React.FC<PersonListProps> = ({
           )}
         </div>
 
-        {/* Import Modal for Empty State */}
         <AnimatePresence>
           {showImportModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm text-left">
@@ -528,7 +522,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                 </div>
 
                 <div className="space-y-4 mt-6">
-                  {/* Device Upload Option */}
                   <button
                     onClick={() => {
                       setShowImportModal(false);
@@ -545,7 +538,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                     </div>
                   </button>
 
-                  {/* Google Drive Option */}
                   <button
                     onClick={handleOpenGooglePicker}
                     className="w-full text-left p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800/80 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-slate-850/40 transition-all flex items-center gap-4 group relative cursor-pointer"
@@ -684,10 +676,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       </div>
 
-      {/* Barra de Búsqueda y Filtros Integrada */}
       <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col lg:flex-row items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
-        
-        {/* Búsqueda de texto */}
         <div className="relative flex-1 flex items-center min-h-[52px]">
           <div className="pl-4 pr-2 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-slate-400 dark:text-slate-500" />
@@ -701,11 +690,9 @@ export const PersonList: React.FC<PersonListProps> = ({
           />
         </div>
 
-        {/* Separador (solo en pantallas grandes) */}
         <div className="hidden lg:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
         <div className="block lg:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
 
-        {/* Filtros */}
         <div className="flex flex-col sm:flex-row items-stretch p-1.5 gap-1.5 lg:w-auto">
           <MultiSearchableDropdown
             options={savedObras}
@@ -731,8 +718,6 @@ export const PersonList: React.FC<PersonListProps> = ({
           />
           <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
           <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-          
-          {/* Filtro Contratación Activa */}
           <button
             onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
@@ -745,7 +730,6 @@ export const PersonList: React.FC<PersonListProps> = ({
             <span>Repetidores</span>
           </button>
 
-          {/* Filtro Rápido No Aptos */}
           {noAptosCount > 0 && (
             <button
               onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
@@ -760,11 +744,9 @@ export const PersonList: React.FC<PersonListProps> = ({
               <span>No Aptos ({noAptosCount})</span>
             </button>
           )}
-
         </div>
       </div>
 
-      {/* Banner de Prevención de Contratación Errónea si hay No Aptos */}
       {noAptosCount > 0 && (
         <div className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
           <div className="flex items-center gap-2.5">
@@ -799,7 +781,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Barra de Selección Masiva y Selector de Vista */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-200">
             <div className="flex flex-wrap items-center justify-between w-full md:w-auto gap-3">
               <div className="flex items-center gap-3 font-semibold">
@@ -823,7 +804,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                 </label>
               </div>
 
-              {/* Botones de Cambio de Vista (Tabla / Tarjeta Compacta / Tarjetas) */}
               <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
                 <button
                   type="button"
@@ -887,7 +867,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   </span>
                 )}
                 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {onEditMultiple && (
                     <button 
                       onClick={handleBulkEdit}
@@ -897,6 +877,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                       <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar Masivo
                     </button>
                   )}
+                  <BulkShareButton resourceType="trabajadores" resourceIds={selectedIds} />
                   <button 
                     onClick={handleOpenCalendarForSelected}
                     className="flex items-center justify-center bg-[#00548E]/10 hover:bg-[#00548E]/20 text-[#00548E] dark:text-blue-300 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-[#00548E]/20 dark:border-blue-800/80 cursor-pointer"
@@ -979,7 +960,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       )}
 
-      {/* Import Modal */}
       <AnimatePresence>
         {showImportModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -1007,7 +987,6 @@ export const PersonList: React.FC<PersonListProps> = ({
               </div>
 
               <div className="space-y-4 mt-6">
-                {/* Device Upload Option */}
                 <button
                   onClick={() => {
                     setShowImportModal(false);
@@ -1024,7 +1003,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                   </div>
                 </button>
 
-                {/* Google Drive Option */}
                 <button
                   onClick={handleOpenGooglePicker}
                   className="w-full text-left p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800/80 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-slate-850/40 transition-all flex items-center gap-4 group relative"
@@ -1062,7 +1040,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Loading Overlay */}
       {isDriveLoading && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm text-white">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
@@ -1070,7 +1047,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       )}
 
-      {/* Google Calendar Modal */}
       <GoogleCalendarModal
         isOpen={isCalendarModalOpen}
         onClose={() => setIsCalendarModalOpen(false)}
