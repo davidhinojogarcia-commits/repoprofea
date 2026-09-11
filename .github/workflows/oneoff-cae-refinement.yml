@@ -18,6 +18,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Repair migration script
+        run: python scripts/repair_cae_refinement.py
+
       - name: Apply CAE refinement
         run: python scripts/apply_cae_refinement.py
 
@@ -31,7 +34,7 @@ jobs:
         run: npm run build
 
       - name: Clean one-off files
-        run: git rm .github/workflows/oneoff-cae-refinement.yml scripts/apply_cae_refinement.py
+        run: git rm .github/workflows/oneoff-cae-refinement.yml scripts/apply_cae_refinement.py scripts/repair_cae_refinement.py
 
       - name: Commit changes
         run: |
