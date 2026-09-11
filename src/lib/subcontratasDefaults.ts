@@ -12,6 +12,7 @@ export type { ReporteTecnicoConfig, ObraRecursoPreventivo };
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { renderPdfLogo, getStoredPdfConfig, formatDate } from './exportUtils';
+import { loadSubcontratasPreferences, saveSubcontratasPreferences } from '../services/subcontratasPreferencesService';
 
 export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] = [
   // --- DOCUMENTACIÓN DE LA EMPRESA SUBCONTRATISTA ---
@@ -165,8 +166,9 @@ export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] = [
   }
 ];
 
-// Local storage key for customized checklist requirements template
+// Legacy key name retained only for source compatibility; no browser storage is read or written
 export const CHECKLIST_TEMPLATE_STORAGE_KEY = 'profea_subcontratas_checklist_template';
+let checklistTemplateCache: SubcontrataDocItem[] = DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
 
 // Pre-defined frequent construction documents for quick addition
 export const PRESET_FREQUENT_DOCS: Omit<SubcontrataDocItem, 'estado'>[] = [
@@ -223,45 +225,28 @@ export const PRESET_FREQUENT_DOCS: Omit<SubcontrataDocItem, 'estado'>[] = [
 /**
  * Retrieves the stored customized checklist template, or falls back to DEFAULT_SUBCONTRATA_CHECKLIST
  */
-export const getStoredChecklistTemplate = (): SubcontrataDocItem[] => {
-  try {
-    const raw = localStorage.getItem(CHECKLIST_TEMPLATE_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(item => ({
-          ...item,
-          estado: item.estado || 'pendiente'
-        }));
-      }
-    }
-  } catch (e) {
-    console.warn('Error reading stored checklist template:', e);
-  }
-  return DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
-};
+export const getStoredChecklistTemplate = (): SubcontrataDocItem[] =>
+  checklistTemplateCache.map(item => ({ ...item }));
 
 /**
- * Saves a new customized checklist template to localStorage
+ * Saves a new customized checklist template to Supabase
  */
 export const saveStoredChecklistTemplate = (template: SubcontrataDocItem[]): void => {
-  try {
-    localStorage.setItem(CHECKLIST_TEMPLATE_STORAGE_KEY, JSON.stringify(template));
-  } catch (e) {
-    console.warn('Error saving checklist template to localStorage:', e);
-  }
+  checklistTemplateCache = template.map(item => ({ ...item, estado: item.estado || 'pendiente' }));
+  void saveSubcontratasPreferences({ checklistTemplate: checklistTemplateCache }).catch(error =>
+    console.warn('Error guardando plantilla de subcontratas en Supabase:', error)
+  );
 };
 
 /**
  * Resets the stored template to the standard legal defaults
  */
 export const resetStoredChecklistTemplate = (): SubcontrataDocItem[] => {
-  try {
-    localStorage.removeItem(CHECKLIST_TEMPLATE_STORAGE_KEY);
-  } catch (e) {
-    console.warn('Error removing checklist template from localStorage:', e);
-  }
-  return DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
+  checklistTemplateCache = DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
+  void saveSubcontratasPreferences({ checklistTemplate: checklistTemplateCache }).catch(error =>
+    console.warn('Error restableciendo plantilla de subcontratas en Supabase:', error)
+  );
+  return checklistTemplateCache.map(item => ({ ...item }));
 };
 
 // ==========================================
@@ -277,129 +262,114 @@ export const DEFAULT_REPORTE_TECNICO_CONFIG: ReporteTecnicoConfig = {
   supervisorNombre: 'David Hinojo García'
 };
 
+let reporteTecnicoConfigCache: ReporteTecnicoConfig = { ...DEFAULT_REPORTE_TECNICO_CONFIG };
+let obrasRecursosPreventivosCache: Record<string, ObraRecursoPreventivo> = {};
+let subcontratasPreferencesHydrated = false;
+
+export const hydrateStoredSubcontratasPreferences = async (): Promise<void> => {
+  if (subcontratasPreferencesHydrated) return;
+  const remote = await loadSubcontratasPreferences();
+  let effective = remote;
+
+  if (Array.isArray(effective.checklistTemplate) && effective.checklistTemplate.length) {
+    checklistTemplateCache = effective.checklistTemplate.map((item: any) => ({ ...item, estado: item.estado || 'pendiente' }));
+  }
+  reporteTecnicoConfigCache = {
+    ...DEFAULT_REPORTE_TECNICO_CONFIG,
+    ...(effective.reporteTecnicoConfig || {}),
+  };
+  obrasRecursosPreventivosCache = effective.obrasRecursosPreventivos && typeof effective.obrasRecursosPreventivos === 'object'
+    ? { ...effective.obrasRecursosPreventivos }
+    : {};
+
+  subcontratasPreferencesHydrated = true;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('profea_reporte_tecnico_config_changed', { detail: reporteTecnicoConfigCache }));
+    window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: obrasRecursosPreventivosCache }));
+  }
+};
+
 /**
  * Retrieves the global technician and coordinator signature configuration
  */
-export const getStoredReporteTecnicoConfig = (): ReporteTecnicoConfig => {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(REPORTE_TECNICO_CONFIG_STORAGE_KEY) : null;
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        tecnicoNombre: parsed.tecnicoNombre ?? DEFAULT_REPORTE_TECNICO_CONFIG.tecnicoNombre,
-        coordinadorNombre: parsed.coordinadorNombre ?? DEFAULT_REPORTE_TECNICO_CONFIG.coordinadorNombre,
-        empresaCoordinacion: parsed.empresaCoordinacion ?? DEFAULT_REPORTE_TECNICO_CONFIG.empresaCoordinacion,
-        supervisorNombre: parsed.supervisorNombre ?? DEFAULT_REPORTE_TECNICO_CONFIG.supervisorNombre,
-      };
-    }
-  } catch (e) {
-    console.warn('Error reading stored reporte tecnico config:', e);
-  }
-  return { ...DEFAULT_REPORTE_TECNICO_CONFIG };
-};
+export const getStoredReporteTecnicoConfig = (): ReporteTecnicoConfig => ({ ...reporteTecnicoConfigCache });
 
 /**
  * Saves the global technician and coordinator signature configuration
  */
 export const saveStoredReporteTecnicoConfig = (config: Partial<ReporteTecnicoConfig>): ReporteTecnicoConfig => {
-  try {
-    const current = getStoredReporteTecnicoConfig();
-    const updated = { ...current, ...config };
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(REPORTE_TECNICO_CONFIG_STORAGE_KEY, JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('profea_reporte_tecnico_config_changed', { detail: updated }));
-    }
-    return updated;
-  } catch (e) {
-    console.warn('Error saving reporte tecnico config:', e);
-    return { ...DEFAULT_REPORTE_TECNICO_CONFIG, ...config };
+  reporteTecnicoConfigCache = { ...reporteTecnicoConfigCache, ...config };
+  void saveSubcontratasPreferences({ reporteTecnicoConfig: reporteTecnicoConfigCache }).catch(error =>
+    console.warn('Error guardando configuración de informe en Supabase:', error)
+  );
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('profea_reporte_tecnico_config_changed', { detail: reporteTecnicoConfigCache }));
   }
+  return { ...reporteTecnicoConfigCache };
 };
 
 /**
  * Retrieves the mapping of obra names to assigned Recurso Preventivo and Category
  */
-export const getStoredObrasRecursosPreventivos = (): Record<string, { recursoPreventivoNombre: string; recursoPreventivoCategoria: string }> => {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY) : null;
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch (e) {
-    console.warn('Error reading stored obras recursos preventivos:', e);
-  }
-  // Default seeds for typical PFEA works if nothing stored yet
-  return {
-    'Obra PFEA Arcos de la Frontera': {
-      recursoPreventivoNombre: 'Manuel Gómez Serrano',
-      recursoPreventivoCategoria: 'Encargado de Obra'
-    },
-    'Rehabilitación Plaza Mayor Medina': {
-      recursoPreventivoNombre: 'Antonio Ruiz Morales',
-      recursoPreventivoCategoria: 'Encargado de Obra'
-    }
-  };
-};
+export const getStoredObrasRecursosPreventivos = (): Record<string, ObraRecursoPreventivo> => ({ ...obrasRecursosPreventivosCache });
 
 /**
  * Saves or updates the assigned Recurso Preventivo for a specific obra
  */
 export const saveStoredObraRecursoPreventivo = (
-  obra: string, 
-  recursoPreventivoNombre: string, 
+  obra: string,
+  recursoPreventivoNombre: string,
   recursoPreventivoCategoria: string = 'Encargado de Obra'
 ): void => {
-  try {
-    if (!obra || !obra.trim()) return;
-    const all = getStoredObrasRecursosPreventivos();
-    all[obra.trim()] = {
+  if (!obra || !obra.trim()) return;
+  obrasRecursosPreventivosCache = {
+    ...obrasRecursosPreventivosCache,
+    [obra.trim()]: {
+      obra: obra.trim(),
       recursoPreventivoNombre: recursoPreventivoNombre.trim(),
       recursoPreventivoCategoria: recursoPreventivoCategoria.trim() || 'Encargado de Obra'
-    };
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY, JSON.stringify(all));
-      window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: all }));
     }
-  } catch (e) {
-    console.warn('Error saving obra recurso preventivo:', e);
-  }
+  };
+  void saveSubcontratasPreferences({ obrasRecursosPreventivos: obrasRecursosPreventivosCache }).catch(error =>
+    console.warn('Error guardando recurso preventivo en Supabase:', error)
+  );
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: obrasRecursosPreventivosCache }));
 };
 
 /**
  * Deletes the assigned Recurso Preventivo for an obra
  */
 export const deleteStoredObraRecursoPreventivo = (obra: string): void => {
-  try {
-    const all = getStoredObrasRecursosPreventivos();
-    if (obra in all) {
-      delete all[obra];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY, JSON.stringify(all));
-        window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: all }));
-      }
-    }
-  } catch (e) {
-    console.warn('Error deleting obra recurso preventivo:', e);
-  }
+  if (!(obra in obrasRecursosPreventivosCache)) return;
+  const next = { ...obrasRecursosPreventivosCache };
+  delete next[obra];
+  obrasRecursosPreventivosCache = next;
+  void saveSubcontratasPreferences({ obrasRecursosPreventivos: next }).catch(error =>
+    console.warn('Error eliminando recurso preventivo en Supabase:', error)
+  );
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: next }));
 };
 
 /**
  * Updates the obra key in the stored recursos preventivos dictionary when an obra is renamed
  */
+export const replaceStoredObrasRecursosPreventivos = (value: Record<string, ObraRecursoPreventivo>): void => {
+  obrasRecursosPreventivosCache = value && typeof value === 'object' ? { ...value } : {};
+  void saveSubcontratasPreferences({ obrasRecursosPreventivos: obrasRecursosPreventivosCache }).catch(error =>
+    console.warn('Error reemplazando recursos preventivos en Supabase:', error)
+  );
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: obrasRecursosPreventivosCache }));
+};
+
 export const updateStoredObraNameInRecursos = (oldName: string, newName: string): void => {
-  try {
-    const all = getStoredObrasRecursosPreventivos();
-    if (all[oldName]) {
-      all[newName.trim()] = all[oldName];
-      delete all[oldName];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY, JSON.stringify(all));
-        window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: all }));
-      }
-    }
-  } catch (e) {
-    console.warn('Error updating obra name in recursos:', e);
-  }
+  if (!obrasRecursosPreventivosCache[oldName] || !newName.trim()) return;
+  const next = { ...obrasRecursosPreventivosCache, [newName.trim()]: obrasRecursosPreventivosCache[oldName] };
+  delete next[oldName];
+  obrasRecursosPreventivosCache = next;
+  void saveSubcontratasPreferences({ obrasRecursosPreventivos: next }).catch(error =>
+    console.warn('Error renombrando recurso preventivo en Supabase:', error)
+  );
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('profea_obras_recursos_changed', { detail: next }));
 };
 
 /**
@@ -459,7 +429,7 @@ export const createNewSubcontratista = (
     recursoPreventivo: data?.recursoPreventivo || '',
     numeroTrabajadoresPrevistos: data?.numeroTrabajadoresPrevistos || 1,
     estadoExpediente: 'pendiente',
-    checklist: getStoredChecklistTemplate().map(item => ({ ...item })),
+    checklist: data?.checklist ? data.checklist.map(item => ({ ...item })) : DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item })),
     fechaRegistro: now,
     fechaActualizacion: now,
     notas: data?.notas || ''

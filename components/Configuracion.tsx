@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import { Person, DeletedPerson } from '../types';
 import { compressToGzip, decompressFromGzip, isCompressionSupported } from '../src/lib/compression';
+import { restoreBackupToSupabase } from '../src/services/backupRestoreService';
+import { getDocuments } from '../src/services/databaseService';
+import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { downloadPDF } from '../src/lib/exportUtils';
 import {
   getStoredReporteTecnicoConfig,
@@ -16,6 +19,7 @@ import {
   getStoredObrasRecursosPreventivos,
   saveStoredObraRecursoPreventivo,
   deleteStoredObraRecursoPreventivo,
+  replaceStoredObrasRecursosPreventivos,
   ObraRecursoPreventivo
 } from '../src/lib/subcontratasDefaults';
 
@@ -99,32 +103,44 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper to format a backup object with all local tables and trash
-  const createBackupData = () => {
-    let subcontratasData: any[] = [];
-    try {
-      const raw = localStorage.getItem('profea_subcontratas_v1');
-      if (raw) subcontratasData = JSON.parse(raw);
-    } catch {}
+  // Build a complete backup from Supabase, the application's source of truth.
+  // UI state is deliberately not used for business records so a stale render can never
+  // produce a backup that differs from the database.
+  const createBackupData = async () => {
+    const [dbPeople, dbTrash, citas, subcontratas, reconocimientos, contrataciones, appSettings] = await Promise.all([
+      getDocuments<Person>('trabajadores', { limitCount: 10000 }),
+      getDocuments<DeletedPerson>('trash', { limitCount: 10000 }),
+      getDocuments<any>('citas', { limitCount: 10000 }),
+      getDocuments<any>('subcontratas', { limitCount: 10000 }),
+      getDocuments<any>('reconocimientos', { limitCount: 10000 }),
+      getDocuments<any>('contrataciones', { limitCount: 10000 }),
+      loadAppBusinessSettings(),
+    ]);
 
     return {
       type: "profea_complete_backup",
       system: "Sistema de Gestión PROFEA",
-      version: "2.0.0",
+      version: "3.0.0",
+      storage: "supabase",
       exportDate: new Date().toISOString(),
-      totalRecords: people.length,
-      totalTrashRecords: deletedPeople.length,
-      people: people,
-      deletedPeople: deletedPeople,
+      totalRecords: dbPeople.length,
+      totalTrashRecords: dbTrash.length,
+      people: dbPeople,
+      deletedPeople: dbTrash,
+      citas,
+      subcontratas,
+      reconocimientos,
+      contrataciones,
       config: {
-        obras: savedObras,
-        lugares: savedLugares,
-        sitios: savedSitios,
-        telefonos: savedTelefonos,
-        categorias: savedCategorias,
-        workStartHour,
-        workEndHour,
-        subcontratas: subcontratasData,
+        obras: appSettings.savedObras,
+        lugares: appSettings.savedLugares,
+        sitios: appSettings.savedSitios,
+        telefonos: appSettings.savedTelefonos,
+        categorias: appSettings.savedCategorias,
+        workStartHour: appSettings.workStartHour,
+        workEndHour: appSettings.workEndHour,
+        // Backward compatibility for backups created before v3.
+        subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
         obrasRecursosPreventivos: getStoredObrasRecursosPreventivos()
       }
@@ -136,11 +152,11 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     try {
       if (!isCompressionSupported()) {
         // Fallback to standard JSON if CompressionStream is not available
-        handleDownloadBackupNormal();
+        await handleDownloadBackupNormal();
         return;
       }
 
-      const backupObj = createBackupData();
+      const backupObj = await createBackupData();
       const jsonStr = JSON.stringify(backupObj);
       const blob = await compressToGzip(jsonStr);
 
@@ -164,9 +180,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   };
 
   // 2. Download Standard JSON Backup (Uncompressed fallback/alternative)
-  const handleDownloadBackupNormal = () => {
+  const handleDownloadBackupNormal = async () => {
     try {
-      const backupObj = createBackupData();
+      const backupObj = await createBackupData();
       const jsonStr = JSON.stringify(backupObj, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
 
@@ -219,110 +235,84 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
-  // 4. Confirm and Execute Restore
-  const executeRestore = (mode: 'replace' | 'merge') => {
+  // 4. Confirm and Execute Restore. Supabase is the source of truth:
+  // nothing is applied to React state until the database restore succeeds.
+  const executeRestore = async (mode: 'replace' | 'merge') => {
     if (!loadedBackup) return;
 
-    const backupPeople = loadedBackup.people || [];
-    const backupDeletedPeople = loadedBackup.deletedPeople || [];
+    const backupPeople: Person[] = Array.isArray(loadedBackup.people) ? loadedBackup.people : [];
+    const backupDeletedPeople: DeletedPerson[] = Array.isArray(loadedBackup.deletedPeople) ? loadedBackup.deletedPeople : [];
     const backupConfig = loadedBackup.config || {};
 
-    if (mode === 'replace') {
-      setPeople(backupPeople);
-      setDeletedPeople(backupDeletedPeople);
+    const mergePeopleByDni = (current: Person[], incoming: Person[]) => {
+      const merged = [...current];
+      incoming.forEach(bp => {
+        const dni = String(bp?.dni || '').trim().toLowerCase();
+        const idx = dni ? merged.findIndex(p => String(p?.dni || '').trim().toLowerCase() === dni) : -1;
+        if (idx !== -1) merged[idx] = bp;
+        else merged.push(bp);
+      });
+      return merged;
+    };
 
-      if (backupConfig.obras) setSavedObras(backupConfig.obras);
-      if (backupConfig.lugares) setSavedLugares(backupConfig.lugares);
-      if (backupConfig.sitios) setSavedSitios(backupConfig.sitios);
-      if (backupConfig.telefonos) setSavedTelefonos(backupConfig.telefonos);
-      if (backupConfig.categorias) setSavedCategorias(backupConfig.categorias);
-      if (backupConfig.workStartHour) setWorkStartHour(backupConfig.workStartHour);
-      if (backupConfig.workEndHour) setWorkEndHour(backupConfig.workEndHour);
-      if (backupConfig.subcontratas) {
-        try {
-          localStorage.setItem('profea_subcontratas_v1', JSON.stringify(backupConfig.subcontratas));
-        } catch {}
+    const mergeTrashByDni = (current: DeletedPerson[], incoming: DeletedPerson[]) => {
+      const merged = [...current];
+      incoming.forEach(bdp => {
+        const dni = String(bdp?.person?.dni || '').trim().toLowerCase();
+        const idx = dni ? merged.findIndex(dp => String(dp?.person?.dni || '').trim().toLowerCase() === dni) : -1;
+        if (idx !== -1) merged[idx] = bdp;
+        else merged.push(bdp);
+      });
+      return merged;
+    };
+
+    try {
+      const result = await restoreBackupToSupabase(loadedBackup, mode);
+
+      if (mode === 'replace') {
+        setPeople(backupPeople);
+        setDeletedPeople(backupDeletedPeople);
+      } else {
+        setPeople(prev => mergePeopleByDni(prev, backupPeople));
+        setDeletedPeople(prev => mergeTrashByDni(prev, backupDeletedPeople));
       }
+
+      // Reflect exactly what was persisted in Supabase.
+      setSavedObras(result.settings.savedObras);
+      setSavedLugares(result.settings.savedLugares);
+      setSavedSitios(result.settings.savedSitios);
+      setSavedTelefonos(result.settings.savedTelefonos);
+      setSavedCategorias(result.settings.savedCategorias);
+      setWorkStartHour(result.settings.workStartHour);
+      setWorkEndHour(result.settings.workEndHour);
+
+      // These report-only preferences are still migrated separately; keep compatibility
+      // without using them as business-data storage.
       if (backupConfig.reporteTecnicoConfig) {
         saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
       }
       if (backupConfig.obrasRecursosPreventivos) {
-        try {
-          localStorage.setItem('profea_obras_recursos_preventivos', JSON.stringify(backupConfig.obrasRecursosPreventivos));
-          setObrasRecursos(backupConfig.obrasRecursosPreventivos);
-        } catch {}
+        replaceStoredObrasRecursosPreventivos(backupConfig.obrasRecursosPreventivos);
+        setObrasRecursos(backupConfig.obrasRecursosPreventivos);
       }
 
+      setLoadedBackup(null);
       if (setToast) {
-        setToast({ message: '¡Base de datos y papelera REEMPLAZADAS por completo!', type: 'success' });
-      } else {
-        alert('Copia de seguridad restaurada correctamente (reemplazo completo).');
-      }
-    } else {
-      // Merge mode (no duplicates by DNI)
-      setPeople(prev => {
-        const merged = [...prev];
-        backupPeople.forEach((bp: Person) => {
-          const idx = merged.findIndex(p => p.dni.trim().toLowerCase() === bp.dni.trim().toLowerCase());
-          if (idx !== -1) {
-            merged[idx] = bp;
-          } else {
-            merged.push(bp);
-          }
+        setToast({
+          message: mode === 'replace'
+            ? 'Copia restaurada y persistida en Supabase correctamente.'
+            : 'Copia combinada y persistida en Supabase correctamente.',
+          type: 'success'
         });
-        return merged;
-      });
-
-      setDeletedPeople(prev => {
-        const merged = [...prev];
-        backupDeletedPeople.forEach((bdp: DeletedPerson) => {
-          const idx = merged.findIndex(dp => dp.person.dni.trim().toLowerCase() === bdp.person.dni.trim().toLowerCase());
-          if (idx !== -1) {
-            merged[idx] = bdp;
-          } else {
-            merged.push(bdp);
-          }
-        });
-        return merged;
-      });
-
-      // Merge config lists
-      const mergeList = (prevList: string[], backupList: string[]) => {
-        if (!backupList) return prevList;
-        const combined = [...prevList];
-        backupList.forEach(item => {
-          if (!combined.some(i => i.toLowerCase() === item.toLowerCase())) {
-            combined.push(item);
-          }
-        });
-        return combined.sort((a, b) => a.localeCompare(b));
-      };
-
-      if (backupConfig.obras) setSavedObras(prev => mergeList(prev, backupConfig.obras));
-      if (backupConfig.lugares) setSavedLugares(prev => mergeList(prev, backupConfig.lugares));
-      if (backupConfig.sitios) setSavedSitios(prev => mergeList(prev, backupConfig.sitios));
-      if (backupConfig.telefonos) setSavedTelefonos(prev => mergeList(prev, backupConfig.telefonos));
-      if (backupConfig.categorias) setSavedCategorias(prev => mergeList(prev, backupConfig.categorias));
-      if (backupConfig.reporteTecnicoConfig) {
-        saveStoredReporteTecnicoConfig(backupConfig.reporteTecnicoConfig);
       }
-      if (backupConfig.obrasRecursosPreventivos) {
-        const currentRec = getStoredObrasRecursosPreventivos();
-        const mergedRec = { ...backupConfig.obrasRecursosPreventivos, ...currentRec };
-        try {
-          localStorage.setItem('profea_obras_recursos_preventivos', JSON.stringify(mergedRec));
-          setObrasRecursos(mergedRec);
-        } catch {}
-      }
-
+    } catch (error: any) {
+      console.error('Error restaurando copia en Supabase:', error);
       if (setToast) {
-        setToast({ message: '¡Datos de la copia combinados con éxito sin duplicar!', type: 'success' });
+        setToast({ message: `No se pudo restaurar la copia en la base de datos: ${error?.message || 'error desconocido'}`, type: 'error' });
       } else {
-        alert('Copia de seguridad combinada con éxito.');
+        alert('No se pudo restaurar la copia en la base de datos.');
       }
     }
-
-    setLoadedBackup(null);
   };
 
   const tabs = [

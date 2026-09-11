@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Calendar, Sparkles, Download, Clock, MapPin, Printer, RefreshCw, 
   Trash2, Plus, Info, LayoutGrid, FileText, Check, AlertCircle, ChevronRight,
@@ -9,6 +9,7 @@ import { formatDate, generateMedicalTicketsPDF, TicketData } from '../src/lib/ex
 import { GoogleCalendarModal } from './GoogleCalendarModal';
 import { CalendarEventInput } from '../src/lib/googleCalendar';
 import { ReconocimientosMedicosSection } from './ReconocimientosMedicosSection';
+import { createDocument, deleteDocument, subscribeToDocuments } from '../src/services/databaseService';
 
 interface GestionCitasProps {
   people: Person[];
@@ -23,6 +24,7 @@ interface GestionCitasProps {
 }
 
 interface ScheduledCita {
+  id?: string;
   citaDia: string;
   citaHora: string;
   sitioReconocimiento: string;
@@ -100,24 +102,47 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       const updated = [...savedTelefonos, cleanPhone];
       if (onUpdateSavedTelefonos) {
         onUpdateSavedTelefonos(updated);
-      } else {
-        localStorage.setItem('telefonosGuardados', JSON.stringify(updated));
       }
     }
   };
 
-  // Persist generated anonymous tickets history in localStorage
-  const [latestGeneratedCitas, setLatestGeneratedCitas] = useState<ScheduledCita[]>(() => {
-    const saved = localStorage.getItem('profea_latest_citas');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
+  // Persistencia directa de citaciones en Supabase
+  const [latestGeneratedCitas, setLatestGeneratedCitasState] = useState<ScheduledCita[]>([]);
+  const suppressCitaPersistenceRef = React.useRef(false);
+  const hydratedCitasRef = React.useRef(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToDocuments<ScheduledCita>('citas', items => {
+      suppressCitaPersistenceRef.current = true;
+      setLatestGeneratedCitasState(items);
+      hydratedCitasRef.current = true;
+      queueMicrotask(() => { suppressCitaPersistenceRef.current = false; });
+    }, { includeShared: true }, error => {
+      console.error('Error leyendo citas de Supabase:', error);
+      onToast('No se pudieron cargar las citas desde Supabase.', 'error');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const setLatestGeneratedCitas = useCallback((action: React.SetStateAction<ScheduledCita[]>) => {
+    setLatestGeneratedCitasState(previous => {
+      const next = typeof action === 'function' ? (action as (prev: ScheduledCita[]) => ScheduledCita[])(previous) : action;
+      const withIds = next.map(item => item.id ? item : { ...item, id: crypto.randomUUID() });
+      if (!suppressCitaPersistenceRef.current && hydratedCitasRef.current) {
+        const nextIds = new Set(withIds.map(item => item.id));
+        const removed = previous.filter(item => item.id && !nextIds.has(item.id));
+        void Promise.all([
+          ...withIds.map(item => createDocument('citas', item.id!, item as any)),
+          ...removed.map(item => deleteDocument('citas', item.id!)),
+        ]).catch(error => {
+          console.error('Error guardando citas en Supabase:', error);
+          onToast('No se pudieron guardar las citas en Supabase.', 'error');
+        });
       }
-    }
-    return [];
-  });
+      return withIds;
+    });
+  }, []);
+
 
   // Selected ticket index for active visual A4 mockup preview
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number>(0);
@@ -145,12 +170,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
     setIsCalendarModalOpen(true);
   };
 
-  // Sync latest generated appointments to localStorage
   useEffect(() => {
-    localStorage.setItem('profea_latest_citas', JSON.stringify(latestGeneratedCitas));
-    if (latestGeneratedCitas.length > 0 && selectedPreviewIndex >= latestGeneratedCitas.length) {
-      setSelectedPreviewIndex(0);
-    }
+    if (latestGeneratedCitas.length > 0 && selectedPreviewIndex >= latestGeneratedCitas.length) setSelectedPreviewIndex(0);
   }, [latestGeneratedCitas, selectedPreviewIndex]);
 
   // Auto-detect supervisor when manualObra or manualNumOferta changes

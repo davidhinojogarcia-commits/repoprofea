@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: ['main', 'feat/firebase-multiusuario']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Supabase-only runtime
+        run: |
+          test ! -f src/lib/firebase.ts
+          test ! -f src/services/firestoreService.ts
+          if grep -RniE "src/lib/firebase|services/firestoreService|from ['\"]firebase(/|['\"])|FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)|Object.assign\(globalThis as any|executeDatabaseSync|handleSyncPendingToCloud|currentEffectiveWorkspaceId|getOrCreateUserWorkspace|syncWorkerToWorkspace|syncWorkerToCloud|getOrCreateSyncGroup|fetchGroupData|subscribeToWorkspace" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy Firebase/manual synchronization/workspace compatibility code detected.'
+            exit 1
+          fi
+          if grep -RniE "['\"]workers['\"]" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy workers runtime table reference detected.'
+            exit 1
+          fi
+          if grep -RniE "localStorage\.(getItem|setItem|removeItem)\(['\"](personasPROFEA|personasEliminadasPROFEA|obrasGuardadas|lugaresFormacion|sitiosReconocimiento|telefonosGuardados|categoriasGuardadas|workStartHour|workEndHour|profea_subcontratas_v1|profea_subcontratas_checklist_template|profea_reporte_tecnico_config|profea_obras_recursos_preventivos|pdfCustomConfig)['\"]" App.tsx components src --include='*.ts' --include='*.tsx' 2>/dev/null; then
+            echo 'Business data must not use localStorage.'
+            exit 1
+          fi
+      - name: TypeScript validation
+        run: npm run lint
+      - name: Build application
+        run: npm run build

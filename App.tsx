@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { auth } from './src/lib/supabaseData';
 import { Header } from './components/Header';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
@@ -15,29 +16,23 @@ import { CameraScannerModal } from './components/CameraScannerModal';
 import { GestionCitas } from './components/GestionCitas';
 import { CalendarioIntegrado } from './components/CalendarioIntegrado';
 import { SubcontratasSection } from './components/SubcontratasSection';
+import { AdminPanel } from './components/AdminPanel';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
-import { DatabaseSyncAlert } from './components/DatabaseSyncAlert';
-import { FirebaseSyncModal } from './components/FirebaseSyncModal';
-import { executeDatabaseSync, notifyDatabaseSync } from './src/lib/syncNotifier';
-import {
-  createFirestoreWorker,
-  updateFirestoreWorker,
-  deleteFirestoreWorker,
-  restoreFirestoreWorker,
-  permanentDeleteFirestoreWorker,
-  triggerFirestoreDatabaseSync
-} from './src/lib/firebase';
 import * as pdfjsLib from 'pdfjs-dist';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
+import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
+import { importWorkersAtomic } from './src/services/workerImportService';
+import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
+import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
-import { CheckCircle, AlertTriangle, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Cloud, RefreshCw } from 'lucide-react';
 import { 
   preparePRLExcelData, 
   preparePRLPDFData, 
@@ -57,61 +52,6 @@ import {
   getStoredPdfConfig,
   saveStoredPdfConfig
 } from './src/lib/exportUtils';
-import { 
-  syncWorkerToAccount, 
-  deleteWorkerFromAccount, 
-  syncDeletedWorkerToAccount, 
-  deleteFromAccountTrash, 
-  fetchAccountData, 
-  subscribeToAccountWorkers, 
-  subscribeToAccountTrash,
-  syncAccountSettings,
-  subscribeToAccountSettings,
-  initAuth,
-  googleSignIn,
-  logoutGoogle,
-  registerAccountSession,
-  unregisterAccountSession,
-  subscribeToAccountSessions,
-  DeviceSession,
-  Workspace,
-  WorkspaceMember,
-  getOrCreateUserWorkspace,
-  addMemberToWorkspace,
-  updateMemberRoleInWorkspace,
-  removeMemberFromWorkspace,
-  getWorkspaceByIdOrEmail,
-  findWorkspaceByAccessCode,
-  fetchSharedWorkspacesForEmail,
-  subscribeToWorkspaceMeta,
-  syncWorkerToWorkspace,
-  deleteWorkerFromWorkspace,
-  syncDeletedWorkerToWorkspace,
-  deleteFromWorkspaceTrash,
-  fetchWorkspaceData,
-  subscribeToWorkspaceWorkers,
-  subscribeToWorkspaceTrash,
-  subscribeToWorkspaceSettings,
-  syncWorkspaceSettings,
-  registerWorkspaceSession,
-  unregisterWorkspaceSession,
-  subscribeToWorkspaceSessions,
-  canonicalizeEmailKey,
-  DEFAULT_WORKSPACE_ID,
-  isQuotaExceeded,
-  getOrCreateSyncGroup, 
-  syncWorkerToCloud, 
-  deleteWorkerFromCloud, 
-  syncDeletedWorkerToCloud, 
-  deleteFromCloudTrash, 
-  fetchGroupData, 
-  subscribeToWorkers, 
-  subscribeToTrash,
-  registerSession,
-  unregisterSession,
-  subscribeToSessions,
-  checkGroupExists
-} from './src/lib/firebase';
 import { registerServiceWorker, checkAndTriggerUpcomingAlerts, getNotificationAlertsSummary } from './src/lib/pushNotifications';
 import { 
   loadDriveBackupConfig, 
@@ -141,7 +81,7 @@ const WatermarkLogo = () => (
   </div>
 );
 
-// Guarantee collision-free worker IDs across local state and cloud sync
+// Garantiza IDs numéricos únicos durante la compatibilidad con registros históricos
 const ensureUniquePersonIds = (list: Person[]): Person[] => {
   if (!Array.isArray(list)) return [];
   const seen = new Set<number>();
@@ -178,16 +118,7 @@ function App() {
   });
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
-  const [people, setPeopleRaw] = useState<Person[]>(() => {
-    const saved = localStorage.getItem('personasPROFEA');
-    if (!saved) return [];
-    try {
-      const parsed: Person[] = JSON.parse(saved);
-      return ensureUniquePersonIds(parsed);
-    } catch {
-      return [];
-    }
-  });
+  const [people, setPeopleRaw] = useState<Person[]>([]);
 
   const setPeople = useCallback((action: React.SetStateAction<Person[]>) => {
     setPeopleRaw(prev => {
@@ -287,6 +218,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 3500); return () => window.clearTimeout(timer); }, [toast]);
   const [pendingPdfDni, setPendingPdfDni] = useState<string | null>(null);
   const [viewingWorkerPdf, setViewingWorkerPdf] = useState<string | null>(null);
   const [viewingWorkerName, setViewingWorkerName] = useState<string>('');
@@ -310,88 +242,15 @@ function App() {
     allWorkers: Omit<Person, 'id' | 'fechaRegistro'>[];
   } | null>(null);
 
-  const [groupId, setGroupId] = useState<string>(() => {
-    return localStorage.getItem('personasPROFEA_groupId') || '';
-  });
-
-  const [isSyncing, setIsSyncing] = useState<boolean>(() => {
-    return localStorage.getItem('personasPROFEA_isSyncing') === 'true';
-  });
-
-  const [syncMode, setSyncMode] = useState<'auto' | 'manual'>(() => {
-    return (localStorage.getItem('personasPROFEA_syncMode') as 'auto' | 'manual') || 'auto';
-  });
-
-  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
-
-  const [syncEmail, setSyncEmail] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const urlEmail = params.get('syncEmail');
-      if (urlEmail) {
-        localStorage.setItem('personasPROFEA_syncEmail', urlEmail.trim().toLowerCase());
-        return urlEmail.trim().toLowerCase();
-      }
-    }
-    const saved = localStorage.getItem('personasPROFEA_syncEmail');
-    if (saved) return saved.trim().toLowerCase();
-    return 'davidhinojogarcia@gmail.com';
-  });
-
-  useEffect(() => {
-    if (syncEmail) {
-      localStorage.setItem('personasPROFEA_syncEmail', syncEmail.trim().toLowerCase());
-    }
-  }, [syncEmail]);
-
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(() => {
-    const saved = localStorage.getItem('personasPROFEA_activeWorkspace');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const paramWs = params.get('workspace');
-      if (paramWs) return paramWs;
-    }
-    return localStorage.getItem('personasPROFEA_activeWorkspaceId') || '';
-  });
-
-  const [sharedWorkspaces, setSharedWorkspaces] = useState<Workspace[]>([]);
-
-  const [sessionId, setSessionId] = useState<string>(() => {
-    return localStorage.getItem('personasPROFEA_sessionId') || '';
-  });
-
-  const [sessions, setSessions] = useState<DeviceSession[]>([]);
-
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => {
-    const saved = localStorage.getItem('personasPROFEA_lastSyncTime');
-    return saved ? new Date(saved) : null;
-  });
-  const [isSyncingNow, setIsSyncingNow] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (lastSyncTime) {
-      localStorage.setItem('personasPROFEA_lastSyncTime', lastSyncTime.toISOString());
-    }
-  }, [lastSyncTime]);
-
-  useEffect(() => {
-    if (activeWorkspace) {
-      localStorage.setItem('personasPROFEA_activeWorkspace', JSON.stringify(activeWorkspace));
-    }
-  }, [activeWorkspace]);
-
-  useEffect(() => {
-    if (activeWorkspaceId) {
-      localStorage.setItem('personasPROFEA_activeWorkspaceId', activeWorkspaceId);
-    }
-  }, [activeWorkspaceId]);
-
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const handleGoogleLogin = async () => {
+    setToast({ message: 'La conexión directa con Google Drive está deshabilitada en esta versión.', type: 'error' });
+  };
+  const handleGoogleLogout = async () => {
+    setGoogleUser(null);
+    setGoogleToken(null);
+  };
   const [autoSaveToDrive, setAutoSaveToDrive] = useState<boolean>(() => {
     return localStorage.getItem('personasPROFEA_autoSaveToDrive') === 'true';
   });
@@ -407,65 +266,6 @@ function App() {
   });
 
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
-  const [isFirebaseSyncModalOpen, setIsFirebaseSyncModalOpen] = useState(false);
-  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
-
-  const handlePerformFirebaseSync = async (): Promise<number> => {
-    setIsSyncingFirebase(true);
-    try {
-      const result = await triggerFirestoreDatabaseSync(currentEffectiveWorkspaceId);
-      if (result.workers && result.workers.length > 0) {
-        setPeople(result.workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-      }
-      if (result.trash && result.trash.length > 0) {
-        setDeletedPeople(result.trash.map(t => ({
-          person: { ...t.person, sincronizadoEnNube: true },
-          fechaEliminacion: t.fechaEliminacion
-        })));
-      }
-      if (result.settings?.savedObras && result.settings.savedObras.length > 0) {
-        setSavedObras(prev => Array.from(new Set([...prev, ...result.settings!.savedObras!])).sort((a, b) => a.localeCompare(b)));
-      }
-      setLastSyncTime(new Date());
-      setToast({
-        message: `Se han leído y sincronizado ${result.count} trabajadores desde Firebase Firestore.`,
-        type: 'success'
-      });
-      return result.count;
-    } catch (err: any) {
-      setToast({
-        message: `Error al sincronizar con Firebase Firestore: ${err?.message || 'Error de conexión'}`,
-        type: 'error'
-      });
-      throw err;
-    } finally {
-      setIsSyncingFirebase(false);
-    }
-  };
-
-  const handleForceSaveAllToCloud = async (): Promise<void> => {
-    const currentList = peopleRef.current || [];
-    try {
-      await fetch('/api/database/save-workers-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: currentEffectiveWorkspaceId,
-          workers: currentList
-        })
-      });
-      setToast({
-        message: 'Todos los trabajadores se han consolidado en la base de datos de Firebase Firestore.',
-        type: 'success'
-      });
-    } catch (err: any) {
-      setToast({
-        message: `Error al guardar en la base de datos: ${err?.message || 'Error'}`,
-        type: 'error'
-      });
-      throw err;
-    }
-  };
 
   const notificationAlertsCount = useMemo(() => {
     if (!people || people.length === 0) return 0;
@@ -488,32 +288,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('personasPROFEA_autoSaveToDrive', String(autoSaveToDrive));
   }, [autoSaveToDrive]);
-
-  // Check URL parameters for direct workspace link or PIN code
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const wsParam = params.get('workspace');
-      const codeParam = params.get('code');
-      if (wsParam) {
-        getWorkspaceByIdOrEmail(wsParam).then(ws => {
-          if (ws) {
-            setActiveWorkspace(ws);
-            setActiveWorkspaceId(ws.id);
-            setToast({ message: `Conectado al espacio: ${ws.name}`, type: 'success' });
-          }
-        });
-      } else if (codeParam) {
-        findWorkspaceByAccessCode(codeParam).then(ws => {
-          if (ws) {
-            setActiveWorkspace(ws);
-            setActiveWorkspaceId(ws.id);
-            setToast({ message: `Conectado al espacio: ${ws.name}`, type: 'success' });
-          }
-        });
-      }
-    }
-  }, []);
 
   // Register Service Worker on startup
   useEffect(() => {
@@ -553,393 +327,10 @@ function App() {
     return () => clearInterval(intervalId);
   }, [autoThemeByTime]);
 
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (currentUser, accessToken) => {
-        setGoogleUser(currentUser);
-        setGoogleToken(accessToken);
-        if (currentUser && currentUser.email) {
-          getOrCreateUserWorkspace(currentUser).then(ws => {
-            setActiveWorkspace(ws);
-            setActiveWorkspaceId(ws.id);
-          });
-          fetchSharedWorkspacesForEmail(currentUser.email).then(list => {
-            setSharedWorkspaces(list);
-          });
-        }
-      },
-      () => {
-        setGoogleUser(null);
-        setGoogleToken(null);
-      }
-    );
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, []);
 
-  const handleGoogleLogin = async () => {
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        setGoogleUser(result.user);
-        setGoogleToken(result.accessToken);
-        if (result.user && result.user.email) {
-          const ws = await getOrCreateUserWorkspace(result.user);
-          setActiveWorkspace(ws);
-          setActiveWorkspaceId(ws.id);
-          const list = await fetchSharedWorkspacesForEmail(result.user.email);
-          setSharedWorkspaces(list);
-        }
-        setToast({ message: 'Conectado correctamente con Google y sincronización activada', type: 'success' });
-      }
-    } catch (error: any) {
-      if (
-        error?.code === 'auth/popup-closed-by-user' ||
-        error?.code === 'auth/cancelled-popup-request' ||
-        error?.message?.includes('popup-closed-by-user')
-      ) {
-        return;
-      }
-      console.error('Error Google Sign-in:', error);
-      setToast({ message: 'Error al conectar con Google', type: 'error' });
-    }
-  };
 
-  const handleGoogleLogout = async () => {
-    try {
-      await logoutGoogle();
-      setGoogleUser(null);
-      setGoogleToken(null);
-      setToast({ message: 'Sesión de Google cerrada', type: 'success' });
-    } catch (error) {
-      console.error('Error Google Sign-out:', error);
-    }
-  };
 
-  // Compute effective sync email & workspace ID
-  const effectiveSyncEmail = (
-    typeof googleUser?.email === 'string' ? googleUser.email : (typeof syncEmail === 'string' ? syncEmail : '')
-  ).trim().toLowerCase();
 
-  const currentEffectiveWorkspaceId = (
-    effectiveSyncEmail 
-      ? canonicalizeEmailKey(effectiveSyncEmail) 
-      : (typeof activeWorkspaceId === 'string' && activeWorkspaceId.trim() ? activeWorkspaceId.trim() : DEFAULT_WORKSPACE_ID)
-  );
-
-  const handleUpdateSyncEmail = async (newEmail: string) => {
-    const clean = newEmail.trim().toLowerCase();
-    if (!clean || !clean.includes('@') || !clean.includes('.')) {
-      setToast({ message: 'Por favor, introduce un correo electrónico válido.', type: 'error' });
-      return;
-    }
-    setSyncEmail(clean);
-    localStorage.setItem('personasPROFEA_syncEmail', clean);
-    const targetWsId = canonicalizeEmailKey(clean);
-    setActiveWorkspaceId(targetWsId);
-    localStorage.setItem('personasPROFEA_activeWorkspaceId', targetWsId);
-
-    try {
-      const ws = await getOrCreateUserWorkspace({
-        uid: targetWsId,
-        email: clean,
-        displayName: clean.split('@')[0]
-      });
-      setActiveWorkspace(ws);
-    } catch (e) {
-      console.warn("Could not setup user workspace:", e);
-    }
-
-    setToast({ message: `¡Sincronización vinculada a ${clean}!`, type: 'success' });
-    await handleForceSyncNow(targetWsId);
-  };
-
-  const handleDisconnectSyncEmail = async () => {
-    const prevWsId = currentEffectiveWorkspaceId;
-    setSyncEmail('');
-    localStorage.removeItem('personasPROFEA_syncEmail');
-    setActiveWorkspaceId('');
-    localStorage.removeItem('personasPROFEA_activeWorkspaceId');
-    setActiveWorkspace(null);
-    if (prevWsId && sessionId) {
-      try {
-        await unregisterWorkspaceSession(prevWsId, sessionId);
-      } catch (e) {}
-    }
-    setToast({ message: 'Sincronización desvinculada de este dispositivo.', type: 'success' });
-  };
-
-  const handleForceSyncNow = async (explicitWsId?: unknown) => {
-    const validExplicitId = (typeof explicitWsId === 'string' && explicitWsId.trim()) ? explicitWsId.trim() : '';
-    const targetWsId = validExplicitId || (typeof currentEffectiveWorkspaceId === 'string' ? currentEffectiveWorkspaceId.trim() : '');
-    if (!targetWsId && !googleUser?.uid) {
-      setToast({ message: 'Introduce tu correo electrónico para sincronizar todos tus dispositivos.', type: 'error' });
-      return;
-    }
-    if (isOffline) {
-      setToast({ message: 'Sin conexión a internet para sincronizar.', type: 'error' });
-      return;
-    }
-
-    setIsSyncingNow(true);
-    try {
-      if (targetWsId) {
-        const wsData = await fetchWorkspaceData(targetWsId);
-        const cloudWorkers = wsData.workers || [];
-        const cloudTrash = wsData.trash || [];
-
-        // 1. Upload local workers not in workspace
-        const missingInCloud = people.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
-        if (missingInCloud.length > 0) {
-          try {
-            await fetch('/api/database/save-workers-batch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ workspaceId: targetWsId, workers: missingInCloud })
-            });
-          } catch (e) {
-            console.warn("Could not batch upload to server:", e);
-          }
-
-          if (!isQuotaExceeded()) {
-            for (const p of missingInCloud) {
-              await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-            }
-          }
-        }
-
-        // 2. Merge cloud workers locally
-        setPeople(prev => {
-          const merged = [...prev];
-          cloudWorkers.forEach(cw => {
-            const idx = merged.findIndex(p => p.id === cw.id);
-            if (idx !== -1) {
-              merged[idx] = { ...cw, sincronizadoEnNube: true };
-            } else {
-              merged.push({ ...cw, sincronizadoEnNube: true });
-            }
-          });
-          return merged;
-        });
-
-        // 3. Merge trash
-        setDeletedPeople(prev => {
-          const merged = [...prev];
-          cloudTrash.forEach(ct => {
-            const idx = merged.findIndex(dp => dp.person.id === ct.person.id);
-            if (idx !== -1) {
-              merged[idx] = { ...ct, person: { ...ct.person, sincronizadoEnNube: true } };
-            } else {
-              merged.push({ ...ct, person: { ...ct.person, sincronizadoEnNube: true } });
-            }
-          });
-          return merged;
-        });
-
-        // 4. Subcontratas sync
-        let localSubs: any[] = [];
-        try {
-          const raw = localStorage.getItem('profea_subcontratas_v1');
-          if (raw) localSubs = JSON.parse(raw);
-        } catch (e) {}
-
-        const cloudSubs = wsData.settings?.subcontratas || [];
-        let finalSubs = localSubs;
-        if (cloudSubs.length > 0) {
-          finalSubs = cloudSubs;
-          localStorage.setItem('profea_subcontratas_v1', JSON.stringify(cloudSubs));
-          window.dispatchEvent(new CustomEvent('profea_subcontratas_synced', { detail: cloudSubs }));
-        }
-
-        // 5. Save settings
-        await syncWorkspaceSettings(targetWsId, {
-          savedObras,
-          savedCategorias,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          workStartHour,
-          workEndHour,
-          subcontratas: finalSubs
-        });
-
-        if (wsData.workspace) {
-          setActiveWorkspace(wsData.workspace);
-        }
-      }
-
-      setLastSyncTime(new Date());
-      setToast({ message: '¡Datos sincronizados y actualizados en todos tus dispositivos!', type: 'success' });
-    } catch (err) {
-      console.error('Error during force sync:', err);
-      setToast({ message: 'Error al sincronizar con la nube.', type: 'error' });
-    } finally {
-      setIsSyncingNow(false);
-    }
-  };
-
-  const handleUploadAllLocalToAccount = async () => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId && !googleUser?.uid) {
-      setToast({ message: 'Inicia sesión con tu cuenta de Google para subir todos los datos.', type: 'error' });
-      return;
-    }
-    if (isOffline) {
-      setToast({ message: 'Sin conexión a internet.', type: 'error' });
-      return;
-    }
-
-    setIsSyncingNow(true);
-    try {
-      if (targetWsId) {
-        // 1. Instant server batch save (preserves all data across devices with 0 Firestore writes)
-        try {
-          await fetch('/api/database/save-workers-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId: targetWsId, workers: people })
-          });
-        } catch (e) {
-          console.warn("Could not batch upload to server store:", e);
-        }
-
-        // 2. Sync to Firestore if quota allows
-        if (!isQuotaExceeded()) {
-          for (const p of people) {
-            await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-          }
-          for (const dp of deletedPeople) {
-            await syncDeletedWorkerToWorkspace(targetWsId, {
-              ...dp,
-              person: { ...dp.person, sincronizadoEnNube: true }
-            });
-          }
-        }
-
-        await syncWorkspaceSettings(targetWsId, {
-          savedObras,
-          savedCategorias,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          workStartHour,
-          workEndHour
-        });
-      }
-
-      setPeople(prev => prev.map(p => ({ ...p, sincronizadoEnNube: true })));
-      setLastSyncTime(new Date());
-      setToast({ message: 'Todos los datos locales han sido subidos a tu espacio compartido.', type: 'success' });
-    } catch (err) {
-      console.error('Error uploading local to workspace:', err);
-      setToast({ message: 'Error al subir los datos al espacio.', type: 'error' });
-    } finally {
-      setIsSyncingNow(false);
-    }
-  };
-
-  const handleDownloadAllFromAccount = async () => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId && !googleUser?.uid) {
-      setToast({ message: 'Inicia sesión con tu cuenta de Google para descargar los datos.', type: 'error' });
-      return;
-    }
-    if (isOffline) {
-      setToast({ message: 'Sin conexión a internet.', type: 'error' });
-      return;
-    }
-
-    setIsSyncingNow(true);
-    try {
-      if (targetWsId) {
-        const wsData = await fetchWorkspaceData(targetWsId);
-        if (wsData.workers && wsData.workers.length > 0) {
-          setPeople(wsData.workers.map(w => ({ ...w, sincronizadoEnNube: true })));
-        }
-        if (wsData.trash && wsData.trash.length > 0) {
-          setDeletedPeople(wsData.trash.map(t => ({ ...t, person: { ...t.person, sincronizadoEnNube: true } })));
-        }
-        if (wsData.settings) {
-          if (wsData.settings.savedObras) setSavedObras(wsData.settings.savedObras);
-          if (wsData.settings.savedCategorias) setSavedCategorias(wsData.settings.savedCategorias);
-          if (wsData.settings.savedLugares) setSavedLugares(wsData.settings.savedLugares);
-          if (wsData.settings.savedSitios) setSavedSitios(wsData.settings.savedSitios);
-          if (wsData.settings.savedTelefonos) setSavedTelefonos(wsData.settings.savedTelefonos);
-          if (wsData.settings.workStartHour) setWorkStartHour(wsData.settings.workStartHour);
-          if (wsData.settings.workEndHour) setWorkEndHour(wsData.settings.workEndHour);
-          if (wsData.settings.pdfCustomConfig) saveStoredPdfConfig(wsData.settings.pdfCustomConfig);
-        }
-        if (wsData.workspace) {
-          setActiveWorkspace(wsData.workspace);
-        }
-      }
-      setLastSyncTime(new Date());
-      setToast({ message: 'Datos descargados y actualizados correctamente desde tu espacio compartido.', type: 'success' });
-    } catch (err) {
-      console.error('Error downloading from workspace:', err);
-      setToast({ message: 'Error al descargar los datos desde el espacio.', type: 'error' });
-    } finally {
-      setIsSyncingNow(false);
-    }
-  };
-
-  const handleAddMember = async (email: string, role: 'editor' | 'viewer') => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId) return;
-    await addMemberToWorkspace(targetWsId, email, role);
-    const updated = await getWorkspaceByIdOrEmail(targetWsId);
-    if (updated) setActiveWorkspace(updated);
-  };
-
-  const handleUpdateMemberRole = async (email: string, newRole: 'editor' | 'viewer') => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId) return;
-    await updateMemberRoleInWorkspace(targetWsId, email, newRole);
-    const updated = await getWorkspaceByIdOrEmail(targetWsId);
-    if (updated) setActiveWorkspace(updated);
-  };
-
-  const handleRemoveMember = async (email: string) => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (!targetWsId) return;
-    await removeMemberFromWorkspace(targetWsId, email);
-    const updated = await getWorkspaceByIdOrEmail(targetWsId);
-    if (updated) setActiveWorkspace(updated);
-  };
-
-  const handleSelectWorkspace = async (workspaceId: string) => {
-    if (!workspaceId) return;
-    setActiveWorkspaceId(workspaceId);
-    const ws = await getWorkspaceByIdOrEmail(workspaceId);
-    if (ws) {
-      setActiveWorkspace(ws);
-      setToast({ message: `Cambiado al espacio: ${ws.name}`, type: 'success' });
-    }
-  };
-
-  const handleJoinWorkspaceByCodeOrEmail = async (codeOrEmail: string): Promise<boolean> => {
-    let ws: Workspace | null = null;
-    if (codeOrEmail.includes('@')) {
-      ws = await getWorkspaceByIdOrEmail(codeOrEmail);
-    } else {
-      ws = await findWorkspaceByAccessCode(codeOrEmail);
-      if (!ws) {
-        ws = await getWorkspaceByIdOrEmail(codeOrEmail);
-      }
-    }
-
-    if (ws) {
-      setActiveWorkspace(ws);
-      setActiveWorkspaceId(ws.id);
-      localStorage.setItem('personasPROFEA_activeWorkspaceId', ws.id);
-      localStorage.setItem('personasPROFEA_activeWorkspace', JSON.stringify(ws));
-      return true;
-    }
-    return false;
-  };
 
   const uploadToGoogleDrive = async (blob: Blob, filename: string, showToastOnSuccess = true) => {
     if (!googleToken || !autoSaveToDrive) {
@@ -1007,110 +398,8 @@ function App() {
   };
 
 
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOffline(false);
-      setToast({ message: 'Conexión recuperada. Sincronización disponible.', type: 'success' });
-    };
-    const handleOffline = () => {
-      setIsOffline(true);
-      setToast({ message: 'Sin conexión a internet. Los cambios se guardarán localmente.', type: 'error' });
-    };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
-  const handleSyncPendingToCloud = async () => {
-    if (!isSyncing || !groupId.trim() || isOffline) return;
-    
-    // Find who is not synced
-    const unsyncedList = people.filter(p => !p.sincronizadoEnNube);
-    if (unsyncedList.length === 0) return;
-
-    // Update state to marked as synced
-    setPeople(prev => prev.map(p => {
-      if (unsyncedList.some(up => up.id === p.id)) {
-        return { ...p, sincronizadoEnNube: true };
-      }
-      return p;
-    }));
-
-    // Upload them
-    for (const p of unsyncedList) {
-      await syncWorkerToCloud(groupId, { ...p, sincronizadoEnNube: true });
-    }
-  };
-
-  // Auto sync on connection recovery
-  useEffect(() => {
-    if (!isOffline && isSyncing && syncMode === 'auto' && groupId.trim()) {
-      const unsyncedCount = people.filter(p => !p.sincronizadoEnNube).length;
-      if (unsyncedCount > 0) {
-        setToast({ message: `Conexión recuperada. Sincronizando ${unsyncedCount} registros pendientes automáticamente...`, type: 'success' });
-        handleSyncPendingToCloud().catch(err => {
-          console.error("Error doing auto-recovery sync:", err);
-        });
-      }
-    }
-  }, [isOffline]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_groupId', groupId);
-    if (groupId.trim()) {
-      // Provision/get the group when connected
-      getOrCreateSyncGroup(groupId).catch(err => console.error("Error creating group:", err));
-    }
-  }, [groupId]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_isSyncing', String(isSyncing));
-  }, [isSyncing]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_syncMode', syncMode);
-  }, [syncMode]);
-
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA_sessionId', sessionId);
-  }, [sessionId]);
-
-  // Handle URL automatic join via QR Code or link scanning
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const syncParam = params.get('sync');
-    const viewDni = params.get('view-worker-pdf');
-
-    if (syncParam && syncParam.trim()) {
-      const cleanParam = syncParam.trim().toUpperCase();
-      setGroupId(cleanParam);
-      setIsSyncing(true);
-      setToast({ message: `¡Conectado al grupo de sincronización '${cleanParam}' mediante enlace!`, type: 'success' });
-    }
-
-    if (viewDni && viewDni.trim()) {
-      const cleanDni = viewDni.trim().toUpperCase().replace(/[\s-]/g, '');
-      setPendingPdfDni(cleanDni);
-    }
-
-    // Clean up parameters safely without deleting view-worker-pdf until it's loaded!
-    const newParams = new URLSearchParams(window.location.search);
-    let updated = false;
-    if (newParams.has('sync')) {
-      newParams.delete('sync');
-      updated = true;
-    }
-    if (updated) {
-      const searchStr = newParams.toString();
-      const newUrl = window.location.origin + window.location.pathname + (searchStr ? `?${searchStr}` : '');
-      window.history.replaceState({}, document.title, newUrl);
-    }
-  }, []);
-
-  // Effect to generate and render the worker PDF once the data is fully populated/synced
+  // Effect to generate the worker PDF once the data is populated
   useEffect(() => {
     if (!pendingPdfDni) return;
 
@@ -1136,329 +425,30 @@ function App() {
     }
   }, [people, pendingPdfDni]);
 
-  // Register device session and subscribe to active sessions across devices
+  // Supabase es la única fuente de verdad de trabajadores.
   useEffect(() => {
-    if (isOffline) {
-      setSessions([]);
-      return;
-    }
+    if (!auth.currentUser?.uid) return;
+    const unsubscribe = subscribeToDocuments<Person>('trabajadores', workers => {
+      setPeople(workers.map(worker => ({ ...worker, sincronizadoEnNube: true })));
+    }, { includeShared: true }, error => {
+      console.error('Error leyendo trabajadores de Supabase:', error);
+      setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
+    });
+    return () => unsubscribe();
+  }, []);
 
-    let activeSessionId = sessionId;
-    let isSubscribed = true;
-    let unsubSessions: (() => void) | null = null;
-    let unsubWorkers: (() => void) | null = null;
-    let unsubTrash: (() => void) | null = null;
-    let unsubSettings: (() => void) | null = null;
-    let unsubMeta: (() => void) | null = null;
+  // La papelera también se lee automáticamente desde Supabase.
+  useEffect(() => {
+    if (!auth.currentUser?.uid) return;
+    const unsubscribe = subscribeToDocuments<DeletedPerson>('trash', items => {
+      setDeletedPeople(items);
+    }, { includeShared: true }, error => {
+      console.error('Error leyendo la papelera de Supabase:', error);
+      setToast({ message: 'Error al leer la papelera desde Supabase.', type: 'error' });
+    });
+    return () => unsubscribe();
+  }, []);
 
-    const setupSync = async () => {
-      const userEmail = googleUser?.email || 'Usuario PROFEA';
-      const targetWsId = currentEffectiveWorkspaceId;
-
-      // Priority 1: Modern Workspace & Multidevice Sync
-      if (targetWsId) {
-        try {
-          const newSessionId = await registerWorkspaceSession(targetWsId, userEmail, activeSessionId);
-          if (isSubscribed && newSessionId) {
-            setSessionId(newSessionId);
-            activeSessionId = newSessionId;
-          }
-        } catch (err) {
-          console.error("Error registering workspace session:", err);
-        }
-
-        if (isSubscribed) {
-          // Perform automatic initial two-way synchronization on startup/connect
-          fetchWorkspaceData(targetWsId).then(async (wsData) => {
-            if (!isSubscribed) return;
-            const cloudWorkers = wsData.workers || [];
-            const cloudTrash = wsData.trash || [];
-
-            if (wsData.workspace) {
-              setActiveWorkspace(wsData.workspace);
-            }
-
-            // 1. If we have local workers not yet in workspace, sync them in a single batch to server store
-            const currentPeople = peopleRef.current || [];
-            const missingInCloud = currentPeople.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
-            if (missingInCloud.length > 0) {
-              try {
-                await fetch('/api/database/save-workers-batch', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ workspaceId: targetWsId, workers: missingInCloud })
-                });
-              } catch (e) {
-                console.warn("Could not batch save missing workers on startup:", e);
-              }
-
-              if (!isQuotaExceeded()) {
-                // If quota is healthy, sync up to 5 workers gradually to Firestore
-                for (const p of missingInCloud.slice(0, 5)) {
-                  await syncWorkerToWorkspace(targetWsId, { ...p, sincronizadoEnNube: true });
-                }
-              }
-            }
-
-            // 2. If cloud has workers, merge them into local state
-            if (cloudWorkers.length > 0) {
-              setPeople(prev => {
-                const localOnly = prev.filter(p => !cloudWorkers.some(cw => cw.id === p.id));
-                const cloudMapped = cloudWorkers.map(cw => ({ ...cw, sincronizadoEnNube: true }));
-                return [...localOnly, ...cloudMapped];
-              });
-            }
-
-            // 3. Merge trash if cloud has trash
-            if (cloudTrash.length > 0) {
-              setDeletedPeople(prev => {
-                const localOnly = prev.filter(dp => !cloudTrash.some(ct => ct.person.id === dp.person.id));
-                const cloudMapped = cloudTrash.map(ct => ({
-                  person: { ...ct.person, sincronizadoEnNube: true },
-                  fechaEliminacion: ct.fechaEliminacion
-                }));
-                return [...localOnly, ...cloudMapped];
-              });
-            }
-
-            // 4. Merge settings
-            if (wsData.settings) {
-              if (wsData.settings.savedObras && wsData.settings.savedObras.length > 0) {
-                setSavedObras(prev => {
-                  const combined = Array.from(new Set([...prev, ...(wsData.settings?.savedObras || [])]));
-                  return combined.sort((a, b) => a.localeCompare(b));
-                });
-              }
-              if (wsData.settings.savedCategorias && wsData.settings.savedCategorias.length > 0) {
-                setSavedCategorias(prev => {
-                  const combined = Array.from(new Set([...prev, ...(wsData.settings?.savedCategorias || [])]));
-                  return combined;
-                });
-              }
-              if (wsData.settings.savedLugares && wsData.settings.savedLugares.length > 0) {
-                setSavedLugares(prev => Array.from(new Set([...prev, ...(wsData.settings?.savedLugares || [])])));
-              }
-              if (wsData.settings.savedSitios && wsData.settings.savedSitios.length > 0) {
-                setSavedSitios(prev => Array.from(new Set([...prev, ...(wsData.settings?.savedSitios || [])])));
-              }
-              if (wsData.settings.savedTelefonos && wsData.settings.savedTelefonos.length > 0) {
-                setSavedTelefonos(prev => Array.from(new Set([...prev, ...(wsData.settings?.savedTelefonos || [])])));
-              }
-              if (wsData.settings.workStartHour) setWorkStartHour(wsData.settings.workStartHour);
-              if (wsData.settings.workEndHour) setWorkEndHour(wsData.settings.workEndHour);
-              if (wsData.settings.pdfCustomConfig) saveStoredPdfConfig(wsData.settings.pdfCustomConfig);
-              if (wsData.settings.subcontratas && Array.isArray(wsData.settings.subcontratas) && wsData.settings.subcontratas.length > 0) {
-                try {
-                  localStorage.setItem('profea_subcontratas_v1', JSON.stringify(wsData.settings.subcontratas));
-                  window.dispatchEvent(new CustomEvent('profea_subcontratas_synced', { detail: wsData.settings.subcontratas }));
-                } catch (e) {}
-              } else {
-                try {
-                  const raw = localStorage.getItem('profea_subcontratas_v1');
-                  if (raw) {
-                    const localSubs = JSON.parse(raw);
-                    if (Array.isArray(localSubs) && localSubs.length > 0) {
-                      syncWorkspaceSettings(targetWsId, {
-                        ...(wsData.settings || {}),
-                        subcontratas: localSubs
-                      }).catch(e => console.warn('Error uploading initial subcontratas:', e));
-                    }
-                  }
-                } catch (e) {}
-              }
-            }
-            setLastSyncTime(new Date());
-          }).catch(err => {
-            console.warn("Initial workspace sync error:", err);
-          });
-
-          unsubSessions = subscribeToWorkspaceSessions(targetWsId, (activeSessions) => {
-            if (isSubscribed) {
-              setSessions(activeSessions);
-            }
-          });
-
-          unsubWorkers = subscribeToWorkspaceWorkers(targetWsId, (cloudWorkers) => {
-            if (!isSubscribed) return;
-            setPeople(prev => {
-              const localOnly = prev.filter(p => !p.sincronizadoEnNube);
-              const cloudMerged = cloudWorkers.map(cw => ({
-                ...cw,
-                sincronizadoEnNube: true
-              }));
-
-              const combined = [...localOnly];
-              cloudMerged.forEach(cw => {
-                const idx = combined.findIndex(p => p.id === cw.id);
-                if (idx !== -1) {
-                  combined[idx] = cw;
-                } else {
-                  combined.push(cw);
-                }
-              });
-
-              const filtered = combined.filter(p => {
-                if (!p.sincronizadoEnNube) return true;
-                return cloudWorkers.some(cw => cw.id === p.id);
-              });
-              return ensureUniquePersonIds(filtered);
-            });
-            setLastSyncTime(new Date());
-          });
-
-          unsubTrash = subscribeToWorkspaceTrash(targetWsId, (cloudTrash) => {
-            if (!isSubscribed) return;
-            setDeletedPeople(prev => {
-              const localOnly = prev.filter(dp => !dp.person.sincronizadoEnNube);
-              const cloudTrashMerged = cloudTrash.map(ct => ({
-                person: { ...ct.person, sincronizadoEnNube: true },
-                fechaEliminacion: ct.fechaEliminacion
-              }));
-
-              const combined = [...localOnly];
-              cloudTrashMerged.forEach(ct => {
-                const idx = combined.findIndex(dp => dp.person.id === ct.person.id);
-                if (idx !== -1) {
-                  combined[idx] = ct;
-                } else {
-                  combined.push(ct);
-                }
-              });
-
-              return combined.filter(dp => {
-                if (!dp.person.sincronizadoEnNube) return true;
-                return cloudTrash.some(ct => ct.person.id === dp.person.id);
-              });
-            });
-            setLastSyncTime(new Date());
-          });
-
-          unsubSettings = subscribeToWorkspaceSettings(targetWsId, (cloudSettings) => {
-            if (!isSubscribed || !cloudSettings) return;
-            if (cloudSettings.savedObras && cloudSettings.savedObras.length > 0) setSavedObras(cloudSettings.savedObras);
-            if (cloudSettings.savedCategorias && cloudSettings.savedCategorias.length > 0) setSavedCategorias(cloudSettings.savedCategorias);
-            if (cloudSettings.savedLugares && cloudSettings.savedLugares.length > 0) setSavedLugares(cloudSettings.savedLugares);
-            if (cloudSettings.savedSitios && cloudSettings.savedSitios.length > 0) setSavedSitios(cloudSettings.savedSitios);
-            if (cloudSettings.savedTelefonos && cloudSettings.savedTelefonos.length > 0) setSavedTelefonos(cloudSettings.savedTelefonos);
-            if (cloudSettings.workStartHour) setWorkStartHour(cloudSettings.workStartHour);
-            if (cloudSettings.workEndHour) setWorkEndHour(cloudSettings.workEndHour);
-            if (cloudSettings.pdfCustomConfig) saveStoredPdfConfig(cloudSettings.pdfCustomConfig);
-            if (cloudSettings.subcontratas && Array.isArray(cloudSettings.subcontratas) && cloudSettings.subcontratas.length > 0) {
-              try {
-                localStorage.setItem('profea_subcontratas_v1', JSON.stringify(cloudSettings.subcontratas));
-                window.dispatchEvent(new CustomEvent('profea_subcontratas_synced', { detail: cloudSettings.subcontratas }));
-              } catch (e) {}
-            }
-          });
-
-          unsubMeta = subscribeToWorkspaceMeta(targetWsId, (meta) => {
-            if (isSubscribed && meta) {
-              setActiveWorkspace(meta);
-            }
-          });
-        }
-      } else if (isSyncing && groupId.trim()) {
-        // Fallback to legacy sync group if user used an invite code
-        try {
-          const newSessionId = await registerSession(groupId, userEmail, activeSessionId);
-          if (isSubscribed && newSessionId) {
-            setSessionId(newSessionId);
-            activeSessionId = newSessionId;
-          }
-        } catch (err) {
-          console.error("Error registering session:", err);
-        }
-
-        if (isSubscribed) {
-          unsubSessions = subscribeToSessions(groupId, (activeSessions) => {
-            if (isSubscribed) {
-              setSessions(activeSessions);
-            }
-          });
-
-          unsubWorkers = subscribeToWorkers(groupId, (cloudWorkers) => {
-            if (!isSubscribed) return;
-            setPeople(prev => {
-              const localOnly = prev.filter(p => !p.sincronizadoEnNube);
-              const cloudMerged = cloudWorkers.map(cw => ({
-                ...cw,
-                sincronizadoEnNube: true
-              }));
-              const combined = [...localOnly];
-              cloudMerged.forEach(cw => {
-                const idx = combined.findIndex(p => p.id === cw.id);
-                if (idx !== -1) combined[idx] = cw;
-                else combined.push(cw);
-              });
-              return combined.filter(p => {
-                if (!p.sincronizadoEnNube) return true;
-                return cloudWorkers.some(cw => cw.id === p.id);
-              });
-            });
-            setLastSyncTime(new Date());
-          });
-
-          unsubTrash = subscribeToTrash(groupId, (cloudTrash) => {
-            if (!isSubscribed) return;
-            setDeletedPeople(prev => {
-              const localOnly = prev.filter(dp => !dp.person.sincronizadoEnNube);
-              const cloudTrashMerged = cloudTrash.map(ct => ({
-                person: { ...ct.person, sincronizadoEnNube: true },
-                fechaEliminacion: ct.fechaEliminacion
-              }));
-              const combined = [...localOnly];
-              cloudTrashMerged.forEach(ct => {
-                const idx = combined.findIndex(dp => dp.person.id === ct.person.id);
-                if (idx !== -1) combined[idx] = ct;
-                else combined.push(ct);
-              });
-              return combined.filter(dp => {
-                if (!dp.person.sincronizadoEnNube) return true;
-                return cloudTrash.some(ct => ct.person.id === dp.person.id);
-              });
-            });
-            setLastSyncTime(new Date());
-          });
-        }
-      }
-    };
-
-    setupSync();
-
-    return () => {
-      isSubscribed = false;
-      if (unsubSessions) unsubSessions();
-      if (unsubWorkers) unsubWorkers();
-      if (unsubTrash) unsubTrash();
-      if (unsubSettings) unsubSettings();
-      if (unsubMeta) unsubMeta();
-    };
-  }, [currentEffectiveWorkspaceId, isSyncing, groupId, googleUser, isOffline]);
-
-  const handleDisconnectSession = async () => {
-    const targetWsId = currentEffectiveWorkspaceId;
-    if (targetWsId && sessionId) {
-      try {
-        await unregisterWorkspaceSession(targetWsId, sessionId);
-      } catch (e) {
-        console.error("Error unregistering workspace session:", e);
-      }
-    } else if (googleUser?.uid && sessionId) {
-      try {
-        await unregisterAccountSession(googleUser.uid, sessionId);
-      } catch (e) {
-        console.error("Error unregistering account session:", e);
-      }
-    } else if (groupId.trim() && sessionId) {
-      try {
-        await unregisterSession(groupId, sessionId);
-      } catch (e) {
-        console.error("Error unregistering session:", e);
-      }
-    }
-    setSessionId('');
-    localStorage.removeItem('personasPROFEA_sessionId');
-  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedObraFilter, setSelectedObraFilter] = useState<string[]>(() => {
@@ -1478,17 +468,14 @@ function App() {
     }
   });
 
-  const [deletedPeople, setDeletedPeople] = useState<DeletedPerson[]>(() => {
-    const saved = localStorage.getItem('personasEliminadasPROFEA');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [deletedPeople, setDeletedPeople] = useState<DeletedPerson[]>([]);
 
   const visiblePeople = people;
   const visibleDeletedPeople = deletedPeople;
 
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [bulkEditingPeople, setBulkEditingPeople] = useState<Person[] | null>(null);
-  const [savedObras, setSavedObras] = useState<string[]>(() => JSON.parse(localStorage.getItem('obrasGuardadas') || '[]'));
+  const [savedObras, setSavedObras] = useState<string[]>([]);
   
   // Estados para filtros de resumen/estadísticas
   const [statsFilterMode, setStatsFilterMode] = useState<'origen' | 'fechas' | 'mes_actual' | 'ano_actual'>('origen');
@@ -1497,16 +484,64 @@ function App() {
   const [statsObraFilter, setStatsObraFilter] = useState<string[]>(['Todas']);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
-  const [savedLugares, setSavedLugares] = useState<string[]>(() => JSON.parse(localStorage.getItem('lugaresFormacion') || '[]'));
-  const [savedSitios, setSavedSitios] = useState<string[]>(() => JSON.parse(localStorage.getItem('sitiosReconocimiento') || '[]'));
-  const [savedTelefonos, setSavedTelefonos] = useState<string[]>(() => JSON.parse(localStorage.getItem('telefonosGuardados') || '[]'));
-  const [savedCategorias, setSavedCategorias] = useState<string[]>(() => {
-    const saved = localStorage.getItem('categoriasGuardadas');
-    return saved ? JSON.parse(saved) : ['Peón', 'Oficial de 1ª', 'Encargado'];
-  });
+  const [savedLugares, setSavedLugares] = useState<string[]>([]);
+  const [savedSitios, setSavedSitios] = useState<string[]>([]);
+  const [savedTelefonos, setSavedTelefonos] = useState<string[]>([]);
+  const [savedCategorias, setSavedCategorias] = useState<string[]>(['Peón', 'Oficial de 1ª', 'Encargado']);
 
-  const [workStartHour, setWorkStartHour] = useState<string>(() => localStorage.getItem('workStartHour') || '08:00');
-  const [workEndHour, setWorkEndHour] = useState<string>(() => localStorage.getItem('workEndHour') || '15:00');
+  const [workStartHour, setWorkStartHour] = useState<string>('08:00');
+  const [workEndHour, setWorkEndHour] = useState<string>('15:00');
+
+  const businessSettingsHydratedRef = useRef(false);
+  const businessSettingsSaveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAppBusinessSettings().then(settings => {
+      if (cancelled) return;
+      setSavedObras(settings.savedObras);
+      setSavedLugares(settings.savedLugares);
+      setSavedSitios(settings.savedSitios);
+      setSavedTelefonos(settings.savedTelefonos);
+      setSavedCategorias(settings.savedCategorias);
+      setWorkStartHour(settings.workStartHour);
+      setWorkEndHour(settings.workEndHour);
+      businessSettingsHydratedRef.current = true;
+      clearLegacyBusinessSettings();
+    }).catch(error => {
+      console.error('Error cargando configuración empresarial desde Supabase:', error);
+      setToast({ message: 'No se pudo cargar la configuración desde Supabase.', type: 'error' });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!businessSettingsHydratedRef.current) return;
+    if (businessSettingsSaveTimerRef.current) window.clearTimeout(businessSettingsSaveTimerRef.current);
+    businessSettingsSaveTimerRef.current = window.setTimeout(() => {
+      void saveAppBusinessSettings({
+        savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias,
+        workStartHour, workEndHour,
+      }).catch(error => {
+        console.error('Error guardando configuración empresarial en Supabase:', error);
+        setToast({ message: 'No se pudo guardar la configuración en Supabase.', type: 'error' });
+      });
+    }, 250);
+    return () => {
+      if (businessSettingsSaveTimerRef.current) window.clearTimeout(businessSettingsSaveTimerRef.current);
+    };
+  }, [savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
+
+  useEffect(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const expiredIds = deletedPeople
+      .filter(item => new Date(item.fechaEliminacion).getTime() < cutoff)
+      .map(item => item.person.id);
+    if (!expiredIds.length) return;
+    void Promise.all(expiredIds.map(id => deleteDocument('trash', id))).catch(error => {
+      console.error('Error purgando papelera caducada en Supabase:', error);
+    });
+  }, [deletedPeople]);
 
   /**
    * Ejecuta una copia de seguridad íntegra de todos los datos a la cuenta de Google Drive configurada
@@ -1539,7 +574,7 @@ function App() {
       isAutoBackupRunningRef.current = true;
       setIsBackingUpToDrive(true);
 
-      const backupData = buildCompleteSystemBackup({
+      const backupData = await buildCompleteSystemBackup({
         people,
         deletedPeople,
         savedObras,
@@ -1675,74 +710,7 @@ function App() {
     workEndHour
   ]);
 
-  // Auto-sync catalogs and settings to user workspace in Firestore
-  useEffect(() => {
-    const targetId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (!targetId || isOffline) return;
-    const timer = setTimeout(() => {
-      let subcontratasData: any[] = [];
-      try {
-        const raw = localStorage.getItem('profea_subcontratas_v1');
-        if (raw) subcontratasData = JSON.parse(raw);
-      } catch (e) {}
 
-      executeDatabaseSync('Configuraciones y Obras', async () => {
-        await syncWorkspaceSettings(targetId, {
-          savedObras,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          savedCategorias,
-          workStartHour,
-          workEndHour,
-          subcontratas: subcontratasData
-        });
-        if (googleUser?.uid) {
-          await syncAccountSettings(googleUser.uid, {
-            savedObras,
-            savedLugares,
-            savedSitios,
-            savedTelefonos,
-            savedCategorias,
-            workStartHour,
-            workEndHour,
-            subcontratas: subcontratasData
-          });
-        }
-      }, {
-        detail: 'Catálogos y configuración actualizados en Firestore.'
-      }).catch(err => console.warn('Error auto-syncing settings to Firestore:', err));
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [currentEffectiveWorkspaceId, googleUser?.uid, isOffline, savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
-
-  // Real-time listener for local subcontratas changes to sync to workspace
-  useEffect(() => {
-    const handleSubChange = (e: any) => {
-      const targetId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-      if (!targetId || isOffline) return;
-      const subs = e.detail;
-      
-      executeDatabaseSync('Subcontratas y Checklist CAE', async () => {
-        await syncWorkspaceSettings(targetId, {
-          savedObras,
-          savedLugares,
-          savedSitios,
-          savedTelefonos,
-          savedCategorias,
-          workStartHour,
-          workEndHour,
-          subcontratas: subs
-        });
-      }, {
-        detail: 'Documentación CAE y subcontratas sincronizadas con éxito.'
-      }).catch(err => {
-        console.warn('Error auto-syncing subcontratas:', err);
-      });
-    };
-    window.addEventListener('profea_subcontratas_changed', handleSubChange);
-    return () => window.removeEventListener('profea_subcontratas_changed', handleSubChange);
-  }, [currentEffectiveWorkspaceId, isOffline, savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias, workStartHour, workEndHour]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -1765,40 +733,9 @@ function App() {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  useEffect(() => {
-    localStorage.setItem('personasPROFEA', JSON.stringify(people));
-  }, [people]);
 
-  useEffect(() => {
-    localStorage.setItem('personasEliminadasPROFEA', JSON.stringify(deletedPeople));
-  }, [deletedPeople]);
 
-  // Limpieza automática de registros de papelera que lleven más de 30 días
-  useEffect(() => {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    setDeletedPeople(prev => {
-      const active = prev.filter(p => new Date(p.fechaEliminacion) >= thirtyDaysAgo);
-      if (active.length !== prev.length) {
-        return active;
-      }
-      return prev;
-    });
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('obrasGuardadas', JSON.stringify(savedObras));
-    localStorage.setItem('lugaresFormacion', JSON.stringify(savedLugares));
-    localStorage.setItem('sitiosReconocimiento', JSON.stringify(savedSitios));
-    localStorage.setItem('telefonosGuardados', JSON.stringify(savedTelefonos));
-    localStorage.setItem('categoriasGuardadas', JSON.stringify(savedCategorias));
-  }, [savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias]);
-
-  useEffect(() => {
-    localStorage.setItem('workStartHour', workStartHour);
-    localStorage.setItem('workEndHour', workEndHour);
-  }, [workStartHour, workEndHour]);
 
   useEffect(() => {
     localStorage.setItem('selectedObraFilter', JSON.stringify(selectedObraFilter));
@@ -1859,9 +796,7 @@ function App() {
     }
   };
 
-  const handleRegister = (personData: Omit<Person, 'id' | 'fechaRegistro'>) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid) && syncMode === 'auto' && !isOffline;
-    
+  const handleRegister = async (personData: Omit<Person, 'id' | 'fechaRegistro'>) => {
     // Si la persona ya estuvo registrada anteriormente sin formación, se actualiza a 'Sí'
     const cleanDni = personData.dni ? personData.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
     const cleanName = personData.apellidosNombre ? personData.apellidosNombre.trim().toLowerCase() : '';
@@ -1873,46 +808,30 @@ function App() {
     });
 
     const finalPersonData = hadPreviousNoFormacion ? { ...personData, formacion: 'Sí' } : personData;
-
     const newPerson: Person = {
       ...finalPersonData,
       id: Date.now() + Math.floor(Math.random() * 100000) + 1,
       fechaRegistro: new Date().toISOString(),
-      sincronizadoEnNube: isAutoSync
+      sincronizadoEnNube: true
     };
+
+    try {
+      await createDocument('trabajadores', newPerson.id, newPerson as any);
+    } catch (error) {
+      console.error('Error guardando trabajador en Supabase:', error);
+      setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
+      return;
+    }
+
     setPeopleWithHistory(prev => [...prev, newPerson]);
     updateAutocompleteLists(finalPersonData);
     setToast({ message: 'Registro guardado correctamente', type: 'success' });
-
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync(`Alta: ${newPerson.apellidosNombre}`, async () => {
-        await syncWorkerToWorkspace(targetWsId, newPerson);
-        if (googleUser?.uid) {
-          await syncWorkerToAccount(googleUser.uid, newPerson);
-        }
-      }, {
-        detail: `${newPerson.apellidosNombre} guardado en Firebase Firestore.`
-      }).catch(err => {
-        console.error("Error syncing new worker to workspace:", err);
-      });
-    } else if (googleUser?.uid && !isOffline) {
-      syncWorkerToAccount(googleUser.uid, newPerson).catch(err => {
-        console.error("Error syncing new worker to user account:", err);
-      });
-    } else if (isAutoSync && groupId.trim()) {
-      syncWorkerToCloud(groupId, newPerson).catch(err => {
-        console.error("Error syncing new worker to cloud:", err);
-        setPeople(prev => prev.map(p => p.id === newPerson.id ? { ...p, sincronizadoEnNube: false } : p));
-      });
-    }
   };
 
-  const commitAddMultipleWorkers = (
+  const commitAddMultipleWorkers = async (
     workersToAdd: Omit<Person, 'id' | 'fechaRegistro'>[],
     skippedCount: number = 0
   ) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid || !!currentEffectiveWorkspaceId) && syncMode === 'auto' && !isOffline;
     const baseId = Date.now();
     const formattedWorkers: Person[] = workersToAdd.map((w, index) => {
       const cleanDni = w.dni ? w.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
@@ -1930,11 +849,19 @@ function App() {
         ...updatedW,
         id: baseId + index * 1000 + Math.floor(Math.random() * 999) + 1,
         fechaRegistro: new Date().toISOString(),
-        sincronizadoEnNube: isAutoSync
+        sincronizadoEnNube: true
       };
       updateAutocompleteLists(person);
       return person;
     });
+
+    try {
+      await importWorkersAtomic(formattedWorkers);
+    } catch (error) {
+      console.error('Error persistiendo trabajadores importados en Supabase:', error);
+      setToast({ message: 'La importación no se ha guardado en la base de datos. No se han aplicado cambios.', type: 'error' });
+      return;
+    }
 
     setPeopleWithHistory(prev => [...prev, ...formattedWorkers]);
 
@@ -1947,35 +874,10 @@ function App() {
       setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores correctamente`, type: 'success' });
     }
 
-    const targetImportWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetImportWsId && !isOffline) {
-      executeDatabaseSync(`Importación de ${formattedWorkers.length} trabajadores`, async () => {
-        for (const newPerson of formattedWorkers) {
-          await syncWorkerToWorkspace(targetImportWsId, newPerson);
-          if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, newPerson);
-        }
-      }, {
-        detail: `${formattedWorkers.length} trabajadores subidos a Firebase Firestore.`
-      }).catch(err => {
-        console.error("Error syncing imported workers to workspace:", err);
-      });
-    } else if (googleUser?.uid && !isOffline) {
-      formattedWorkers.forEach(newPerson => {
-        syncWorkerToAccount(googleUser.uid, newPerson).catch(err => {
-          console.error("Error syncing new worker to account:", err);
-        });
-      });
-    } else if (isAutoSync && groupId.trim()) {
-      formattedWorkers.forEach(newPerson => {
-        syncWorkerToCloud(groupId, newPerson).catch(err => {
-          console.error("Error syncing new worker to cloud:", err);
-          setPeople(prev => prev.map(p => p.id === newPerson.id ? { ...p, sincronizadoEnNube: false } : p));
-        });
-      });
-    }
+
   };
 
-  const handleAddMultipleWorkers = (
+  const handleAddMultipleWorkers = async (
     newWorkers: Omit<Person, 'id' | 'fechaRegistro'>[],
     skipDuplicateCheck: boolean = false
   ) => {
@@ -1995,232 +897,93 @@ function App() {
       }
     }
 
-    commitAddMultipleWorkers(newWorkers, 0);
+    await commitAddMultipleWorkers(newWorkers, 0);
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     const personToDelete = people.find(p => p.id === id);
-    if (personToDelete) {
-      if (window.confirm(`¿Está seguro de que desea enviar a la Papelera el registro de ${personToDelete.apellidosNombre}? Se almacenará allí durante 30 días.`)) {
-        setPeopleWithHistory(prev => prev.filter(p => p.id !== id));
-        const deletedObj = {
-          person: personToDelete,
-          fechaEliminacion: new Date().toISOString()
-        };
-        setDeletedPeople(prev => [...prev, deletedObj]);
-        setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
+    if (!personToDelete) return;
+    if (!window.confirm(`¿Está seguro de que desea enviar a la Papelera el registro de ${personToDelete.apellidosNombre}? Se almacenará allí durante 30 días.`)) return;
 
-        const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-        if (targetWsId && !isOffline) {
-          executeDatabaseSync(`Baja: ${personToDelete.apellidosNombre}`, async () => {
-            await deleteWorkerFromWorkspace(targetWsId, id);
-            await syncDeletedWorkerToWorkspace(targetWsId, {
-              ...deletedObj,
-              person: { ...deletedObj.person, sincronizadoEnNube: true }
-            });
-            if (googleUser?.uid) {
-              await deleteWorkerFromAccount(googleUser.uid, id);
-              await syncDeletedWorkerToAccount(googleUser.uid, {
-                ...deletedObj,
-                person: { ...deletedObj.person, sincronizadoEnNube: true }
-              });
-            }
-          }, {
-            detail: `${personToDelete.apellidosNombre} movido a la papelera en Firestore.`
-          }).catch(err => console.error(err));
-        } else if (googleUser?.uid && !isOffline) {
-          deleteWorkerFromAccount(googleUser.uid, id).catch(err => console.error(err));
-          syncDeletedWorkerToAccount(googleUser.uid, {
-            ...deletedObj,
-            person: { ...deletedObj.person, sincronizadoEnNube: true }
-          }).catch(err => console.error(err));
-        } else if (isSyncing && groupId.trim() && !isOffline) {
-          deleteWorkerFromCloud(groupId, id).catch(err => console.error(err));
-          if (personToDelete.sincronizadoEnNube) {
-            syncDeletedWorkerToCloud(groupId, {
-              ...deletedObj,
-              person: { ...deletedObj.person, sincronizadoEnNube: true }
-            }).catch(err => console.error(err));
-          }
-        }
-      }
+    const deletedObj: DeletedPerson = { person: personToDelete, fechaEliminacion: new Date().toISOString() };
+    try {
+      await createDocument('trash', id, deletedObj as any);
+      await deleteDocument('trabajadores', id);
+      setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
+    } catch (error) {
+      console.error('Error enviando trabajador a papelera en Supabase:', error);
+      setToast({ message: 'No se pudo enviar el registro a la Papelera.', type: 'error' });
     }
   };
 
-  const handleDeleteMultiple = (ids: number[]) => {
-    if (!ids || ids.length === 0) return;
-    
-    if (window.confirm(`¿Está seguro de que desea enviar ${ids.length} registros a la Papelera? Se almacenarán allí durante 30 días.`)) {
-      const todayStr = new Date().toISOString();
-      const peopleToDelete = people.filter(p => ids.includes(p.id));
-      
-      setPeopleWithHistory(prev => prev.filter(p => !ids.includes(p.id)));
-      
-      const deletedObjs = peopleToDelete.map(p => ({
-        person: p,
-        fechaEliminacion: todayStr
-      }));
-      setDeletedPeople(prev => [...prev, ...deletedObjs]);
-      setToast({ message: `${ids.length} registros enviados a la Papelera correctamente`, type: 'success' });
-
-      const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-      if (targetWsId && !isOffline) {
-        executeDatabaseSync(`Baja de ${peopleToDelete.length} registros`, async () => {
-          for (const p of peopleToDelete) {
-            await deleteWorkerFromWorkspace(targetWsId, p.id);
-            await syncDeletedWorkerToWorkspace(targetWsId, {
-              person: { ...p, sincronizadoEnNube: true },
-              fechaEliminacion: todayStr
-            });
-            if (googleUser?.uid) {
-              await deleteWorkerFromAccount(googleUser.uid, p.id);
-              await syncDeletedWorkerToAccount(googleUser.uid, {
-                person: { ...p, sincronizadoEnNube: true },
-                fechaEliminacion: todayStr
-              });
-            }
-          }
-        }, {
-          detail: `${peopleToDelete.length} registros enviados a la papelera en Firestore.`
-        }).catch(err => console.error(err));
-      } else if (googleUser?.uid && !isOffline) {
-        peopleToDelete.forEach(p => {
-          deleteWorkerFromAccount(googleUser.uid, p.id).catch(err => console.error(err));
-          syncDeletedWorkerToAccount(googleUser.uid, {
-            person: { ...p, sincronizadoEnNube: true },
-            fechaEliminacion: todayStr
-          }).catch(err => console.error(err));
-        });
-      } else if (isSyncing && groupId.trim() && !isOffline) {
-        peopleToDelete.forEach(p => {
-          deleteWorkerFromCloud(groupId, p.id).catch(err => console.error(err));
-          if (p.sincronizadoEnNube) {
-            syncDeletedWorkerToCloud(groupId, {
-              person: { ...p, sincronizadoEnNube: true },
-              fechaEliminacion: todayStr
-            }).catch(err => console.error(err));
-          }
-        });
+  const handleDeleteMultiple = async (ids: number[]) => {
+    if (!ids?.length) return;
+    if (!window.confirm(`¿Está seguro de que desea enviar ${ids.length} registros a la Papelera? Se almacenarán allí durante 30 días.`)) return;
+    const peopleToDelete = people.filter(p => ids.includes(p.id));
+    const fechaEliminacion = new Date().toISOString();
+    try {
+      for (const person of peopleToDelete) {
+        await createDocument('trash', person.id, { person, fechaEliminacion } as any);
+        await deleteDocument('trabajadores', person.id);
       }
+      setToast({ message: `${peopleToDelete.length} registros enviados a la Papelera correctamente`, type: 'success' });
+    } catch (error) {
+      console.error('Error en baja múltiple de Supabase:', error);
+      setToast({ message: 'No se pudieron enviar todos los registros a la Papelera.', type: 'error' });
     }
   };
 
-  const handleRestorePerson = (id: number) => {
+  const handleRestorePerson = async (id: number) => {
     const foundDeleted = deletedPeople.find(dp => dp.person.id === id);
-    if (foundDeleted) {
-      setDeletedPeople(prev => prev.filter(dp => dp.person.id !== id));
-      setPeopleWithHistory(prev => [...prev, foundDeleted.person]);
+    if (!foundDeleted) return;
+    try {
+      await createDocument('trabajadores', id, foundDeleted.person as any);
+      await deleteDocument('trash', id);
       setToast({ message: `Registro de ${foundDeleted.person.apellidosNombre} restaurado correctamente`, type: 'success' });
-
-      const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-      if (targetWsId && !isOffline) {
-        executeDatabaseSync(`Restaurar: ${foundDeleted.person.apellidosNombre}`, async () => {
-          await deleteFromWorkspaceTrash(targetWsId, id);
-          await syncWorkerToWorkspace(targetWsId, foundDeleted.person);
-          if (googleUser?.uid) {
-            await deleteFromAccountTrash(googleUser.uid, id);
-            await syncWorkerToAccount(googleUser.uid, foundDeleted.person);
-          }
-        }, {
-          detail: `${foundDeleted.person.apellidosNombre} restaurado en Firestore.`
-        }).catch(err => console.error(err));
-      } else if (googleUser?.uid && !isOffline) {
-        deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
-        syncWorkerToAccount(googleUser.uid, foundDeleted.person).catch(err => console.error(err));
-      } else if (isSyncing && groupId.trim()) {
-        deleteFromCloudTrash(groupId, id).catch(err => console.error(err));
-        if (foundDeleted.person.sincronizadoEnNube) {
-          syncWorkerToCloud(groupId, foundDeleted.person).catch(err => console.error(err));
-        }
-      }
+    } catch (error) {
+      console.error('Error restaurando trabajador desde Supabase:', error);
+      setToast({ message: 'No se pudo restaurar el registro.', type: 'error' });
     }
   };
 
-  const handlePermanentDelete = (id: number) => {
+  const handlePermanentDelete = async (id: number) => {
     const foundDeleted = deletedPeople.find(dp => dp.person.id === id);
-    if (foundDeleted) {
-      if (window.confirm(`¿Está seguro de que desea eliminar permanentemente el registro de ${foundDeleted.person.apellidosNombre}? Esta acción no se puede deshacer.`)) {
-        setDeletedPeople(prev => prev.filter(dp => dp.person.id !== id));
-        setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
-
-        const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-        if (targetWsId && !isOffline) {
-          executeDatabaseSync(`Eliminación permanente: ${foundDeleted.person.apellidosNombre}`, async () => {
-            await deleteFromWorkspaceTrash(targetWsId, id);
-            if (googleUser?.uid) {
-              await deleteFromAccountTrash(googleUser.uid, id);
-            }
-          }, {
-            detail: `${foundDeleted.person.apellidosNombre} eliminado definitivamente de Firestore.`
-          }).catch(err => console.error(err));
-        } else if (googleUser?.uid && !isOffline) {
-          deleteFromAccountTrash(googleUser.uid, id).catch(err => console.error(err));
-        } else if (isSyncing && groupId.trim()) {
-          deleteFromCloudTrash(groupId, id).catch(err => console.error(err));
-        }
-      }
+    if (!foundDeleted) return;
+    if (!window.confirm(`¿Está seguro de que desea eliminar permanentemente el registro de ${foundDeleted.person.apellidosNombre}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await deleteDocument('trash', id);
+      setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
+    } catch (error) {
+      console.error('Error eliminando definitivamente en Supabase:', error);
+      setToast({ message: 'No se pudo eliminar definitivamente el registro.', type: 'error' });
     }
   };
 
-  const handleEmptyTrash = () => {
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync('Vaciar papelera', async () => {
-        for (const dp of deletedPeople) {
-          await deleteFromWorkspaceTrash(targetWsId, dp.person.id);
-          if (googleUser?.uid) {
-            await deleteFromAccountTrash(googleUser.uid, dp.person.id);
-          }
-        }
-      }, {
-        detail: 'Papelera vaciada completamente en Firestore.'
-      }).catch(err => console.error(err));
-    } else if (googleUser?.uid && !isOffline) {
-      deletedPeople.forEach(dp => {
-        deleteFromAccountTrash(googleUser.uid, dp.person.id).catch(err => console.error(err));
-      });
-    } else if (isSyncing && groupId.trim()) {
-      deletedPeople.forEach(dp => {
-        deleteFromCloudTrash(groupId, dp.person.id).catch(err => console.error(err));
-      });
+  const handleEmptyTrash = async () => {
+    if (!deletedPeople.length) return;
+    if (!window.confirm(`¿Está seguro de que desea vaciar la Papelera? Se eliminarán definitivamente ${deletedPeople.length} registros.`)) return;
+    try {
+      for (const item of deletedPeople) await deleteDocument('trash', item.person.id);
+      setToast({ message: 'Papelera vaciada correctamente', type: 'success' });
+    } catch (error) {
+      console.error('Error vaciando la papelera en Supabase:', error);
+      setToast({ message: 'No se pudo vaciar completamente la Papelera.', type: 'error' });
     }
-    setDeletedPeople([]);
-    setToast({ message: 'Papelera vaciada correctamente', type: 'success' });
   };
 
   const handleEdit = (person: Person) => {
     setEditingPerson(person);
   };
 
-  const handleUpdatePerson = (updatedPerson: Person) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid || !!currentEffectiveWorkspaceId) && syncMode === 'auto' && !isOffline;
-    const finalSyncStatus = (updatedPerson.sincronizadoEnNube && !isOffline) || isAutoSync;
-    const finalPerson = { ...updatedPerson, sincronizadoEnNube: finalSyncStatus };
-
-    setPeopleWithHistory(prev => prev.map(p => (p.id === updatedPerson.id ? finalPerson : p)));
-    updateAutocompleteLists(finalPerson);
-    setEditingPerson(null);
-    setToast({ message: 'Registro actualizado correctamente', type: 'success' });
-
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync(`Actualización: ${finalPerson.apellidosNombre}`, async () => {
-        await syncWorkerToWorkspace(targetWsId, finalPerson);
-        if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, finalPerson);
-      }, {
-        detail: `${finalPerson.apellidosNombre} actualizado en Firebase Firestore.`
-      }).catch(err => console.error(err));
-    } else if (googleUser?.uid && !isOffline) {
-      syncWorkerToAccount(googleUser.uid, finalPerson).catch(err => {
-        console.error(err);
-      });
-    } else if (isSyncing && groupId.trim() && finalSyncStatus) {
-      syncWorkerToCloud(groupId, finalPerson).catch(err => {
-        console.error(err);
-        setPeople(prev => prev.map(p => p.id === finalPerson.id ? { ...p, sincronizadoEnNube: false } : p));
-      });
-    } else if (isSyncing && groupId.trim() && !finalSyncStatus && updatedPerson.sincronizadoEnNube && !isOffline) {
-      deleteWorkerFromCloud(groupId, updatedPerson.id).catch(err => console.error(err));
+  const handleUpdatePerson = async (updatedPerson: Person) => {
+    try {
+      await updateDocument('trabajadores', updatedPerson.id, updatedPerson as any);
+      updateAutocompleteLists(updatedPerson);
+      setEditingPerson(null);
+      setToast({ message: 'Registro actualizado correctamente', type: 'success' });
+    } catch (error) {
+      console.error('Error actualizando trabajador en Supabase:', error);
+      setToast({ message: 'No se pudo actualizar el registro.', type: 'error' });
     }
   };
 
@@ -2228,145 +991,23 @@ function App() {
     setBulkEditingPeople(selectedPeople);
   };
 
-  const handleUpdateMultiplePeople = (updates: Partial<Person>, selectedIds: number[]) => {
-    const isAutoSync = (isSyncing || !!googleUser?.uid || !!currentEffectiveWorkspaceId) && syncMode === 'auto' && !isOffline;
-
-    const updatedPeople = people.map(p => {
-      if (selectedIds.includes(p.id)) {
-        const updated = { ...p, ...updates };
-        const finalSyncStatus = (updated.sincronizadoEnNube && !isOffline) || isAutoSync;
-        const finalPerson = { ...updated, sincronizadoEnNube: finalSyncStatus };
-
-        return finalPerson;
-      }
-      return p;
-    });
-
-    setPeopleWithHistory(updatedPeople);
-
-    const samplePerson = updatedPeople.find(p => selectedIds.includes(p.id));
-    if (samplePerson) {
-      updateAutocompleteLists(samplePerson);
-    }
-
-    setBulkEditingPeople(null);
-    setToast({ message: `${selectedIds.length} registros actualizados correctamente`, type: 'success' });
-
-    const targetWsId = (currentEffectiveWorkspaceId || DEFAULT_WORKSPACE_ID).trim();
-    if (targetWsId && !isOffline) {
-      executeDatabaseSync(`Edición masiva (${selectedIds.length} trabajadores)`, async () => {
-        for (const pid of selectedIds) {
-          const personObj = updatedPeople.find(p => p.id === pid);
-          if (personObj) {
-            await syncWorkerToWorkspace(targetWsId, personObj);
-            if (googleUser?.uid) await syncWorkerToAccount(googleUser.uid, personObj);
-          }
-        }
-      }, {
-        detail: `${selectedIds.length} trabajadores actualizados en Firestore.`
-      }).catch(err => {
-        console.error("Error syncing worker to workspace during bulk update:", err);
-      });
-    } else if (googleUser?.uid && !isOffline) {
-      selectedIds.forEach(pid => {
-        const personObj = updatedPeople.find(p => p.id === pid);
-        if (personObj) syncWorkerToAccount(googleUser.uid, personObj).catch(err => console.error(err));
-      });
+  const handleUpdateMultiplePeople = async (updates: Partial<Person>, selectedIds: number[]) => {
+    const selected = people.filter(p => selectedIds.includes(p.id));
+    try {
+      const updated = selected.map(p => ({ ...p, ...updates }));
+      await Promise.all(updated.map(person => updateDocument('trabajadores', person.id, person as any)));
+      const samplePerson = updated[0];
+      if (samplePerson) updateAutocompleteLists(samplePerson);
+      setBulkEditingPeople(null);
+      setToast({ message: `${updated.length} registros actualizados correctamente`, type: 'success' });
+    } catch (error) {
+      console.error('Error en edición masiva en Supabase:', error);
+      setToast({ message: 'No se pudieron actualizar todos los registros.', type: 'error' });
     }
   };
 
-  const handleTogglePersonSync = async (id: number) => {
-    if (isOffline) {
-      setToast({ message: 'No se puede cambiar la configuración de compartición en la nube mientras estés sin conexión.', type: 'error' });
-      return;
-    }
-
-    const updated = people.map(p => {
-      if (p.id === id) {
-        const newSyncStatus = !p.sincronizadoEnNube;
-        
-        if (isSyncing && groupId.trim()) {
-          if (newSyncStatus) {
-            syncWorkerToCloud(groupId, { ...p, sincronizadoEnNube: true })
-              .then(() => setToast({ message: `Registro de ${p.apellidosNombre} compartido en la nube`, type: 'success' }))
-              .catch(() => setToast({ message: 'Error al sincronizar con la nube', type: 'error' }));
-          } else {
-            deleteWorkerFromCloud(groupId, p.id)
-              .then(() => setToast({ message: `Registro de ${p.apellidosNombre} guardado solo en local`, type: 'success' }))
-              .catch(() => setToast({ message: 'Error al eliminar de la nube', type: 'error' }));
-          }
-        } else {
-          setToast({ message: 'Sin conexión o cuenta para guardar en la base de datos en la nube', type: 'error' });
-        }
-        
-        return { ...p, sincronizadoEnNube: newSyncStatus };
-      }
-      return p;
-    });
-    setPeople(updated);
-  };
-
-  const handleSyncAllToCloud = async () => {
-    if (!isSyncing || !groupId.trim()) return;
-    
-    // Mark everyone as synced and upload them
-    const updated = people.map(p => ({ ...p, sincronizadoEnNube: true }));
-    setPeople(updated);
-    
-    for (const p of updated) {
-      await syncWorkerToCloud(groupId, p);
-    }
-    
-    // Sync trash too
-    for (const dp of deletedPeople) {
-      await syncDeletedWorkerToCloud(groupId, {
-        ...dp,
-        person: { ...dp.person, sincronizadoEnNube: true }
-      });
-    }
-  };
-
-  const handleSyncAllFromCloud = async () => {
-    if (!isSyncing || !groupId.trim()) return;
-    
-    const { workers: cloudWorkers, trash: cloudTrash } = await fetchGroupData(groupId);
-    
-    // Merge workers
-    setPeople(prev => {
-      const localOnly = prev.filter(p => !p.sincronizadoEnNube);
-      const cloudMerged = cloudWorkers.map(cw => ({ ...cw, sincronizadoEnNube: true }));
-      const combined = [...localOnly];
-      
-      cloudMerged.forEach(cw => {
-        const idx = combined.findIndex(p => p.id === cw.id);
-        if (idx !== -1) {
-          combined[idx] = cw;
-        } else {
-          combined.push(cw);
-        }
-      });
-      return combined;
-    });
-
-    // Merge trash
-    setDeletedPeople(prev => {
-      const localOnly = prev.filter(dp => !dp.person.sincronizadoEnNube);
-      const cloudTrashMerged = cloudTrash.map(ct => ({
-        person: { ...ct.person, sincronizadoEnNube: true },
-        fechaEliminacion: ct.fechaEliminacion
-      }));
-      const combined = [...localOnly];
-      
-      cloudTrashMerged.forEach(ct => {
-        const idx = combined.findIndex(dp => dp.person.id === ct.person.id);
-        if (idx !== -1) {
-          combined[idx] = ct;
-        } else {
-          combined.push(ct);
-        }
-      });
-      return combined;
-    });
+  const handleTogglePersonSync = async (_id: number) => {
+    setToast({ message: 'La compartición de registros se gestiona desde Administración > Permisos.', type: 'success' });
   };
 
   const stats: StatsData = useMemo(() => {
@@ -3245,13 +1886,8 @@ function App() {
             <div className="space-y-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800/80">
               <div className="text-xs text-slate-300 animate-pulse flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                <span>Sincronizando registros en la nube...</span>
+                <span>Buscando el registro en Supabase...</span>
               </div>
-              {isOffline && (
-                <p className="text-[10px] text-amber-400 font-medium">
-                  ⚠️ Sin conexión a internet para sincronizar en tiempo real.
-                </p>
-              )}
             </div>
           )}
           
@@ -3316,102 +1952,13 @@ function App() {
             onMenuClick={() => setIsMobileMenuOpen(true)} 
             theme={theme} 
             onThemeToggle={handleThemeToggle} 
-            isOffline={isOffline}
-            pendingSyncCount={isSyncing && groupId.trim() ? people.filter(p => !p.sincronizadoEnNube).length : 0}
             onUndo={handleUndo}
             onRedo={handleRedo}
             canUndo={canUndo}
             canRedo={canRedo}
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
-            onOpenFirebaseSync={() => setIsFirebaseSyncModalOpen(true)}
-            isSyncingFirebase={isSyncingFirebase}
-            firebaseWorkersCount={people.length}
           />
-          
-          {/* Offline Banner and Sync Queue Visualizer */}
-          {isOffline && (
-            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex flex-col gap-3 animate-in fade-in duration-300">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
-                    <CloudOff className="w-5 h-5 animate-pulse" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400">
-                      Modo sin Conexión (Offline)
-                    </h4>
-                    <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-0.5">
-                      El sistema está funcionando localmente de forma segura. Todos los cambios se guardan en el navegador.
-                    </p>
-                  </div>
-                </div>
-
-                {isSyncing && people.filter(p => !p.sincronizadoEnNube).length > 0 && (
-                  <span className="text-[11px] font-extrabold px-2.5 py-1 bg-amber-500/20 text-amber-800 dark:text-amber-300 rounded-lg animate-pulse">
-                    {people.filter(p => !p.sincronizadoEnNube).length} Registros Pendientes
-                  </span>
-                )}
-              </div>
-
-              {/* Expandable Sync Queue List */}
-              {isSyncing && people.filter(p => !p.sincronizadoEnNube).length > 0 && (
-                <div className="border-t border-amber-500/10 pt-3 mt-1">
-                  <span className="text-[10px] font-bold text-amber-700/60 dark:text-amber-500/60 uppercase tracking-widest block mb-2">
-                    Cola de Sincronización (Pendiente de subir a Firebase)
-                  </span>
-                  <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-1">
-                    {people.filter(p => !p.sincronizadoEnNube).map((person, idx) => (
-                      <div 
-                        key={`sync_item_${person.id}_${idx}`} 
-                        className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-amber-500/10 rounded-xl flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                        <span>{person.apellidosNombre}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">({person.dni})</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-amber-700/60 dark:text-amber-500/60 mt-2">
-                    * Estos registros se subirán automáticamente a Firebase en cuanto se recupere la conexión a Internet.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Online Connection Alert when Internet is Restored but has Unsynced Data */}
-          {!isOffline && isSyncing && people.filter(p => !p.sincronizadoEnNube).length > 0 && (
-            <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-300">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
-                  <Cloud className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">
-                    Conexión Restablecida
-                  </h4>
-                  <p className="text-xs text-emerald-700/80 dark:text-emerald-500/80 mt-0.5">
-                    Tienes {people.filter(p => !p.sincronizadoEnNube).length} registros pendientes en cola listos para subir a la nube.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={async () => {
-                  try {
-                    await handleSyncPendingToCloud();
-                  } catch (e) {
-                    console.error(e);
-                  }
-                }}
-                className="px-4 py-2 bg-[#00548E] hover:bg-[#003860] text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/10 transition-colors flex items-center gap-1.5 shrink-0 self-end sm:self-auto cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
-                Sincronizar Cola Ahora
-              </button>
-            </div>
-          )}
           
           {activeView === 'dashboard' && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
@@ -3471,8 +2018,6 @@ function App() {
                     setSelectedObraFilter={setSelectedObraFilter}
                     selectedQuincenaFilter={selectedQuincenaFilter}
                     setSelectedQuincenaFilter={setSelectedQuincenaFilter}
-                    isSyncActive={isSyncing}
-                    onToggleSync={handleTogglePersonSync}
                     googleToken={googleToken}
                     onGoogleLogin={handleGoogleLogin}
                     onToast={(message, type) => setToast({ message, type })}
@@ -3528,8 +2073,6 @@ function App() {
                   setSelectedObraFilter={setSelectedObraFilter}
                   selectedQuincenaFilter={selectedQuincenaFilter}
                   setSelectedQuincenaFilter={setSelectedQuincenaFilter}
-                  isSyncActive={isSyncing}
-                  onToggleSync={handleTogglePersonSync}
                   googleToken={googleToken}
                   onGoogleLogin={handleGoogleLogin}
                   onToast={(message, type) => setToast({ message, type })}
@@ -3598,6 +2141,12 @@ function App() {
             />
           )}
 
+          {activeView === 'administracion' && (
+            <div className="max-w-7xl mx-auto">
+              <AdminPanel onClose={() => setActiveView('dashboard')} />
+            </div>
+          )}
+
           {activeView === 'papelera' && (
             <div className="max-w-6xl mx-auto">
               <Papelera
@@ -3633,20 +2182,19 @@ function App() {
                 workEndHour={workEndHour}
                 onUpdateWorkStartHour={setWorkStartHour}
                 onUpdatePeople={(updatedPeople) => {
-                  setPeople(updatedPeople);
-                  
-                  // Sync individual changed workers to cloud if connected
-                  if (isSyncing && groupId.trim() && !isOffline) {
-                    const changed = updatedPeople.filter(p => {
-                      const original = people.find(o => o.id === p.id);
-                      return !original || JSON.stringify(original) !== JSON.stringify(p);
-                    });
-                    changed.forEach(p => {
-                      syncWorkerToCloud(groupId, { ...p, sincronizadoEnNube: true }).catch(err => {
-                        console.error("Error syncing during appointment update:", err);
-                      });
-                    });
-                  }
+                  const changed = updatedPeople.filter(p => {
+                    const original = people.find(o => o.id === p.id);
+                    return !original || JSON.stringify(original) !== JSON.stringify(p);
+                  });
+                  void Promise.all(changed.map(async p => {
+                    await updateDocument('trabajadores', p.id, { ...p, sincronizadoEnNube: true } as any);
+                    await persistMedicalRecognition(p);
+                  })).then(() => {
+                    setPeople(updatedPeople.map(p => ({ ...p, sincronizadoEnNube: true })));
+                  }).catch(error => {
+                    console.error('Error guardando reconocimientos en Supabase:', error);
+                    setToast({ message: 'No se han podido guardar los cambios médicos en la base de datos.', type: 'error' });
+                  });
                 }}
                 onToast={(message, type) => setToast({ message, type })}
               />
@@ -3717,12 +2265,12 @@ function App() {
                 const unique = pendingImportModal.uniqueWorkers;
                 const skipped = pendingImportModal.duplicates.length;
                 setPendingImportModal(null);
-                commitAddMultipleWorkers(unique, skipped);
+                void commitAddMultipleWorkers(unique, skipped);
               }}
               onConfirmImportAll={() => {
                 const all = pendingImportModal.allWorkers;
                 setPendingImportModal(null);
-                commitAddMultipleWorkers(all, 0);
+                void commitAddMultipleWorkers(all, 0);
               }}
             />
           )}
@@ -3749,20 +2297,13 @@ function App() {
             onToast={(msg, type) => setToast({ message: msg, type })}
           />
 
-          <FirebaseSyncModal
-            isOpen={isFirebaseSyncModalOpen}
-            onClose={() => setIsFirebaseSyncModalOpen(false)}
-            workersCount={people.length}
-            trashCount={deletedPeople.length}
-            activeWorkspaceId={currentEffectiveWorkspaceId}
-            lastSyncTime={lastSyncTime}
-            onPerformSync={handlePerformFirebaseSync}
-            onForceSaveAllToCloud={handleForceSaveAllToCloud}
-            userEmail={syncEmail || 'davidhinojogarcia@gmail.com'}
-          />
+          {/* Persistencia directa en Supabase */}
 
-          {/* Database synchronization feedback alert (green for success, red for error) */}
-          <DatabaseSyncAlert />
+          {toast && (
+            <div aria-live="polite" role="status" className={`fixed top-5 right-5 z-[200] max-w-sm rounded-xl px-4 py-3 shadow-xl border text-sm font-semibold ${toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/40 dark:border-green-900 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'}`}>
+              {toast.type === 'success' ? '✓' : '✕'} {toast.message}
+            </div>
+          )}
 
           {/* Footer Copyright */}
           <footer className="mt-16 text-center border-t border-slate-200 dark:border-slate-800/85 pt-6 text-xs text-slate-400 dark:text-slate-500 font-medium">

@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import QRCode from 'qrcode';
 import { Person, PdfCustomConfig, getAptitudMedicaInfo } from '../../types';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
+import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
 export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
@@ -17,38 +18,34 @@ export const DEFAULT_PDF_CONFIG: Required<PdfCustomConfig> = {
   showPageNumbers: true
 };
 
-export const getStoredPdfConfig = (): Required<PdfCustomConfig> => {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('pdfCustomConfig') : null;
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        headerLine1: parsed.headerLine1 !== undefined && parsed.headerLine1 !== '' ? parsed.headerLine1 : DEFAULT_PDF_CONFIG.headerLine1,
-        headerLine2: parsed.headerLine2 !== undefined && parsed.headerLine2 !== '' ? parsed.headerLine2 : DEFAULT_PDF_CONFIG.headerLine2,
-        footerText: parsed.footerText !== undefined && parsed.footerText !== '' ? parsed.footerText : DEFAULT_PDF_CONFIG.footerText,
-        customLogo: parsed.customLogo || '',
-        showTimestamp: parsed.showTimestamp !== undefined ? Boolean(parsed.showTimestamp) : DEFAULT_PDF_CONFIG.showTimestamp,
-        showPageNumbers: parsed.showPageNumbers !== undefined ? Boolean(parsed.showPageNumbers) : DEFAULT_PDF_CONFIG.showPageNumbers
-      };
-    }
-  } catch (err) {
-    console.warn('Error reading stored PDF config:', err);
-  }
-  return DEFAULT_PDF_CONFIG;
+let pdfConfigCache: Required<PdfCustomConfig> = { ...DEFAULT_PDF_CONFIG };
+let pdfPreferencesHydrated = false;
+
+const normalizePdfConfig = (value?: Partial<PdfCustomConfig>): Required<PdfCustomConfig> => ({
+  headerLine1: value?.headerLine1 || DEFAULT_PDF_CONFIG.headerLine1,
+  headerLine2: value?.headerLine2 || DEFAULT_PDF_CONFIG.headerLine2,
+  footerText: value?.footerText || DEFAULT_PDF_CONFIG.footerText,
+  customLogo: value?.customLogo || '',
+  showTimestamp: value?.showTimestamp !== undefined ? Boolean(value.showTimestamp) : DEFAULT_PDF_CONFIG.showTimestamp,
+  showPageNumbers: value?.showPageNumbers !== undefined ? Boolean(value.showPageNumbers) : DEFAULT_PDF_CONFIG.showPageNumbers,
+});
+
+export const hydrateStoredPdfConfig = async (): Promise<void> => {
+  if (pdfPreferencesHydrated) return;
+  const remote = await loadPdfPreferences();
+
+  pdfConfigCache = normalizePdfConfig(remote);
+  pdfPreferencesHydrated = true;
 };
 
+export const getStoredPdfConfig = (): Required<PdfCustomConfig> => ({ ...pdfConfigCache });
+
 export const saveStoredPdfConfig = (config: Partial<PdfCustomConfig>): Required<PdfCustomConfig> => {
-  try {
-    const current = getStoredPdfConfig();
-    const updated = { ...current, ...config };
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pdfCustomConfig', JSON.stringify(updated));
-    }
-    return updated;
-  } catch (err) {
-    console.warn('Error saving PDF config to localStorage:', err);
-    return DEFAULT_PDF_CONFIG;
-  }
+  pdfConfigCache = normalizePdfConfig({ ...pdfConfigCache, ...config });
+  void savePdfPreferences(pdfConfigCache).catch(error =>
+    console.warn('Error guardando configuración PDF en Supabase:', error)
+  );
+  return { ...pdfConfigCache };
 };
 
 export const formatDate = (date: string) => date ? date.split('-').reverse().join('/') : '-';
@@ -1339,13 +1336,8 @@ export const generateWorkerIDCardPDF = async (selectedPerson: Person, allPeople:
   const history = allPeople.filter(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === cleanDni);
 
   const appUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : 'https://ais-dev-z7d4v355a6bfwlbnq24eyg-269075130225.europe-west2.run.app';
-  const groupId = typeof window !== 'undefined' ? window.localStorage.getItem('personasPROFEA_groupId') || '' : '';
-  const isSyncActive = typeof window !== 'undefined' ? window.localStorage.getItem('personasPROFEA_isSyncing') === 'true' : false;
 
   let qrText = `${appUrl}?view-worker-pdf=${cleanDni}`;
-  if (isSyncActive && groupId) {
-    qrText += `&sync=${encodeURIComponent(groupId)}`;
-  }
   
   let qrCodeDataUrl = '';
   try {
