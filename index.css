@@ -211,6 +211,15 @@ body {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
   }
+
+  /* Compact worker cards: avoid painting hundreds of off-screen cards on mobile.
+     This keeps normal page scrolling (no nested scroll) while allowing the browser
+     to skip layout/paint work for cards that are still far from the viewport. */
+  #root [id^="compact-card-"] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 260px;
+    contain: layout paint style;
+  }
 }
 
 @media (max-width: 1023px) {
