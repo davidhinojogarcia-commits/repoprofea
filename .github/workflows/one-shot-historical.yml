@@ -1,0 +1,57 @@
+name: One-shot historical migration
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+permissions:
+  contents: read
+jobs:
+  migrate:
+    if: ${{ github.event.head_commit.message == 'chore: run historical migration once' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Import historical records into canonical Supabase tables
+        env:
+          SB_URL: https://oanurwzoymkmwmxoyzqi.supabase.co
+          SB_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const url = process.env.SB_URL;
+          const key = process.env.SB_SERVICE_KEY;
+          if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY secret is not configured');
+          const baseHeaders = { apikey:key, Authorization:`Bearer ${key}`, 'Content-Type':'application/json' };
+          async function req(path, init={}) {
+            const r=await fetch(url+path,{...init,headers:{...baseHeaders,...(init.headers||{})}});
+            const t=await r.text();
+            if(!r.ok) throw new Error(`Supabase ${r.status}: ${t.slice(0,400)}`);
+            return t?JSON.parse(t):null;
+          }
+          (async()=>{
+            const profiles=await req('/rest/v1/profiles?select=id&role=eq.admin&active=eq.true');
+            if(!Array.isArray(profiles)||profiles.length!==1) throw new Error('Expected exactly one active admin');
+            const owner=profiles[0].id;
+            const source=JSON.parse(fs.readFileSync('data/initial_workers.json','utf8'));
+            if(!Array.isArray(source)) throw new Error('Invalid workers source');
+            const unique=new Map(); for(const w of source){const id=Number(w?.id); if(Number.isFinite(id)&&id>0) unique.set(id,w)}
+            const current=await req(`/rest/v1/trabajadores?select=id&owner_id=eq.${encodeURIComponent(owner)}&limit=10000`);
+            const ids=new Set((current||[]).map(x=>Number(x.id)));
+            const now=new Date().toISOString();
+            const pending=[...unique.entries()].filter(([id])=>!ids.has(id)).map(([id,w])=>({
+              owner_id:owner,id,obra_id:null,supervisor_responsable:w.supervisorResponsable||'',num_oferta:w.numOferta||'',obra:w.obra||'',categoria:w.categoria||'',quincena:w.quincena||'',apellidos_nombre:w.apellidosNombre||'',dni:w.dni||'',fecha_nacimiento:w.fechaNacimiento||'',periodo_inicio:w.periodoInicio||'',periodo_fin:w.periodoFin||'',telefono:w.telefono||'',calzado:w.calzado||'',formacion:w.formacion||'',lugar_formacion:w.lugarFormacion||null,cita_dia:w.citaDia||'',cita_hora:w.citaHora||'',sitio_reconocimiento:w.sitioReconocimiento||'',documentacion_completa:w.documentacionCompleta||'',observaciones:w.observaciones||null,fecha_registro:w.fechaRegistro||'',necesita_reconocimiento:w.necesitaReconocimiento||null,aptitud_medica:w.aptitudMedica||null,limitaciones_aptitud:w.limitacionesAptitud||null,reconocimiento_estado:w.reconocimientoEstado||null,reconocimiento_fecha:w.reconocimientoFecha||null,reconocimiento_validez:w.reconocimientoValidez||null,reconocimiento_limitaciones:w.reconocimientoLimitaciones||null,reconocimiento_observaciones:w.reconocimientoObservaciones||null,data:w,created_by:owner,created_at:w.fechaRegistro||now,updated_by:owner,updated_at:w._lastUpdated||w.fechaRegistro||now
+            }));
+            for(let i=0;i<pending.length;i+=75) await req('/rest/v1/trabajadores?on_conflict=owner_id,id',{method:'POST',headers:{Prefer:'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(pending.slice(i,i+75))});
+            const legacySettings=JSON.parse(fs.readFileSync('data/initial_settings.json','utf8'));
+            const sr=await req(`/rest/v1/user_settings?select=settings&user_id=eq.${encodeURIComponent(owner)}&limit=1`);
+            const existing=sr?.[0]?.settings||{};
+            await req('/rest/v1/user_settings?on_conflict=user_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:owner,settings:{...legacySettings,...existing,legacyMigrationVersion:3,legacyMigrationAt:now},updated_by:owner,updated_at:now})});
+            const after=await req(`/rest/v1/trabajadores?select=id&owner_id=eq.${encodeURIComponent(owner)}&limit=10000`);
+            const afterIds=new Set((after||[]).map(x=>Number(x.id)));
+            const missing=[...unique.keys()].filter(id=>!afterIds.has(id));
+            if(missing.length) throw new Error(`Verification failed: ${missing.length} source records missing`);
+            console.log(`Migration verified: ${unique.size} source IDs, ${pending.length} newly inserted, ${afterIds.size} present.`);
+          })().catch(e=>{console.error(e.message);process.exit(1)});
+          NODE
