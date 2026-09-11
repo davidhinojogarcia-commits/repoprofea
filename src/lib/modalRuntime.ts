@@ -1,13 +1,29 @@
-const OVERLAY_SELECTOR = '.profea-modal-overlay, [class~="fixed"][class~="inset-0"]';
+const OVERLAY_SELECTOR = [
+  '.profea-modal-overlay',
+  '[class~="fixed"][class~="inset-0"][class*="bg-slate-900/"]',
+  '[class~="fixed"][class~="inset-0"][class*="bg-slate-950/"]',
+  '[class~="fixed"][class~="inset-0"][class*="bg-black/"]',
+].join(', ');
 
 const isVisibleModalOverlay = (element: Element): element is HTMLElement => {
   if (!(element instanceof HTMLElement)) return false;
   if (element.classList.contains('lg:hidden')) return false;
   if (element.closest('aside.app-navigation-panel')) return false;
+
+  // Exclude decorative/background layers and anything that cannot behave as a dialog.
+  if (element.classList.contains('pointer-events-none')) return false;
+
   const style = window.getComputedStyle(element);
-  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  if (style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return false;
+
   const rect = element.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
+  if (rect.width <= 0 || rect.height <= 0) return false;
+
+  // Portaled dialogs are always explicit. Legacy dialogs must actually contain
+  // an interactive panel/button so a simple fullscreen background is never treated
+  // as an open modal.
+  if (element.classList.contains('profea-modal-overlay')) return true;
+  return Boolean(element.querySelector('button, form, [role="dialog"], input, select, textarea'));
 };
 
 const getModalOverlays = () =>
