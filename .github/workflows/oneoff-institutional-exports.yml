@@ -1,0 +1,55 @@
+name: One-off institutional export standardization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-institutional-exports.yml'
+      - 'scripts/standardize_exports.py'
+
+permissions:
+  contents: write
+
+jobs:
+  standardize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply institutional export standard
+        run: python3 scripts/standardize_exports.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Remove one-off tooling
+        run: |
+          rm -f scripts/standardize_exports.py
+          rm -f .github/workflows/oneoff-institutional-exports.yml
+
+      - name: Commit standardized exports
+        run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat: standardize exported documents with Diputacion identity"
+          git push origin HEAD:main
