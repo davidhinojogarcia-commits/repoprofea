@@ -1,33 +1,38 @@
-/* Notification manager should behave like a modal for the main content area,
-   while keeping the navigation sidebar visible and usable. */
-#root:has(.z-\[110\]) aside.app-navigation-panel {
+/* Global modal layout: every full-screen application modal is constrained to the
+   main content area so the navigation sidebar remains visible and usable. The
+   mobile-menu backdrop itself (lg:hidden) is excluded deliberately. */
+
+#root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel {
   z-index: 50 !important;
 }
 
-#root .z-\[110\] {
+/* Keep modal overlays below the sidebar, regardless of their original Tailwind z-index. */
+#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
   z-index: 40 !important;
 }
 
 @media (min-width: 1024px) {
   /* Expanded desktop sidebar (lg:w-64 = 16rem). */
-  #root:has(aside.app-navigation-panel.lg\:w-64) .z-\[110\] {
+  #root:has(aside.app-navigation-panel.lg\:w-64)
+    [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
     left: 16rem !important;
   }
 
   /* Collapsed desktop sidebar (lg:w-20 = 5rem). */
-  #root:has(aside.app-navigation-panel.lg\:w-20) .z-\[110\] {
+  #root:has(aside.app-navigation-panel.lg\:w-20)
+    [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
     left: 5rem !important;
   }
 }
 
 @media (max-width: 1023px) {
-  /* On mobile the sidebar is an overlay. If it is open, it remains above the
-     notification modal instead of being hidden by it. */
-  #root .z-\[110\] {
-    z-index: 40 !important;
-  }
-
+  /* On mobile the sidebar remains the top navigation layer. Modals stay in the
+     application content layer and therefore never hide or close the menu. */
   #root aside.app-navigation-panel {
     z-index: 50 !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
+    z-index: 40 !important;
   }
 }
