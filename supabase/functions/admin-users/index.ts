@@ -5,6 +5,7 @@ const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+const APP_URL = "https://repoprofea.vercel.app";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -37,6 +38,7 @@ Deno.serve(async (req: Request) => {
     if (action === "create") {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
+      const telefono = String(body.telefono || "").trim();
       const role = body.role === "admin" ? "admin" : "user";
       if (!email || password.length < 8) return json({ error: "Email y contraseña válida son obligatorios" }, 400);
 
@@ -44,7 +46,7 @@ Deno.serve(async (req: Request) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { nombre: body.nombre || "", apellidos: body.apellidos || "" },
+        user_metadata: { nombre: body.nombre || "", apellidos: body.apellidos || "", telefono },
         app_metadata: { role },
       });
       if (error) throw error;
@@ -55,6 +57,7 @@ Deno.serve(async (req: Request) => {
         email,
         nombre: body.nombre || "",
         apellidos: body.apellidos || "",
+        telefono: telefono || null,
         role,
         active: body.active !== false,
         created_by: callerData.user.id,
@@ -65,7 +68,7 @@ Deno.serve(async (req: Request) => {
         throw profileError;
       }
       await admin.from("user_permissions").upsert({ user_id: data.user.id }, { onConflict: "user_id" });
-      await audit(admin, callerData.user, "CREATE_USER", data.user.id, { email, role });
+      await audit(admin, callerData.user, "CREATE_USER", data.user.id, { email, role, telefono: telefono || null });
       return json({ ok: true, uid: data.user.id, email, role });
     }
 
@@ -74,16 +77,17 @@ Deno.serve(async (req: Request) => {
 
     if (action === "update_profile") {
       const email = String(body.email || "").trim().toLowerCase();
+      const telefono = String(body.telefono || "").trim();
       if (!email) return json({ error: "Email obligatorio" }, 400);
-      const patch = { email, nombre: body.nombre || "", apellidos: body.apellidos || "" };
+      const patch = { email, nombre: body.nombre || "", apellidos: body.apellidos || "", telefono: telefono || null };
       const { error: authError } = await admin.auth.admin.updateUserById(uid, {
         email,
-        user_metadata: { nombre: patch.nombre, apellidos: patch.apellidos },
+        user_metadata: { nombre: patch.nombre, apellidos: patch.apellidos, telefono },
       });
       if (authError) throw authError;
       const { error } = await admin.from("profiles").update(patch).eq("id", uid);
       if (error) throw error;
-      await audit(admin, callerData.user, "UPDATE_USER", uid, { fields: ["email", "nombre", "apellidos"] });
+      await audit(admin, callerData.user, "UPDATE_USER", uid, { fields: ["email", "nombre", "apellidos", "telefono"] });
       return json({ ok: true });
     }
 
@@ -125,14 +129,12 @@ Deno.serve(async (req: Request) => {
     if (action === "reset_password") {
       const { data: userData, error: userError } = await admin.auth.admin.getUserById(uid);
       if (userError || !userData.user?.email) throw userError ?? new Error("Usuario sin email");
-      const { data, error } = await admin.auth.admin.generateLink({
-        type: "recovery",
-        email: userData.user.email,
-        options: { redirectTo: req.headers.get("origin") || undefined },
+      const { error } = await callerClient.auth.resetPasswordForEmail(userData.user.email, {
+        redirectTo: `${APP_URL}/?password_recovery=1`,
       });
       if (error) throw error;
-      await audit(admin, callerData.user, "RESET_PASSWORD", uid, {});
-      return json({ ok: true, email: userData.user.email, resetLink: data.properties?.action_link || "" });
+      await audit(admin, callerData.user, "RESET_PASSWORD", uid, { delivery: "email", redirectTo: APP_URL });
+      return json({ ok: true, email: userData.user.email });
     }
 
     return json({ error: "Acción no soportada" }, 400);
