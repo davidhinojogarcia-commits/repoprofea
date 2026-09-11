@@ -1,0 +1,53 @@
+/* Responsive application layout overrides. Loaded after Tailwind runtime styles. */
+html, body, #root {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* Use the available viewport instead of constraining whole sections to desktop presets. */
+#root .max-w-\[1600px\],
+#root .max-w-7xl,
+#root .max-w-6xl {
+  max-width: 100% !important;
+}
+
+/* Dashboard right column must grow with its contents and use the browser scroll only. */
+@media (min-width: 1280px) {
+  #root .xl\:sticky.xl\:overflow-y-auto.custom-scrollbar {
+    position: static !important;
+    top: auto !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow-y: visible !important;
+    padding-right: 0 !important;
+  }
+}
+
+/* Cards and main section children should be allowed to shrink/grow with the viewport. */
+#root main,
+#root section,
+#root .grid,
+#root .flex {
+  min-width: 0;
+}
+
+#root table {
+  max-width: 100%;
+}
+
+@media (max-width: 1023px) {
+  #root .max-w-\[1600px\] {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+@media print {
+  #root .app-navigation-panel {
+    position: static !important;
+  }
+}
