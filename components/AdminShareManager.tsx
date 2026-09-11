@@ -17,7 +17,8 @@ const configs:Record<ResourceType,ResourceConfig>={
 };
 const normalize=(v:any)=>String(v||'').trim().toLocaleLowerCase('es');
 
-export function AdminShareManager({userId,userName}:{userId:string;userName:string}){
+type AdminShareManagerProps={userId:string;userName:string;key?:React.Key};
+export function AdminShareManager({userId,userName}:AdminShareManagerProps){
  const [catalogs,setCatalogs]=useState<Record<string,any[]>>({});
  const [shares,setShares]=useState<any[]>([]);
  const [type,setType]=useState<ResourceType>('trabajadores');
