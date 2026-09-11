@@ -132,7 +132,7 @@ export function AuthGate({ children }: AuthGateProps) {
     try {
       await signOutUser();
     } finally {
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', '/');
     }
   }, [user, passwordRecovery]);
 
@@ -186,7 +186,7 @@ export function AuthGate({ children }: AuthGateProps) {
       setConfirmPassword('');
       setShowNewPassword(false);
       setNotice('Contraseña actualizada correctamente. Ya puedes iniciar sesión con la nueva contraseña.');
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', '/');
     } catch (err:any) {
       setError(err?.message || 'No se ha podido actualizar la contraseña. Solicita un nuevo enlace de recuperación.');
     } finally {
@@ -203,7 +203,7 @@ export function AuthGate({ children }: AuthGateProps) {
     if (user) clearUserActivity(user.id);
     try {
       await signOutUser();
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', '/');
     } catch (err) {
       explicitSignOutRef.current = false;
       setError(authErrorMessage(err));
