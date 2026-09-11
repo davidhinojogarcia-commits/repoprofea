@@ -1,0 +1,113 @@
+/* PROFEA · Diputación Provincial de Cádiz — institutional UI refinement */
+:root {
+  --profea-blue: #00548e;
+  --profea-blue-strong: #003f6b;
+  --profea-blue-soft: #eaf4fa;
+  --profea-ink: #17324d;
+  --profea-border: #d6e2ea;
+  --profea-surface: #ffffff;
+  --profea-bg: #f5f8fa;
+  --profea-focus: rgba(0, 84, 142, .26);
+}
+
+html { background: var(--profea-bg); }
+body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+
+#root button,
+#root input,
+#root select,
+#root textarea { transition-duration: 140ms !important; }
+
+#root button:focus-visible,
+#root input:focus-visible,
+#root select:focus-visible,
+#root textarea:focus-visible,
+#root [tabindex]:focus-visible {
+  outline: 3px solid var(--profea-focus) !important;
+  outline-offset: 2px;
+}
+
+#subcontratas-section-container {
+  --cae-blue: #00548e;
+  --cae-blue-strong: #003f6b;
+}
+
+#subcontratas-section-container > .bg-white,
+#subcontratas-section-container .lg\:col-span-4 > .bg-white,
+#subcontratas-section-container .lg\:col-span-8 .bg-white {
+  border-color: var(--profea-border);
+}
+
+#subcontratas-section-container h1,
+#subcontratas-section-container h2,
+#subcontratas-section-container h3 {
+  letter-spacing: -0.015em;
+}
+
+#subcontratas-section-container #btn-nueva-subcontrata,
+#subcontratas-section-container #btn-generar-informe-pdf {
+  box-shadow: 0 1px 2px rgba(0, 63, 107, .12), 0 5px 14px rgba(0, 84, 142, .08);
+}
+
+#subcontratas-section-container [id^="sub-card-"] {
+  contain: layout paint;
+  transform: translateZ(0);
+}
+
+#subcontratas-section-container [id^="sub-card-"]:hover {
+  box-shadow: 0 6px 18px rgba(23, 50, 77, .07);
+}
+
+/* AI verifier reads as a deliberate institutional verification workstation. */
+#subcontratas-section-container [class*="from-blue-50"][class*="to-indigo-50"],
+#subcontratas-section-container [class*="from-sky-50"] {
+  border-color: #b9d6e8 !important;
+  background-image: linear-gradient(135deg, #f7fbfd 0%, #edf6fb 100%) !important;
+}
+
+#subcontratas-section-container [id^="doc-item-"] {
+  border-color: #dbe5eb;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .025);
+}
+
+#subcontratas-section-container [id^="doc-item-"]:focus-within {
+  border-color: #86b8d5;
+  box-shadow: 0 0 0 3px rgba(0, 84, 142, .08);
+}
+
+/* Make long master/detail screens feel lighter while preserving safe mobile scrolling. */
+@media (min-width: 1024px) {
+  #subcontratas-section-container .lg\:col-span-4,
+  #subcontratas-section-container .lg\:col-span-8 {
+    min-width: 0;
+  }
+  #subcontratas-section-container [id^="doc-item-"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 150px;
+  }
+}
+
+@media (max-width: 767px) {
+  #subcontratas-section-container { gap: .9rem; }
+  #subcontratas-section-container > .bg-white { border-radius: 14px; }
+  #subcontratas-section-container h1 { font-size: 1.25rem !important; line-height: 1.25 !important; }
+  #subcontratas-section-container .shadow-xl,
+  #subcontratas-section-container .shadow-2xl { box-shadow: 0 12px 30px rgba(15, 23, 42, .16) !important; }
+  /* Backdrop blur costs frames on iOS during modal scroll. */
+  #subcontratas-section-container .backdrop-blur-xs { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.dark {
+  --profea-border: #27394a;
+  --profea-bg: #08121d;
+  --profea-surface: #0f1c29;
+}

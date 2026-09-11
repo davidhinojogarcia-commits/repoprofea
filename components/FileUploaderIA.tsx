@@ -131,184 +131,204 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
     setSelectedFiles([]);
   };
 
-  // Convert files to base64 and execute AI verification
+  // Convert every imported file to base64, OCR it independently, aggregate the evidence,
+  // and propose a state for every checklist point. Nothing is accepted until human review.
   const handleExecuteAIAnalysis = async () => {
     if (selectedFiles.length === 0) {
-      onToast('Seleccione o arrastre al menos un documento PDF para cotejar.', 'error');
+      onToast('Seleccione o arrastre al menos un documento para cotejar.', 'error');
       return;
     }
 
     setIsAnalyzing(true);
-    setAnalysisProgress('Leyendo y convirtiendo documentos PDF...');
     setLastAnalysisResults(null);
 
     try {
-      // Convert all files to base64
-      const filePromises = selectedFiles.map(file => {
-        return new Promise<{ name: string; type: string; base64: string }>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            resolve({
-              name: file.name,
-              type: file.type || 'application/pdf',
-              base64: reader.result as string
-            });
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
+      const convertedFiles = await Promise.all(selectedFiles.map(file => new Promise<{ name: string; type: string; base64: string }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve({ name: file.name, type: file.type || 'application/octet-stream', base64: reader.result as string });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      })));
+
+      const aggregatedDocs: SubcontrataDocAnalysisResult[] = [];
+      const aggregatedIllegible: DocumentoIlegibleAlerta[] = [];
+      const aggregatedWorkers: WorkerComparisonItem[] = [];
+      const summaries: string[] = [];
+      const expiryAlerts: string[] = [];
+      let latestWorkerComparison: WorkerObraComparisonSummary | undefined;
+
+      // One OCR request per file is intentional: it avoids a large-document request masking pages
+      // from other files and guarantees explicit progress/coverage for every imported document.
+      for (let index = 0; index < convertedFiles.length; index += 1) {
+        const file = convertedFiles[index];
+        setAnalysisProgress(`OCR + IA ${index + 1}/${convertedFiles.length}: analizando todas las páginas de ${file.name}...`);
+
+        const response = await fetch('/api/analyze-subcontractor-docs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            files: [file],
+            subcontrata: {
+              nombreEmpresa: subcontrata.nombreEmpresa,
+              cif: subcontrata.cif,
+              obra: subcontrata.obra,
+              supervisorResponsable: subcontrata.supervisorResponsable
+            },
+            currentChecklist: subcontrata.checklist,
+            currentObraWorkers: (currentObraWorkers || []).map(w => ({
+              id: w.id,
+              name: w.name,
+              apellidosNombre: w.name,
+              dni: w.dni,
+              category: w.category,
+              categoria: w.category,
+              role: w.role,
+              obra: w.obra
+            }))
+          })
         });
-      });
 
-      const convertedFiles = await Promise.all(filePromises);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Error OCR/IA en ${file.name} (${response.status})`);
+        }
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || `No se pudo analizar ${file.name}.`);
 
-      setAnalysisProgress('Analizando documentos con IA y aplicando validación estricta de caducidades...');
-
-      const response = await fetch('/api/analyze-subcontractor-docs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          files: convertedFiles,
-          subcontrata: {
-            nombreEmpresa: subcontrata.nombreEmpresa,
-            cif: subcontrata.cif,
-            obra: subcontrata.obra,
-            supervisorResponsable: subcontrata.supervisorResponsable
-          },
-          currentChecklist: subcontrata.checklist,
-          currentObraWorkers: (currentObraWorkers || []).map(w => ({
-            id: w.id,
-            name: w.name,
-            apellidosNombre: w.name,
-            dni: w.dni,
-            category: w.category,
-            role: w.role,
-            obra: w.obra
-          })),
-          trabajadoresEmpresaPrincipal: (currentObraWorkers || []).map(w => ({
-            id: w.id,
-            name: w.name,
-            apellidosNombre: w.name,
-            dni: w.dni,
-            categoria: w.category,
-            role: w.role,
-            obra: w.obra
-          }))
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error en el servidor de verificación (${response.status})`);
+        aggregatedDocs.push(...(Array.isArray(data.documentosAnalizados) ? data.documentosAnalizados : []));
+        aggregatedIllegible.push(...(Array.isArray(data.documentosIlegibles) ? data.documentosIlegibles : []));
+        expiryAlerts.push(...(Array.isArray(data.alertasCaducidad) ? data.alertasCaducidad : []));
+        if (data.resumenDiagnostico) summaries.push(data.resumenDiagnostico);
+        if (data.comparativaTrabajadores) {
+          latestWorkerComparison = data.comparativaTrabajadores;
+          aggregatedWorkers.push(...(data.comparativaTrabajadores.coincidentes || []), ...(data.comparativaTrabajadores.noRegistradosEnObra || []));
+        }
       }
 
-      setAnalysisProgress('Cotejando operarios detectados contra la lista de la obra y evaluando vigencias...');
+      setAnalysisProgress('Consolidando evidencias OCR contra cada punto del checklist legal...');
 
-      const data = await response.json();
+      // Prefer the strongest evidence when several files refer to the same requirement.
+      const rank: Record<SubcontrataDocEstado, number> = {
+        entregado: 5,
+        no_aplica: 4,
+        incompleto: 3,
+        caducado: 2,
+        pendiente: 1
+      };
+      const bestEvidence = new Map<string, SubcontrataDocAnalysisResult>();
+      aggregatedDocs.forEach(doc => {
+        const previous = bestEvidence.get(doc.docId);
+        const previousScore = previous ? (rank[previous.estado] || 0) + (previous.confianza === 'alta' ? 0.4 : previous.confianza === 'media' ? 0.2 : 0) : -1;
+        const nextScore = (rank[doc.estado] || 0) + (doc.confianza === 'alta' ? 0.4 : doc.confianza === 'media' ? 0.2 : 0);
+        if (!previous || nextScore > previousScore) bestEvidence.set(doc.docId, doc);
+      });
 
-      if (!data.success) {
-        throw new Error(data.error || 'No se pudo completar el análisis de los documentos.');
-      }
-
-      // Match recognized documents against the legal checklist and prepare proposal
-      const analyzedDocs: SubcontrataDocAnalysisResult[] = data.documentosAnalizados || [];
-      const illegibleDocs: DocumentoIlegibleAlerta[] = data.documentosIlegibles || [];
-      const proposedList: ProposedChecklistChange[] = [];
-
-      analyzedDocs.forEach((doc) => {
-        const item = subcontrata.checklist.find(i => i.id === doc.docId);
-        if (item) {
-          let finalEstado: SubcontrataDocEstado = doc.estaCaducado ? 'caducado' : (doc.estado || 'entregado');
-          if (doc.esLegible === false || doc.solicitarReintento) {
-            finalEstado = 'incompleto';
-          }
-
-          let observaciones = '';
-          if (doc.estaCaducado) {
-            observaciones = `[INCIDENCIA / CADUCADO]: ${doc.motivoCaducidad || 'Documento vencido según normativa'}. Archivo: '${doc.archivoOrigen || ''}'. Requiere subsanación o renovación urgente.`;
-          } else if (doc.esLegible === false || doc.solicitarReintento) {
-            observaciones = `[INCIDENCIA / ILEGIBLE]: ${doc.motivoIlegible || 'Documento ilegible o con datos incompletos'}. Archivo: '${doc.archivoOrigen || ''}'. Requiere subsanación.`;
-          } else if (doc.esProximaCaducidad) {
-            observaciones = `[PRÓXIMA CADUCIDAD]: ${doc.motivoCaducidad || 'Vence en menos de 30 días'}. Archivo: '${doc.archivoOrigen || ''}'.`;
-          } else {
-            observaciones = doc.observaciones || `[VERIFICADO CONFORME]: Documento en vigor y conforme a normativa. Archivo: '${doc.archivoOrigen || ''}'.`;
-          }
-
-          const fechaEntrega = doc.fechaEmision || item.fechaEntrega || new Date().toISOString().slice(0, 10);
-          const fechaCaducidad = doc.fechaCaducidad || item.fechaCaducidad || '';
-
-          let validezText = 'Verificado por IA';
-          if (doc.esLegible === false || doc.solicitarReintento) {
-            validezText = 'ILEGIBLE / SOLICITAR REINTENTO';
-          } else if (doc.estaCaducado) {
-            validezText = `CADUCADO (Vencido hace ${doc.diasCaducado ?? 0} días)`;
-          } else if (doc.esProximaCaducidad) {
-            validezText = `PRÓXIMA CADUCIDAD (${doc.diasRestantes ?? 0} días restantes)`;
-          } else if (doc.confianza) {
-            validezText = `Cotejado por IA (${doc.confianza})`;
-          }
-
-          proposedList.push({
+      const proposedList: ProposedChecklistChange[] = subcontrata.checklist.map(item => {
+        const doc = bestEvidence.get(item.id);
+        if (!doc) {
+          const keepNotApplicable = item.estado === 'no_aplica' && !item.obligatorio;
+          return {
             docId: item.id,
             nombre: item.nombre,
             categoria: item.categoria,
             normativa: item.normativa,
             obligatorio: item.obligatorio,
             estadoActual: item.estado,
-            estadoPropuesto: finalEstado,
+            estadoPropuesto: keepNotApplicable ? 'no_aplica' : 'pendiente',
             fechaEntregaActual: item.fechaEntrega,
-            fechaEntregaPropuesta: fechaEntrega,
+            fechaEntregaPropuesta: item.fechaEntrega,
             fechaCaducidadActual: item.fechaCaducidad,
-            fechaCaducidadPropuesta: fechaCaducidad,
+            fechaCaducidadPropuesta: item.fechaCaducidad,
             observacionesActuales: item.observaciones,
-            observacionesPropuestas: observaciones,
-            archivoOrigen: doc.archivoOrigen,
-            estaCaducado: doc.estaCaducado,
-            diasCaducado: doc.diasCaducado,
-            diasRestantes: doc.diasRestantes,
-            esProximaCaducidad: doc.esProximaCaducidad,
-            motivoCaducidad: doc.motivoCaducidad,
-            motivoIlegible: doc.motivoIlegible,
-            esLegible: doc.esLegible !== undefined ? doc.esLegible : true,
-            validezIA: validezText,
-            confianza: doc.confianza,
+            observacionesPropuestas: keepNotApplicable
+              ? (item.observaciones || 'No aplica según la configuración actual del checklist.')
+              : '[NO LOCALIZADO POR OCR/IA] No se ha encontrado evidencia documental suficiente para acreditar este punto en los archivos aportados.',
+            archivoOrigen: keepNotApplicable ? '' : 'No localizado en los documentos aportados',
+            esLegible: true,
+            validezIA: keepNotApplicable ? 'NO APLICA' : 'NO LOCALIZADO POR OCR/IA',
+            confianza: keepNotApplicable ? 'alta' : 'baja',
             selected: true
-          });
+          } as ProposedChecklistChange;
         }
+
+        let finalEstado: SubcontrataDocEstado = doc.estaCaducado ? 'caducado' : (doc.estado || 'entregado');
+        if (doc.esLegible === false || doc.solicitarReintento) finalEstado = 'incompleto';
+        let observaciones = doc.observaciones || '';
+        if (doc.estaCaducado) observaciones = `[INCIDENCIA / CADUCADO] ${doc.motivoCaducidad || 'Documento vencido'}. Archivo: '${doc.archivoOrigen || ''}'.`;
+        else if (doc.esLegible === false || doc.solicitarReintento) observaciones = `[INCIDENCIA / ILEGIBLE] ${doc.motivoIlegible || 'OCR insuficiente o documento incompleto'}. Archivo: '${doc.archivoOrigen || ''}'.`;
+        else if (doc.esProximaCaducidad) observaciones = `[PRÓXIMA CADUCIDAD] ${doc.motivoCaducidad || 'Vence en menos de 30 días'}. Archivo: '${doc.archivoOrigen || ''}'.`;
+        else if (!observaciones) observaciones = `[EVIDENCIA OCR/IA] Documento localizado y cotejado. Archivo: '${doc.archivoOrigen || ''}'.`;
+
+        const validezText = doc.esLegible === false || doc.solicitarReintento
+          ? 'ILEGIBLE / REQUIERE REVISIÓN'
+          : doc.estaCaducado
+          ? `CADUCADO (${doc.diasCaducado ?? 0} días)`
+          : doc.esProximaCaducidad
+          ? `PRÓXIMA CADUCIDAD (${doc.diasRestantes ?? 0} días)`
+          : `EVIDENCIA OCR/IA (${doc.confianza || 'media'})`;
+
+        return {
+          docId: item.id,
+          nombre: item.nombre,
+          categoria: item.categoria,
+          normativa: item.normativa,
+          obligatorio: item.obligatorio,
+          estadoActual: item.estado,
+          estadoPropuesto: finalEstado,
+          fechaEntregaActual: item.fechaEntrega,
+          fechaEntregaPropuesta: doc.fechaEmision || item.fechaEntrega || new Date().toISOString().slice(0, 10),
+          fechaCaducidadActual: item.fechaCaducidad,
+          fechaCaducidadPropuesta: doc.fechaCaducidad || item.fechaCaducidad || '',
+          observacionesActuales: item.observaciones,
+          observacionesPropuestas: observaciones,
+          archivoOrigen: doc.archivoOrigen,
+          estaCaducado: doc.estaCaducado,
+          diasCaducado: doc.diasCaducado,
+          diasRestantes: doc.diasRestantes,
+          esProximaCaducidad: doc.esProximaCaducidad,
+          motivoCaducidad: doc.motivoCaducidad,
+          motivoIlegible: doc.motivoIlegible,
+          esLegible: doc.esLegible !== false,
+          validezIA: validezText,
+          confianza: doc.confianza,
+          selected: true
+        } as ProposedChecklistChange;
       });
 
-      // Update diagnostic display tabs
+      const missing = proposedList
+        .filter(item => item.obligatorio && !['entregado', 'no_aplica'].includes(item.estadoPropuesto))
+        .map(item => item.nombre);
+      const unreadableCount = proposedList.filter(item => item.esLegible === false).length;
+      const expiredCount = proposedList.filter(item => item.estaCaducado).length;
+      const deliveredCount = proposedList.filter(item => item.estadoPropuesto === 'entregado').length;
+
+      const consolidatedSummary = `OCR/IA completado sobre ${convertedFiles.length} archivo(s). Checklist evaluado: ${proposedList.length} puntos; ${deliveredCount} con evidencia conforme; ${missing.length} pendientes/incidencias; ${expiredCount} caducados; ${unreadableCount} ilegibles. Revisión humana obligatoria antes de aplicar.`;
       setLastAnalysisResults({
-        resumen: data.resumenDiagnostico || 'Cotejo documental completado con éxito.',
-        veredicto: data.veredictoAcceso || 'CONDICIONADO',
-        faltantes: data.relacionFaltantes || [],
-        analizados: analyzedDocs,
-        comparativaTrabajadores: data.comparativaTrabajadores,
-        alertasCaducidad: data.alertasCaducidad,
-        documentosIlegibles: illegibleDocs
+        resumen: consolidatedSummary + (summaries.length ? ` ${summaries.join(' ')}` : ''),
+        veredicto: missing.length === 0 ? 'APTO' : 'CONDICIONADO',
+        faltantes: missing,
+        analizados: aggregatedDocs,
+        comparativaTrabajadores: latestWorkerComparison,
+        alertasCaducidad: Array.from(new Set(expiryAlerts)),
+        documentosIlegibles: aggregatedIllegible
       });
 
-      // Select diagnostic tab based on issues found
-      if (illegibleDocs.length > 0) {
-        setActiveResultTab('legibilidad');
-      } else if (data.comparativaTrabajadores && data.comparativaTrabajadores.noRegistradosEnObra?.length > 0) {
-        setActiveResultTab('operarios');
-      } else if (proposedList.some(p => p.estaCaducado)) {
-        setActiveResultTab('caducidades');
-      } else {
-        setActiveResultTab('resumen');
-      }
+      if (aggregatedIllegible.length > 0) setActiveResultTab('legibilidad');
+      else if (latestWorkerComparison?.noRegistradosEnObra?.length) setActiveResultTab('operarios');
+      else if (expiredCount > 0) setActiveResultTab('caducidades');
+      else setActiveResultTab('resumen');
 
-      // Check if we have proposed changes to show for user review
-      if (proposedList.length > 0) {
-        setProposedChanges(proposedList);
-        setPendingAnalysisData(data);
-        setIsReviewModalOpen(true);
-        onToast(`Análisis completado: Revisa los cambios propuestos en el checklist para ${subcontrata.nombreEmpresa}.`, 'success');
-      } else {
-        onToast('Análisis finalizado, pero no se identificaron documentos aplicables al checklist legal.', 'error');
-      }
+      setProposedChanges(proposedList);
+      setPendingAnalysisData({
+        resumenDiagnostico: consolidatedSummary,
+        veredictoAcceso: missing.length === 0 ? 'APTO' : 'CONDICIONADO',
+        relacionFaltantes: missing
+      });
+      setIsReviewModalOpen(true);
+      onToast(`OCR/IA finalizado: ${convertedFiles.length} archivo(s) analizados y ${proposedList.length} puntos del checklist preparados para revisión manual.`, 'success');
     } catch (err: any) {
       console.error('Error during AI verification:', err);
-      onToast(err.message || 'Error al cotejar los documentos con IA.', 'error');
+      onToast(err.message || 'Error al cotejar los documentos con OCR/IA.', 'error');
     } finally {
       setIsAnalyzing(false);
       setAnalysisProgress('');
@@ -332,8 +352,8 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
         fechaEntrega: confirmed.fechaEntregaPropuesta || item.fechaEntrega || new Date().toISOString().slice(0, 10),
         fechaCaducidad: confirmed.fechaCaducidadPropuesta || item.fechaCaducidad,
         observaciones: confirmed.observacionesPropuestas || item.observaciones,
-        detectadoPorIA: true,
-        validezIA: confirmed.validezIA || (confirmed.estadoPropuesto === 'caducado' ? 'CADUCADO' : 'Verificado por IA'),
+        detectadoPorIA: confirmed.estadoPropuesto !== 'pendiente' && confirmed.archivoOrigen !== 'No localizado en los documentos aportados',
+        validezIA: confirmed.validezIA || (confirmed.estadoPropuesto === 'caducado' ? 'CADUCADO' : confirmed.estadoPropuesto === 'pendiente' ? 'NO LOCALIZADO POR OCR/IA' : 'Verificado por IA'),
         esLegible: confirmed.esLegible !== undefined ? confirmed.esLegible : true,
         solicitarReintento: !!(confirmed.estadoPropuesto === 'incompleto' || confirmed.esLegible === false)
       };

@@ -540,6 +540,7 @@ export const generateSubcontrataReportPDF = async (
     tecnicoNombre?: string;
     coordinadorNombre?: string;
     empresaCoordinacion?: string;
+    supervisorNombre?: string;
     recursoPreventivoObra?: string;
     recursoPreventivoCategoria?: string;
   }
@@ -554,14 +555,17 @@ export const generateSubcontrataReportPDF = async (
   const obrasRecursos = getStoredObrasRecursosPreventivos();
   const obraRecurso = sub.obra ? obrasRecursos[sub.obra] : undefined;
 
-  const effectiveTecnico = options?.tecnicoNombre?.trim() || defaultCfg.tecnicoNombre || 'David Hinojo García';
-  const effectiveCoordinador = options?.coordinadorNombre?.trim() || defaultCfg.coordinadorNombre || 'David Hinojo García';
-  const effectiveEmpresa = options?.empresaCoordinacion?.trim() || defaultCfg.empresaCoordinacion || 'Área de Cooperación - Excma. Diputación Provincial de Cádiz';
+  // Nullish coalescing is intentional: an explicit empty string means "do not render this signature".
+  const effectiveTecnico = (options?.tecnicoNombre ?? defaultCfg.tecnicoNombre ?? '').trim();
+  const effectiveCoordinador = (options?.coordinadorNombre ?? defaultCfg.coordinadorNombre ?? '').trim();
+  const effectiveEmpresa = (options?.empresaCoordinacion ?? defaultCfg.empresaCoordinacion ?? '').trim();
+  const effectiveSupervisorFirma = (options?.supervisorNombre ?? defaultCfg.supervisorNombre ?? '').trim();
   const effectiveRecursoNombre = options?.recursoPreventivoObra?.trim() || sub.recursoPreventivo?.trim() || obraRecurso?.recursoPreventivoNombre || '';
   const effectiveRecursoCategoria = options?.recursoPreventivoCategoria?.trim() || obraRecurso?.recursoPreventivoCategoria || 'Encargado de Obra';
 
   const config = getStoredPdfConfig();
   const compliance = getSubcontrataCompliance(sub);
+  // Metadata keeps using the record supervisor; signature visibility is controlled only by reporteConfig.
   const supNombre = supervisorResponsable || sub.supervisorResponsable || defaultCfg.supervisorNombre || 'Supervisor Responsable';
 
   // Margins
@@ -830,118 +834,32 @@ export const generateSubcontrataReportPDF = async (
       finalY + 2
     );
 
-    // Signature boxes
+    // Signature boxes: only explicitly configured signers are rendered.
     const sigY = finalY + 7;
     doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.4);
-    
-    if (effectiveRecursoNombre) {
-      const boxW = 43.5;
-      const gap = 2.6;
+    // Recurso Preventivo is deliberately excluded from Reporte Técnico signatures.
+    const signatures = [
+      { label: 'Por el Supervisor de obra:', name: effectiveSupervisorFirma },
+      { label: 'Por el Técnico de Obra:', name: effectiveTecnico },
+      { label: 'Coordinación de Seguridad y Salud:', name: effectiveCoordinador }
+    ].filter(signature => signature.name.trim().length > 0);
 
-      // Box 1: Supervisor de obra
-      doc.roundedRect(marginLeft, sigY, boxW, 21, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Supervisor de obra:', marginLeft + 2, sigY + 4);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Fdo: ${supNombre}`, marginLeft + 2, sigY + 17, { maxWidth: boxW - 4 });
-
-      // Box 2: Recurso Preventivo (Encargado de Obra)
-      const sig2X = marginLeft + boxW + gap;
-      doc.roundedRect(sig2X, sigY, boxW, 21, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Recurso Preventivo:', sig2X + 2, sigY + 4);
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(5.3);
-      doc.setTextColor(0, 84, 142);
-      doc.text(`Cargo: ${effectiveRecursoCategoria}`, sig2X + 2, sigY + 7.5, { maxWidth: boxW - 4 });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Fdo: ${effectiveRecursoNombre}`, sig2X + 2, sigY + 17, { maxWidth: boxW - 4 });
-
-      // Box 3: Técnico de Obra
-      const sig3X = sig2X + boxW + gap;
-      doc.roundedRect(sig3X, sigY, boxW, 21, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Por el Técnico de Obra:', sig3X + 2, sigY + 4);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Fdo: ${effectiveTecnico}`, sig3X + 2, sigY + 17, { maxWidth: boxW - 4 });
-
-      // Box 4: Coordinación de Seguridad y Salud
-      const sig4X = sig3X + boxW + gap;
-      doc.roundedRect(sig4X, sigY, boxW, 21, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Coordinación de Seguridad y Salud:', sig4X + 2, sigY + 4, { maxWidth: boxW - 4 });
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.2);
-      doc.setTextColor(0, 84, 142);
-      doc.text(effectiveCoordinador, sig4X + 2, sigY + 9, { maxWidth: boxW - 4 });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Fdo: ${effectiveCoordinador}`, sig4X + 2, sigY + 17, { maxWidth: boxW - 4 });
-    } else {
-      // Box 1: Supervisor de obra
-      doc.roundedRect(marginLeft, sigY, 58, 20, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.8);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Por el Supervisor de obra:', marginLeft + 2.5, sigY + 4);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.2);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Fdo: ${supNombre}`, marginLeft + 2.5, sigY + 16, { maxWidth: 53 });
-
-      // Box 2: Técnico de Obra
-      const sig2X = marginLeft + 62;
-      doc.roundedRect(sig2X, sigY, 58, 20, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.8);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Por el Técnico de Obra:', sig2X + 2.5, sigY + 4);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.2);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Fdo: ${effectiveTecnico}`, sig2X + 2.5, sigY + 16, { maxWidth: 53 });
-
-      // Box 3: Coordinación de Seguridad y Salud / Subcontratista
-      const sig3X = sig2X + 62;
-      doc.roundedRect(sig3X, sigY, 58, 20, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.8);
-      doc.setTextColor(15, 23, 42);
-      if (effectiveCoordinador) {
-        doc.text('Vº Bº Coordinación CSS:', sig3X + 2.5, sigY + 4);
-        if (effectiveEmpresa) {
-          doc.setFont('helvetica', 'italic');
-          doc.setFontSize(5.6);
-          doc.setTextColor(0, 84, 142);
-          doc.text(`Empresa: ${effectiveEmpresa}`, sig3X + 2.5, sigY + 8, { maxWidth: 53 });
-        }
+    if (signatures.length > 0) {
+      const gap = 3;
+      const boxW = (contentWidth - gap * (signatures.length - 1)) / signatures.length;
+      signatures.forEach((signature, index) => {
+        const x = marginLeft + index * (boxW + gap);
+        doc.roundedRect(x, sigY, boxW, 21, 1.5, 1.5, 'S');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(signature.label, x + 2, sigY + 4, { maxWidth: boxW - 4 });
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.2);
+        doc.setFontSize(5.8);
         doc.setTextColor(71, 85, 105);
-        doc.text(`Fdo: ${effectiveCoordinador}`, sig3X + 2.5, sigY + 16, { maxWidth: 53 });
-      } else {
-        doc.text('Recibí y Conformidad:', sig3X + 2.5, sigY + 4);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.2);
-        doc.setTextColor(71, 85, 105);
-        doc.text(`Fdo: Rep. ${sub.nombreEmpresa || 'Subcontrata'}`, sig3X + 2.5, sigY + 16, { maxWidth: 53 });
-      }
+        doc.text(`Fdo: ${signature.name}`, x + 2, sigY + 17, { maxWidth: boxW - 4 });
+      });
     }
   }
 
@@ -1289,6 +1207,7 @@ export interface ObraConsolidatedReportOptions {
   tecnicoNombre?: string;
   coordinadorNombre?: string;
   empresaCoordinacion?: string;
+  supervisorNombre?: string;
   recursoPreventivoObra?: string;
   recursoPreventivoCategoria?: string;
 }
@@ -1360,6 +1279,9 @@ export const generateObraConsolidatedReportPDF = async (
 
   const obraPorcentaje = totalDocs > 0 ? Math.round((entregadosDocs / totalDocs) * 100) : 0;
   const supNombre = supervisorNombre || (subcontratasInObra[0]?.supervisorResponsable) || 'Dirección Facultativa / Supervisión Técnica';
+  const consolidatedSupervisorFirma = (options?.supervisorNombre ?? '').trim();
+  const consolidatedTecnicoFirma = (options?.tecnicoNombre ?? '').trim();
+  const consolidatedCoordinadorFirma = (options?.coordinadorNombre ?? '').trim();
 
   // --- OFFICIAL HEADER ---
   // Official Logo of Diputación de Cádiz
@@ -1693,113 +1615,29 @@ export const generateObraConsolidatedReportPDF = async (
   sigDoc.setDrawColor(203, 213, 225);
   sigDoc.setLineWidth(0.4);
 
-  if (effectiveOptions.recursoPreventivoObra) {
-    const boxW = 43.5;
-    const gap = 2.6;
+  // Only configured report signers are shown. Preventive-resource data remains useful
+  // elsewhere in CAE but is never a Reporte Técnico signature.
+  const consolidatedSignatures = [
+    { label: 'Por el Supervisor de obra:', name: consolidatedSupervisorFirma },
+    { label: 'Por el Técnico de Obra:', name: consolidatedTecnicoFirma },
+    { label: 'Coordinación de Seguridad y Salud:', name: consolidatedCoordinadorFirma }
+  ].filter(signature => signature.name.trim().length > 0);
 
-    // Box 1: Supervisor de obra
-    sigDoc.roundedRect(marginLeft, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.5);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Supervisor de obra:', marginLeft + 2, sigBoxY + 4);
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(5.8);
-    sigDoc.setTextColor(71, 85, 105);
-    sigDoc.text(`Fdo: ${supNombre}`, marginLeft + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
-
-    // Box 2: Recurso Preventivo de Obra (con Categoría/Cargo)
-    const sig2X = marginLeft + boxW + gap;
-    sigDoc.roundedRect(sig2X, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.5);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Recurso Preventivo:', sig2X + 2, sigBoxY + 4);
-    sigDoc.setFont('helvetica', 'italic');
-    sigDoc.setFontSize(5.3);
-    sigDoc.setTextColor(0, 84, 142);
-    sigDoc.text(`Cargo: ${effectiveOptions.recursoPreventivoCategoria || 'Encargado de Obra'}`, sig2X + 2, sigBoxY + 8, { maxWidth: boxW - 4 });
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(5.8);
-    sigDoc.setTextColor(71, 85, 105);
-    sigDoc.text(`Fdo: ${effectiveOptions.recursoPreventivoObra}`, sig2X + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
-
-    // Box 3: Por el Técnico de Obra
-    const sig3X = sig2X + boxW + gap;
-    sigDoc.roundedRect(sig3X, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.5);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Por el Técnico de Obra:', sig3X + 2, sigBoxY + 4);
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(5.8);
-    sigDoc.setTextColor(71, 85, 105);
-    const tecnicoTxt = effectiveOptions.tecnicoNombre ? `Fdo: ${effectiveOptions.tecnicoNombre}` : 'Fdo: Técnico de Ejecución';
-    sigDoc.text(tecnicoTxt, sig3X + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
-
-    // Box 4: Coordinación de Seguridad y Salud
-    const sig4X = sig3X + boxW + gap;
-    sigDoc.roundedRect(sig4X, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.5);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Coordinación de Seguridad y Salud:', sig4X + 2, sigBoxY + 4, { maxWidth: boxW - 4 });
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.2);
-    sigDoc.setTextColor(0, 84, 142);
-    const coordinatorName = effectiveOptions.coordinadorNombre || 'Coordinador/a CSS';
-    sigDoc.text(coordinatorName, sig4X + 2, sigBoxY + 9, { maxWidth: boxW - 4 });
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(5.8);
-    sigDoc.setTextColor(71, 85, 105);
-    const coordTxt = `Fdo: ${coordinatorName}`;
-    sigDoc.text(coordTxt, sig4X + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
-  } else {
-    // 3 Boxes fallback
-    // Box 1: Supervisor de obra
-    sigDoc.roundedRect(marginLeft, sigBoxY, 58, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.8);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Por el Supervisor de obra:', marginLeft + 2.5, sigBoxY + 4);
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(6.2);
-    sigDoc.setTextColor(71, 85, 105);
-    sigDoc.text(`Fdo: ${supNombre}`, marginLeft + 2.5, sigBoxY + 18, { maxWidth: 53 });
-
-    // Box 2: Técnico de Obra
-    const sig2X = marginLeft + 62;
-    sigDoc.roundedRect(sig2X, sigBoxY, 58, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.8);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Por el Técnico de Obra:', sig2X + 2.5, sigBoxY + 4);
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(6.2);
-    sigDoc.setTextColor(71, 85, 105);
-    const tecnicoTxt = effectiveOptions.tecnicoNombre ? `Fdo: ${effectiveOptions.tecnicoNombre}` : 'Fdo: Técnico de Ejecución';
-    sigDoc.text(tecnicoTxt, sig2X + 2.5, sigBoxY + 18, { maxWidth: 53 });
-
-    // Box 3: Coordinador de Seguridad y Salud (CSS) junto al Nombre de la Empresa de Coordinación
-    const sig3X = sig2X + 62;
-    sigDoc.roundedRect(sig3X, sigBoxY, 58, 22, 1.5, 1.5, 'S');
-    sigDoc.setFont('helvetica', 'bold');
-    sigDoc.setFontSize(6.8);
-    sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Coordinación de Seguridad y Salud:', sig3X + 2.5, sigBoxY + 4);
-
-    if (effectiveOptions.empresaCoordinacion) {
+  if (consolidatedSignatures.length > 0) {
+    const gap = 3;
+    const boxW = (contentWidth - gap * (consolidatedSignatures.length - 1)) / consolidatedSignatures.length;
+    consolidatedSignatures.forEach((signature, index) => {
+      const x = marginLeft + index * (boxW + gap);
+      sigDoc.roundedRect(x, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
       sigDoc.setFont('helvetica', 'bold');
-      sigDoc.setFontSize(5.6);
-      sigDoc.setTextColor(0, 84, 142);
-      sigDoc.text(`Empresa: ${effectiveOptions.empresaCoordinacion}`, sig3X + 2.5, sigBoxY + 8.5, { maxWidth: 53 });
-    }
-
-    sigDoc.setFont('helvetica', 'normal');
-    sigDoc.setFontSize(6.2);
-    sigDoc.setTextColor(71, 85, 105);
-    const coordTxt = effectiveOptions.coordinadorNombre ? `Fdo: ${effectiveOptions.coordinadorNombre}` : 'Fdo: Coordinador CSS (Área de Cooperación)';
-    sigDoc.text(coordTxt, sig3X + 2.5, sigBoxY + 18, { maxWidth: 53 });
+      sigDoc.setFontSize(6.5);
+      sigDoc.setTextColor(15, 23, 42);
+      sigDoc.text(signature.label, x + 2, sigBoxY + 4, { maxWidth: boxW - 4 });
+      sigDoc.setFont('helvetica', 'normal');
+      sigDoc.setFontSize(5.8);
+      sigDoc.setTextColor(71, 85, 105);
+      sigDoc.text(`Fdo: ${signature.name}`, x + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
+    });
   }
 
   // Global Page Numbers & Official Footer

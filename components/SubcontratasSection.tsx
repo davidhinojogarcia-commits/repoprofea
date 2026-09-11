@@ -434,7 +434,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
         {
           tecnicoNombre: reporteConfig.tecnicoNombre,
           coordinadorNombre: reporteConfig.coordinadorNombre,
-          empresaCoordinacion: reporteConfig.empresaCoordinacion
+          empresaCoordinacion: reporteConfig.empresaCoordinacion,
+          supervisorNombre: reporteConfig.supervisorNombre
         }
       );
       onToast('Informe oficial en PDF descargado correctamente.', 'success');
@@ -621,7 +622,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       await generateObraConsolidatedReportPDF(targetObra, subsInObra, supervisor, {
         tecnicoNombre: reporteConfig.tecnicoNombre,
         coordinadorNombre: reporteConfig.coordinadorNombre,
-        empresaCoordinacion: reporteConfig.empresaCoordinacion
+        empresaCoordinacion: reporteConfig.empresaCoordinacion,
+        supervisorNombre: reporteConfig.supervisorNombre
       });
       onToast(`Informe consolidado de "${targetObra}" generado correctamente con diseño oficial de Diputación.`, 'success');
     } catch (err) {
@@ -2215,7 +2217,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                     Firmas y Datos Predeterminados del Reporte Técnico PDF
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Configure el Técnico de Obra, Coordinador de Seguridad y Salud, Empresa de Coordinación y Supervisor de obra.
+                    Configure únicamente las firmas que deban aparecer. Deje cualquier casilla de firma en blanco para omitirla del PDF.
                   </p>
                 </div>
               </div>
@@ -2243,18 +2245,17 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 <div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-950/20 space-y-2">
                   <label className="flex items-center gap-2 text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider">
                     <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    Nombre y Apellidos del Técnico de Obra *
+                    Nombre y Apellidos del Técnico de Obra
                   </label>
                   <input
                     type="text"
-                    required
                     value={reporteConfig.tecnicoNombre}
                     onChange={(e) => setReporteConfig({ ...reporteConfig, tecnicoNombre: e.target.value })}
                     placeholder="Ej: David Hinojo García"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                    Este nombre se imprimirá en la casilla <strong>"Por el Técnico"</strong> en todos los Reportes Técnicos oficiales en PDF.
+                    Si queda en blanco, la firma <strong>"Por el Técnico"</strong> no aparecerá en el PDF.
                   </p>
                 </div>
 
@@ -2266,14 +2267,13 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
                     value={reporteConfig.coordinadorNombre}
                     onChange={(e) => setReporteConfig({ ...reporteConfig, coordinadorNombre: e.target.value })}
                     placeholder="Ej: David Hinojo García"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                    Técnico competente responsable de la coordinación de seguridad y salud en fase de ejecución.
+                    Si queda en blanco, no se mostrará ninguna firma de Coordinación de Seguridad y Salud.
                   </p>
                 </div>
 
@@ -2285,14 +2285,13 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
                     value={reporteConfig.empresaCoordinacion}
                     onChange={(e) => setReporteConfig({ ...reporteConfig, empresaCoordinacion: e.target.value })}
                     placeholder="Ej: Área de Cooperación - Excma. Diputación Provincial de Cádiz"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                    Razón social de la empresa o administración pública que se imprime junto al coordinador.
+                    Dato informativo opcional de coordinación. No sustituye al nombre del firmante ni crea una firma por sí mismo.
                   </p>
                 </div>
 
@@ -2310,97 +2309,63 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                    Nombre del Supervisor de obra que encabeza la primera casilla oficial en los informes.
+                    Si queda en blanco, la firma de Supervisor de obra no aparecerá en el PDF.
                   </p>
                 </div>
               </form>
 
               {/* Live Signature Preview */}
               <div className="border-t border-slate-200 dark:border-slate-800 pt-5 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Eye className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    Vista Previa de la Sección de Firmas (Reporte Técnico PDF)
+                    Vista Previa de Firmas del Reporte Técnico PDF
                   </h3>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    4 Casillas Oficiales
+                    {[reporteConfig.supervisorNombre, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].filter(value => value?.trim()).length} firmas configuradas
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                  {/* Box 1: Supervisor de obra */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
-                    <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
-                      SUPERVISOR DE OBRA
-                    </div>
-                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                      [Espacio para Firma]
-                    </div>
-                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                      <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                        Fdo: {reporteConfig.supervisorNombre || 'David Hinojo García'}
-                      </span>
-                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
-                        Supervisor de obra
-                      </span>
-                    </div>
+                {[reporteConfig.supervisorNombre, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].some(value => value?.trim()) ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                    {reporteConfig.supervisorNombre?.trim() && (
+                      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
+                        <div className="bg-[#00548e] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">SUPERVISOR DE OBRA</div>
+                        <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">[Espacio para Firma]</div>
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">Fdo: {reporteConfig.supervisorNombre}</span>
+                        </div>
+                      </div>
+                    )}
+                    {reporteConfig.tecnicoNombre?.trim() && (
+                      <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 dark:border-blue-400 rounded-lg overflow-hidden flex flex-col justify-between shadow-xs">
+                        <div className="bg-blue-700 text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase flex items-center justify-center gap-1">
+                          <UserCheck className="w-3 h-3" /> POR EL TÉCNICO
+                        </div>
+                        <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">[Espacio para Firma]</div>
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-blue-50/50 dark:bg-blue-950/40">
+                          <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 block truncate">Fdo: {reporteConfig.tecnicoNombre}</span>
+                        </div>
+                      </div>
+                    )}
+                    {reporteConfig.coordinadorNombre?.trim() && (
+                      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
+                        <div className="bg-[#00548e] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">COORDINACIÓN SEG. Y SALUD</div>
+                        <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">[Espacio para Firma]</div>
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">Fdo: {reporteConfig.coordinadorNombre}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Box 2: Recurso Preventivo */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
-                    <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
-                      RECURSO PREVENTIVO
-                    </div>
-                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                      [Espacio para Firma]
-                    </div>
-                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                      <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                        Fdo: [Recurso de cada Obra]
-                      </span>
-                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
-                        Encargado de Obra
-                      </span>
-                    </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400">
+                    No se incluirá ninguna firma en el documento exportado. Introduzca un nombre solo en las firmas que necesite.
                   </div>
-
-                  {/* Box 3: Por el Técnico */}
-                  <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 dark:border-blue-400 rounded-lg overflow-hidden flex flex-col justify-between shadow-xs">
-                    <div className="bg-blue-700 text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase flex items-center justify-center gap-1">
-                      <UserCheck className="w-3 h-3" />
-                      POR EL TÉCNICO
-                    </div>
-                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                      [Espacio para Firma]
-                    </div>
-                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-blue-50/50 dark:bg-blue-950/40">
-                      <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 block truncate">
-                        Fdo: {reporteConfig.tecnicoNombre || 'David Hinojo García'}
-                      </span>
-                      <span className="text-[9px] text-blue-600 dark:text-blue-400 block truncate">
-                        Técnico de Obra
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Box 4: Coordinador CSS */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
-                    <div className="bg-[#1a365d] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">
-                      COORDINACIÓN SEG. Y SALUD
-                    </div>
-                    <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">
-                      [Espacio para Firma]
-                    </div>
-                    <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                      <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                        Fdo: {reporteConfig.coordinadorNombre || 'David Hinojo García'}
-                      </span>
-                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block truncate">
-                        Coordinador CSS
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                )}
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  El Recurso Preventivo forma parte de la documentación CAE, pero no se incluye como firmante del Reporte Técnico.
+                </p>
               </div>
             </div>
 
