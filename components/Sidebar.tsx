@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, BarChart3, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { useAuthShell } from './AuthGate';
 
@@ -51,12 +51,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .join('') || 'U';
 
   const menuItems: { id: ViewMode; label: string; icon: React.ElementType }[] = [
-    { id: 'dashboard', label: 'Vista General', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
     { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
     { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
     { id: 'registro', label: 'Nuevo Registro', icon: UserPlus },
     { id: 'directorio', label: 'Directorio', icon: Users },
-    { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
     { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
     { id: 'configuracion', label: 'Configuración', icon: Settings },
     { id: 'papelera', label: 'Papelera', icon: Trash2 },
