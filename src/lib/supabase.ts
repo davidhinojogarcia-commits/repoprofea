@@ -60,6 +60,12 @@ export const supabase = {
   get url() { return SUPABASE_URL; },
   get key() { return SUPABASE_KEY; },
   auth: client.auth,
+  channel(name: string) {
+    return client.channel(name);
+  },
+  removeChannel(channel: ReturnType<typeof client.channel>) {
+    return client.removeChannel(channel);
+  },
   async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string } = {}) {
     const headers: Record<string, string> = {};
     if (options.prefer) headers.Prefer = options.prefer;
