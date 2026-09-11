@@ -29,6 +29,10 @@ jobs:
             echo 'Legacy workers runtime table reference detected.'
             exit 1
           fi
+          if grep -RniE "localStorage\.(getItem|setItem|removeItem)\(['\"](personasPROFEA|personasEliminadasPROFEA|obrasGuardadas|lugaresFormacion|sitiosReconocimiento|telefonosGuardados|categoriasGuardadas|workStartHour|workEndHour|profea_subcontratas_v1|profea_subcontratas_checklist_template|profea_reporte_tecnico_config|profea_obras_recursos_preventivos|pdfCustomConfig)['\"]" App.tsx components src --include='*.ts' --include='*.tsx' 2>/dev/null; then
+            echo 'Business data must not use localStorage.'
+            exit 1
+          fi
       - name: TypeScript validation
         run: npm run lint
       - name: Build application
