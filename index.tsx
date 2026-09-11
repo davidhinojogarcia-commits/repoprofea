@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
+import './notification-modal-layout.css';
 
 // Puente temporal para props históricas de Google Drive que aún quedan en App.tsx.
 // La autenticación de la aplicación sigue siendo exclusivamente Supabase (email/password).
