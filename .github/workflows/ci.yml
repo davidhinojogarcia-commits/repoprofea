@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: ['main']
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,45 +37,3 @@ jobs:
         run: npm run lint
       - name: Build application
         run: npm run build
-      - name: Apply one-time bulk deletion optimization
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('App.tsx')
-          s=p.read_text()
-          old="""      for (const person of peopleToDelete) {
-        await createDocument('trash', person.id, { person, fechaEliminacion } as any);
-        await deleteDocument('trabajadores', person.id);
-      }"""
-          new="""      const batchSize = 20;
-      for (let offset = 0; offset < peopleToDelete.length; offset += batchSize) {
-        const batch = peopleToDelete.slice(offset, offset + batchSize);
-        await Promise.all(batch.map(async person => {
-          await createDocument('trash', person.id, { person, fechaEliminacion } as any);
-          await deleteDocument('trabajadores', person.id);
-        }));
-      }"""
-          if old not in s:
-              raise SystemExit('bulk loop not found')
-          s=s.replace(old,new,1)
-          old2="      for (const item of deletedPeople) await deleteDocument('trash', item.person.id);"
-          new2="""      const batchSize = 40;
-      for (let offset = 0; offset < deletedPeople.length; offset += batchSize) {
-        const batch = deletedPeople.slice(offset, offset + batchSize);
-        await Promise.all(batch.map(item => deleteDocument('trash', item.person.id)));
-      }"""
-          if old2 not in s:
-              raise SystemExit('empty trash loop not found')
-          s=s.replace(old2,new2,1)
-          p.write_text(s)
-          PY
-          npm run lint
-          npm run build
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout HEAD^ -- .github/workflows/ci.yml
-          git rm -f .github/workflows/optimize-bulk-delete.yml
-          git add App.tsx .github/workflows/ci.yml
-          git commit -m 'perf: speed up bulk deletion'
-          git push origin HEAD:main
