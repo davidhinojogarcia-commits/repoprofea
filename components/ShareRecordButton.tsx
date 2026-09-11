@@ -25,6 +25,20 @@ const resourceLabel=(resourceType:string)=>({
   obra:'obra',
 }[resourceType]||'registro');
 
+let adminStatusPromise:Promise<boolean>|null=null;
+const getAdminStatus=()=>{
+  if(adminStatusPromise)return adminStatusPromise;
+  adminStatusPromise=(async()=>{
+    try{
+      const authUser=(await supabase.auth.getUser()).data.user;
+      if(!authUser)return false;
+      const rows=await supabase.query('profiles',{query:`select=role,active&id=eq.${encodeURIComponent(authUser.id)}&limit=1`});
+      return rows?.[0]?.active===true&&rows?.[0]?.role==='admin';
+    }catch{return false;}
+  })();
+  return adminStatusPromise;
+};
+
 export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='Compartir',compact=false,className='',onClick})=>{
   const [isAdmin,setIsAdmin]=useState(false);
   const [open,setOpen]=useState(false);
@@ -37,14 +51,7 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
 
   useEffect(()=>{
     let active=true;
-    (async()=>{
-      try{
-        const authUser=(await supabase.auth.getUser()).data.user;
-        if(!authUser)return;
-        const rows=await supabase.query('profiles',{query:`select=role,active&id=eq.${encodeURIComponent(authUser.id)}&limit=1`});
-        if(active)setIsAdmin(rows?.[0]?.active===true&&rows?.[0]?.role==='admin');
-      }catch{/* El botón simplemente permanece oculto si no se puede verificar el rol. */}
-    })();
+    getAdminStatus().then(value=>{if(active)setIsAdmin(value);});
     return()=>{active=false;};
   },[]);
 
