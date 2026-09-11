@@ -69,39 +69,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Mobile Overlay */}
       {isMobileOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
 
-      {/* Sidebar Container */}
-      <aside 
+      <aside
         className={`
           fixed lg:sticky top-0 left-0 z-50 h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300 flex flex-col no-print app-navigation-panel
           ${isCollapsed ? 'lg:w-20' : 'lg:w-64'}
           ${isMobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}
         `}
       >
-        {/* Header / Logo Area */}
         <div className="h-20 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
           <div className={`flex items-center gap-2 overflow-hidden transition-opacity duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
-            <img 
-              src="/logo-diputacion-profea.svg" 
-              alt="Logo PROFEA Diputación de Cádiz" 
+            <img
+              src="/logo-diputacion-profea.svg"
+              alt="Logo PROFEA Diputación de Cádiz"
               className="dark:hidden h-9 w-auto max-w-[170px] object-contain"
             />
-            <img 
-              src="/logo-diputacion-profea-dark.svg" 
-              alt="Logo PROFEA Diputación de Cádiz" 
+            <img
+              src="/logo-diputacion-profea-dark.svg"
+              alt="Logo PROFEA Diputación de Cádiz"
               className="hidden dark:block h-9 w-auto max-w-[170px] object-contain"
             />
           </div>
-          
-          {/* Collapse Toggle (Desktop) */}
-          <button 
+
+          <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="hidden lg:flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
             title={isCollapsed ? "Expandir menú" : "Colapsar menú"}
@@ -109,8 +105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
 
-          {/* Close Toggle (Mobile) */}
-          <button 
+          <button
             onClick={() => setIsMobileOpen(false)}
             className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
           >
@@ -118,7 +113,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Navigation Links */}
         <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto custom-scrollbar">
           {menuItems.map((item) => {
             const isActive = activeView === item.id;
@@ -128,8 +122,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNavClick(item.id)}
                 className={`
                   w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative
-                  ${isActive 
-                    ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20' 
+                  ${isActive
+                    ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20'
                     : 'bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/65 hover:text-brand-primary dark:hover:text-blue-400'
                   }
                 `}
@@ -140,7 +134,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {item.label}
                 </span>
 
-                {/* Tooltip for collapsed state */}
                 {isCollapsed && !isMobileOpen && (
                   <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-xs font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50">
                     {item.label}
@@ -150,15 +143,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
 
-          {/* Filters Section */}
           <div className={`mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
             <div className="px-3 mb-4 flex items-center gap-2 text-slate-500 dark:text-slate-400">
               <Filter className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-wider">Filtros</span>
             </div>
-            
+
             <div className="space-y-4 px-1">
-              {/* Search */}
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-4 w-4 text-slate-400" />
@@ -172,7 +163,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 />
               </div>
 
-              {/* Obra Filter */}
               <MultiSearchableDropdown
                 options={savedObras}
                 selectedValues={selectedObraFilter}
@@ -181,10 +171,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 allLabel="Todas las obras"
                 icon={<MapPin className="w-4 h-4" />}
                 className="!w-full"
-                buttonClassName="!bg-slate-50 !border-slate-200 !py-2 !h-auto"
+                buttonClassName="!bg-slate-50 dark:!bg-slate-800/50 !border-slate-200 dark:!border-slate-700/80 hover:!bg-slate-100 dark:hover:!bg-slate-800 !py-2 !h-auto"
               />
 
-              {/* Quincena Filter */}
               <MultiSearchableDropdown
                 options={uniqueQuincenas}
                 selectedValues={selectedQuincenaFilter}
@@ -193,13 +182,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 allLabel="Todas las quincenas"
                 icon={<Clock className="w-4 h-4" />}
                 className="!w-full"
-                buttonClassName="!bg-slate-50 !border-slate-200 !py-2 !h-auto"
+                buttonClassName="!bg-slate-50 dark:!bg-slate-800/50 !border-slate-200 dark:!border-slate-700/80 hover:!bg-slate-100 dark:hover:!bg-slate-800 !py-2 !h-auto"
               />
             </div>
           </div>
         </nav>
 
-        {/* Camera Scanner Button */}
         <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-800/80 no-print">
           <button
             onClick={onOpenScanner}
@@ -214,7 +202,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Escanear Cámara
             </span>
 
-            {/* Tooltip for collapsed state */}
             {isCollapsed && !isMobileOpen && (
               <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-[10px] font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-md">
                 Escanear Cámara
@@ -223,7 +210,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Session / administration actions aligned with the scanner button */}
         <div className="px-3 pb-3 space-y-2 no-print">
           {role === 'admin' && (
             <button
@@ -248,7 +234,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Footer Area */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
           <div className={`flex items-center gap-3 overflow-hidden transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:h-0' : 'opacity-100 h-auto'}`}>
             <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
