@@ -4,6 +4,7 @@ import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import './notification-modal-layout.css';
+import './summary-layout.css';
 
 // Puente temporal para props históricas de Google Drive que aún quedan en App.tsx.
 // La autenticación de la aplicación sigue siendo exclusivamente Supabase (email/password).
