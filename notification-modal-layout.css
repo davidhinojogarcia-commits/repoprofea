@@ -53,6 +53,56 @@ body.profea-modal-open aside.app-navigation-panel {
   overscroll-behavior: contain !important;
 }
 
+/* Long edit forms use the same app-modal system, but should read as a window rather
+   than a tall page. Keep the shell fixed, let only the body scroll, and keep actions
+   visible at the bottom. This targets the shared long-form panel pattern rather than
+   a single worker modal instance. */
+#root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl {
+  width: min(70rem, 100%) !important;
+  max-width: 70rem !important;
+  height: min(46rem, 100%) !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :first-child {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  padding: 1rem 1.5rem !important;
+}
+
+#root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :nth-child(2) {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding: 1.25rem 1.5rem 0 !important;
+}
+
+#root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :nth-child(2) > form > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1.5rem !important;
+}
+
+#root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :nth-child(2) > form > :last-child {
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 20 !important;
+  margin-left: -1.5rem !important;
+  margin-right: -1.5rem !important;
+  padding: 1rem 1.5rem !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(12px) !important;
+  border-top: 1px solid rgb(226 232 240) !important;
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.05) !important;
+}
+
+.dark #root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :nth-child(2) > form > :last-child {
+  background: rgba(15, 23, 42, 0.96) !important;
+  border-top-color: rgb(51 65 85) !important;
+}
+
 @media (min-width: 1024px) {
   /* Expanded desktop sidebar (lg:w-64 = 16rem). */
   #root:has(aside.app-navigation-panel.lg\:w-64)
@@ -83,5 +133,25 @@ body.profea-modal-open aside.app-navigation-panel {
   .profea-modal-overlay {
     left: var(--profea-modal-gap) !important;
     z-index: 40 !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 1.25rem !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :first-child {
+    padding: 0.875rem 1rem !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :nth-child(2) {
+    padding: 1rem 1rem 0 !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl > :nth-child(2) > form > :last-child {
+    margin-left: -1rem !important;
+    margin-right: -1rem !important;
+    padding: 0.875rem 1rem !important;
   }
 }
