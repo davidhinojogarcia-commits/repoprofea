@@ -21,8 +21,8 @@ jobs:
         run: |
           test ! -f src/lib/firebase.ts
           test ! -f src/services/firestoreService.ts
-          if grep -RniE "src/lib/firebase|services/firestoreService|from ['\"]firebase(/|['\"])|FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)|Object.assign\(globalThis as any|executeDatabaseSync|handleSyncPendingToCloud|currentEffectiveWorkspaceId" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
-            echo 'Legacy Firebase/manual synchronization/runtime bridge code detected.'
+          if grep -RniE "src/lib/firebase|services/firestoreService|from ['\"]firebase(/|['\"])|FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)|Object.assign\(globalThis as any|executeDatabaseSync|handleSyncPendingToCloud|currentEffectiveWorkspaceId|getOrCreateUserWorkspace|syncWorkerToWorkspace|syncWorkerToCloud|getOrCreateSyncGroup|fetchGroupData|subscribeToWorkspace" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy Firebase/manual synchronization/workspace compatibility code detected.'
             exit 1
           fi
           if grep -RniE "['\"]workers['\"]" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
