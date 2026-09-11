@@ -13,7 +13,7 @@ type ApiResponse = {
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
 const SUPABASE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
-const MIGRATION_VERSION = 2;
+const MIGRATION_VERSION = 3;
 
 async function sb(pathname: string, token: string, init: RequestInit = {}) {
   if (!SUPABASE_KEY) throw new Error('Supabase publishable key is not configured');
@@ -68,10 +68,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     );
     if (!Array.isArray(workers)) throw new Error('Legacy worker source is invalid');
 
-    // Partial-safe migration: never overwrite a worker that is already present in Supabase.
-    // This lets interrupted migrations resume without destroying edits made after an earlier import.
+    // Migración reanudable: se importan únicamente IDs que todavía no existen para
+    // el administrador actual. El RPC escribe directamente en public.trabajadores,
+    // completa columnas tipadas y mantiene Supabase como única fuente de verdad.
     const existingRows = await sb(
-      `/rest/v1/workers?select=id&owner_id=eq.${encodeURIComponent(user.id)}&limit=10000`,
+      `/rest/v1/trabajadores?select=id&owner_id=eq.${encodeURIComponent(user.id)}&limit=10000`,
       token,
       { method: 'GET' },
     );
@@ -82,36 +83,26 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     let skipped = 0;
 
     for (let i = 0; i < workers.length; i += 50) {
-      const rows = workers
+      const missingWorkers = workers
         .slice(i, i + 50)
         .filter((worker: any) => worker && worker.id != null)
         .filter((worker: any) => {
           const exists = existingIds.has(Number(worker.id));
           if (exists) skipped += 1;
           return !exists;
-        })
-        .map((worker: any) => ({
-          owner_id: user.id,
-          id: Number(worker.id),
-          data: worker,
-          created_by: user.id,
-          created_at: worker.fechaRegistro || now,
-          updated_by: user.id,
-          updated_at: worker._lastUpdated || worker.fechaRegistro || now,
-        }));
+        });
 
-      if (rows.length) {
-        await sb(
-          '/rest/v1/workers?on_conflict=owner_id,id',
+      if (missingWorkers.length) {
+        const importedBatch = await sb(
+          '/rest/v1/rpc/import_workers_atomic',
           token,
           {
             method: 'POST',
-            headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
-            body: JSON.stringify(rows),
+            body: JSON.stringify({ p_workers: missingWorkers }),
           },
         );
-        imported += rows.length;
-        rows.forEach((row: any) => existingIds.add(Number(row.id)));
+        imported += Number(importedBatch || missingWorkers.length);
+        missingWorkers.forEach((worker: any) => existingIds.add(Number(worker.id)));
       }
     }
 
