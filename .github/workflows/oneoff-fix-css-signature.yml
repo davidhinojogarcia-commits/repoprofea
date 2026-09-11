@@ -1,4 +1,5 @@
 name: One-off fix CSS signature report
+# Triggered to apply configured CSS coordinator name to technical PDF signatures.
 
 on:
   push:
