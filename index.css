@@ -287,13 +287,6 @@ body {
   }
 }
 
-/* The notification manager is rendered inside the main application stacking context.
-   While it is open, force the sidebar beneath that modal so its global backdrop and
-   panel visually cover the entire interface instead of appearing behind navigation. */
-#root:has(.z-\[110\]) aside.app-navigation-panel {
-  z-index: -1 !important;
-}
-
 /* Long-form application modals: keep them as contained work windows instead of
    stretching edge-to-edge. The overlay itself is already constrained to the main
    content area by notification-modal-layout.css. */
