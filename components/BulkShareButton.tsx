@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Share2,Users,X,Loader2,Eye,Pencil,Search,CheckCircle2} from 'lucide-react';
 import {supabase} from '../src/lib/supabase';
 import {setDataPermission} from '../src/lib/functions';
@@ -48,7 +49,7 @@ export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='C
       const owners=await Promise.all(resourceIds.map(async resourceId=>{
         const rows=await supabase.query(table,{query:`select=id,owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`});
         const ownerId=rows?.[0]?.owner_id;
-        if(!ownerId)throw new Error(`No se pudo identificar el propietario de uno de los registros seleccionados.`);
+        if(!ownerId)throw new Error('No se pudo identificar el propietario de uno de los registros seleccionados.');
         return {resourceId,ownerId};
       }));
       await Promise.all(owners.map(({resourceId,ownerId})=>setDataPermission({
@@ -67,12 +68,9 @@ export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='C
 
   if(resourceIds.length===0)return null;
 
-  return <>
-    <button type="button" onClick={()=>setOpen(true)} className={`flex items-center justify-center bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/40 dark:hover:bg-violet-900/50 text-violet-700 dark:text-violet-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-violet-200 dark:border-violet-800/80 ${className}`}>
-      <Share2 className="w-3.5 h-3.5 mr-1.5"/>{label}
-    </button>
-    {open&&<div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm p-4" onClick={()=>!busy&&setOpen(false)}>
-      <div className="w-full max-w-xl max-h-[82dvh] flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={e=>e.stopPropagation()}>
+  const modal=open&&typeof document!=='undefined'?createPortal(
+    <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={()=>!busy&&setOpen(false)}>
+      <div className="w-full max-w-xl max-h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={e=>e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300"><Users size={19}/></div><div><h3 className="font-bold">Compartir {resourceIds.length} registros</h3><p className="text-xs text-slate-500">Elige usuario y nivel de acceso</p></div></div>
           <button type="button" disabled={busy} onClick={()=>setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"><X size={18}/></button>
@@ -91,6 +89,12 @@ export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='C
           <button type="button" disabled={!selectedUser||busy} onClick={apply} className="w-full rounded-xl bg-brand-primary text-white px-4 py-3 font-semibold disabled:opacity-50 flex items-center justify-center gap-2">{busy?<Loader2 size={17} className="animate-spin"/>:<CheckCircle2 size={17}/>}Aplicar a {resourceIds.length} registros</button>
         </div>
       </div>
-    </div>}
+    </div>,document.body):null;
+
+  return <>
+    <button type="button" onClick={()=>setOpen(true)} className={`flex items-center justify-center bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/40 dark:hover:bg-violet-900/50 text-violet-700 dark:text-violet-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-violet-200 dark:border-violet-800/80 ${className}`}>
+      <Share2 className="w-3.5 h-3.5 mr-1.5"/>{label}
+    </button>
+    {modal}
   </>;
 };
