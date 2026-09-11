@@ -11,18 +11,14 @@
   --profea-modal-gap: 1.25rem;
 }
 
-/* While any application modal is open, the page behind it must not move. The modal
-   itself owns scrolling through its inner panel. This prevents the dialog and the
-   sticky application header from drifting into different visual layers. */
+/* While any application modal is open, the page behind it must not move. Lock only
+   html/body: forcing #root to 100dvh while the user is already scrolled deep inside
+   Configuración can clip a non-portaled modal on iOS Safari and make the page look
+   frozen after choosing a backup file. */
 html:has(body.profea-modal-open),
 body.profea-modal-open {
   overflow: hidden !important;
   overscroll-behavior: none !important;
-}
-
-body.profea-modal-open #root {
-  height: 100dvh !important;
-  overflow: hidden !important;
 }
 
 /* Navigation always remains above application modals. */
