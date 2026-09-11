@@ -11,7 +11,8 @@
  */
 
 :root {
-  --profea-modal-header-offset: 4.75rem;
+  /* Header height + a visible breathing space before every modal. */
+  --profea-modal-header-offset: 5.75rem;
   --profea-modal-gap: 1rem;
 }
 
@@ -55,7 +56,7 @@
 
 @media (max-width: 1023px) {
   :root {
-    --profea-modal-header-offset: 0.5rem;
+    --profea-modal-header-offset: 0.75rem;
     --profea-modal-gap: 0.5rem;
   }
 
