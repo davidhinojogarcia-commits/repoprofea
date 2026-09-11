@@ -20,7 +20,9 @@ export const updateManagedUserRole=async(payload:any)=>{
   const result=await call<{ok:boolean;selfRoleChange?:boolean;role?:'admin'|'user'}>('role',payload);
   if(result.data?.selfRoleChange===true&&result.data?.role!=='admin'){
     await supabase.auth.signOut({scope:'local'});
-    if(typeof window!=='undefined')window.location.replace('/login');
+    // Esta SPA no expone una ruta física /login en Vercel. Volvemos a la raíz y
+    // AuthGate renderiza la pantalla de acceso al detectar que ya no hay sesión.
+    if(typeof window!=='undefined')window.location.replace('/');
   }
   return result;
 };
