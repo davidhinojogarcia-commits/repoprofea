@@ -55,7 +55,7 @@ export function AdminPanel({onClose}:AdminPanelProps){
    setEditUid('');
   });
  };
- const resetPassword=async(uid:string)=>run(async()=>{const r=await sendManagedPasswordReset({uid});window.alert(`Se ha enviado un correo de restablecimiento a ${r.data.email}.`);},false);
+ const resetPassword=async(uid:string)=>run(async()=>{await sendManagedPasswordReset({uid});},false);
  const savePermissions=async()=>{if(!selectedUid)return;await run(()=>updateManagedPermissions({uid:selectedUid,modules:permissions[selectedUid]||defaultPermissions()}));};
  const saveShare=async()=>{if(!share.resourceId||!share.ownerId||!share.userId){setError('Indica recurso, propietario y usuario destinatario.');return;}await run(()=>setDataPermission(share));};
  const filteredUserLabel=useMemo(()=>users.find(u=>u.id===auditUserFilter),[users,auditUserFilter]);
