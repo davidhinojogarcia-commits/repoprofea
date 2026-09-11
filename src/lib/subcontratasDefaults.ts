@@ -878,19 +878,17 @@ export const generateSubcontrataReportPDF = async (
       doc.setTextColor(71, 85, 105);
       doc.text(`Fdo: ${effectiveTecnico}`, sig3X + 2, sigY + 17, { maxWidth: boxW - 4 });
 
-      // Box 4: Coordinación CSS con Empresa
+      // Box 4: Coordinación de Seguridad y Salud
       const sig4X = sig3X + boxW + gap;
       doc.roundedRect(sig4X, sigY, boxW, 21, 1.5, 1.5, 'S');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(15, 23, 42);
-      doc.text('Coordinación CSS:', sig4X + 2, sigY + 4);
-      if (effectiveEmpresa) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(5.2);
-        doc.setTextColor(0, 84, 142);
-        doc.text(`Empresa: ${effectiveEmpresa}`, sig4X + 2, sigY + 7.5, { maxWidth: boxW - 4 });
-      }
+      doc.text('Coordinación de Seguridad y Salud:', sig4X + 2, sigY + 4, { maxWidth: boxW - 4 });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.2);
+      doc.setTextColor(0, 84, 142);
+      doc.text(effectiveCoordinador, sig4X + 2, sigY + 9, { maxWidth: boxW - 4 });
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.8);
       doc.setTextColor(71, 85, 105);
@@ -1739,23 +1737,22 @@ export const generateObraConsolidatedReportPDF = async (
     const tecnicoTxt = effectiveOptions.tecnicoNombre ? `Fdo: ${effectiveOptions.tecnicoNombre}` : 'Fdo: Técnico de Ejecución';
     sigDoc.text(tecnicoTxt, sig3X + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
 
-    // Box 4: Coordinador de Seguridad y Salud (CSS) con Empresa de Coordinación
+    // Box 4: Coordinación de Seguridad y Salud
     const sig4X = sig3X + boxW + gap;
     sigDoc.roundedRect(sig4X, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
     sigDoc.setFont('helvetica', 'bold');
     sigDoc.setFontSize(6.5);
     sigDoc.setTextColor(15, 23, 42);
-    sigDoc.text('Coordinación CSS:', sig4X + 2, sigBoxY + 4);
-    if (effectiveOptions.empresaCoordinacion) {
-      sigDoc.setFont('helvetica', 'bold');
-      sigDoc.setFontSize(5.2);
-      sigDoc.setTextColor(0, 84, 142);
-      sigDoc.text(`Empresa: ${effectiveOptions.empresaCoordinacion}`, sig4X + 2, sigBoxY + 8, { maxWidth: boxW - 4 });
-    }
+    sigDoc.text('Coordinación de Seguridad y Salud:', sig4X + 2, sigBoxY + 4, { maxWidth: boxW - 4 });
+    sigDoc.setFont('helvetica', 'bold');
+    sigDoc.setFontSize(6.2);
+    sigDoc.setTextColor(0, 84, 142);
+    const coordinatorName = effectiveOptions.coordinadorNombre || 'Coordinador/a CSS';
+    sigDoc.text(coordinatorName, sig4X + 2, sigBoxY + 9, { maxWidth: boxW - 4 });
     sigDoc.setFont('helvetica', 'normal');
     sigDoc.setFontSize(5.8);
     sigDoc.setTextColor(71, 85, 105);
-    const coordTxt = effectiveOptions.coordinadorNombre ? `Fdo: ${effectiveOptions.coordinadorNombre}` : 'Fdo: Coordinador CSS';
+    const coordTxt = `Fdo: ${coordinatorName}`;
     sigDoc.text(coordTxt, sig4X + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
   } else {
     // 3 Boxes fallback

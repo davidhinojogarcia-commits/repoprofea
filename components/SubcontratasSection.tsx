@@ -429,7 +429,13 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     try {
       await generateSubcontrataReportPDF(
         activeSubcontrata,
-        activeSubcontrata.supervisorResponsable
+        activeSubcontrata.supervisorResponsable,
+        undefined,
+        {
+          tecnicoNombre: reporteConfig.tecnicoNombre,
+          coordinadorNombre: reporteConfig.coordinadorNombre,
+          empresaCoordinacion: reporteConfig.empresaCoordinacion
+        }
       );
       onToast('Informe oficial en PDF descargado correctamente.', 'success');
     } catch (err) {
@@ -612,7 +618,11 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
     try {
       const supervisor = subsInObra[0]?.supervisorResponsable || supervisoresDisponibles[0] || 'David Hinojo García';
-      await generateObraConsolidatedReportPDF(targetObra, subsInObra, supervisor);
+      await generateObraConsolidatedReportPDF(targetObra, subsInObra, supervisor, {
+        tecnicoNombre: reporteConfig.tecnicoNombre,
+        coordinadorNombre: reporteConfig.coordinadorNombre,
+        empresaCoordinacion: reporteConfig.empresaCoordinacion
+      });
       onToast(`Informe consolidado de "${targetObra}" generado correctamente con diseño oficial de Diputación.`, 'success');
     } catch (err) {
       console.error('Error generating consolidated PDF:', err);
