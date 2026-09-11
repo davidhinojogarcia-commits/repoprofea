@@ -33,6 +33,22 @@ jobs:
             echo 'Business data must not use localStorage.'
             exit 1
           fi
+      - name: Validate auth session architecture
+        run: |
+          grep -q '"@supabase/supabase-js"' package.json
+          if grep -RniE "/auth/v1/(token|logout)" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' 2>/dev/null; then
+            echo 'Manual Supabase token/logout endpoint usage is forbidden.'
+            exit 1
+          fi
+          if grep -RniE "supabase\.auth\.signOut\(\)" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' 2>/dev/null; then
+            echo 'Supabase signOut must explicitly use local scope for normal session logout.'
+            exit 1
+          fi
+          grep -q "signOut({ scope: 'local' })" src/lib/authService.ts
+          grep -q 'autoRefreshToken: true' src/lib/supabase.ts
+          grep -q 'persistSession: true' src/lib/supabase.ts
+          grep -q 'IDLE_TIMEOUT_MS = 30 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
+          grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
       - name: TypeScript validation
         run: npm run lint
       - name: Build application
