@@ -1,0 +1,89 @@
+name: Final business localStorage cleanup
+
+on:
+  push:
+    branches: ['feat/firebase-multiusuario']
+    paths: ['.github/workflows/final-localstorage-cleanup.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/firebase-multiusuario
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Remove business localStorage compatibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          app = Path('src/services/appSettingsService.ts')
+          s = app.read_text()
+          s, n = re.subn(r"\nconst readLegacyBrowserSettings = \(\): Partial<AppBusinessSettings> => \{.*?\nasync function requireUser\(\) \{", "\nasync function requireUser() {", s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('Could not remove legacy app settings reader')
+          old = r"export async function loadAppBusinessSettings\(\): Promise<AppBusinessSettings> \{.*?\n\}\n\nexport async function saveAppBusinessSettings"
+          repl = """export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
+            const user = await requireUser();
+            const rows = await supabase.query('user_settings', {
+              query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
+            });
+            const remote = rows?.[0]?.settings?.app;
+            if (remote && typeof remote === 'object') return normalize(remote);
+            const defaults = normalize(DEFAULTS);
+            await saveAppBusinessSettings(defaults);
+            return defaults;
+          }
+
+          export async function saveAppBusinessSettings"""
+          s, n = re.subn(old, repl, s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('Could not replace app settings loader')
+          s, n = re.subn(r"export function clearLegacyBusinessSettings\(\): void \{.*?\n\}", "export function clearLegacyBusinessSettings(): void {}", s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('Could not neutralize old cleanup export')
+          app.write_text(s)
+
+          subs = Path('src/lib/subcontratasDefaults.ts')
+          s = subs.read_text()
+          s = s.replace('// Local storage key for customized checklist requirements template', '// Legacy key name retained only for source compatibility; no browser storage is read or written')
+          s = s.replace(' * Saves a new customized checklist template to localStorage', ' * Saves a new customized checklist template to Supabase')
+          s, n = re.subn(r"\n  // Migración única desde las claves históricas del navegador\..*?\n  if \(Array\.isArray\(effective\.checklistTemplate\)", "\n  if (Array.isArray(effective.checklistTemplate)", s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('Could not remove subcontractor legacy migration')
+          s, n = re.subn(r"\n    \[CHECKLIST_TEMPLATE_STORAGE_KEY, REPORTE_TECNICO_CONFIG_STORAGE_KEY, OBRAS_RECURSOS_PREVENTIVOS_STORAGE_KEY\]\n      \.forEach\(key => localStorage\.removeItem\(key\)\);", "", s, count=1)
+          if n != 1: raise SystemExit('Could not remove subcontractor local cleanup')
+          subs.write_text(s)
+
+          pdf = Path('src/lib/exportUtils.ts')
+          s = pdf.read_text()
+          s, n = re.subn(r"  let remote = await loadPdfPreferences\(\);\n\n  // Migración única desde la preferencia histórica del navegador\..*?\n  pdfConfigCache = normalizePdfConfig\(remote\);", "  const remote = await loadPdfPreferences();\n\n  pdfConfigCache = normalizePdfConfig(remote);", s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('Could not remove PDF legacy migration')
+          s = s.replace("\n  if (typeof window !== 'undefined') localStorage.removeItem('pdfCustomConfig');", '')
+          pdf.write_text(s)
+          PY
+      - name: Reject business localStorage
+        run: |
+          if grep -RniE "localStorage\.(getItem|setItem|removeItem)\(['\"](personasPROFEA|personasEliminadasPROFEA|obrasGuardadas|lugaresFormacion|sitiosReconocimiento|telefonosGuardados|categoriasGuardadas|workStartHour|workEndHour|profea_subcontratas_v1|profea_subcontratas_checklist_template|profea_reporte_tecnico_config|profea_obras_recursos_preventivos|pdfCustomConfig)['\"]" App.tsx components src --include='*.ts' --include='*.tsx'; then
+            echo 'Business data still uses localStorage.'
+            exit 1
+          fi
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate and build
+        run: |
+          npm run lint
+          npm run build
+      - name: Commit cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/services/appSettingsService.ts src/lib/subcontratasDefaults.ts src/lib/exportUtils.ts
+          git diff --cached --quiet && exit 0
+          git commit -m 'refactor: remove remaining business localStorage compatibility'
+          git push origin HEAD:feat/firebase-multiusuario
