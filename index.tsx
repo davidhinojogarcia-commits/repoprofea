@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
+import { installModalRuntime } from './src/lib/modalRuntime';
 import './notification-modal-layout.css';
 
 // Puente temporal para props históricas de Google Drive que aún quedan en App.tsx.
@@ -35,6 +36,8 @@ class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErro
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
+
+installModalRuntime();
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
