@@ -869,12 +869,12 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0">
             {lastUploadedFiles.length > 0 && !isUploading && !parsedResults && (
               <button
                 type="button"
                 onClick={() => handleProcessFiles(lastUploadedFiles)}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/10 transition-all shrink-0 cursor-pointer"
+                className="flex w-full sm:w-auto min-w-0 items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs text-center leading-tight shadow-md shadow-amber-500/10 transition-all cursor-pointer"
                 title={`Reintentar procesar ${lastUploadedFiles.length} archivo(s) con IA`}
               >
                 <RefreshCw className="w-4 h-4" />
@@ -886,7 +886,7 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-[#00548E] hover:bg-blue-800 text-white font-bold text-xs shadow-md shadow-blue-500/10 transition-all shrink-0 cursor-pointer disabled:opacity-50"
+              className="flex w-full sm:w-auto min-w-0 items-center justify-center gap-2.5 px-4 sm:px-5 py-3 rounded-2xl bg-[#00548E] hover:bg-blue-800 text-white font-bold text-xs text-center leading-tight shadow-md shadow-blue-500/10 transition-all cursor-pointer disabled:opacity-50"
             >
               {isUploading ? (
                 <>
@@ -896,7 +896,7 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
               ) : (
                 <>
                   <FileUp className="w-4 h-4" />
-                  <span>Importar Reconocimientos (Varios PDF / Imagen)</span>
+                  <span className="min-w-0 whitespace-normal break-words">Importar Reconocimientos (Varios PDF / Imagen)</span>
                 </>
               )}
             </button>
