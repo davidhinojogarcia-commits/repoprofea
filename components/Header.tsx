@@ -15,15 +15,15 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onMenuClick, theme, onThemeToggle, onUndo, onRedo, canUndo = false, canRedo = false, onOpenNotificationManager, alertsCount = 0 }) => (
-  <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-2xl shadow-sm mb-8 border border-slate-200 dark:border-slate-800/80 transition-all duration-300 relative flex flex-col items-center overflow-hidden no-print app-navigation-panel">
+  <div className="sticky top-0 z-[80] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-4 sm:p-5 md:p-6 rounded-2xl shadow-sm mb-6 md:mb-8 border border-slate-200 dark:border-slate-800/80 transition-all duration-300 relative flex flex-col items-center overflow-hidden no-print app-navigation-panel">
     <div className="absolute top-0 left-0 w-full h-1 bg-brand-primary" />
-    <div className="flex flex-col md:flex-row items-center justify-between gap-6 w-full max-w-6xl">
+    <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6 w-full max-w-none">
       <div className="flex items-center gap-4 md:gap-6 w-full md:w-auto justify-between md:justify-start">
         <div className="flex items-center gap-4">
           {onMenuClick && <button onClick={onMenuClick} className={`${BUTTON_GHOST} lg:hidden !p-2 -ml-2 !rounded-lg dark:text-slate-300 dark:hover:bg-slate-800 no-print`} aria-label="Abrir menú"><Menu className="w-6 h-6" /></button>}
           <div className="flex items-center select-none py-1">
-            <img src="/logo-diputacion-profea.svg" alt="Diputación de Cádiz - COOPERACIÓN PROFEA" className="dark:hidden h-12 sm:h-14 md:h-16 w-auto object-contain transition-transform hover:scale-[1.01]" />
-            <img src="/logo-diputacion-profea-dark.svg" alt="Diputación de Cádiz - COOPERACIÓN PROFEA" className="hidden dark:block h-12 sm:h-14 md:h-16 w-auto object-contain transition-transform hover:scale-[1.01]" />
+            <img src="/logo-diputacion-profea.svg" alt="Diputación de Cádiz - COOPERACIÓN PROFEA" className="dark:hidden h-10 sm:h-12 md:h-14 w-auto object-contain transition-transform hover:scale-[1.01]" />
+            <img src="/logo-diputacion-profea-dark.svg" alt="Diputación de Cádiz - COOPERACIÓN PROFEA" className="hidden dark:block h-10 sm:h-12 md:h-14 w-auto object-contain transition-transform hover:scale-[1.01]" />
           </div>
         </div>
       </div>
