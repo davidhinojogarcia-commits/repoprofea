@@ -69,8 +69,9 @@ export const getRecordShares=async(resourceType:string,resourceId:string|number)
   return rows||[];
 };
 
-export const shareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;ownerId:string;userId:string})=>
-  setDataPermission({...payload,canRead:true,canUpdate:true,canDelete:false});
+type ShareAccess='read'|'read_write';
+export const shareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;ownerId:string;userId:string;access:ShareAccess})=>
+  setDataPermission({...payload,canRead:true,canUpdate:payload.access==='read_write',canDelete:false});
 
 export const unshareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;userId:string})=>
   deleteDataPermission(payload);
