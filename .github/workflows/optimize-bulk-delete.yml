@@ -1,0 +1,69 @@
+name: Optimize bulk deletion
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/optimize-bulk-delete.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Optimize bulk trash operations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('App.tsx')
+          s=p.read_text()
+          old="""      for (const person of peopleToDelete) {
+        await createDocument('trash', person.id, { person, fechaEliminacion } as any);
+        await deleteDocument('trabajadores', person.id);
+      }"""
+          new="""      const batchSize = 20;
+      for (let offset = 0; offset < peopleToDelete.length; offset += batchSize) {
+        const batch = peopleToDelete.slice(offset, offset + batchSize);
+        await Promise.all(batch.map(async person => {
+          await createDocument('trash', person.id, { person, fechaEliminacion } as any);
+          await deleteDocument('trabajadores', person.id);
+        }));
+      }"""
+          if old not in s:
+            raise SystemExit('Bulk deletion loop not found')
+          s=s.replace(old,new,1)
+          old2="""      for (const item of deletedPeople) await deleteDocument('trash', item.person.id);"""
+          new2="""      const batchSize = 40;
+      for (let offset = 0; offset < deletedPeople.length; offset += batchSize) {
+        const batch = deletedPeople.slice(offset, offset + batchSize);
+        await Promise.all(batch.map(item => deleteDocument('trash', item.person.id)));
+      }"""
+          if old2 not in s:
+            raise SystemExit('Empty trash loop not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate and build
+        run: |
+          npm run lint
+          npm run build
+      - name: Commit optimization and self-clean
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add App.tsx
+          git commit -m 'perf: parallelize bulk trash operations'
+          git rm .github/workflows/optimize-bulk-delete.yml
+          git commit -m 'chore: remove temporary bulk delete workflow'
+          git push origin HEAD:main
