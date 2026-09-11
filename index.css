@@ -11,8 +11,18 @@ body {
 /* Use the available viewport instead of constraining whole sections to desktop presets. */
 #root .max-w-\[1600px\],
 #root .max-w-7xl,
-#root .max-w-6xl {
+#root .max-w-6xl,
+#root .max-w-4xl,
+#root .max-w-3xl {
   max-width: 100% !important;
+  width: 100% !important;
+}
+
+/* Registration and medical-management views should always be allowed to fill their container. */
+#root #form-container {
+  width: 100%;
+  max-width: none !important;
+  min-width: 0;
 }
 
 /* Dashboard right column must grow with its contents and use the browser scroll only. */
@@ -37,6 +47,18 @@ body {
 
 #root table {
   max-width: 100%;
+}
+
+/* Avoid fixed two-column groups overflowing on narrow screens. */
+@media (max-width: 639px) {
+  #root #form-container .grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #root #form-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
 }
 
 @media (max-width: 1023px) {
