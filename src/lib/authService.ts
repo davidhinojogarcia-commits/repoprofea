@@ -1,4 +1,5 @@
-import { supabase, type SupabaseUser } from './supabase';
+import type { AuthChangeEvent } from '@supabase/supabase-js';
+import { normalizeSupabaseUser, supabase, type SupabaseUser } from './supabase';
 import { auth } from './supabaseData';
 
 export type AppRole = 'admin' | 'user';
@@ -35,74 +36,76 @@ async function readUserProfile(user: SupabaseUser): Promise<AuthProfile | null> 
 export async function signInWithEmail(email: string, password: string): Promise<User> {
   await configureAuthPersistence();
   const normalizedEmail = email.trim().toLowerCase();
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword(normalizedEmail, password);
-    if (error) throw error;
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password,
+  });
+  if (error) throw error;
+  if (!data.user) throw new Error('Supabase no devolvió un usuario autenticado.');
 
-    const profile = await readUserProfile(data.user);
-    if (!profile) {
-      await supabase.auth.signOut();
-      throw Object.assign(
-        new Error('La cuenta existe, pero no tiene un perfil activo autorizado en Supabase.'),
-        { code: 'auth/missing-role' },
-      );
-    }
-
-    await supabase.query('profiles', {
-      method: 'PATCH',
-      prefer: 'return=minimal',
-      query: `id=eq.${encodeURIComponent(data.user.id)}`,
-      body: { last_access_at: new Date().toISOString() },
-    });
-
-    await supabase.query('audit_logs', {
-      method: 'POST',
-      prefer: 'return=minimal',
-      body: {
-        user_id: data.user.id,
-        user_email: data.user.email || '',
-        action: 'LOGIN',
-        resource_type: 'auth',
-        resource_id: data.user.id,
-        details: {},
-      },
-    }).catch(() => {});
-
-    auth.currentUser = data.user;
-    return data.user;
-  } catch (error) {
-    await supabase.auth.signOut().catch(() => {});
+  const user = normalizeSupabaseUser(data.user);
+  const profile = await readUserProfile(user);
+  if (!profile) {
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
     auth.currentUser = null;
-    throw error;
+    throw Object.assign(
+      new Error('La cuenta existe, pero no tiene un perfil activo autorizado en Supabase.'),
+      { code: 'auth/missing-role' },
+    );
   }
+
+  await supabase.query('profiles', {
+    method: 'PATCH',
+    prefer: 'return=minimal',
+    query: `id=eq.${encodeURIComponent(user.id)}`,
+    body: { last_access_at: new Date().toISOString() },
+  });
+
+  await supabase.query('audit_logs', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: {
+      user_id: user.id,
+      user_email: user.email || '',
+      action: 'LOGIN',
+      resource_type: 'auth',
+      resource_id: user.id,
+      details: {},
+    },
+  }).catch(() => undefined);
+
+  auth.currentUser = user;
+  return user;
 }
 
 export const signInWithEmailPassword = signInWithEmail;
 
 export async function signOutUser() {
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
+  if (error) throw error;
   auth.currentUser = null;
 }
 
-export function subscribeToAuth(callback: (user: User | null) => void) {
-  const sub = supabase.auth.onAuthStateChange(user => {
+export function subscribeToAuth(callback: (user: User | null, event: AuthChangeEvent) => void) {
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    const user = session?.user ? normalizeSupabaseUser(session.user) : null;
     auth.currentUser = user;
-    callback(user);
+    callback(user, event);
   });
-  return () => sub.data.subscription.unsubscribe();
+  return () => data.subscription.unsubscribe();
 }
 
 export async function getCurrentRole(): Promise<AppRole | null> {
-  const user = (await supabase.auth.getUser()).data.user;
-  if (!user) return null;
-  const profile = await readUserProfile(user);
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  const profile = await readUserProfile(normalizeSupabaseUser(data.user));
   return profile?.role || null;
 }
 
 export async function getUserProfile(): Promise<AuthProfile | null> {
-  const user = (await supabase.auth.getUser()).data.user;
-  if (!user) return null;
-  return readUserProfile(user);
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return readUserProfile(normalizeSupabaseUser(data.user));
 }
 
 export async function sendResetPassword(_email: string): Promise<void> {
