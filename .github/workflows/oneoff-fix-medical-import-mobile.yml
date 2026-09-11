@@ -1,0 +1,73 @@
+name: One-off fix medical import mobile layout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-fix-medical-import-mobile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix medical import action buttons on mobile
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('components/ReconocimientosMedicosSection.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          old_wrapper = '          <div className="flex items-center gap-2">\n            {lastUploadedFiles.length > 0 && !isUploading && !parsedResults && ('
+          new_wrapper = '          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0">\n            {lastUploadedFiles.length > 0 && !isUploading && !parsedResults && ('
+          if old_wrapper not in s:
+              raise SystemExit('medical import action wrapper not found')
+          s = s.replace(old_wrapper, new_wrapper, 1)
+
+          old_retry = 'className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/10 transition-all shrink-0 cursor-pointer"'
+          new_retry = 'className="flex w-full sm:w-auto min-w-0 items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs text-center leading-tight shadow-md shadow-amber-500/10 transition-all cursor-pointer"'
+          if old_retry not in s:
+              raise SystemExit('retry button class not found')
+          s = s.replace(old_retry, new_retry, 1)
+
+          old_import = 'className="flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-[#00548E] hover:bg-blue-800 text-white font-bold text-xs shadow-md shadow-blue-500/10 transition-all shrink-0 cursor-pointer disabled:opacity-50"'
+          new_import = 'className="flex w-full sm:w-auto min-w-0 items-center justify-center gap-2.5 px-4 sm:px-5 py-3 rounded-2xl bg-[#00548E] hover:bg-blue-800 text-white font-bold text-xs text-center leading-tight shadow-md shadow-blue-500/10 transition-all cursor-pointer disabled:opacity-50"'
+          if old_import not in s:
+              raise SystemExit('import button class not found')
+          s = s.replace(old_import, new_import, 1)
+
+          old_label = '<span>Importar Reconocimientos (Varios PDF / Imagen)</span>'
+          new_label = '<span className="min-w-0 whitespace-normal break-words">Importar Reconocimientos (Varios PDF / Imagen)</span>'
+          if old_label not in s:
+              raise SystemExit('import button label not found')
+          s = s.replace(old_label, new_label, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Remove one-off workflow
+        run: rm -f .github/workflows/oneoff-fix-medical-import-mobile.yml
+
+      - name: Commit changes
+        run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add -A
+          git commit -m "fix: keep medical import actions inside mobile viewport"
+          git push origin HEAD:main
