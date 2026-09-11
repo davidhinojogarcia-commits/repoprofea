@@ -1,19 +1,19 @@
-/* Summary screen: the dashboard now contains only the information that belongs to a
-   high-level overview. Registration and the worker registry remain available from
-   their dedicated sidebar sections. */
-
-#root main .grid.grid-cols-1.xl\:grid-cols-12.gap-8 > .xl\:col-span-5 {
+/* Resumen: solo debe mostrar la información agregada. El alta y el directorio tienen
+   secciones propias en el menú. Identificamos exclusivamente el antiguo dashboard por
+   la presencia del formulario de registro en su primera columna. */
+#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8:has(> .xl\:col-span-5 #form-container) > .xl\:col-span-5 {
   display: none !important;
 }
 
-#root main .grid.grid-cols-1.xl\:grid-cols-12.gap-8 > .xl\:col-span-7 {
+#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8:has(> .xl\:col-span-5 #form-container) > .xl\:col-span-7 {
   grid-column: 1 / -1 !important;
   width: 100% !important;
   max-width: none !important;
+  padding-right: 0 !important;
 }
 
-/* Inside the former dashboard right column, Stats is the first child and the worker
-   registry card is the second. Keep only the summary/metrics component. */
-#root main .grid.grid-cols-1.xl\:grid-cols-12.gap-8 > .xl\:col-span-7 > :nth-child(2) {
+/* Stats/Resumen es el primer hijo de la antigua columna derecha. Todo lo posterior es
+   el listado de registros duplicado, que permanece accesible desde Directorio. */
+#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8:has(> .xl\:col-span-5 #form-container) > .xl\:col-span-7 > :not(:first-child) {
   display: none !important;
 }
