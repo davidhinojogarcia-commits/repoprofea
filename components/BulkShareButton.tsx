@@ -2,120 +2,21 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Share2,Users,X,Loader2,Eye,Pencil,Search,CheckCircle2} from 'lucide-react';
 import {supabase} from '../src/lib/supabase';
+import {showAppToast} from '../src/lib/appToast';
 
 type Access='read'|'read_write';
 type Profile={id:string;email:string;nombre?:string;apellidos?:string;role?:string;active?:boolean};
-
-type Props={
-  resourceType:string;
-  resourceIds:Array<string|number>;
-  label?:string;
-  className?:string;
-};
-
+type Props={resourceType:string;resourceIds:Array<string|number>;label?:string;className?:string;};
 const tableForResource=(resourceType:string)=>resourceType==='obra'?'obras':resourceType;
 const chunks=<T,>(items:T[],size:number)=>Array.from({length:Math.ceil(items.length/size)},(_,i)=>items.slice(i*size,(i+1)*size));
 
 export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='Compartir seleccionados',className=''})=>{
-  const [open,setOpen]=useState(false);
-  const [users,setUsers]=useState<Profile[]>([]);
-  const [loading,setLoading]=useState(false);
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  const [search,setSearch]=useState('');
-  const [selectedUser,setSelectedUser]=useState('');
-  const [access,setAccess]=useState<Access>('read');
-
-  useEffect(()=>{
-    if(!open)return;
-    setLoading(true);setError('');setSearch('');setSelectedUser('');setAccess('read');
-    supabase.query('profiles',{query:'select=id,email,nombre,apellidos,role,active&active=eq.true&role=eq.user&order=nombre.asc,apellidos.asc,email.asc'})
-      .then(rows=>setUsers(rows||[]))
-      .catch((e:any)=>setError(e?.message||'No se pudieron cargar los usuarios.'))
-      .finally(()=>setLoading(false));
-  },[open]);
-
-  const filteredUsers=useMemo(()=>{
-    const term=search.trim().toLowerCase();
-    if(!term)return users;
-    return users.filter(user=>`${user.nombre||''} ${user.apellidos||''} ${user.email||''}`.toLowerCase().includes(term));
-  },[users,search]);
-
-  const loadOwners=async()=>{
-    const table=tableForResource(resourceType);
-    if(resourceType==='trabajadores'){
-      const rows:any[]=[];
-      for(const group of chunks(resourceIds,150)){
-        const numeric=group.map(id=>Number(id)).filter(Number.isFinite);
-        if(!numeric.length)continue;
-        const part=await supabase.query(table,{query:`select=id,owner_id&id=in.(${numeric.join(',')})`});
-        rows.push(...(part||[]));
-      }
-      const byId=new Map(rows.map(row=>[String(row.id),row.owner_id]));
-      return resourceIds.map(resourceId=>({resourceId,ownerId:byId.get(String(resourceId))||''}));
-    }
-    return Promise.all(resourceIds.map(async resourceId=>{
-      const rows=await supabase.query(table,{query:`select=id,owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`});
-      return {resourceId,ownerId:rows?.[0]?.owner_id||''};
-    }));
-  };
-
-  const apply=async()=>{
-    if(!selectedUser||resourceIds.length===0)return;
-    setBusy(true);setError('');
-    try{
-      const owners=await loadOwners();
-      const invalid=owners.filter(item=>!item.ownerId);
-      if(invalid.length)throw new Error(`No se pudo identificar el propietario de ${invalid.length} registro(s) seleccionado(s).`);
-      const body=owners.map(({resourceId,ownerId})=>({
-        resource_type:resourceType,
-        resource_id:String(resourceId),
-        owner_id:ownerId,
-        user_id:selectedUser,
-        can_read:true,
-        can_update:access==='read_write',
-        can_delete:false,
-      }));
-      await supabase.query('data_permissions',{
-        method:'POST',
-        prefer:'resolution=merge-duplicates,return=minimal',
-        query:'on_conflict=resource_type,resource_id,user_id',
-        body,
-      });
-      setOpen(false);
-    }catch(e:any){setError(e?.message||'No se pudieron compartir todos los registros seleccionados.');}
-    finally{setBusy(false);}
-  };
-
-  if(resourceIds.length===0)return null;
-
-  const modal=open&&typeof document!=='undefined'?createPortal(
-    <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={()=>!busy&&setOpen(false)}>
-      <div className="w-full max-w-xl max-h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300"><Users size={19}/></div><div><h3 className="font-bold">Compartir {resourceIds.length} registros</h3><p className="text-xs text-slate-500">Elige usuario y nivel de acceso</p></div></div>
-          <button type="button" disabled={busy} onClick={()=>setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"><X size={18}/></button>
-        </div>
-        <div className="p-5 space-y-4 overflow-y-auto">
-          {error&&<div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>}
-          <label className="relative block"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar usuario por nombre o email…" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent pl-9 pr-3 py-2.5 text-sm"/></label>
-          {loading?<div className="py-8 flex justify-center gap-2 text-sm text-slate-500"><Loader2 size={18} className="animate-spin"/>Cargando usuarios…</div>:<div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredUsers.map(user=>{const name=[user.nombre,user.apellidos].filter(Boolean).join(' ').trim()||user.email;return <label key={user.id} className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60"><input type="radio" name="bulk-share-user" checked={selectedUser===user.id} onChange={()=>setSelectedUser(user.id)}/><span className="min-w-0"><span className="block text-sm font-semibold truncate">{name}</span><span className="block text-xs text-slate-500 truncate">{user.email}</span></span></label>})}
-            {!filteredUsers.length&&<div className="p-6 text-center text-sm text-slate-500">No hay usuarios que coincidan con la búsqueda.</div>}
-          </div>}
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={()=>setAccess('read')} className={`rounded-xl border px-3 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${access==='read'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Eye size={16}/>Lectura</button>
-            <button type="button" onClick={()=>setAccess('read_write')} className={`rounded-xl border px-3 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${access==='read_write'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Pencil size={16}/>Lectura + escritura</button>
-          </div>
-          <button type="button" disabled={!selectedUser||busy} onClick={apply} className="w-full rounded-xl bg-brand-primary text-white px-4 py-3 font-semibold disabled:opacity-50 flex items-center justify-center gap-2">{busy?<Loader2 size={17} className="animate-spin"/>:<CheckCircle2 size={17}/>}Aplicar a {resourceIds.length} registros</button>
-        </div>
-      </div>
-    </div>,document.body):null;
-
-  return <>
-    <button type="button" onClick={()=>setOpen(true)} className={`flex items-center justify-center bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/40 dark:hover:bg-violet-900/50 text-violet-700 dark:text-violet-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-violet-200 dark:border-violet-800/80 ${className}`}>
-      <Share2 className="w-3.5 h-3.5 mr-1.5"/>{label}
-    </button>
-    {modal}
-  </>;
+ const [open,setOpen]=useState(false),[users,setUsers]=useState<Profile[]>([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[selectedUser,setSelectedUser]=useState(''),[access,setAccess]=useState<Access>('read');
+ useEffect(()=>{if(!open)return;setLoading(true);setError('');setSearch('');setSelectedUser('');setAccess('read');supabase.query('profiles',{query:'select=id,email,nombre,apellidos,role,active&active=eq.true&role=eq.user&order=nombre.asc,apellidos.asc,email.asc'}).then(rows=>setUsers(rows||[])).catch((e:any)=>{const m=e?.message||'No se pudieron cargar los usuarios.';setError(m);showAppToast(m,'error');}).finally(()=>setLoading(false));},[open]);
+ const filteredUsers=useMemo(()=>{const t=search.trim().toLowerCase();return users.filter(u=>!t||`${u.nombre||''} ${u.apellidos||''} ${u.email||''}`.toLowerCase().includes(t));},[users,search]);
+ const loadOwners=async()=>{const table=tableForResource(resourceType);if(resourceType==='trabajadores'){const rows:any[]=[];for(const group of chunks(resourceIds,150)){const numeric=group.map(id=>Number(id)).filter(Number.isFinite);if(!numeric.length)continue;const part=await supabase.query(table,{query:`select=id,owner_id&id=in.(${numeric.join(',')})`});rows.push(...(part||[]));}const byId=new Map(rows.map(r=>[String(r.id),r.owner_id]));return resourceIds.map(resourceId=>({resourceId,ownerId:byId.get(String(resourceId))||''}));}return Promise.all(resourceIds.map(async resourceId=>{const rows=await supabase.query(table,{query:`select=id,owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`});return {resourceId,ownerId:rows?.[0]?.owner_id||''};}));};
+ const apply=async()=>{if(!selectedUser||resourceIds.length===0)return;setBusy(true);setError('');try{const owners=await loadOwners(),invalid=owners.filter(x=>!x.ownerId);if(invalid.length)throw new Error(`No se pudo identificar el propietario de ${invalid.length} registro(s) seleccionado(s).`);await supabase.query('data_permissions',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',query:'on_conflict=resource_type,resource_id,user_id',body:owners.map(({resourceId,ownerId})=>({resource_type:resourceType,resource_id:String(resourceId),owner_id:ownerId,user_id:selectedUser,can_read:true,can_update:access==='read_write',can_delete:false}))});const user=users.find(u=>u.id===selectedUser),name=[user?.nombre,user?.apellidos].filter(Boolean).join(' ')||user?.email||'el usuario';showAppToast(`${resourceIds.length} registro${resourceIds.length===1?'':'s'} compartido${resourceIds.length===1?'':'s'} con ${name}.`,'success');setOpen(false);}catch(e:any){const m=e?.message||'No se pudieron compartir todos los registros seleccionados.';setError(m);showAppToast(m,'error');}finally{setBusy(false)}};
+ if(resourceIds.length===0)return null;
+ const modal=open&&typeof document!=='undefined'?createPortal(<div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={()=>!busy&&setOpen(false)}><div className="w-full max-w-xl max-h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={e=>e.stopPropagation()}><div className="flex items-center justify-between px-5 py-4 border-b"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300"><Users size={19}/></div><div><h3 className="font-bold">Compartir {resourceIds.length} registros</h3><p className="text-xs text-slate-500">Elige usuario y nivel de acceso</p></div></div><button type="button" disabled={busy} onClick={()=>setOpen(false)} className="p-2 rounded-lg"><X size={18}/></button></div><div className="p-5 space-y-4 overflow-y-auto">{error&&<div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}<label className="relative block"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar usuario por nombre o email…" className="w-full rounded-xl border pl-9 pr-3 py-2.5 text-sm bg-transparent"/></label>{loading?<div className="py-8 flex justify-center gap-2 text-sm text-slate-500"><Loader2 size={18} className="animate-spin"/>Cargando usuarios…</div>:<div className="max-h-56 overflow-y-auto rounded-xl border divide-y">{filteredUsers.map(user=>{const name=[user.nombre,user.apellidos].filter(Boolean).join(' ').trim()||user.email;return <label key={user.id} className="flex items-center gap-3 px-4 py-3 cursor-pointer"><input type="radio" name="bulk-share-user" checked={selectedUser===user.id} onChange={()=>setSelectedUser(user.id)}/><span className="min-w-0"><span className="block text-sm font-semibold truncate">{name}</span><span className="block text-xs text-slate-500 truncate">{user.email}</span></span></label>})}{!filteredUsers.length&&<div className="p-6 text-center text-sm text-slate-500">No hay usuarios que coincidan con la búsqueda.</div>}</div>}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>setAccess('read')} className={`rounded-xl border px-3 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${access==='read'?'bg-blue-600 text-white border-blue-600':''}`}><Eye size={16}/>Lectura</button><button type="button" onClick={()=>setAccess('read_write')} className={`rounded-xl border px-3 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${access==='read_write'?'bg-blue-600 text-white border-blue-600':''}`}><Pencil size={16}/>Lectura + escritura</button></div><button type="button" disabled={!selectedUser||busy} onClick={apply} className="w-full rounded-xl bg-brand-primary text-white px-4 py-3 font-semibold disabled:opacity-50 flex items-center justify-center gap-2">{busy?<Loader2 size={17} className="animate-spin"/>:<CheckCircle2 size={17}/>}Aplicar a {resourceIds.length} registros</button></div></div></div>,document.body):null;
+ return <><button type="button" onClick={()=>setOpen(true)} className={`flex items-center justify-center bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 px-3 py-1.5 rounded-lg text-xs font-bold border border-violet-200 dark:border-violet-800/80 ${className}`}><Share2 className="w-3.5 h-3.5 mr-1.5"/>{label}</button>{modal}</>;
 };
