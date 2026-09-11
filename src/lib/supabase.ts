@@ -1,7 +1,10 @@
 import { createClient, type User } from '@supabase/supabase-js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+// La publishable key de Supabase está diseñada para usarse en clientes públicos.
+// Se mantiene la variable de entorno como primera opción y esta clave como respaldo
+// para evitar que la aplicación falle antes de montar React si Vercel no la inyecta.
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_bvx-RBb1Kvz9sfo0LXY3iQ_WHzw6ee2';
 const STORAGE_KEY = 'profea-supabase-auth';
 const LEGACY_STORAGE_KEY = 'profea-supabase-session';
 
