@@ -56,6 +56,27 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
   return data;
 }
 
+async function edgeFunctionErrorMessage(error: any): Promise<string> {
+  try {
+    const response = error?.context;
+    if (response && typeof response.clone === 'function') {
+      const cloned = response.clone();
+      const text = await cloned.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          return parsed?.error || parsed?.message || parsed?.msg || error?.message || 'La operación no se pudo completar.';
+        } catch {
+          return text;
+        }
+      }
+    }
+  } catch {
+    // Conserva el mensaje original si no se puede leer la respuesta de la Edge Function.
+  }
+  return error?.message || 'La operación no se pudo completar.';
+}
+
 export const supabase = {
   get url() { return SUPABASE_URL; },
   get key() { return SUPABASE_KEY; },
@@ -82,7 +103,11 @@ export const supabase = {
   },
   async edgeFunction(name: string, body: any) {
     const { data, error } = await client.functions.invoke(name, { body });
-    if (error) throw error;
+    if (error) {
+      const friendly = new Error(await edgeFunctionErrorMessage(error));
+      (friendly as any).cause = error;
+      throw friendly;
+    }
     return data;
   },
 };
