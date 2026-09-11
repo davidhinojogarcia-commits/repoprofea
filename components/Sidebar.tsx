@@ -40,7 +40,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   uniqueQuincenas = [],
   onOpenScanner,
 }) => {
-  const { role, signOut, signingOut } = useAuthShell();
+  const { user, role, signOut, signingOut } = useAuthShell();
+  const metadata = (user.user_metadata || {}) as Record<string, any>;
+  const signedInName = [metadata.nombre, metadata.apellidos].filter(Boolean).join(' ').trim() || user.email || 'Usuario';
+  const signedInInitials = signedInName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('') || 'U';
+
   const menuItems: { id: ViewMode; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: 'Vista General', icon: LayoutDashboard },
     { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
@@ -243,12 +252,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
           <div className={`flex items-center gap-3 overflow-hidden transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:h-0' : 'opacity-100 h-auto'}`}>
             <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
-              <span className="text-slate-500 dark:text-slate-400 text-xs font-bold">DC</span>
+              <span className="text-slate-500 dark:text-slate-400 text-xs font-bold">{signedInInitials}</span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">Diputación de Cádiz</span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Gestión PROFEA</span>
-              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium whitespace-nowrap">© David Hinojo García</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate" title={signedInName}>{signedInName}</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{role === 'admin' ? 'Administrador · PROFEA' : 'Usuario · PROFEA'}</span>
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium truncate" title={user.email || ''}>{user.email || 'Sesión activa'}</span>
             </div>
           </div>
         </div>
