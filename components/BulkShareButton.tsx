@@ -2,7 +2,6 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Share2,Users,X,Loader2,Eye,Pencil,Search,CheckCircle2} from 'lucide-react';
 import {supabase} from '../src/lib/supabase';
-import {setDataPermission} from '../src/lib/functions';
 
 type Access='read'|'read_write';
 type Profile={id:string;email:string;nombre?:string;apellidos?:string;role?:string;active?:boolean};
@@ -15,6 +14,7 @@ type Props={
 };
 
 const tableForResource=(resourceType:string)=>resourceType==='obra'?'obras':resourceType;
+const chunks=<T,>(items:T[],size:number)=>Array.from({length:Math.ceil(items.length/size)},(_,i)=>items.slice(i*size,(i+1)*size));
 
 export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='Compartir seleccionados',className=''})=>{
   const [open,setOpen]=useState(false);
@@ -41,26 +41,47 @@ export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='C
     return users.filter(user=>`${user.nombre||''} ${user.apellidos||''} ${user.email||''}`.toLowerCase().includes(term));
   },[users,search]);
 
+  const loadOwners=async()=>{
+    const table=tableForResource(resourceType);
+    if(resourceType==='trabajadores'){
+      const rows:any[]=[];
+      for(const group of chunks(resourceIds,150)){
+        const numeric=group.map(id=>Number(id)).filter(Number.isFinite);
+        if(!numeric.length)continue;
+        const part=await supabase.query(table,{query:`select=id,owner_id&id=in.(${numeric.join(',')})`});
+        rows.push(...(part||[]));
+      }
+      const byId=new Map(rows.map(row=>[String(row.id),row.owner_id]));
+      return resourceIds.map(resourceId=>({resourceId,ownerId:byId.get(String(resourceId))||''}));
+    }
+    return Promise.all(resourceIds.map(async resourceId=>{
+      const rows=await supabase.query(table,{query:`select=id,owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`});
+      return {resourceId,ownerId:rows?.[0]?.owner_id||''};
+    }));
+  };
+
   const apply=async()=>{
     if(!selectedUser||resourceIds.length===0)return;
     setBusy(true);setError('');
     try{
-      const table=tableForResource(resourceType);
-      const owners=await Promise.all(resourceIds.map(async resourceId=>{
-        const rows=await supabase.query(table,{query:`select=id,owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`});
-        const ownerId=rows?.[0]?.owner_id;
-        if(!ownerId)throw new Error('No se pudo identificar el propietario de uno de los registros seleccionados.');
-        return {resourceId,ownerId};
+      const owners=await loadOwners();
+      const invalid=owners.filter(item=>!item.ownerId);
+      if(invalid.length)throw new Error(`No se pudo identificar el propietario de ${invalid.length} registro(s) seleccionado(s).`);
+      const body=owners.map(({resourceId,ownerId})=>({
+        resource_type:resourceType,
+        resource_id:String(resourceId),
+        owner_id:ownerId,
+        user_id:selectedUser,
+        can_read:true,
+        can_update:access==='read_write',
+        can_delete:false,
       }));
-      await Promise.all(owners.map(({resourceId,ownerId})=>setDataPermission({
-        resourceType,
-        resourceId,
-        ownerId,
-        userId:selectedUser,
-        canRead:true,
-        canUpdate:access==='read_write',
-        canDelete:false,
-      })));
+      await supabase.query('data_permissions',{
+        method:'POST',
+        prefer:'resolution=merge-duplicates,return=minimal',
+        query:'on_conflict=resource_type,resource_id,user_id',
+        body,
+      });
       setOpen(false);
     }catch(e:any){setError(e?.message||'No se pudieron compartir todos los registros seleccionados.');}
     finally{setBusy(false);}
