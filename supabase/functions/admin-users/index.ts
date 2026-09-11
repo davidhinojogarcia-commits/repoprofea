@@ -92,14 +92,28 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "role") {
-      if (uid === callerData.user.id) return json({ error: "No puedes cambiar tu propio rol" }, 400);
       const role = body.role === "admin" ? "admin" : "user";
+      const isSelf = uid === callerData.user.id;
+
+      if (isSelf && role !== "admin") {
+        const { count, error: countError } = await admin
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "admin")
+          .eq("active", true)
+          .neq("id", uid);
+        if (countError) throw countError;
+        if (!count || count < 1) {
+          return json({ error: "No puedes quitarte el rol de administrador porque eres el último administrador activo" }, 409);
+        }
+      }
+
       const { error: authError } = await admin.auth.admin.updateUserById(uid, { app_metadata: { role } });
       if (authError) throw authError;
       const { error } = await admin.from("profiles").update({ role }).eq("id", uid);
       if (error) throw error;
-      await audit(admin, callerData.user, "UPDATE_USER", uid, { role });
-      return json({ ok: true });
+      await audit(admin, callerData.user, "UPDATE_USER", uid, { role, selfRoleChange: isSelf });
+      return json({ ok: true, selfRoleChange: isSelf, role });
     }
 
     if (action === "status") {
