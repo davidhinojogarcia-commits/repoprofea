@@ -1,0 +1,42 @@
+name: One-off CAE PDF OCR UI refinement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-cae-refinement.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply CAE refinement
+        run: python scripts/apply_cae_refinement.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Clean one-off files
+        run: git rm .github/workflows/oneoff-cae-refinement.yml scripts/apply_cae_refinement.py
+
+      - name: Commit changes
+        run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add components/SubcontratasSection.tsx components/FileUploaderIA.tsx src/lib/subcontratasDefaults.ts index.tsx institutional-polish.css
+          git commit -m "feat: refine CAE OCR signatures and institutional UI"
+          git push origin main
