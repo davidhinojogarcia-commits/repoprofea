@@ -244,6 +244,13 @@ function App() {
 
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const handleGoogleLogin = async () => {
+    setToast({ message: 'La conexión directa con Google Drive está deshabilitada en esta versión.', type: 'error' });
+  };
+  const handleGoogleLogout = async () => {
+    setGoogleUser(null);
+    setGoogleToken(null);
+  };
   const [autoSaveToDrive, setAutoSaveToDrive] = useState<boolean>(() => {
     return localStorage.getItem('personasPROFEA_autoSaveToDrive') === 'true';
   });
@@ -1879,13 +1886,8 @@ function App() {
             <div className="space-y-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800/80">
               <div className="text-xs text-slate-300 animate-pulse flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                <span>Sincronizando registros en la nube...</span>
+                <span>Buscando el registro en Supabase...</span>
               </div>
-              {isOffline && (
-                <p className="text-[10px] text-amber-400 font-medium">
-                  ⚠️ Sin conexión a internet para sincronizar en tiempo real.
-                </p>
-              )}
             </div>
           )}
           
