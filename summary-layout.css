@@ -1,19 +1,20 @@
-/* Resumen: solo debe mostrar la información agregada. El alta y el directorio tienen
-   secciones propias en el menú. Identificamos exclusivamente el antiguo dashboard por
-   la presencia del formulario de registro en su primera columna. */
-#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8:has(> .xl\:col-span-5 #form-container) > .xl\:col-span-5 {
+/* Resumen: el antiguo dashboard tiene una estructura única de 5 + 7 columnas.
+   En esta vista solo conservamos Stats; alta y directorio viven en sus secciones propias. */
+#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8 > .xl\:col-span-5 {
   display: none !important;
 }
 
-#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8:has(> .xl\:col-span-5 #form-container) > .xl\:col-span-7 {
+#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8 > .xl\:col-span-7 {
   grid-column: 1 / -1 !important;
   width: 100% !important;
   max-width: none !important;
   padding-right: 0 !important;
+  position: static !important;
+  max-height: none !important;
+  overflow: visible !important;
 }
 
-/* Stats/Resumen es el primer hijo de la antigua columna derecha. Todo lo posterior es
-   el listado de registros duplicado, que permanece accesible desde Directorio. */
-#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8:has(> .xl\:col-span-5 #form-container) > .xl\:col-span-7 > :not(:first-child) {
+/* Stats es el primer hijo de la columna derecha; el resto es el listado duplicado. */
+#root .grid.grid-cols-1.xl\:grid-cols-12.gap-8 > .xl\:col-span-7 > :not(:first-child) {
   display: none !important;
 }
