@@ -32,21 +32,6 @@ async function readUserProfile(user: SupabaseUser): Promise<AuthProfile | null> 
   };
 }
 
-async function runLegacyMigration(accessToken: string): Promise<void> {
-  try {
-    const response = await fetch('/api/migrate-legacy', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      console.error('Migración legacy automática:', body?.error || `HTTP ${response.status}`);
-    }
-  } catch (error) {
-    console.error('Migración legacy automática:', error);
-  }
-}
-
 export async function signInWithEmail(email: string, password: string): Promise<User> {
   await configureAuthPersistence();
   const normalizedEmail = email.trim().toLowerCase();
@@ -84,12 +69,6 @@ export async function signInWithEmail(email: string, password: string): Promise<
     }).catch(() => {});
 
     auth.currentUser = data.user;
-
-    if (profile.role === 'admin') {
-      const accessToken = (await supabase.auth.getSession()).data.session?.access_token;
-      if (accessToken) void runLegacyMigration(accessToken);
-    }
-
     return data.user;
   } catch (error) {
     await supabase.auth.signOut().catch(() => {});
