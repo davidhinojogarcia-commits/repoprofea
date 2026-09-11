@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {Share2,Users,X,Loader2,UserMinus,CheckCircle2,Eye,Pencil} from 'lucide-react';
+import {Share2,Users,X,Loader2,UserMinus,CheckCircle2,Eye,Pencil,Search} from 'lucide-react';
 import {supabase} from '../src/lib/supabase';
 import {getRecordShares,shareRecordWithUser,unshareRecordWithUser} from '../src/lib/functions';
 
@@ -49,6 +49,7 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
   const [shares,setShares]=useState<ShareRow[]>([]);
   const [ownerId,setOwnerId]=useState('');
   const [error,setError]=useState('');
+  const [userSearch,setUserSearch]=useState('');
 
   useEffect(()=>{
     let active=true;
@@ -57,6 +58,11 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
   },[]);
 
   const shareByUser=useMemo(()=>new Map(shares.map(s=>[s.user_id,s])),[shares]);
+  const filteredUsers=useMemo(()=>{
+    const term=userSearch.trim().toLowerCase();
+    if(!term)return users;
+    return users.filter(user=>`${user.nombre||''} ${user.apellidos||''} ${user.email||''}`.toLowerCase().includes(term));
+  },[users,userSearch]);
 
   const load=async()=>{
     setLoading(true);setError('');
@@ -79,6 +85,7 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
   const openModal=async(e:React.MouseEvent<HTMLButtonElement>)=>{
     e.stopPropagation();
     onClick?.(e);
+    setUserSearch('');
     setOpen(true);
     await load();
   };
@@ -127,11 +134,18 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
           <button type="button" onClick={()=>setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button>
         </div>
 
+        <div className="px-4 sm:px-5 pt-4">
+          <label className="relative block">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+            <input value={userSearch} onChange={e=>setUserSearch(e.target.value)} placeholder="Buscar usuario por nombre o email…" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"/>
+          </label>
+        </div>
+
         <div className="overflow-y-auto p-4 sm:p-5 space-y-3">
           {error&&<div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>}
           {loading?<div className="py-12 flex items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={18} className="animate-spin"/>Cargando usuarios…</div>:
-          users.length===0?<div className="py-10 text-center text-sm text-slate-500">No hay usuarios normales activos con los que compartir.</div>:
-          users.map(user=>{
+          filteredUsers.length===0?<div className="py-10 text-center text-sm text-slate-500">No hay usuarios que coincidan con la búsqueda.</div>:
+          filteredUsers.map(user=>{
             const share=shareByUser.get(user.id);
             const current:ShareAccess|null=share?(share.can_update?'read_write':'read'):null;
             const busy=busyUser===user.id;
