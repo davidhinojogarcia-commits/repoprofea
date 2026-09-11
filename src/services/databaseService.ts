@@ -74,7 +74,7 @@ async function serialize(table: string, value: DatabaseRecord) {
     obra_id: obraId, trabajador_id: value.matchedPersonId ?? value.trabajadorId ?? value.trabajador_id ?? null,
     dni: value.dni || '', apellidos_nombre: value.apellidosNombre || '', resultado: value.resultado || value.reconocimientoEstado || 'Pendiente',
     limitaciones: value.limitaciones || value.reconocimientoLimitaciones || '', fecha_reconocimiento: dateOrNull(value.fechaReconocimiento || value.reconocimientoFecha),
-    validez: dateOrNull(value.validez || value.reconocimientoValidez), centro_medico: value.centroMedico || value.sitioReconocimiento || '',
+    validez: dateOrNull(value.validez || value.reconocimientoValidez) || '', centro_medico: value.centroMedico || value.sitioReconocimiento || '',
     observaciones: value.observaciones || value.reconocimientoObservaciones || '', data
   };
   if (table === 'contrataciones') return {
@@ -196,13 +196,41 @@ export async function getDocuments<T = DatabaseRecord>(collectionName: string, o
 
 export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string, onUpdate: (items: T[]) => void, options: ListOptions = {}, onError?: (error: Error) => void) {
   let active = true;
+  let refreshTimer: number | null = null;
+  const table = canonicalTable(collectionName);
+
   const run = async () => {
-    try { if (active) onUpdate(await getDocuments<T>(collectionName, options)); }
-    catch (error) { onError?.(error instanceof Error ? error : new Error(String(error))); }
+    try {
+      if (active) onUpdate(await getDocuments<T>(collectionName, options));
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
   };
+
+  const scheduleRefresh = () => {
+    if (!active || refreshTimer !== null) return;
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = null;
+      void run();
+    }, 120);
+  };
+
+  // Initial snapshot, then only refresh when Postgres reports an actual change.
   void run();
-  const timer = window.setInterval(() => void run(), 3000);
-  return () => { active = false; window.clearInterval(timer); };
+  const channel = supabase
+    .channel(`profea:${table}:${Math.random().toString(36).slice(2)}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        onError?.(new Error(`No se pudo mantener la sincronización en tiempo real de ${table}.`));
+      }
+    });
+
+  return () => {
+    active = false;
+    if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    void supabase.removeChannel(channel);
+  };
 }
 
 export const getSharedDocuments = getDocuments;
