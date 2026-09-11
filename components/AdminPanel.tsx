@@ -12,17 +12,18 @@ type ResourceType='trabajadores'|'obra'|'citas'|'reconocimientos'|'subcontratas'
 
 type ResourceConfig={table:string;label:string;select:string};
 const resourceConfigs:Record<ResourceType,ResourceConfig>={
- trabajadores:{table:'trabajadores',label:'Trabajador',select:'id,owner_id,apellidos_nombre,dni,obra,num_oferta'},
+ trabajadores:{table:'trabajadores',label:'Trabajador',select:'id,owner_id,obra_id,apellidos_nombre,dni,obra,num_oferta'},
  obra:{table:'obras',label:'Obra',select:'id,owner_id,codigo,nombre,municipio'},
- citas:{table:'citas',label:'Cita',select:'id,owner_id,trabajador_id,cita_dia,cita_hora,sitio_reconocimiento,num_oferta'},
- reconocimientos:{table:'reconocimientos',label:'Reconocimiento médico',select:'id,owner_id,trabajador_id,dni,apellidos_nombre,resultado,fecha_reconocimiento,centro_medico'},
- subcontratas:{table:'subcontratas',label:'Subcontrata',select:'id,owner_id,nombre_empresa,cif,municipio,persona_contacto'},
- contrataciones:{table:'contrataciones',label:'Contratación',select:'id,owner_id,trabajador_id,num_oferta,categoria,periodo_inicio,periodo_fin,quincena'},
+ citas:{table:'citas',label:'Cita',select:'id,owner_id,obra_id,trabajador_id,cita_dia,cita_hora,sitio_reconocimiento,num_oferta,data'},
+ reconocimientos:{table:'reconocimientos',label:'Reconocimiento médico',select:'id,owner_id,obra_id,trabajador_id,dni,apellidos_nombre,resultado,fecha_reconocimiento,centro_medico,data'},
+ subcontratas:{table:'subcontratas',label:'Subcontrata',select:'id,owner_id,obra_id,nombre_empresa,cif,municipio,persona_contacto,data'},
+ contrataciones:{table:'contrataciones',label:'Contratación',select:'id,owner_id,obra_id,trabajador_id,num_oferta,categoria,periodo_inicio,periodo_fin,quincena,data'},
 };
 
 const moduleLabels:Record<ModuleName,string>={contratacion:'Contratación',trabajadores:'Trabajadores',obras:'Obras',reconocimientos:'Reconocimientos',subcontratas:'Subcontratas',citas:'Citas'};
 const defaultPermissions=():Modules=>Object.fromEntries(Object.keys(moduleLabels).map(k=>[k,{read:true,create:true,update:true,delete:true}])) as Modules;
 const dateValue=(v:any)=>v?new Date(v).toLocaleString('es-ES'):'—';
+const normalizeKey=(v:any)=>String(v||'').trim().toLocaleLowerCase('es');
 const auditActionOptions=[['CREATE','Crear'],['INSERT','Insertar'],['UPDATE','Actualizar'],['DELETE','Eliminar'],['LOGIN','Inicio de sesión'],['CREATE_USER','Crear usuario'],['UPDATE_USER','Actualizar usuario'],['RESET_PASSWORD','Restablecer contraseña']] as const;
 const auditResourceOptions=[['trabajadores','Trabajadores'],['trash','Papelera'],['subcontratas','Subcontratas'],['contrataciones','Contrataciones'],['reconocimientos','Reconocimientos médicos'],['citas','Citas'],['obras','Obras'],['profiles','Administración / Usuarios'],['auth','Autenticación'],['workers','Trabajadores (legado)']] as const;
 
@@ -67,7 +68,31 @@ export function AdminPanel({onClose}:AdminPanelProps){
    const rows=await supabase.query(cfg.table,{query:`select=${cfg.select}&order=created_at.desc&limit=2000`});
    return [type,rows||[]] as const;
   }));
-  setCatalogs(Object.fromEntries(entries));
+  const next=Object.fromEntries(entries) as Record<string,any[]>;
+
+  // Las obras históricas aún viven principalmente como texto dentro de trabajadores.
+  // Las exponemos como registros compartibles reales sin obligar a crear IDs técnicos.
+  const actualObras=next.obra||[];
+  const actualKeys=new Set<string>();
+  actualObras.forEach((o:any)=>{
+   actualKeys.add(normalizeKey(o.id));
+   actualKeys.add(normalizeKey(o.nombre));
+   actualKeys.add(normalizeKey(o.codigo));
+  });
+  const synthetic=new Map<string,any>();
+  const addSynthetic=(obra:any,ownerId:any)=>{
+   const label=String(obra||'').trim();
+   if(!label)return;
+   const key=normalizeKey(label);
+   if(actualKeys.has(key)||synthetic.has(key))return;
+   synthetic.set(key,{id:label,owner_id:ownerId||'',codigo:label,nombre:label,municipio:'',synthetic:true});
+  };
+  (next.trabajadores||[]).forEach((r:any)=>addSynthetic(r.obra,r.owner_id));
+  (['citas','reconocimientos','subcontratas','contrataciones'] as const).forEach(type=>{
+   (next[type]||[]).forEach((r:any)=>addSynthetic(r?.data?.obra,r.owner_id));
+  });
+  next.obra=[...actualObras,...synthetic.values()];
+  setCatalogs(next);
  };
 
  const loadUserShares=async(uid:string)=>{
@@ -97,7 +122,7 @@ export function AdminPanel({onClose}:AdminPanelProps){
  useEffect(()=>{if(tab==='audit')loadAudit().catch(e=>setError(e?.message||'No se pudo cargar la auditoría.'));},[tab,auditUserFilter,auditActionFilter,auditResourceFilter,auditDateFrom,auditDateTo]);
  useEffect(()=>{if(tab==='permissions')loadCatalogs().catch(e=>setError(e?.message||'No se pudieron cargar los registros disponibles.'));},[tab]);
  useEffect(()=>{if(tab==='permissions')loadUserShares(selectedUid).catch(e=>setError(e?.message||'No se pudieron cargar los registros compartidos.'));},[tab,selectedUid]);
- useEffect(()=>{setShareRecordId('');setShareSearch('');},[shareType]);
+ useEffect(()=>{setShareRecordId('');setShareSearch('');},[shareType,selectedUid]);
 
  const run=async(op:()=>Promise<any>,reload=true)=>{setBusy(true);setError('');try{await op();if(reload)await load();}catch(e:any){setError(e?.message||'La operación no se pudo completar.');}finally{setBusy(false);}};
  const createUser=async(e:React.FormEvent)=>{e.preventDefault();if(form.password.length<8){setError('La contraseña debe tener al menos 8 caracteres.');return;}await run(async()=>{await createManagedUser(form);setCreateOpen(false);setForm(emptyForm());});};
@@ -109,22 +134,60 @@ export function AdminPanel({onClose}:AdminPanelProps){
  const recordLabel=(type:string,row:any)=>{
   if(!row)return 'Registro no disponible';
   if(type==='trabajadores')return `${row.apellidos_nombre||'Trabajador'}${row.dni?` · ${row.dni}`:''}${row.obra?` · ${row.obra}`:''}`;
-  if(type==='obra')return `${row.codigo?`${row.codigo} · `:''}${row.nombre||'Obra'}${row.municipio?` · ${row.municipio}`:''}`;
-  if(type==='reconocimientos')return `${row.apellidos_nombre||'Reconocimiento'}${row.dni?` · ${row.dni}`:''}${row.fecha_reconocimiento?` · ${row.fecha_reconocimiento}`:''}`;
+  if(type==='obra')return `${row.codigo&&row.codigo!==row.nombre?`${row.codigo} · `:''}${row.nombre||row.codigo||'Obra'}${row.municipio?` · ${row.municipio}`:''}`;
+  if(type==='reconocimientos')return `${row.apellidos_nombre||workersById.get(String(row.trabajador_id))?.apellidos_nombre||'Reconocimiento'}${row.dni?` · ${row.dni}`:''}${row.fecha_reconocimiento?` · ${row.fecha_reconocimiento}`:''}`;
   if(type==='subcontratas')return `${row.nombre_empresa||'Subcontrata'}${row.cif?` · ${row.cif}`:''}${row.municipio?` · ${row.municipio}`:''}`;
   if(type==='citas'){
    const worker=workersById.get(String(row.trabajador_id));
-   return `${worker?.apellidos_nombre||'Cita médica'}${row.cita_dia?` · ${row.cita_dia}`:''}${row.cita_hora?` ${String(row.cita_hora).slice(0,5)}`:''}${row.sitio_reconocimiento?` · ${row.sitio_reconocimiento}`:''}`;
+   return `${worker?.apellidos_nombre||row?.data?.apellidosNombre||'Cita médica'}${row.cita_dia?` · ${row.cita_dia}`:''}${row.cita_hora?` ${String(row.cita_hora).slice(0,5)}`:''}${row.sitio_reconocimiento?` · ${row.sitio_reconocimiento}`:''}`;
   }
   if(type==='contrataciones'){
    const worker=workersById.get(String(row.trabajador_id));
-   return `${worker?.apellidos_nombre||'Contratación'}${row.num_oferta?` · Oferta ${row.num_oferta}`:''}${row.periodo_inicio?` · ${row.periodo_inicio}`:''}`;
+   return `${worker?.apellidos_nombre||row?.data?.apellidosNombre||'Contratación'}${row.num_oferta?` · Oferta ${row.num_oferta}`:''}${row.periodo_inicio?` · ${row.periodo_inicio}`:''}`;
   }
   return 'Registro';
  };
  const findRecord=(type:string,id:string)=>((catalogs[type]||[]).find((r:any)=>String(r.id)===String(id)));
  const currentRecords=useMemo(()=>catalogs[shareType]||[],[catalogs,shareType]);
- const filteredRecords=useMemo(()=>{const term=shareSearch.trim().toLowerCase();return currentRecords.filter((row:any)=>!term||recordLabel(shareType,row).toLowerCase().includes(term));},[currentRecords,shareSearch,shareType,workersById]);
+
+ const directShareKeys=useMemo(()=>new Set(userShares.map((s:any)=>`${s.resource_type}:${String(s.resource_id)}`)),[userShares]);
+ const sharedWorkerIds=useMemo(()=>new Set(userShares.filter((s:any)=>s.resource_type==='trabajadores').map((s:any)=>String(s.resource_id))),[userShares]);
+ const sharedObraKeys=useMemo(()=>{
+  const keys=new Set<string>();
+  userShares.filter((s:any)=>s.resource_type==='obra').forEach((s:any)=>{
+   keys.add(normalizeKey(s.resource_id));
+   const row=findRecord('obra',String(s.resource_id));
+   if(row){keys.add(normalizeKey(row.id));keys.add(normalizeKey(row.nombre));keys.add(normalizeKey(row.codigo));}
+  });
+  return keys;
+ },[userShares,catalogs]);
+
+ const rowHasSharedObra=(row:any)=>{
+  if(!row)return false;
+  if(row.obra_id&&sharedObraKeys.has(normalizeKey(row.obra_id)))return true;
+  const ownKey=row.obra||row?.data?.obra||row.nombre||row.codigo;
+  if(ownKey&&sharedObraKeys.has(normalizeKey(ownKey)))return true;
+  const worker=row.trabajador_id?workersById.get(String(row.trabajador_id)):null;
+  if(worker){
+   if(worker.obra_id&&sharedObraKeys.has(normalizeKey(worker.obra_id)))return true;
+   if(worker.obra&&sharedObraKeys.has(normalizeKey(worker.obra)))return true;
+  }
+  return false;
+ };
+
+ const alreadyAccessible=(type:ResourceType,row:any)=>{
+  if(!row)return false;
+  if(directShareKeys.has(`${type}:${String(row.id)}`))return true;
+  if(type==='obra')return sharedObraKeys.has(normalizeKey(row.id))||sharedObraKeys.has(normalizeKey(row.nombre))||sharedObraKeys.has(normalizeKey(row.codigo));
+  const workerId=type==='trabajadores'?String(row.id):row.trabajador_id?String(row.trabajador_id):'';
+  if(workerId&&sharedWorkerIds.has(workerId))return true;
+  return rowHasSharedObra(row);
+ };
+
+ const filteredRecords=useMemo(()=>{
+  const term=shareSearch.trim().toLowerCase();
+  return currentRecords.filter((row:any)=>!alreadyAccessible(shareType,row)&&(!term||recordLabel(shareType,row).toLowerCase().includes(term)));
+ },[currentRecords,shareSearch,shareType,workersById,userShares,sharedWorkerIds,sharedObraKeys,directShareKeys]);
 
  const saveShare=async()=>{
   if(!selectedUid){setError('Selecciona primero un usuario.');return;}
@@ -160,13 +223,13 @@ export function AdminPanel({onClose}:AdminPanelProps){
     {tab==='permissions'&&<div className="space-y-8">
      <section className="space-y-4"><div><label className="text-sm font-medium">Usuario</label><select value={selectedUid} onChange={e=>setSelectedUid(e.target.value)} className="mt-2 w-full rounded-lg border px-3 py-2 bg-transparent"><option value="">Selecciona un usuario</option>{users.map(u=><option key={u.id} value={u.id}>{u.nombre} {u.apellidos} — {u.email}</option>)}</select></div>{selectedUid&&<div className="rounded-xl border overflow-x-auto"><table className="w-full min-w-[620px] text-sm"><thead className="bg-slate-50 dark:bg-slate-800/60"><tr><th className="text-left p-3">Módulo</th><th>Ver</th><th>Crear</th><th>Editar</th><th>Eliminar</th></tr></thead><tbody>{Object.entries(moduleLabels).map(([key,label])=>{const m=key as ModuleName;const v=permissions[selectedUid]?.[m]||{read:false,create:false,update:false,delete:false};return <tr key={key} className="border-t"><td className="p-3 font-medium">{label}</td>{(['read','create','update','delete'] as const).map(a=><td key={a} className="text-center"><input type="checkbox" checked={v[a]} disabled={busy} onChange={e=>setPermissions(prev=>({...prev,[selectedUid]:{...(prev[selectedUid]||defaultPermissions()),[m]:{...v,[a]:e.target.checked}}}))}/></td>)}</tr>})}</tbody></table></div>}<button disabled={!selectedUid||busy} onClick={savePermissions} className="rounded-lg bg-brand-primary text-white px-5 py-2.5 font-semibold disabled:opacity-50">Guardar permisos de módulo</button></section>
 
-     {selectedUid&&<section className="rounded-xl border p-5 space-y-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Share2 size={18}/><div><h3 className="font-semibold">Registros compartidos con {selectedUser?.nombre||selectedUser?.email}</h3><p className="text-xs text-slate-500">Estos son los accesos granulares que tiene actualmente este usuario.</p></div></div><button type="button" onClick={()=>loadUserShares(selectedUid)} className="p-2 rounded-lg border"><RefreshCw size={16}/></button></div>
-      {sharesLoading?<div className="py-8 flex justify-center gap-2 text-sm text-slate-500"><Loader2 size={18} className="animate-spin"/>Cargando comparticiones…</div>:userShares.length===0?<div className="rounded-xl border border-dashed p-7 text-center text-sm text-slate-500">Este usuario no tiene ningún registro compartido actualmente.</div>:<div className="space-y-2">{userShares.map(s=>{const row=findRecord(s.resource_type,s.resource_id);const access:ShareAccess=s.can_update?'read_write':'read';const cfg=resourceConfigs[s.resource_type as ResourceType];return <div key={s.id} className="rounded-xl border p-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3"><div className="min-w-0"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{cfg?.label||s.resource_type}</div><div className="font-semibold text-sm truncate">{recordLabel(s.resource_type,row)}</div></div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={()=>changeShareAccess(s,'read')} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${access==='read'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Eye size={14}/>Lectura</button><button type="button" disabled={busy} onClick={()=>changeShareAccess(s,'read_write')} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${access==='read_write'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Pencil size={14}/>Lectura + escritura</button><button type="button" disabled={busy} onClick={()=>removeShare(s)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 px-3 py-2 text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-950/30"><Unlink size={14}/>Dejar de compartir</button></div></div>})}</div>}
+     {selectedUid&&<section className="rounded-xl border p-5 space-y-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Share2 size={18}/><div><h3 className="font-semibold">Registros compartidos con {selectedUser?.nombre||selectedUser?.email}</h3><p className="text-xs text-slate-500">Los permisos de obra y trabajador se propagan automáticamente a sus datos relacionados.</p></div></div><button type="button" onClick={()=>loadUserShares(selectedUid)} className="p-2 rounded-lg border"><RefreshCw size={16}/></button></div>
+      {sharesLoading?<div className="py-8 flex justify-center gap-2 text-sm text-slate-500"><Loader2 size={18} className="animate-spin"/>Cargando comparticiones…</div>:userShares.length===0?<div className="rounded-xl border border-dashed p-7 text-center text-sm text-slate-500">Este usuario no tiene ningún registro compartido actualmente.</div>:<div className="space-y-2">{userShares.map(s=>{const row=findRecord(s.resource_type,s.resource_id);const access:ShareAccess=s.can_update?'read_write':'read';const cfg=resourceConfigs[s.resource_type as ResourceType];return <div key={s.id} className="rounded-xl border p-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3"><div className="min-w-0"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{cfg?.label||s.resource_type}</div><div className="font-semibold text-sm truncate">{recordLabel(s.resource_type,row)}</div>{(s.resource_type==='obra'||s.resource_type==='trabajadores')&&<div className="mt-1 text-[11px] text-slate-500">Incluye automáticamente los registros relacionados.</div>}</div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={()=>changeShareAccess(s,'read')} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${access==='read'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Eye size={14}/>Lectura</button><button type="button" disabled={busy} onClick={()=>changeShareAccess(s,'read_write')} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${access==='read_write'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Pencil size={14}/>Lectura + escritura</button><button type="button" disabled={busy} onClick={()=>removeShare(s)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 px-3 py-2 text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-950/30"><Unlink size={14}/>Dejar de compartir</button></div></div>})}</div>}
      </section>}
 
-     {selectedUid&&<section className="rounded-xl border p-5 space-y-4"><div className="flex items-center gap-2"><Share2 size={18}/><div><h3 className="font-semibold">Compartir otro registro</h3><p className="text-xs text-slate-500">Selecciona el dato real; los identificadores internos se resuelven automáticamente.</p></div></div>
+     {selectedUid&&<section className="rounded-xl border p-5 space-y-4"><div className="flex items-center gap-2"><Share2 size={18}/><div><h3 className="font-semibold">Compartir otro registro</h3><p className="text-xs text-slate-500">Solo aparecen datos a los que el usuario todavía no tiene acceso directo ni heredado.</p></div></div>
       <div className="grid md:grid-cols-2 gap-3"><label className="text-xs font-medium"><span className="block mb-1">Tipo de dato</span><select value={shareType} onChange={e=>setShareType(e.target.value as ResourceType)} className="w-full rounded-lg border px-3 py-2.5 bg-transparent">{(Object.entries(resourceConfigs) as [ResourceType,ResourceConfig][]).map(([type,cfg])=><option key={type} value={type}>{cfg.label}</option>)}</select></label><label className="text-xs font-medium"><span className="block mb-1">Buscar registro</span><span className="relative block"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={shareSearch} onChange={e=>setShareSearch(e.target.value)} placeholder="Nombre, DNI, oferta, obra…" className="w-full rounded-lg border pl-9 pr-3 py-2.5 bg-transparent"/></span></label></div>
-      <div className="max-h-64 overflow-y-auto rounded-xl border divide-y divide-slate-100 dark:divide-slate-800">{filteredRecords.map((row:any)=><label key={String(row.id)} className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"><input type="radio" name="admin-share-record" checked={String(shareRecordId)===String(row.id)} onChange={()=>setShareRecordId(String(row.id))} className="mt-1"/><span className="text-sm font-medium">{recordLabel(shareType,row)}</span></label>)}{filteredRecords.length===0&&<div className="p-6 text-center text-sm text-slate-500">No hay registros que coincidan con la búsqueda.</div>}</div>
+      <div className="max-h-64 overflow-y-auto rounded-xl border divide-y divide-slate-100 dark:divide-slate-800">{filteredRecords.map((row:any)=><label key={String(row.id)} className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"><input type="radio" name="admin-share-record" checked={String(shareRecordId)===String(row.id)} onChange={()=>setShareRecordId(String(row.id))} className="mt-1"/><span className="text-sm font-medium">{recordLabel(shareType,row)}</span></label>)}{filteredRecords.length===0&&<div className="p-6 text-center text-sm text-slate-500">No hay registros pendientes de compartir que coincidan con la búsqueda.</div>}</div>
       <div className="grid sm:grid-cols-2 gap-2"><button type="button" onClick={()=>setShareAccess('read')} className={`rounded-xl border px-3 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${shareAccess==='read'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Eye size={16}/>Lectura</button><button type="button" onClick={()=>setShareAccess('read_write')} className={`rounded-xl border px-3 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${shareAccess==='read_write'?'bg-blue-600 text-white border-blue-600':'border-slate-200 dark:border-slate-700'}`}><Pencil size={16}/>Lectura + escritura</button></div>
       <button disabled={busy||!shareRecordId} onClick={saveShare} className="rounded-lg bg-brand-primary text-white px-5 py-2.5 font-semibold disabled:opacity-50">Compartir registro seleccionado</button>
      </section>}
