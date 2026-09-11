@@ -1,0 +1,35 @@
+name: Temp auth lockfile refresh
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-auth-lock.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Refresh lockfile
+        run: npm install --package-lock-only --no-audit --no-fund
+      - name: Install and validate
+        run: |
+          npm install --no-audit --no-fund
+          npm run lint
+          npm run build
+      - name: Commit lockfile and self-clean
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/temp-auth-lock.yml
+          git add package-lock.json
+          git commit -m 'chore: lock official Supabase auth SDK'
+          git push origin HEAD:main
