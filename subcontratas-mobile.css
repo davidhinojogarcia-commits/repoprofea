@@ -1,0 +1,112 @@
+@media (max-width: 767px) {
+  #subcontratas-section-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  #subcontratas-section-container,
+  #subcontratas-section-container > *,
+  #subcontratas-section-container .grid,
+  #subcontratas-section-container .flex,
+  #subcontratas-section-container [class*="col-span"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  #subcontratas-section-container input,
+  #subcontratas-section-container select,
+  #subcontratas-section-container textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  #subcontratas-section-container button {
+    max-width: 100% !important;
+    white-space: normal !important;
+  }
+
+  #subcontratas-section-container .bg-white,
+  .dark #subcontratas-section-container .dark\:bg-slate-900 {
+    overflow-wrap: anywhere;
+  }
+
+  /* Estado de acceso: en móvil el selector largo no debe aplastar el título. */
+  #subcontratas-section-container .mt-5.p-3\.5.rounded-xl > div:first-child {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  #subcontratas-section-container .mt-5.p-3\.5.rounded-xl > div:first-child > span {
+    width: 100% !important;
+  }
+
+  #subcontratas-section-container .mt-5.p-3\.5.rounded-xl > div:last-child {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+    gap: 0.5rem 0.75rem !important;
+  }
+
+  /* Cada requisito legal debe caber en el viewport. */
+  #subcontratas-section-container [id^="doc-item-"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 0.875rem !important;
+    overflow: hidden !important;
+  }
+
+  #subcontratas-section-container [id^="doc-item-"] > div:first-child {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Botonera Entregado / Pendiente / Caducado / N/A en dos columnas. */
+  #subcontratas-section-container [id^="doc-item-"] > div:first-child > div:last-child {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+    flex-shrink: 1 !important;
+  }
+
+  #subcontratas-section-container [id^="doc-item-"] > div:first-child > div:last-child > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
+  }
+
+  #subcontratas-section-container [id^="doc-item-"] h4,
+  #subcontratas-section-container [id^="doc-item-"] p,
+  #subcontratas-section-container [id^="doc-item-"] span {
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+
+  /* Evita anchos mínimos de escritorio en buscadores y tarjetas. */
+  #subcontratas-section-container .min-w-\[240px\] {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  #subcontratas-section-container .p-6 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  #subcontratas-section-container .p-5 {
+    padding-left: 0.875rem !important;
+    padding-right: 0.875rem !important;
+  }
+}
