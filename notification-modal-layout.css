@@ -11,9 +11,24 @@
   --profea-modal-gap: 1.25rem;
 }
 
+/* While any application modal is open, the page behind it must not move. The modal
+   itself owns scrolling through its inner panel. This prevents the dialog and the
+   sticky application header from drifting into different visual layers. */
+html:has(body.profea-modal-open),
+body.profea-modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+body.profea-modal-open #root {
+  height: 100dvh !important;
+  overflow: hidden !important;
+}
+
 /* Navigation always remains above application modals. */
 #root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel,
-#root:has(.profea-modal-overlay) aside.app-navigation-panel {
+#root:has(.profea-modal-overlay) aside.app-navigation-panel,
+body.profea-modal-open aside.app-navigation-panel {
   z-index: 50 !important;
 }
 
@@ -27,6 +42,7 @@
   box-sizing: border-box !important;
   padding: 0 !important;
   overflow: hidden !important;
+  overscroll-behavior: contain !important;
 }
 
 /* A modal panel can never grow into the header/footer gap. */
@@ -34,6 +50,7 @@
 .profea-modal-overlay > :first-child {
   max-height: 100% !important;
   min-height: 0 !important;
+  overscroll-behavior: contain !important;
 }
 
 @media (min-width: 1024px) {
