@@ -7,7 +7,7 @@ declare
   v_user uuid := auth.uid(); v_item jsonb; v_id bigint; v_count integer := 0;
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
-  if not private.has_module_permission(v_user,'trabajadores','create') then raise exception 'Permission denied'; end if;
+  if not private.has_module_permission('trabajadores','create') then raise exception 'Permission denied'; end if;
   if p_workers is null or jsonb_typeof(p_workers) <> 'array' then raise exception 'Workers payload must be an array'; end if;
   for v_item in select value from jsonb_array_elements(p_workers) loop
     begin v_id := (v_item->>'id')::bigint; exception when others then raise exception 'Invalid worker id'; end;
