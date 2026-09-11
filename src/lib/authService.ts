@@ -8,6 +8,7 @@ export interface AuthProfile {
   email: string;
   nombre?: string;
   apellidos?: string;
+  telefono?: string;
   role: AppRole;
   active: boolean;
 }
@@ -19,7 +20,7 @@ export async function configureAuthPersistence(): Promise<void> {
 
 async function readUserProfile(user: SupabaseUser): Promise<AuthProfile | null> {
   const rows = await supabase.query('profiles', {
-    query: `select=id,email,nombre,apellidos,role,active&id=eq.${encodeURIComponent(user.id)}`,
+    query: `select=id,email,nombre,apellidos,telefono,role,active&id=eq.${encodeURIComponent(user.id)}`,
   });
   const data = rows?.[0];
   if (!data || (data.role !== 'admin' && data.role !== 'user') || data.active !== true) return null;
@@ -28,6 +29,7 @@ async function readUserProfile(user: SupabaseUser): Promise<AuthProfile | null> 
     email: data.email || user.email || '',
     nombre: data.nombre || '',
     apellidos: data.apellidos || '',
+    telefono: data.telefono || '',
     role: data.role,
     active: true,
   };
