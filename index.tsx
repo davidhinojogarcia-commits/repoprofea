@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
+import { AppToastHost } from './components/AppToastHost';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import './notification-modal-layout.css';
 
@@ -45,6 +46,7 @@ ReactDOM.createRoot(rootElement).render(
       <AuthGate>
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
           <App />
+          <AppToastHost />
         </React.Suspense>
       </AuthGate>
     </RootErrorBoundary>
