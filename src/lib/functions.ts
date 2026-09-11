@@ -34,6 +34,45 @@ export const updateManagedUserPermissions=(payload:any)=>call<{ok:boolean}>('per
 export const updateManagedPermissions=updateManagedUserPermissions;
 export const resetManagedUserPassword=(payload:any)=>call<{ok:boolean;email:string}>('reset_password',payload);
 export const sendManagedPasswordReset=resetManagedUserPassword;
-export const setDataPermission=async(payload:any)=>{await supabase.query('data_permissions',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{resource_type:payload.resourceType,resource_id:String(payload.resourceId),owner_id:payload.ownerId,user_id:payload.userId,can_read:payload.canRead,can_update:payload.canUpdate,can_delete:payload.canDelete}});return {data:{ok:true,permissionId:`${payload.resourceType}_${payload.resourceId}_${payload.userId}`}};};
-export const deleteDataPermission=async(payload:any)=>{await supabase.query('data_permissions',{method:'DELETE',prefer:'return=minimal',query:`resource_type=eq.${encodeURIComponent(payload.resourceType)}&resource_id=eq.${encodeURIComponent(String(payload.resourceId))}&user_id=eq.${encodeURIComponent(payload.userId)}`});return {data:{ok:true}};};
+
+export const setDataPermission=async(payload:any)=>{
+  await supabase.query('data_permissions',{
+    method:'POST',
+    prefer:'resolution=merge-duplicates,return=minimal',
+    query:'on_conflict=resource_type,resource_id,user_id',
+    body:{
+      resource_type:payload.resourceType,
+      resource_id:String(payload.resourceId),
+      owner_id:payload.ownerId,
+      user_id:payload.userId,
+      can_read:payload.canRead,
+      can_update:payload.canUpdate,
+      can_delete:payload.canDelete,
+    }
+  });
+  return {data:{ok:true,permissionId:`${payload.resourceType}_${payload.resourceId}_${payload.userId}`}};
+};
+
+export const deleteDataPermission=async(payload:any)=>{
+  await supabase.query('data_permissions',{
+    method:'DELETE',
+    prefer:'return=minimal',
+    query:`resource_type=eq.${encodeURIComponent(payload.resourceType)}&resource_id=eq.${encodeURIComponent(String(payload.resourceId))}&user_id=eq.${encodeURIComponent(payload.userId)}`
+  });
+  return {data:{ok:true}};
+};
+
+export const getRecordShares=async(resourceType:string,resourceId:string|number)=>{
+  const rows=await supabase.query('data_permissions',{
+    query:`select=id,user_id,can_read,can_update,can_delete,created_at&resource_type=eq.${encodeURIComponent(resourceType)}&resource_id=eq.${encodeURIComponent(String(resourceId))}&order=created_at.asc`
+  });
+  return rows||[];
+};
+
+export const shareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;ownerId:string;userId:string})=>
+  setDataPermission({...payload,canRead:true,canUpdate:true,canDelete:false});
+
+export const unshareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;userId:string})=>
+  deleteDataPermission(payload);
+
 export const writeAuditEvent=async(payload:any)=>{const user=(await supabase.auth.getUser()).data.user;if(user)await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:user.id,user_email:user.email||'',action:payload.action,resource_type:payload.resourceType||'',resource_id:payload.resourceId||'',details:payload.details||{}}});return {data:{ok:true}};};
