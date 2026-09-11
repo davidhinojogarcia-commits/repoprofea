@@ -1,16 +1,14 @@
 name: Optimize bulk deletion
-
 on:
   push:
-    branches: [main]
-    paths: ['.github/workflows/optimize-bulk-delete.yml']
-
+    branches:
+      - main
+    paths:
+      - .github/workflows/optimize-bulk-delete.yml
 permissions:
   contents: write
-
 jobs:
   optimize:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,19 +16,20 @@ jobs:
           ref: main
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22'
           cache: npm
-      - name: Optimize bulk trash operations
+      - name: Patch bulk deletion
+        shell: bash
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
-          p=Path('App.tsx')
-          s=p.read_text()
-          old="""      for (const person of peopleToDelete) {
+          p = Path('App.tsx')
+          s = p.read_text()
+          old = """      for (const person of peopleToDelete) {
         await createDocument('trash', person.id, { person, fechaEliminacion } as any);
         await deleteDocument('trabajadores', person.id);
       }"""
-          new="""      const batchSize = 20;
+          new = """      const batchSize = 20;
       for (let offset = 0; offset < peopleToDelete.length; offset += batchSize) {
         const batch = peopleToDelete.slice(offset, offset + batchSize);
         await Promise.all(batch.map(async person => {
@@ -39,31 +38,31 @@ jobs:
         }));
       }"""
           if old not in s:
-            raise SystemExit('Bulk deletion loop not found')
-          s=s.replace(old,new,1)
-          old2="""      for (const item of deletedPeople) await deleteDocument('trash', item.person.id);"""
-          new2="""      const batchSize = 40;
+              raise SystemExit('bulk loop not found')
+          s = s.replace(old, new, 1)
+          old2 = "      for (const item of deletedPeople) await deleteDocument('trash', item.person.id);"
+          new2 = """      const batchSize = 40;
       for (let offset = 0; offset < deletedPeople.length; offset += batchSize) {
         const batch = deletedPeople.slice(offset, offset + batchSize);
         await Promise.all(batch.map(item => deleteDocument('trash', item.person.id)));
       }"""
           if old2 not in s:
-            raise SystemExit('Empty trash loop not found')
-          s=s.replace(old2,new2,1)
+              raise SystemExit('empty-trash loop not found')
+          s = s.replace(old2, new2, 1)
           p.write_text(s)
           PY
-      - name: Install dependencies
+      - name: Install
         run: npm install --no-audit --no-fund
-      - name: Validate and build
+      - name: Validate
         run: |
           npm run lint
           npm run build
-      - name: Commit optimization and self-clean
+      - name: Commit
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git add App.tsx
-          git commit -m 'perf: parallelize bulk trash operations'
+          git commit -m "perf: speed up bulk deletion"
           git rm .github/workflows/optimize-bulk-delete.yml
-          git commit -m 'chore: remove temporary bulk delete workflow'
+          git commit -m "chore: remove temporary optimization workflow"
           git push origin HEAD:main
