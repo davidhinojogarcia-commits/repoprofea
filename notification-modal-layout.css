@@ -1,0 +1,33 @@
+/* Notification manager should behave like a modal for the main content area,
+   while keeping the navigation sidebar visible and usable. */
+#root:has(.z-\[110\]) aside.app-navigation-panel {
+  z-index: 50 !important;
+}
+
+#root .z-\[110\] {
+  z-index: 40 !important;
+}
+
+@media (min-width: 1024px) {
+  /* Expanded desktop sidebar (lg:w-64 = 16rem). */
+  #root:has(aside.app-navigation-panel.lg\:w-64) .z-\[110\] {
+    left: 16rem !important;
+  }
+
+  /* Collapsed desktop sidebar (lg:w-20 = 5rem). */
+  #root:has(aside.app-navigation-panel.lg\:w-20) .z-\[110\] {
+    left: 5rem !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* On mobile the sidebar is an overlay. If it is open, it remains above the
+     notification modal instead of being hidden by it. */
+  #root .z-\[110\] {
+    z-index: 40 !important;
+  }
+
+  #root aside.app-navigation-panel {
+    z-index: 50 !important;
+  }
+}
