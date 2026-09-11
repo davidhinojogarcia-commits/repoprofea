@@ -23,7 +23,7 @@ export const setManagedUserActive=updateManagedUserStatus;
 export const deleteManagedUser=(payload:any)=>call<{ok:boolean}>('delete',payload);
 export const updateManagedUserPermissions=(payload:any)=>call<{ok:boolean}>('permissions',payload);
 export const updateManagedPermissions=updateManagedUserPermissions;
-export const resetManagedUserPassword=(payload:any)=>call<{email:string;resetLink:string}>('reset_password',payload);
+export const resetManagedUserPassword=(payload:any)=>call<{ok:boolean;email:string}>('reset_password',payload);
 export const sendManagedPasswordReset=resetManagedUserPassword;
 export const setDataPermission=async(payload:any)=>{await supabase.query('data_permissions',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{resource_type:payload.resourceType,resource_id:String(payload.resourceId),owner_id:payload.ownerId,user_id:payload.userId,can_read:payload.canRead,can_update:payload.canUpdate,can_delete:payload.canDelete}});return {data:{ok:true,permissionId:`${payload.resourceType}_${payload.resourceId}_${payload.userId}`}};};
 export const deleteDataPermission=async(payload:any)=>{await supabase.query('data_permissions',{method:'DELETE',prefer:'return=minimal',query:`resource_type=eq.${encodeURIComponent(payload.resourceType)}&resource_id=eq.${encodeURIComponent(String(payload.resourceId))}&user_id=eq.${encodeURIComponent(payload.userId)}`});return {data:{ok:true}};};
