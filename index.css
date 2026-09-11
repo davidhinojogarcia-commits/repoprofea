@@ -262,6 +262,28 @@ body {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
   }
+
+  /* Mobile sidebar: use the dynamic viewport instead of h-screen (100vh), which on
+     iOS Safari can extend underneath the bottom address/toolbar. The navigation area
+     remains the scrollable flex child while session/footer controls stay reachable. */
+  #root .app-navigation-panel {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+
+  #root .app-navigation-panel > nav {
+    min-height: 0 !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #root .app-navigation-panel > div:last-child {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 @media print {
