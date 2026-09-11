@@ -16,5 +16,15 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> =
     }
   };
 
-  return <PersonListView {...props} onDeleteMultiple={handleDeleteMultiple} />;
+  // Deshacer/Rehacer se muestran únicamente en la cabecera fija de la aplicación.
+  // Se excluyen aquí para evitar duplicarlos dentro de la vista de Registros.
+  const {
+    onUndo: _onUndo,
+    onRedo: _onRedo,
+    canUndo: _canUndo,
+    canRedo: _canRedo,
+    ...listProps
+  } = props;
+
+  return <PersonListView {...listProps} onDeleteMultiple={handleDeleteMultiple} />;
 };
