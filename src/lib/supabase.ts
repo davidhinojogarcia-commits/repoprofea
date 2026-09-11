@@ -3,6 +3,13 @@ import { createClient, type User } from '@supabase/supabase-js';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 const STORAGE_KEY = 'profea-supabase-auth';
+const LEGACY_STORAGE_KEY = 'profea-supabase-session';
+
+// Elimina únicamente el antiguo contenedor manual de access/refresh tokens.
+// La sesión vigente queda desde ahora bajo el almacenamiento gestionado por supabase-js.
+if (typeof window !== 'undefined') {
+  try { window.localStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /* noop */ }
+}
 
 export type SupabaseUser = User & { uid: string };
 
@@ -31,7 +38,7 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
   const headers = new Headers(options.headers);
   headers.set('apikey', SUPABASE_KEY);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  headers.set('Authorization', `Bearer ${token || SUPABASE_KEY}`);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const response = await fetch(`${SUPABASE_URL}${path}`, { ...options, headers });
   const text = await response.text();
