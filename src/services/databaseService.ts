@@ -197,12 +197,32 @@ export async function getDocuments<T = DatabaseRecord>(collectionName: string, o
 export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string, onUpdate: (items: T[]) => void, options: ListOptions = {}, onError?: (error: Error) => void) {
   let active = true;
   let refreshTimer: number | null = null;
+  let retryTimer: number | null = null;
+  let consecutiveReadFailures = 0;
   const table = canonicalTable(collectionName);
 
   const run = async () => {
     try {
-      if (active) onUpdate(await getDocuments<T>(collectionName, options));
+      if (!active) return;
+      const items = await getDocuments<T>(collectionName, options);
+      consecutiveReadFailures = 0;
+      if (active) onUpdate(items);
     } catch (error) {
+      if (!active) return;
+      consecutiveReadFailures += 1;
+
+      // Mobile browsers frequently suspend sockets while changing network, locking the
+      // screen or moving Safari to the background. Treat the first failures as transient
+      // and retry silently instead of surfacing a false "Supabase read" error to users.
+      if (consecutiveReadFailures < 3) {
+        if (retryTimer !== null) window.clearTimeout(retryTimer);
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          void run();
+        }, consecutiveReadFailures === 1 ? 500 : 1500);
+        return;
+      }
+
       onError?.(error instanceof Error ? error : new Error(String(error)));
     }
   };
@@ -215,20 +235,36 @@ export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string,
     }, 120);
   };
 
-  // Initial snapshot, then only refresh when Postgres reports an actual change.
+  const handleResume = () => {
+    if (!active) return;
+    consecutiveReadFailures = 0;
+    scheduleRefresh();
+  };
+
+  // Initial snapshot, then refresh only when Postgres reports an actual change.
   void run();
   const channel = supabase
     .channel(`profea:${table}:${Math.random().toString(36).slice(2)}`)
     .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
     .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        onError?.(new Error(`No se pudo mantener la sincronización en tiempo real de ${table}.`));
+      // CHANNEL_ERROR/TIMED_OUT are commonly transient on iOS when Safari suspends or
+      // resumes a tab. Supabase Realtime reconnects automatically, so don't show a
+      // user-facing data error merely because the websocket was interrupted briefly.
+      if (status === 'SUBSCRIBED') {
+        consecutiveReadFailures = 0;
+        scheduleRefresh();
       }
     });
+
+  window.addEventListener('online', handleResume);
+  document.addEventListener('visibilitychange', handleResume);
 
   return () => {
     active = false;
     if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    if (retryTimer !== null) window.clearTimeout(retryTimer);
+    window.removeEventListener('online', handleResume);
+    document.removeEventListener('visibilitychange', handleResume);
     void supabase.removeChannel(channel);
   };
 }
