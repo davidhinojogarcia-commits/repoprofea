@@ -1,41 +1,37 @@
 /*
  * Global application modal layout.
  *
- * Every application overlay that uses the shared `fixed inset-0` convention is kept
- * inside the workspace: below the application header and to the right of the desktop
- * sidebar. This is deliberately centralised so individual modals do not need their
- * own offsets/z-index workarounds.
- *
- * The mobile navigation backdrop (`lg:hidden`) is excluded because it belongs to the
- * navigation itself, not to the modal system.
+ * All application overlays stay inside the workspace instead of covering navigation.
+ * The geometry is centralised here so every modal gets the same sidebar/header spacing.
+ * Portaled dialogs use `.profea-modal-overlay` and receive the same rules.
  */
 
 :root {
-  /* Header height + a visible breathing space before every modal. */
-  --profea-modal-header-offset: 5.75rem;
-  --profea-modal-gap: 1rem;
+  --profea-app-header-height: 5.75rem;
+  --profea-modal-gap: 1.25rem;
 }
 
 /* Navigation always remains above application modals. */
-#root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel {
+#root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel,
+#root:has(.profea-modal-overlay) aside.app-navigation-panel {
   z-index: 50 !important;
 }
 
-/* Shared geometry for every application modal/overlay. */
-#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
+/* Shared geometry for normal and portaled application modals. */
+#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
+.profea-modal-overlay {
   z-index: 40 !important;
-  top: var(--profea-modal-header-offset) !important;
-  bottom: 0 !important;
-  right: 0 !important;
+  top: calc(var(--profea-app-header-height) + var(--profea-modal-gap)) !important;
+  bottom: var(--profea-modal-gap) !important;
+  right: var(--profea-modal-gap) !important;
   box-sizing: border-box !important;
-  padding: var(--profea-modal-gap) !important;
+  padding: 0 !important;
   overflow: hidden !important;
 }
 
-/* A modal panel can never grow beyond the workspace that contains it. Width remains
-   owned by the component (max-w-md, max-w-4xl, etc.), so small and large dialogs keep
-   their intended proportions. */
-#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) > :first-child {
+/* A modal panel can never grow into the header/footer gap. */
+#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) > :first-child,
+.profea-modal-overlay > :first-child {
   max-height: 100% !important;
   min-height: 0 !important;
 }
@@ -43,30 +39,32 @@
 @media (min-width: 1024px) {
   /* Expanded desktop sidebar (lg:w-64 = 16rem). */
   #root:has(aside.app-navigation-panel.lg\:w-64)
-    [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
-    left: 16rem !important;
+    [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
+  body:has(#root aside.app-navigation-panel.lg\:w-64) .profea-modal-overlay {
+    left: calc(16rem + var(--profea-modal-gap)) !important;
   }
 
   /* Collapsed desktop sidebar (lg:w-20 = 5rem). */
   #root:has(aside.app-navigation-panel.lg\:w-20)
-    [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
-    left: 5rem !important;
+    [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
+  body:has(#root aside.app-navigation-panel.lg\:w-20) .profea-modal-overlay {
+    left: calc(5rem + var(--profea-modal-gap)) !important;
   }
 }
 
 @media (max-width: 1023px) {
   :root {
-    --profea-modal-header-offset: 0.75rem;
-    --profea-modal-gap: 0.5rem;
+    --profea-app-header-height: 0rem;
+    --profea-modal-gap: 0.75rem;
   }
 
-  /* The mobile drawer stays the uppermost navigation layer. */
   #root aside.app-navigation-panel {
     z-index: 50 !important;
   }
 
-  #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) {
-    left: 0 !important;
+  #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
+  .profea-modal-overlay {
+    left: var(--profea-modal-gap) !important;
     z-index: 40 !important;
   }
 }
