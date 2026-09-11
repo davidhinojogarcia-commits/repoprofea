@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
@@ -31,41 +31,62 @@ export function AuthGate({ children }: AuthGateProps) {
   const [submitting, setSubmitting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
+  const explicitSignOutRef = useRef(false);
+  const authValidationRef = useRef(0);
 
   useEffect(() => subscribeToAuth(async currentUser => {
-    setUser(currentUser); setError('');
-    if (currentUser) {
-      try {
-        const currentRole = await getCurrentRole();
-        if (currentRole) {
-          await Promise.all([
-            hydrateStoredSubcontratasPreferences().catch(error =>
-              console.warn('No se pudieron precargar preferencias de subcontratas:', error)
-            ),
-            hydrateStoredPdfConfig().catch(error =>
-              console.warn('No se pudo precargar la configuración PDF:', error)
-            ),
-          ]);
-        }
-        setRole(currentRole);
-        if (!currentRole) {
-          await signOutUser();
-          setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
-        }
-      } catch {
-        setRole(null);
-        await signOutUser().catch(() => undefined);
-        setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
-      }
-    } else {
+    const validationId = ++authValidationRef.current;
+    setUser(currentUser);
+
+    if (!currentUser) {
       setRole(null);
       setSigningOut(false);
+      setLoading(false);
+      if (explicitSignOutRef.current) {
+        explicitSignOutRef.current = false;
+        setEmail('');
+        setPassword('');
+        setShowPassword(false);
+        setError('');
+      }
+      return;
     }
-    setLoading(false);
+
+    setError('');
+    try {
+      const currentRole = await getCurrentRole();
+      if (validationId !== authValidationRef.current) return;
+
+      if (currentRole) {
+        await Promise.all([
+          hydrateStoredSubcontratasPreferences().catch(error =>
+            console.warn('No se pudieron precargar preferencias de subcontratas:', error)
+          ),
+          hydrateStoredPdfConfig().catch(error =>
+            console.warn('No se pudo precargar la configuración PDF:', error)
+          ),
+        ]);
+        if (validationId !== authValidationRef.current) return;
+      }
+
+      setRole(currentRole);
+      if (!currentRole) {
+        setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
+        await signOutUser();
+      }
+    } catch {
+      if (validationId !== authValidationRef.current) return;
+      setRole(null);
+      setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
+      await signOutUser().catch(() => undefined);
+    } finally {
+      if (validationId === authValidationRef.current) setLoading(false);
+    }
   }), []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    explicitSignOutRef.current = false;
     setError('');
     if (!email.trim() || !password) {
       setError('Introduce tu correo electrónico y contraseña.');
@@ -84,11 +105,13 @@ export function AuthGate({ children }: AuthGateProps) {
 
   const handleSignOut = async () => {
     if (signingOut) return;
+    explicitSignOutRef.current = true;
     setSigningOut(true);
     setError('');
     try {
       await signOutUser();
     } catch (err) {
+      explicitSignOutRef.current = false;
       setError(authErrorMessage(err));
       setSigningOut(false);
     }
