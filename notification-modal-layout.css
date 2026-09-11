@@ -150,4 +150,86 @@ body.profea-modal-open aside.app-navigation-panel {
     margin-right: -1rem !important;
     padding: 0.875rem 1rem !important;
   }
+
+  /* Push-notification manager: unlike edit forms, this modal contains its own header,
+     long scrollable body and footer. Keep the application header visible, but make the
+     notification window itself a proper bounded mobile panel with a reachable footer. */
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] {
+    top: clamp(12.25rem, 27vh, 15.5rem) !important;
+    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    overflow: hidden !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    border-radius: 1.25rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :first-child {
+    flex: 0 0 auto !important;
+    padding: 0.75rem 0.875rem !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :first-child h3 {
+    font-size: 0.875rem !important;
+    line-height: 1.2 !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :first-child p {
+    display: none !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :nth-child(2) {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding: 0.875rem !important;
+  }
+
+  /* Permission actions are easier to use as full-width stacked buttons on phones. */
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :nth-child(2) > div:first-child > div:last-child {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :nth-child(2) > div:first-child > div:last-child > button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Footer stays visible above Safari/Chrome bottom UI instead of becoming part of
+     the scrolling content. */
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child {
+    flex: 0 0 auto !important;
+    padding: 0.75rem 0.875rem calc(0.75rem + env(safe-area-inset-bottom)) !important;
+    gap: 0.75rem !important;
+    background: rgba(241, 245, 249, 0.98) !important;
+  }
+
+  .dark #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child {
+    background: rgba(15, 23, 42, 0.98) !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child > span {
+    max-width: 62% !important;
+    line-height: 1.25 !important;
+  }
+
+  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child > button {
+    flex: 0 0 auto !important;
+    min-height: 2.5rem !important;
+  }
 }
