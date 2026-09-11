@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Share2,Users,X,Loader2,UserMinus,CheckCircle2,Eye,Pencil,Search} from 'lucide-react';
 import {supabase} from '../src/lib/supabase';
 import {getRecordShares,shareRecordWithUser,unshareRecordWithUser} from '../src/lib/functions';
@@ -6,6 +7,7 @@ import {getRecordShares,shareRecordWithUser,unshareRecordWithUser} from '../src/
 type Props={
   resourceType:'trabajadores'|'contrataciones'|'reconocimientos'|'citas'|'subcontratas'|'obra'|string;
   resourceId:string|number;
+  ownerId?:string;
   label?:string;
   compact?:boolean;
   className?:string;
@@ -40,14 +42,14 @@ const getAdminStatus=()=>{
   return adminStatusPromise;
 };
 
-export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='Compartir',compact=false,className='',onClick})=>{
+export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,ownerId:providedOwnerId,label='Compartir',compact=false,className='',onClick})=>{
   const [isAdmin,setIsAdmin]=useState(false);
   const [open,setOpen]=useState(false);
   const [loading,setLoading]=useState(false);
   const [busyUser,setBusyUser]=useState('');
   const [users,setUsers]=useState<Profile[]>([]);
   const [shares,setShares]=useState<ShareRow[]>([]);
-  const [ownerId,setOwnerId]=useState('');
+  const [ownerId,setOwnerId]=useState(providedOwnerId||'');
   const [error,setError]=useState('');
   const [userSearch,setUserSearch]=useState('');
 
@@ -56,6 +58,7 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
     getAdminStatus().then(value=>{if(active)setIsAdmin(value);});
     return()=>{active=false;};
   },[]);
+  useEffect(()=>{if(providedOwnerId)setOwnerId(providedOwnerId);},[providedOwnerId]);
 
   const shareByUser=useMemo(()=>new Map(shares.map(s=>[s.user_id,s])),[shares]);
   const filteredUsers=useMemo(()=>{
@@ -67,15 +70,17 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
   const load=async()=>{
     setLoading(true);setError('');
     try{
-      const table=tableForResource(resourceType);
+      const ownerPromise=providedOwnerId
+        ? Promise.resolve([{owner_id:providedOwnerId}])
+        : supabase.query(tableForResource(resourceType),{query:`select=owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`});
       const [profiles,permissionRows,ownerRows]=await Promise.all([
         supabase.query('profiles',{query:'select=id,email,nombre,apellidos,role,active&active=eq.true&role=eq.user&order=nombre.asc,apellidos.asc,email.asc'}),
         getRecordShares(resourceType,resourceId),
-        supabase.query(table,{query:`select=owner_id&id=eq.${encodeURIComponent(String(resourceId))}&limit=1`}),
+        ownerPromise,
       ]);
       setUsers(profiles||[]);
       setShares(permissionRows||[]);
-      const owner=ownerRows?.[0]?.owner_id||'';
+      const owner=ownerRows?.[0]?.owner_id||providedOwnerId||'';
       setOwnerId(owner);
       if(!owner)throw new Error('No se ha podido identificar el propietario de este registro.');
     }catch(e:any){setError(e?.message||'No se pudo cargar la compartición del registro.');}
@@ -111,18 +116,9 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
 
   if(!isAdmin)return null;
 
-  return <>
-    <button
-      type="button"
-      onClick={openModal}
-      title={`Compartir ${resourceLabel(resourceType)}`}
-      className={`${compact?'p-2 rounded-lg':'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 transition-colors ${className}`}
-    >
-      <Share2 size={compact?16:15}/>{!compact&&<span>{label}</span>}
-    </button>
-
-    {open&&<div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm p-4" onClick={()=>setOpen(false)}>
-      <div className="w-full max-w-2xl max-h-[82dvh] flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={e=>e.stopPropagation()}>
+  const modal=open&&typeof document!=='undefined'?createPortal(
+    <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={()=>setOpen(false)}>
+      <div className="w-full max-w-2xl max-h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={e=>e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300"><Users size={19}/></div>
@@ -175,6 +171,17 @@ export const ShareRecordButton:React.FC<Props>=({resourceType,resourceId,label='
 
         <div className="border-t border-slate-200 dark:border-slate-800 px-5 py-3 text-xs text-slate-500 flex items-center gap-2"><CheckCircle2 size={14}/>La eliminación no se comparte desde este control.</div>
       </div>
-    </div>}
+    </div>,document.body):null;
+
+  return <>
+    <button
+      type="button"
+      onClick={openModal}
+      title={`Compartir ${resourceLabel(resourceType)}`}
+      className={`${compact?'p-2 rounded-lg':'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 transition-colors ${className}`}
+    >
+      <Share2 size={compact?16:15}/>{!compact&&<span>{label}</span>}
+    </button>
+    {modal}
   </>;
 };
