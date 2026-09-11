@@ -10,9 +10,9 @@ export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
 export const DEFAULT_PDF_CONFIG: Required<PdfCustomConfig> = {
-  headerLine1: 'EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ',
-  headerLine2: 'ÁREA DE COOPERACIÓN | GESTIÓN PROFEA',
-  footerText: '© David Hinojo García | Sistema de Gestión PROFEA',
+  headerLine1: 'DIPUTACIÓN PROVINCIAL DE CÁDIZ',
+  headerLine2: 'DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA',
+  footerText: 'Diputación Provincial de Cádiz | Gestión de Fondos PROFEA',
   customLogo: '',
   showTimestamp: true,
   showPageNumbers: true
@@ -198,6 +198,7 @@ export const generateSamplePreviewPDF = (customConfig?: Partial<PdfCustomConfig>
   applyPdfFooters(doc, config);
 
   const filename = `MUESTRA_PERSONALIZACION_PDF_${new Date().toISOString().slice(0, 10)}.pdf`;
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -205,6 +206,124 @@ const BLUE_COLOR_HEX = '00548E';
 const LIGHT_BLUE_HEX = 'F0F7FF';
 const BLUE_COLOR_RGB: [number, number, number] = [0, 84, 142];
 const LIGHT_BLUE_RGB: [number, number, number] = [240, 247, 255];
+
+
+const INSTITUTION_NAME = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ';
+const INSTITUTION_SERVICE = 'GESTIÓN DE FONDOS PROFEA';
+const INSTITUTION_FOOTER = 'Diputación Provincial de Cádiz · Gestión de Fondos PROFEA';
+
+/**
+ * Final institutional pass for every generated PDF.
+ *
+ * Individual reports may keep their specialised body/layout, but identity,
+ * metadata and footer are always rendered through this common layer so every
+ * exported document belongs to the same Diputación/PROFEA family.
+ */
+const applyInstitutionalPdfStandard = (doc: jsPDF) => {
+  try {
+    doc.setProperties({
+      title: 'Documento de Gestión PROFEA',
+      subject: 'Gestión de Fondos PROFEA',
+      author: 'Diputación Provincial de Cádiz',
+      creator: 'Sistema de Gestión PROFEA',
+      keywords: 'Diputación de Cádiz, PROFEA, Gestión de Fondos PROFEA'
+    });
+  } catch {
+    // Metadata support depends on the jsPDF runtime; visual standardisation
+    // below remains mandatory even if metadata cannot be written.
+  }
+
+  const totalPages = (doc as any).internal.getNumberOfPages
+    ? (doc as any).internal.getNumberOfPages()
+    : 1;
+  const issuedAt = new Date().toLocaleString('es-ES', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+
+  for (let page = 1; page <= totalPages; page++) {
+    doc.setPage(page);
+    const pageSize = doc.internal.pageSize;
+    const pageHeight = pageSize.height || pageSize.getHeight();
+    const pageWidth = pageSize.width || pageSize.getWidth();
+
+    // Clear the legacy footer area first so specialised reports cannot leave
+    // inconsistent copyright/developer footers underneath the official one.
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
+
+    doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
+    doc.setLineWidth(0.35);
+    doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(0, 84, 142);
+    doc.text(INSTITUTION_FOOTER, 14, pageHeight - 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Emitido: ${issuedAt}`, pageWidth / 2, pageHeight - 7, { align: 'center' });
+    doc.text(`Página ${page} de ${totalPages}`, pageWidth - 14, pageHeight - 7, { align: 'right' });
+  }
+};
+
+/** Common print/metadata standard for every XLSX export. */
+const applyInstitutionalExcelStandard = (workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksheet) => {
+  workbook.creator = 'Diputación Provincial de Cádiz';
+  workbook.lastModifiedBy = 'Sistema de Gestión PROFEA';
+  workbook.company = 'Diputación Provincial de Cádiz';
+  workbook.subject = 'Gestión de Fondos PROFEA';
+  workbook.category = 'Informe institucional';
+  workbook.description = 'Documento generado por el Sistema de Gestión de Fondos PROFEA';
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  worksheet.pageSetup = {
+    ...worksheet.pageSetup,
+    fitToPage: true,
+    fitToWidth: 1,
+    margins: {
+      left: 0.45,
+      right: 0.45,
+      top: 0.6,
+      bottom: 0.6,
+      header: 0.25,
+      footer: 0.25,
+      ...(worksheet.pageSetup?.margins || {})
+    }
+  };
+
+  const header = `&L&9${INSTITUTION_NAME}&C&B&9${INSTITUTION_SERVICE}`;
+  const footer = `&L&8${INSTITUTION_FOOTER}&R&8Página &P de &N`;
+  worksheet.headerFooter = {
+    ...worksheet.headerFooter,
+    oddHeader: header,
+    evenHeader: header,
+    firstHeader: header,
+    oddFooter: footer,
+    evenFooter: footer,
+    firstFooter: footer
+  };
+
+  // Unify typography without destroying semantic colours/bold states already
+  // assigned to status cells by each specialised report.
+  worksheet.eachRow(row => {
+    row.eachCell(cell => {
+      cell.font = { ...(cell.font || {}), name: 'Arial' };
+      if (typeof cell.value === 'string' && cell.value.includes('David Hinojo García')) {
+        cell.value = cell.value
+          .replace(/©?\s*\d{4}\s*David Hinojo García\s*\|?\s*/gi, '')
+          .replace(/©?\s*David Hinojo García\s*\|?\s*/gi, '')
+          .trim();
+        if (!String(cell.value).includes('Diputación')) {
+          cell.value = INSTITUTION_FOOTER;
+        }
+      }
+    });
+  });
+};
 
 const generateExportFilename = (baseName: string, data: Person[], extension: string) => {
   const uniqueObras = Array.from(new Set(data.map(p => p.obra?.trim()))).filter(Boolean);
@@ -318,11 +437,12 @@ export const preparePRLExcelData = async (dataToExport: Person[]) => {
   const copyrightRow = worksheet.addRow([]);
   worksheet.mergeCells(`A${copyrightRow.number}:I${copyrightRow.number}`);
   const copyrightCell = worksheet.getCell(`A${copyrightRow.number}`);
-  copyrightCell.value = `© ${new Date().getFullYear()} David Hinojo García | Sistema de Gestión PROFEA`;
+  copyrightCell.value = `Diputación Provincial de Cádiz | Gestión de Fondos PROFEA`;
   copyrightCell.font = { name: 'Arial', italic: true, size: 8, color: { argb: '777777' } };
   copyrightCell.alignment = { horizontal: 'left', vertical: 'middle' };
   copyrightRow.height = 20;
 
+  applyInstitutionalExcelStandard(workbook, worksheet);
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = generateExportFilename('PROFEA_SIN_FORMACION_PRL', dataToExport, 'xlsx');
   return { buffer, filename };
@@ -397,6 +517,7 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
   applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_SIN_FORMACION_PRL', dataToExport, 'pdf');
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -518,11 +639,12 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
   const copyrightRow = worksheet.addRow([]);
   worksheet.mergeCells(`A${copyrightRow.number}:L${copyrightRow.number}`);
   const copyrightCell = worksheet.getCell(`A${copyrightRow.number}`);
-  copyrightCell.value = `© ${new Date().getFullYear()} David Hinojo García | Sistema de Gestión PROFEA`;
+  copyrightCell.value = `Diputación Provincial de Cádiz | Gestión de Fondos PROFEA`;
   copyrightCell.font = { name: 'Arial', italic: true, size: 8, color: { argb: '777777' } };
   copyrightCell.alignment = { horizontal: 'left', vertical: 'middle' };
   copyrightRow.height = 20;
 
+  applyInstitutionalExcelStandard(workbook, worksheet);
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = generateExportFilename('PROFEA_RRMM', dataToExport, 'xlsx');
   return { buffer, filename };
@@ -620,6 +742,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_RRMM', dataToExport, 'pdf');
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -774,6 +897,7 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
   applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_PRL_LIMITACIONES_TECNICO', workersWithLimitations, 'pdf');
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename, count: workersWithLimitations.length };
 };
 
@@ -809,7 +933,7 @@ export const prepareExcelData = async (dataToExport: Person[], allPeople?: Perso
 
   worksheet.mergeCells('G2:O2');
   const titleCell = worksheet.getCell('G2');
-  titleCell.value = 'EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ';
+  titleCell.value = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ';
   titleCell.font = { name: 'Arial', bold: false, size: 9, color: { argb: '777777' } };
   titleCell.alignment = { horizontal: 'right' };
 
@@ -918,11 +1042,12 @@ export const prepareExcelData = async (dataToExport: Person[], allPeople?: Perso
   const copyrightRow = worksheet.addRow([]);
   worksheet.mergeCells(`A${copyrightRow.number}:O${copyrightRow.number}`);
   const copyrightCell = worksheet.getCell(`A${copyrightRow.number}`);
-  copyrightCell.value = `© ${new Date().getFullYear()} David Hinojo García | Sistema de Gestión PROFEA`;
+  copyrightCell.value = `Diputación Provincial de Cádiz | Gestión de Fondos PROFEA`;
   copyrightCell.font = { name: 'Arial', italic: true, size: 8, color: { argb: '777777' } };
   copyrightCell.alignment = { horizontal: 'left', vertical: 'middle' };
   copyrightRow.height = 20;
 
+  applyInstitutionalExcelStandard(workbook, worksheet);
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = generateExportFilename('PROFEA_RELACION_CONTRATADOS', dataToExport, 'xlsx');
   return { buffer, filename };
@@ -1053,6 +1178,7 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
   });
   applyPdfFooters(doc, config);
   const filename = generateExportFilename('PROFEA_RELACION_CONTRATADOS', dataToExport, 'pdf');
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -1149,11 +1275,12 @@ export const prepareCalzadoExcelData = async (dataToExport: Person[]) => {
   const copyrightRow = worksheet.addRow([]);
   worksheet.mergeCells(`A${copyrightRow.number}:D${copyrightRow.number}`);
   const copyrightCell = worksheet.getCell(`A${copyrightRow.number}`);
-  copyrightCell.value = `© ${new Date().getFullYear()} David Hinojo García | Resumen de Calzado PROFEA`;
+  copyrightCell.value = `Diputación Provincial de Cádiz | Gestión de Fondos PROFEA`;
   copyrightCell.font = { name: 'Arial', italic: true, size: 8, color: { argb: '777777' } };
   copyrightCell.alignment = { horizontal: 'left', vertical: 'middle' };
   copyrightRow.height = 20;
 
+  applyInstitutionalExcelStandard(workbook, worksheet);
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = generateExportFilename('PROFEA_RESUMEN_CALZADO', dataToExport, 'xlsx');
   return { buffer, filename };
@@ -1242,6 +1369,7 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
   applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_RESUMEN_CALZADO', dataToExport, 'pdf');
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -1612,12 +1740,13 @@ export const generateWorkerIDCardPDF = async (selectedPerson: Person, allPeople:
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Documento de validez interna. © David Hinojo García | PROFEA - Diputación de Cádiz`, 15, 287);
+      doc.text(`Documento de gestión interna | Diputación Provincial de Cádiz · Gestión de Fondos PROFEA`, 15, 287);
       doc.text(`Página ${data.pageNumber} de ${pageCount}`, 195, 287, { align: 'right' });
     }
   });
 
   const filename = `CARNE_PROFEA_${selectedPerson.apellidosNombre.replace(/[\s,]+/g, '_')}_${cleanDni}.pdf`;
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -1642,7 +1771,7 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text('SISTEMA DE CONTRATACIÓN PROFEA · DIPUTACIÓN PROVINCIAL DE CÁDIZ', 15, 20);
+  doc.text('GESTIÓN DE FONDOS PROFEA · DIPUTACIÓN PROVINCIAL DE CÁDIZ', 15, 20);
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(8);
   doc.text(`Expediente unificado de contratación para el DNI: ${selectedPerson.dni}`, 15, 25);
@@ -1823,6 +1952,7 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
   });
 
   const filename = `HISTORIAL_CONTRATOS_${selectedPerson.apellidosNombre.replace(/[\s,]+/g, '_')}_${cleanDni}.pdf`;
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -2100,6 +2230,7 @@ export const generatePeriodicReportPDF = async (
 
   const rawPeriodName = periodLabel.replace(/[\s,]+/g, '_');
   const filename = `INFORME_CONTRATACION_${rawPeriodName}.pdf`;
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -2312,7 +2443,7 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
       doc.setFont('helvetica', 'italic');
-      doc.text(`Dossier de Control Físico | © David Hinojo García | Diputación de Cádiz`, 15, 287);
+      doc.text(`Dossier de control | Diputación Provincial de Cádiz · Gestión de Fondos PROFEA`, 15, 287);
       doc.setFont('helvetica', 'normal');
       doc.text(`Página ${data.pageNumber} de ${pageCount}`, 195, 287, { align: 'right' });
     }
@@ -2320,6 +2451,7 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
 
   const rawObraName = obraName.replace(/[\s/\\?%*:|"<>\s]+/g, '_').toUpperCase();
   const filename = `RESUMEN_PIE_DE_OBRA_${rawObraName}.pdf`;
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -2408,12 +2540,12 @@ export const generateMedicalTicketsPDF = async (
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(0, 84, 142);
-    doc.text('EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
+    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('ÁREA DE COOPERACIÓN | GESTIÓN PROFEA', 18, 27);
+    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
     doc.text(`Supervisor Responsable: ${p.supervisorResponsable || '-'} | Tel: ${supervisorPhone}`, 18, 31.5);
 
     // Separating line
@@ -2540,12 +2672,12 @@ export const generateMedicalTicketsPDF = async (
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(0, 84, 142);
-    doc.text('EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
+    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('ÁREA DE COOPERACIÓN | GESTIÓN PROFEA', 18, 27);
+    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
     doc.text(`Supervisor Responsable: ${p.supervisorResponsable || '-'} | Tel: ${supervisorPhone}`, 18, 31.5);
 
     doc.setDrawColor(226, 232, 240);
@@ -2685,6 +2817,7 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
   }
 
   const filename = `NOTIFICACIONES_CITAS_PROFEA_${new Date().toISOString().slice(0, 10)}.pdf`;
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
@@ -2776,12 +2909,12 @@ export const generateStatsSummaryPDF = async ({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(0, 84, 142);
-  doc.text('EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
+  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('ÁREA DE COOPERACIÓN | GESTIÓN PROFEA', 18, 27);
+  doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
   doc.text('Documentación Administrativa Oficial de Resumen Estadístico', 18, 31.5);
 
   doc.setDrawColor(226, 232, 240);
@@ -3135,6 +3268,7 @@ export const generateStatsSummaryPDF = async ({
   const cleanFilterStr = filterLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
   const filename = `RESUMEN_ESTADISTICO_PROFEA_${cleanFilterStr}_${new Date().toISOString().slice(0, 10)}.pdf`;
 
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
