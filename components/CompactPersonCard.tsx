@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Person, getAptitudMedicaInfo } from '../types';
+import { ShareRecordButton } from './ShareRecordButton';
 import {
   Pencil,
   Trash2,
@@ -342,6 +343,7 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
         </button>
 
         <div className="flex items-center gap-1">
+          <ShareRecordButton resourceType="trabajadores" resourceId={person.id} compact />
           <button type="button" onClick={() => onEdit(person)} className="p-2 rounded-xl text-[#00548E] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer touch-manipulation" title={`Editar datos de ${person.apellidosNombre}`} aria-label={`Editar ${person.apellidosNombre}`}><Pencil className="w-4 h-4" /></button>
           <button type="button" onClick={handleSafeOpenCalendar} className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-[#00548E] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer touch-manipulation" title="Añadir citas y periodo a Google Calendar" aria-label={`Añadir citas de ${person.apellidosNombre} a Google Calendar`}><Calendar className="w-4 h-4" /></button>
           <button type="button" onClick={handleSafeGenerateIDCard} className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer touch-manipulation" title="Generar e imprimir carné identificativo de obra" aria-label={`Generar carné de ${person.apellidosNombre}`}><IdCard className="w-4 h-4" /></button>
