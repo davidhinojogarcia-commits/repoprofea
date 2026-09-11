@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuthChangeEvent } from '@supabase/supabase-js';
-import type { SupabaseUser } from '../src/lib/supabase';
-import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
+import { supabase, type SupabaseUser } from '../src/lib/supabase';
+import { Eye, EyeOff, KeyRound, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
 import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
 import { hydrateStoredPdfConfig } from '../src/lib/exportUtils';
@@ -34,6 +34,10 @@ export function AuthGate({ children }: AuthGateProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const explicitSignOutRef = useRef(false);
   const authValidationRef = useRef(0);
   const roleRef = useRef<AppRole | null>(null);
@@ -46,7 +50,6 @@ export function AuthGate({ children }: AuthGateProps) {
       const validationId = ++authValidationRef.current;
       setUser(currentUser);
 
-      // Una renovación de JWT no es actividad humana y nunca debe provocar logout/login.
       if (event === 'TOKEN_REFRESHED' && roleRef.current) {
         setLoading(false);
         return;
@@ -97,8 +100,17 @@ export function AuthGate({ children }: AuthGateProps) {
         return;
       }
 
-      // No hacemos llamadas al propio cliente Supabase dentro del callback síncrono
-      // de onAuthStateChange. Se difieren al siguiente turno para evitar bloqueos.
+      if (event === 'PASSWORD_RECOVERY') {
+        ++authValidationRef.current;
+        setUser(currentUser);
+        setRole(null);
+        setPasswordRecovery(true);
+        setError('');
+        setNotice('');
+        setLoading(false);
+        return;
+      }
+
       if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
       authTaskTimerRef.current = window.setTimeout(() => {
         authTaskTimerRef.current = null;
@@ -113,7 +125,7 @@ export function AuthGate({ children }: AuthGateProps) {
   }, []);
 
   const handleIdleTimeout = useCallback(async () => {
-    if (!user) return;
+    if (!user || passwordRecovery) return;
     setNotice('Tu sesión se ha cerrado por inactividad.');
     setError('');
     clearUserActivity(user.id);
@@ -122,10 +134,10 @@ export function AuthGate({ children }: AuthGateProps) {
     } finally {
       window.history.replaceState({}, '', '/login');
     }
-  }, [user]);
+  }, [user, passwordRecovery]);
 
   const { warningOpen, remainingMs, continueSession } = useIdleTimeout({
-    userId: user?.id || null,
+    userId: passwordRecovery ? null : user?.id || null,
     onTimeout: handleIdleTimeout,
   });
 
@@ -141,12 +153,42 @@ export function AuthGate({ children }: AuthGateProps) {
     setSubmitting(true);
     try {
       const signedInUser = await signInWithEmail(email, password);
-      // Solo un login explícito del usuario inicia a cero el reloj de inactividad.
       initializeUserActivity(signedInUser.id);
       setPassword('');
       window.history.replaceState({}, '', '/');
     } catch (err) {
       setError(authErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePasswordRecovery = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    if (newPassword.length < 8) {
+      setError('La nueva contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+      await supabase.auth.signOut({ scope: 'local' });
+      setPasswordRecovery(false);
+      setUser(null);
+      setRole(null);
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowNewPassword(false);
+      setNotice('Contraseña actualizada correctamente. Ya puedes iniciar sesión con la nueva contraseña.');
+      window.history.replaceState({}, '', '/login');
+    } catch (err:any) {
+      setError(err?.message || 'No se ha podido actualizar la contraseña. Solicita un nuevo enlace de recuperación.');
     } finally {
       setSubmitting(false);
     }
@@ -170,6 +212,26 @@ export function AuthGate({ children }: AuthGateProps) {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><Loader2 className="h-8 w-8 animate-spin text-brand-primary" /></div>;
+
+  if (passwordRecovery && user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
+        <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 p-8">
+          <div className="text-center mb-7">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-brand-primary"><KeyRound size={24}/></div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Crear nueva contraseña</h1>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Introduce una nueva contraseña para {user.email || 'tu cuenta'}.</p>
+          </div>
+          <form onSubmit={handlePasswordRecovery} className="space-y-5">
+            <div><label htmlFor="new-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Nueva contraseña</label><div className="relative"><input id="new-password" type={showNewPassword?'text':'password'} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} minLength={8} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 pr-12 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/30" disabled={submitting}/><button type="button" aria-label={showNewPassword?'Ocultar contraseña':'Mostrar contraseña'} onClick={()=>setShowNewPassword(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-primary">{showNewPassword?<EyeOff size={20}/>:<Eye size={20}/>}</button></div></div>
+            <div><label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Repetir contraseña</label><input id="confirm-password" type={showNewPassword?'text':'password'} autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} minLength={8} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/30" disabled={submitting}/></div>
+            {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
+            <button type="submit" disabled={submitting} className="w-full rounded-xl bg-brand-primary hover:bg-brand-secondary text-white py-3.5 font-semibold flex items-center justify-center gap-2 disabled:opacity-60">{submitting?<Loader2 className="h-5 w-5 animate-spin"/>:<KeyRound className="h-5 w-5"/>}{submitting?'Actualizando…':'Guardar nueva contraseña'}</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (user && role) {
     const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
