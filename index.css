@@ -240,13 +240,20 @@ body {
     padding-right: 0.75rem !important;
   }
 
-  /* Compact worker cards: avoid painting hundreds of off-screen cards on mobile.
-     This keeps normal page scrolling (no nested scroll) while allowing the browser
-     to skip layout/paint work for cards that are still far from the viewport. */
+  /* Compact worker cards: Safari/iOS scroll optimisation.
+     Do not defer painting with content-visibility because fast momentum scrolling can
+     expose unpainted cards for a moment. Keep cards ready and remove the continuous
+     animation/transition cost that is expensive across hundreds of rows. */
   #root [id^="compact-card-"] {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 260px;
     contain: layout paint style;
+    box-shadow: none !important;
+  }
+
+  #root [id^="compact-card-"] *,
+  #root [id^="compact-card-"]::before,
+  #root [id^="compact-card-"]::after {
+    animation: none !important;
+    transition-duration: 0s !important;
   }
 }
 
