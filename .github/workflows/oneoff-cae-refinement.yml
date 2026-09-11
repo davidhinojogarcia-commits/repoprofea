@@ -34,7 +34,7 @@ jobs:
         run: npm run build
 
       - name: Clean one-off files
-        run: git rm .github/workflows/oneoff-cae-refinement.yml scripts/apply_cae_refinement.py scripts/repair_cae_refinement.py
+        run: git rm -f .github/workflows/oneoff-cae-refinement.yml scripts/apply_cae_refinement.py scripts/repair_cae_refinement.py
 
       - name: Commit changes
         run: |
