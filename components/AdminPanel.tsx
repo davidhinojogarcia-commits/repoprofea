@@ -10,6 +10,12 @@ type Modules=Record<ModuleName,PermissionSet>;
 const moduleLabels:Record<ModuleName,string>={contratacion:'Contratación',trabajadores:'Trabajadores',obras:'Obras',reconocimientos:'Reconocimientos',subcontratas:'Subcontratas',citas:'Citas'};
 const defaultPermissions=():Modules=>Object.fromEntries(Object.keys(moduleLabels).map(k=>[k,{read:true,create:true,update:true,delete:true}])) as Modules;
 const dateValue=(v:any)=>v?new Date(v).toLocaleString('es-ES'):'—';
+const auditActionOptions=[
+ ['CREATE','Crear'],['INSERT','Insertar'],['UPDATE','Actualizar'],['DELETE','Eliminar'],['LOGIN','Inicio de sesión'],['CREATE_USER','Crear usuario'],['UPDATE_USER','Actualizar usuario'],['RESET_PASSWORD','Restablecer contraseña']
+] as const;
+const auditResourceOptions=[
+ ['trabajadores','Trabajadores'],['trash','Papelera'],['subcontratas','Subcontratas'],['contrataciones','Contrataciones'],['reconocimientos','Reconocimientos médicos'],['citas','Citas'],['obras','Obras'],['profiles','Administración / Usuarios'],['auth','Autenticación'],['workers','Trabajadores (legado)']
+] as const;
 interface AdminPanelProps{onClose:()=>void;}
 interface UserForm{nombre:string;apellidos:string;email:string;telefono:string;password:string;role:Role;}
 const emptyForm=():UserForm=>({nombre:'',apellidos:'',email:'',telefono:'',password:'',role:'user'});
@@ -21,6 +27,10 @@ export function AdminPanel({onClose}:AdminPanelProps){
  const [permissions,setPermissions]=useState<Record<string,Modules>>({});
  const [selectedUid,setSelectedUid]=useState('');
  const [auditUserFilter,setAuditUserFilter]=useState('');
+ const [auditActionFilter,setAuditActionFilter]=useState('');
+ const [auditResourceFilter,setAuditResourceFilter]=useState('');
+ const [auditDateFrom,setAuditDateFrom]=useState('');
+ const [auditDateTo,setAuditDateTo]=useState('');
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [createOpen,setCreateOpen]=useState(false);
@@ -37,12 +47,31 @@ export function AdminPanel({onClose}:AdminPanelProps){
  };
  const loadAudit=async()=>{
   setError('');
-  const filter=auditUserFilter?`&user_id=eq.${encodeURIComponent(auditUserFilter)}`:'';
-  const rows=await supabase.query('audit_logs',{query:`select=id,user_id,user_email,action,resource_type,resource_id,timestamp,details${filter}&order=timestamp.desc&limit=300`});
+  const filters:string[]=[];
+  if(auditUserFilter)filters.push(`user_id=eq.${encodeURIComponent(auditUserFilter)}`);
+  if(auditActionFilter)filters.push(`action=eq.${encodeURIComponent(auditActionFilter)}`);
+  if(auditResourceFilter)filters.push(`resource_type=eq.${encodeURIComponent(auditResourceFilter)}`);
+  if(auditDateFrom){
+   const from=new Date(`${auditDateFrom}T00:00:00`);
+   if(!Number.isNaN(from.getTime()))filters.push(`timestamp=gte.${encodeURIComponent(from.toISOString())}`);
+  }
+  if(auditDateTo){
+   const to=new Date(`${auditDateTo}T23:59:59.999`);
+   if(!Number.isNaN(to.getTime()))filters.push(`timestamp=lte.${encodeURIComponent(to.toISOString())}`);
+  }
+  const suffix=filters.length?`&${filters.join('&')}`:'';
+  const rows=await supabase.query('audit_logs',{query:`select=id,user_id,user_email,action,resource_type,resource_id,timestamp,details${suffix}&order=timestamp.desc&limit=300`});
   setAuditLogs(rows||[]);
  };
+ const clearAuditFilters=()=>{
+  setAuditUserFilter('');
+  setAuditActionFilter('');
+  setAuditResourceFilter('');
+  setAuditDateFrom('');
+  setAuditDateTo('');
+ };
  useEffect(()=>{load().catch(e=>setError(e?.message||'No se pudieron cargar los usuarios.'));},[]);
- useEffect(()=>{if(tab==='audit')loadAudit().catch(e=>setError(e?.message||'No se pudo cargar la auditoría.'));},[tab,auditUserFilter]);
+ useEffect(()=>{if(tab==='audit')loadAudit().catch(e=>setError(e?.message||'No se pudo cargar la auditoría.'));},[tab,auditUserFilter,auditActionFilter,auditResourceFilter,auditDateFrom,auditDateTo]);
  const run=async(op:()=>Promise<any>,reload=true)=>{setBusy(true);setError('');try{await op();if(reload)await load();}catch(e:any){setError(e?.message||'La operación no se pudo completar.');}finally{setBusy(false);}};
  const createUser=async(e:React.FormEvent)=>{e.preventDefault();if(form.password.length<8){setError('La contraseña debe tener al menos 8 caracteres.');return;}await run(async()=>{await createManagedUser(form);setCreateOpen(false);setForm(emptyForm());});};
  const saveEdit=async(e:React.FormEvent)=>{
@@ -59,6 +88,7 @@ export function AdminPanel({onClose}:AdminPanelProps){
  const savePermissions=async()=>{if(!selectedUid)return;await run(()=>updateManagedPermissions({uid:selectedUid,modules:permissions[selectedUid]||defaultPermissions()}));};
  const saveShare=async()=>{if(!share.resourceId||!share.ownerId||!share.userId){setError('Indica recurso, propietario y usuario destinatario.');return;}await run(()=>setDataPermission(share));};
  const filteredUserLabel=useMemo(()=>users.find(u=>u.id===auditUserFilter),[users,auditUserFilter]);
+ const hasAuditFilters=Boolean(auditUserFilter||auditActionFilter||auditResourceFilter||auditDateFrom||auditDateTo);
 
  return <section className="w-full bg-transparent">
   <div className="w-full max-w-none mx-auto p-3 sm:p-4 lg:p-6 space-y-5">
@@ -76,7 +106,19 @@ export function AdminPanel({onClose}:AdminPanelProps){
     {tab==='permissions'&&<div className="space-y-8"><section className="space-y-4"><div><label className="text-sm font-medium">Usuario</label><select value={selectedUid} onChange={e=>setSelectedUid(e.target.value)} className="mt-2 w-full rounded-lg border px-3 py-2 bg-transparent"><option value="">Selecciona un usuario</option>{users.map(u=><option key={u.id} value={u.id}>{u.nombre} {u.apellidos} — {u.email}</option>)}</select></div>{selectedUid&&<div className="rounded-xl border overflow-x-auto"><table className="w-full min-w-[620px] text-sm"><thead className="bg-slate-50 dark:bg-slate-800/60"><tr><th className="text-left p-3">Módulo</th><th>Ver</th><th>Crear</th><th>Editar</th><th>Eliminar</th></tr></thead><tbody>{Object.entries(moduleLabels).map(([key,label])=>{const m=key as ModuleName;const v=permissions[selectedUid]?.[m]||{read:false,create:false,update:false,delete:false};return <tr key={key} className="border-t"><td className="p-3 font-medium">{label}</td>{(['read','create','update','delete'] as const).map(a=><td key={a} className="text-center"><input type="checkbox" checked={v[a]} disabled={busy} onChange={e=>setPermissions(prev=>({...prev,[selectedUid]:{...(prev[selectedUid]||defaultPermissions()),[m]:{...v,[a]:e.target.checked}}}))}/></td>)}</tr>})}</tbody></table></div>}<button disabled={!selectedUid||busy} onClick={savePermissions} className="rounded-lg bg-brand-primary text-white px-5 py-2.5 font-semibold disabled:opacity-50">Guardar permisos</button></section>
      <section className="rounded-xl border p-5 space-y-4"><div className="flex items-center gap-2"><Share2 size={18}/><div><h3 className="font-semibold">Compartir un registro</h3><p className="text-xs text-slate-500">Concede acceso granular a un usuario sin cambiar el propietario.</p></div></div><div className="grid sm:grid-cols-2 gap-3"><input value={share.resourceType} onChange={e=>setShare(s=>({...s,resourceType:e.target.value}))} placeholder="Tipo de recurso" className="rounded-lg border px-3 py-2 bg-transparent"/><input value={share.resourceId} onChange={e=>setShare(s=>({...s,resourceId:e.target.value}))} placeholder="ID del registro" className="rounded-lg border px-3 py-2 bg-transparent"/><select value={share.ownerId} onChange={e=>setShare(s=>({...s,ownerId:e.target.value}))} className="rounded-lg border px-3 py-2 bg-transparent"><option value="">Propietario</option>{users.map(u=><option key={u.id} value={u.id}>{u.email}</option>)}</select><select value={share.userId} onChange={e=>setShare(s=>({...s,userId:e.target.value}))} className="rounded-lg border px-3 py-2 bg-transparent"><option value="">Usuario destinatario</option>{users.map(u=><option key={u.id} value={u.id}>{u.email}</option>)}</select></div><div className="flex flex-wrap gap-5 text-sm"><label><input type="checkbox" checked={share.canRead} onChange={e=>setShare(s=>({...s,canRead:e.target.checked}))}/> Ver</label><label><input type="checkbox" checked={share.canUpdate} onChange={e=>setShare(s=>({...s,canUpdate:e.target.checked}))}/> Editar</label><label><input type="checkbox" checked={share.canDelete} onChange={e=>setShare(s=>({...s,canDelete:e.target.checked}))}/> Eliminar</label></div><button disabled={busy} onClick={saveShare} className="rounded-lg bg-brand-primary text-white px-5 py-2.5 font-semibold">Guardar compartición</button></section></div>}
 
-    {tab==='audit'&&<div><div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-5"><div><h2 className="font-semibold">Registro de auditoría</h2><p className="text-xs text-slate-500 mt-1">Filtra la actividad por usuario para revisar acciones concretas.</p></div><div className="flex flex-col sm:flex-row gap-2 sm:items-end"><label className="text-xs font-medium"><span className="flex items-center gap-1 mb-1"><Filter size={13}/> Usuario</span><select value={auditUserFilter} onChange={e=>setAuditUserFilter(e.target.value)} className="w-full sm:min-w-[260px] rounded-lg border px-3 py-2 bg-transparent"><option value="">Todos los usuarios</option>{users.map(u=><option key={u.id} value={u.id}>{u.nombre} {u.apellidos} — {u.email}</option>)}</select></label><button onClick={loadAudit} className="p-2.5 rounded-lg border"><RefreshCw size={17}/></button></div></div>{auditUserFilter&&<div className="mb-4 text-xs rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2">Mostrando actividad de <strong>{filteredUserLabel?.nombre} {filteredUserLabel?.apellidos}</strong> ({filteredUserLabel?.email})</div>}<div className="space-y-2">{auditLogs.length===0?<div className="py-12 text-center text-sm text-slate-500">No hay eventos para este filtro.</div>:auditLogs.map(log=><div key={log.id} className="rounded-lg border p-3 text-sm"><div className="flex justify-between gap-4"><strong>{log.action}</strong><span className="text-slate-500">{dateValue(log.timestamp)}</span></div><div className="text-slate-600 dark:text-slate-300">{log.resource_type} / {log.resource_id} · {log.user_email}</div>{log.details&&<pre className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-500">{JSON.stringify(log.details)}</pre>}</div>)}</div></div>}
+    {tab==='audit'&&<div>
+     <div className="mb-5"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 className="font-semibold">Registro de auditoría</h2><p className="text-xs text-slate-500 mt-1">Filtra la actividad por usuario, acción, sección y rango de fechas.</p></div><button onClick={loadAudit} className="self-start sm:self-auto p-2.5 rounded-lg border" title="Actualizar auditoría"><RefreshCw size={17}/></button></div>
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+       <label className="text-xs font-medium"><span className="flex items-center gap-1 mb-1"><Filter size={13}/> Usuario</span><select value={auditUserFilter} onChange={e=>setAuditUserFilter(e.target.value)} className="w-full rounded-lg border px-3 py-2 bg-transparent"><option value="">Todos los usuarios</option>{users.map(u=><option key={u.id} value={u.id}>{u.nombre} {u.apellidos} — {u.email}</option>)}</select></label>
+       <label className="text-xs font-medium"><span className="mb-1 block">Acción</span><select value={auditActionFilter} onChange={e=>setAuditActionFilter(e.target.value)} className="w-full rounded-lg border px-3 py-2 bg-transparent"><option value="">Todas las acciones</option>{auditActionOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+       <label className="text-xs font-medium"><span className="mb-1 block">Módulo / sección</span><select value={auditResourceFilter} onChange={e=>setAuditResourceFilter(e.target.value)} className="w-full rounded-lg border px-3 py-2 bg-transparent"><option value="">Todas las secciones</option>{auditResourceOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+       <label className="text-xs font-medium"><span className="mb-1 block">Desde</span><input type="date" value={auditDateFrom} max={auditDateTo||undefined} onChange={e=>setAuditDateFrom(e.target.value)} className="w-full rounded-lg border px-3 py-2 bg-transparent"/></label>
+       <label className="text-xs font-medium"><span className="mb-1 block">Hasta</span><input type="date" value={auditDateTo} min={auditDateFrom||undefined} onChange={e=>setAuditDateTo(e.target.value)} className="w-full rounded-lg border px-3 py-2 bg-transparent"/></label>
+      </div>
+      {hasAuditFilters&&<div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2">Filtros activos{filteredUserLabel?<> · <strong>{filteredUserLabel.nombre} {filteredUserLabel.apellidos}</strong></>:null}</span><button type="button" onClick={clearAuditFilters} className="rounded-lg border px-3 py-2 font-medium hover:bg-slate-50 dark:hover:bg-slate-800">Limpiar filtros</button></div>}
+     </div>
+     <div className="space-y-2">{auditLogs.length===0?<div className="py-12 text-center text-sm text-slate-500">No hay eventos para estos filtros.</div>:auditLogs.map(log=><div key={log.id} className="rounded-lg border p-3 text-sm"><div className="flex justify-between gap-4"><strong>{log.action}</strong><span className="text-slate-500">{dateValue(log.timestamp)}</span></div><div className="text-slate-600 dark:text-slate-300">{log.resource_type} / {log.resource_id} · {log.user_email}</div>{log.details&&<pre className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-500">{JSON.stringify(log.details)}</pre>}</div>)}</div>
+    </div>}
 
     {busy&&<div className="fixed bottom-6 right-6 rounded-full bg-slate-900 text-white px-4 py-2 flex items-center gap-2 text-sm shadow-xl"><Loader2 size={16} className="animate-spin"/>Procesando…</div>}
    </div>
