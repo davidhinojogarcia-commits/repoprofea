@@ -43,6 +43,17 @@ const App = React.lazy(() => import('./App'));
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 
+// Versiones antiguas utilizaron /login como ruta de estado. La aplicación actual
+// muestra el acceso en la raíz, así que saneamos tanto una carga directa como una
+// entrada histórica alcanzada con los botones Atrás/Adelante del navegador.
+const normalizeLegacyLoginRoute = () => {
+  if (window.location.pathname === '/login' || window.location.pathname === '/login/') {
+    window.history.replaceState(window.history.state, '', `/${window.location.search}${window.location.hash}`);
+  }
+};
+normalizeLegacyLoginRoute();
+window.addEventListener('popstate', normalizeLegacyLoginRoute);
+
 installModalRuntime();
 installButtonSounds();
 

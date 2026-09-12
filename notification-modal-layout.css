@@ -330,3 +330,35 @@ body.profea-modal-open aside.app-navigation-panel {
   color: rgb(15 23 42) !important;
   border-color: rgb(241 245 249) !important;
 }
+
+/* Medical-recognition quick editor is portaled to body so table/section layout can
+   never clip or cover the dialog. Keep the sidebar available on desktop. */
+.profea-medical-edit-overlay {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem !important;
+  overflow-y: auto !important;
+}
+
+.profea-medical-edit-dialog {
+  width: min(32rem, 100%) !important;
+  max-width: 32rem !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+}
+
+@media (max-width: 639px) {
+  .profea-medical-edit-overlay {
+    top: max(0.5rem, env(safe-area-inset-top)) !important;
+    right: 0.5rem !important;
+    bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    left: 0.5rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .profea-medical-edit-dialog {
+    padding: 1rem !important;
+    border-radius: 1rem !important;
+  }
+}

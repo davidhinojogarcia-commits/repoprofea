@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   FileUp, 
   Sparkles, 
@@ -2197,13 +2198,13 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
       </div>
 
       {/* 6. Quick Individual Edit Modal for Medical Recognition */}
-      {editingPerson && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-lg w-full shadow-2xl space-y-5">
+      {editingPerson && createPortal(
+        <div className="profea-modal-overlay profea-medical-edit-overlay fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="medical-edit-title">
+          <div className="profea-medical-edit-dialog bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-lg w-full shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-[#00548E] dark:text-blue-400" />
-                <h4 className="text-base font-bold text-slate-800 dark:text-slate-100">
+                <h4 id="medical-edit-title" className="text-base font-bold text-slate-800 dark:text-slate-100">
                   Editar Aptitud Médica
                 </h4>
               </div>
@@ -2345,7 +2346,8 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

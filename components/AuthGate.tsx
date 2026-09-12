@@ -70,8 +70,6 @@ export function AuthGate({ children }: AuthGateProps) {
         if (!currentRole) {
           setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
           await signOutUser();
-        } else if (window.location.pathname === '/login') {
-          window.history.replaceState({}, '', '/');
         }
       } catch {
         if (validationId !== authValidationRef.current) return;
