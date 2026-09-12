@@ -280,18 +280,143 @@ function compareWorkers(detected: any[], currentWorkers: any[]) {
   };
 }
 
+const normalizeSearchText = (value: string) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const fallbackAliases: Record<string, string[]> = {
+  rea: ['rea', 'registro empresas acreditadas', 'empresa acreditada'],
+  libro_subcontratacion: ['libro subcontratacion', 'diligencia subcontratacion'],
+  adhesion_pss: ['adhesion', 'plan seguridad salud', 'pss'],
+  concierto_sprl: ['concierto sprl', 'servicio prevencion', 'spa'],
+  cert_tgss: ['tgss', 'seguridad social', 'corriente seguridad social'],
+  cert_aeat: ['aeat', 'hacienda', 'agencia tributaria'],
+  seguro_rc: ['seguro rc', 'responsabilidad civil', 'poliza rc'],
+  recurso_preventivo: ['recurso preventivo', 'designacion recurso'],
+  evaluacion_especifica: ['evaluacion riesgos', 'planificacion preventiva'],
+  altas_ss: ['alta seguridad social', 'ita', 'rlc', 'rnt', 'idc'],
+  formacion_prl: ['formacion prl', 'curso prl', 'tpc'],
+  aptitud_medica: ['aptitud medica', 'reconocimiento medico', 'vigilancia salud'],
+  entrega_epis: ['entrega epis', 'entrega epi'],
+  marcado_ce_maquinaria: ['marcado ce', 'declaracion conformidad'],
+  seguro_itv_maquinaria: ['itv maquinaria', 'seguro maquinaria'],
+};
+
+async function analyzeWithFallback(
+  files: InputFile[],
+  checklist: ChecklistItem[],
+  subcontrata: any,
+  currentWorkers: any[]
+) {
+  const documentosAnalizados: AnalysisItem[] = [];
+  const trabajadoresDetectados: any[] = [];
+  const detectedIds = new Set<string>();
+
+  for (const file of files) {
+    const officeText = await extractOfficeText(file);
+    const searchable = normalizeSearchText(`${file.name} ${officeText}`);
+    const matches = checklist.filter(item => {
+      const aliases = fallbackAliases[item.id] || [];
+      const itemName = normalizeSearchText(item.nombre);
+      return aliases.some(alias => searchable.includes(normalizeSearchText(alias))) ||
+        (itemName.length > 5 && searchable.includes(itemName));
+    });
+
+    for (const item of matches) {
+      const dateMatch = searchable.match(/\b(20\d{2})[\s._/-]?(0?[1-9]|1[0-2])[\s._/-]?(0?[1-9]|[12]\d|3[01])\b/);
+      const issued = dateMatch
+        ? `${dateMatch[1]}-${String(Number(dateMatch[2])).padStart(2, '0')}-${String(Number(dateMatch[3])).padStart(2, '0')}`
+        : '';
+      const expiry = evaluateExpiration(item.id, issued);
+      detectedIds.add(item.id);
+      documentosAnalizados.push({
+        docId: item.id,
+        nombreDetectado: item.nombre,
+        estado: expiry.expired ? 'caducado' : issued ? 'entregado' : 'incompleto',
+        fechaEmision: expiry.issued,
+        fechaCaducidad: expiry.expires,
+        empresaDetectada: subcontrata?.nombre || subcontrata?.empresa || '',
+        cifDetectado: subcontrata?.cif || '',
+        observaciones: issued
+          ? `Documento identificado mediante el analizador de respaldo: ${file.name}.`
+          : `Documento identificado, pero requiere revisión manual de fechas: ${file.name}.`,
+        archivoOrigen: file.name,
+        confianza: issued ? 'media' : 'baja',
+        esLegible: Boolean(officeText),
+        motivoIlegible: officeText ? '' : 'Sin OCR visual disponible en el modo de respaldo.',
+        solicitarReintento: !issued,
+        estaCaducado: expiry.expired,
+        diasCaducado: expiry.daysExpired,
+        diasRestantes: expiry.daysRemaining,
+        esProximaCaducidad: expiry.nearExpiry,
+        motivoCaducidad: expiry.expired
+          ? `Documento caducado hace ${expiry.daysExpired} días.`
+          : expiry.nearExpiry ? `Caduca en ${expiry.daysRemaining} días.` : ''
+      });
+    }
+
+    for (const worker of currentWorkers) {
+      const dni = normalizeSearchText(worker?.dni || '');
+      const name = normalizeSearchText(worker?.apellidosNombre || worker?.name || '');
+      if ((dni && searchable.includes(dni)) || (name.length > 5 && searchable.includes(name))) {
+        trabajadoresDetectados.push({
+          nombre: worker.apellidosNombre || worker.name || '',
+          dni: worker.dni || '',
+          archivoOrigen: file.name
+        });
+      }
+    }
+  }
+
+  const uniqueWorkers = trabajadoresDetectados.filter((worker, index, list) =>
+    list.findIndex(candidate => `${candidate.dni}|${candidate.nombre}` === `${worker.dni}|${worker.nombre}`) === index
+  );
+  const relacionFaltantes = checklist
+    .filter(item => item.obligatorio !== false && !detectedIds.has(item.id))
+    .map(item => item.nombre);
+  const hasProblems = documentosAnalizados.some(item => item.estado === 'caducado' || item.estado === 'incompleto');
+
+  return {
+    success: true,
+    analysisMode: 'fallback',
+    documentosAnalizados,
+    resumenDiagnostico: `Análisis de respaldo completado: ${documentosAnalizados.length} documento(s) identificado(s). Revise manualmente los datos marcados con confianza baja.`,
+    veredictoAcceso: hasProblems || relacionFaltantes.length ? 'CONDICIONADO' : 'APTO',
+    relacionFaltantes,
+    comparativaTrabajadores: compareWorkers(uniqueWorkers, currentWorkers),
+    alertasCaducidad: documentosAnalizados
+      .filter(item => item.estaCaducado || item.esProximaCaducidad)
+      .map(item => `${item.nombreDetectado || item.docId}: ${item.motivoCaducidad}`),
+    documentosIlegibles: documentosAnalizados
+      .filter(item => !item.esLegible)
+      .map(item => ({ archivo: item.archivoOrigen, motivo: item.motivoIlegible, docRelacionado: item.docId, confianza: item.confianza })),
+    textoRequerimiento: ''
+  };
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Método no permitido.' });
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return sendJson(res, 500, { error: 'GEMINI_API_KEY no está configurada en el servidor.' });
-
     const body = await readBody(req);
     const files: InputFile[] = Array.isArray(body.files) ? body.files : [];
     const checklist: ChecklistItem[] = Array.isArray(body.currentChecklist) ? body.currentChecklist : [];
     if (!files.length) return sendJson(res, 400, { error: 'No se proporcionaron archivos para analizar.' });
     if (!checklist.length) return sendJson(res, 400, { error: 'No se proporcionó el checklist legal configurado.' });
     if (files.length > 6) return sendJson(res, 400, { error: 'Analice un máximo de 6 archivos por petición. La interfaz los procesa automáticamente por lotes.' });
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!apiKey) {
+      const fallback = await analyzeWithFallback(
+        files,
+        checklist,
+        body.subcontrata || {},
+        Array.isArray(body.currentObraWorkers) ? body.currentObraWorkers : []
+      );
+      return sendJson(res, 200, fallback);
+    }
 
     const ai = new GoogleGenAI({ apiKey });
     const allDocs: AnalysisItem[] = [];
