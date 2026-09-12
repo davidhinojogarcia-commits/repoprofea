@@ -4,6 +4,7 @@ import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { installModalRuntime } from './src/lib/modalRuntime';
+import { installButtonSounds } from './src/lib/uiSounds';
 import './notification-modal-layout.css';
 import './summary-layout.css';
 import './subcontratas-mobile.css';
@@ -43,6 +44,7 @@ const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 
 installModalRuntime();
+installButtonSounds();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
