@@ -5,6 +5,7 @@ import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
+import './src/styles/design-system.css';
 import './notification-modal-layout.css';
 import './summary-layout.css';
 import './subcontratas-mobile.css';
