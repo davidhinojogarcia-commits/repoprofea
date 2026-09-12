@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
+import { AppInstallPromo } from './components/AppInstallPromo';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import './notification-modal-layout.css';
 import './summary-layout.css';
@@ -43,6 +44,14 @@ if (!rootElement) throw new Error('Could not find root element to mount to');
 
 installModalRuntime();
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+      console.warn('No se pudo registrar el service worker de PROFEA:', error);
+    });
+  });
+}
+
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
@@ -50,6 +59,7 @@ ReactDOM.createRoot(rootElement).render(
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
           <App />
           <AppToastHost />
+          <AppInstallPromo />
         </React.Suspense>
       </AuthGate>
     </RootErrorBoundary>
