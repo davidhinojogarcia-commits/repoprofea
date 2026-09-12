@@ -1,0 +1,288 @@
+/* PROFEA · Global dark-mode hardening
+ * Final compatibility layer for legacy Tailwind-heavy screens.
+ * Loaded last so dark mode remains readable even when a component has not yet
+ * migrated to semantic design-system classes or a runtime dark utility is omitted.
+ */
+
+.dark {
+  --ui-gradient-page:
+    radial-gradient(circle at 12% 0%, rgba(0,105,168,.18), transparent 34rem),
+    radial-gradient(circle at 100% 16%, rgba(0,84,142,.12), transparent 30rem),
+    #06101c;
+  --ui-focus: 0 0 0 3px rgba(82,162,201,.32);
+}
+
+.dark html,
+.dark body,
+html.dark,
+html.dark body {
+  background-color: #06101c !important;
+  color: #eef6fb !important;
+}
+
+/* Semantic design-system components. */
+.dark #root .ui-surface {
+  background: #0f1c2a !important;
+  border-color: #2a4052 !important;
+  color: #eef6fb !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18) !important;
+}
+
+.dark #root .ui-surface-soft {
+  background: #122333 !important;
+  border-color: #2a4052 !important;
+  color: #eef6fb !important;
+}
+
+.dark #root .ui-glass {
+  background: rgba(10,24,38,.82) !important;
+  border-color: rgba(148,190,216,.18) !important;
+  color: #eef6fb !important;
+  box-shadow: 0 22px 55px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+
+.dark #root .ui-button-secondary {
+  color: #dff4ff !important;
+  background: #12314a !important;
+  border-color: #31536b !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+.dark #root .ui-button-secondary:hover { background: #173d5a !important; }
+
+.dark #root .ui-button-ghost {
+  color: #dbeaf2 !important;
+  background: rgba(255,255,255,.025) !important;
+  border-color: rgba(148,190,216,.08) !important;
+}
+
+.dark #root .ui-button-ghost:hover {
+  color: #fff !important;
+  background: rgba(82,162,201,.12) !important;
+  border-color: rgba(82,162,201,.22) !important;
+}
+
+.dark #root .ui-field {
+  color: #eef6fb !important;
+  background: #0b1927 !important;
+  border-color: #30485c !important;
+  color-scheme: dark;
+}
+
+.dark #root .ui-field::placeholder { color: #8198aa !important; opacity: 1 !important; }
+.dark #root .ui-field:hover { border-color: #46677e !important; }
+.dark #root .ui-field:focus { border-color: #52a2c9 !important; }
+
+.dark #root .ui-status--ok { color: #8ee6d4 !important; background: #0e372f !important; border-color: #276154 !important; }
+.dark #root .ui-status--warn { color: #ffd38a !important; background: #40280d !important; border-color: #6c4b20 !important; }
+.dark #root .ui-status--error { color: #ffadb9 !important; background: #421724 !important; border-color: #743246 !important; }
+.dark #root .ui-status--info { color: #a9dcf2 !important; background: #102f46 !important; border-color: #285a78 !important; }
+
+/* Legacy neutral surfaces that still appear throughout the application. */
+.dark #root .bg-white,
+.dark #root .bg-slate-50,
+.dark #root .bg-gray-50,
+.dark #root .bg-zinc-50 {
+  background-color: #0f1c2a !important;
+}
+
+.dark #root .bg-slate-100,
+.dark #root .bg-gray-100,
+.dark #root .bg-zinc-100 {
+  background-color: #152536 !important;
+}
+
+.dark #root .bg-slate-200,
+.dark #root .bg-gray-200 {
+  background-color: #203346 !important;
+}
+
+/* Pale coloured surfaces become dark tints rather than luminous cards. */
+.dark #root .bg-blue-50,
+.dark #root .bg-sky-50,
+.dark #root .bg-indigo-50 { background-color: #0d2940 !important; }
+.dark #root .bg-blue-100,
+.dark #root .bg-sky-100,
+.dark #root .bg-indigo-100 { background-color: #123650 !important; }
+.dark #root .bg-emerald-50,
+.dark #root .bg-green-50,
+.dark #root .bg-teal-50 { background-color: #0d2d29 !important; }
+.dark #root .bg-emerald-100,
+.dark #root .bg-green-100,
+.dark #root .bg-teal-100 { background-color: #123a34 !important; }
+.dark #root .bg-amber-50,
+.dark #root .bg-yellow-50,
+.dark #root .bg-orange-50 { background-color: #33260f !important; }
+.dark #root .bg-amber-100,
+.dark #root .bg-yellow-100,
+.dark #root .bg-orange-100 { background-color: #423216 !important; }
+.dark #root .bg-red-50,
+.dark #root .bg-rose-50 { background-color: #35151d !important; }
+.dark #root .bg-red-100,
+.dark #root .bg-rose-100 { background-color: #451d28 !important; }
+.dark #root .bg-purple-50,
+.dark #root .bg-violet-50 { background-color: #251c3b !important; }
+
+/* Text utilities: ensure legacy light-screen text remains readable in dark mode. */
+.dark #root .text-slate-950,
+.dark #root .text-slate-900,
+.dark #root .text-slate-800,
+.dark #root .text-gray-950,
+.dark #root .text-gray-900,
+.dark #root .text-gray-800,
+.dark #root .text-zinc-900,
+.dark #root .text-black { color: #f3f8fb !important; }
+
+.dark #root .text-slate-700,
+.dark #root .text-gray-700,
+.dark #root .text-zinc-700 { color: #c6d5df !important; }
+
+.dark #root .text-slate-600,
+.dark #root .text-gray-600,
+.dark #root .text-zinc-600 { color: #aebfcb !important; }
+
+.dark #root .text-slate-500,
+.dark #root .text-gray-500,
+.dark #root .text-zinc-500 { color: #91a7b7 !important; }
+
+.dark #root .text-slate-400,
+.dark #root .text-gray-400 { color: #8299aa !important; }
+
+.dark #root .text-blue-700,
+.dark #root .text-blue-800,
+.dark #root .text-blue-900,
+.dark #root .text-sky-700,
+.dark #root .text-indigo-700 { color: #8fd1ef !important; }
+.dark #root .text-emerald-700,
+.dark #root .text-emerald-800,
+.dark #root .text-green-700,
+.dark #root .text-teal-700 { color: #7fe2ca !important; }
+.dark #root .text-amber-700,
+.dark #root .text-amber-800,
+.dark #root .text-yellow-700,
+.dark #root .text-orange-700 { color: #ffd27f !important; }
+.dark #root .text-red-700,
+.dark #root .text-red-800,
+.dark #root .text-rose-700 { color: #ff9dad !important; }
+.dark #root .text-purple-700,
+.dark #root .text-violet-700 { color: #c8aef5 !important; }
+
+/* Legacy borders/dividers. */
+.dark #root .border-slate-100,
+.dark #root .border-slate-200,
+.dark #root .border-gray-100,
+.dark #root .border-gray-200,
+.dark #root .border-zinc-200 { border-color: #293d4e !important; }
+.dark #root .border-slate-300,
+.dark #root .border-gray-300 { border-color: #385268 !important; }
+.dark #root .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark #root .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+.dark #root .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #293d4e !important; }
+
+/* Inputs/selects/textareas that have not migrated to .ui-field. */
+.dark #root input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.dark #root select,
+.dark #root textarea {
+  color: #eef6fb !important;
+  background-color: #0b1927 !important;
+  border-color: #30485c !important;
+  color-scheme: dark;
+}
+
+.dark #root input::placeholder,
+.dark #root textarea::placeholder { color: #8198aa !important; opacity: 1 !important; }
+
+.dark #root select option {
+  color: #eef6fb !important;
+  background: #0f1c2a !important;
+}
+
+/* Disabled/read-only controls stay visibly disabled instead of turning white. */
+.dark #root input:disabled,
+.dark #root select:disabled,
+.dark #root textarea:disabled,
+.dark #root input[readonly] {
+  color: #8fa4b4 !important;
+  background-color: #142333 !important;
+  border-color: #293d4e !important;
+  opacity: .86 !important;
+}
+
+/* Explicit white secondary buttons were the main source of invisible labels. */
+.dark #root button.bg-white,
+.dark #root a.bg-white,
+.dark #root [role='button'].bg-white {
+  color: #eaf5fa !important;
+  background-color: #14283a !important;
+  border-color: #365268 !important;
+}
+.dark #root button.bg-white:hover,
+.dark #root a.bg-white:hover,
+.dark #root [role='button'].bg-white:hover { background-color: #1a344a !important; }
+
+/* Preserve primary/semantic actions and icon contrast. */
+.dark #root .ui-button-primary,
+.dark #root button.bg-blue-600,
+.dark #root button.bg-blue-700,
+.dark #root a.bg-blue-600,
+.dark #root a.bg-blue-700 { color: #fff !important; }
+
+.dark #root button svg,
+.dark #root a svg { opacity: 1; }
+
+/* Tables. */
+.dark #root table { color: #e6f0f5; }
+.dark #root thead,
+.dark #root thead.bg-slate-50,
+.dark #root thead.bg-gray-50 { background: #142638 !important; }
+.dark #root tbody tr { border-color: #293d4e !important; }
+.dark #root tbody tr:hover { background-color: rgba(82,162,201,.07) !important; }
+
+/* Modals/dropdowns/popovers that still carry a light-only surface. */
+.dark #root [role='dialog'] .bg-white,
+.dark #root [role='menu'].bg-white,
+.dark #root [role='listbox'].bg-white {
+  color: #eef6fb !important;
+  background-color: #0f1c2a !important;
+  border-color: #30485c !important;
+}
+
+/* CAE-specific cards previously forced light gradients in institutional-polish.css. */
+.dark #subcontratas-section-container [class*='from-blue-50'][class*='to-indigo-50'],
+.dark #subcontratas-section-container [class*='from-sky-50'] {
+  color: #eaf4fa !important;
+  border-color: #31536b !important;
+  background-image: linear-gradient(135deg, #0d2436 0%, #102d43 48%, #0b2234 100%) !important;
+}
+
+.dark #subcontratas-section-container [id^='doc-item-'] {
+  color: #eaf4fa !important;
+  border-color: #2b4255 !important;
+  background-color: #0f1c2a !important;
+  background-image: linear-gradient(155deg, rgba(19,38,55,.98), rgba(12,27,41,.96)) !important;
+}
+
+/* Notification diagnostics: status pills must keep readable foregrounds. */
+.dark #root .profea-notifications-diagnostics .bg-white,
+.dark #root .profea-notifications-body .bg-white {
+  color: #eaf4fa !important;
+  background: #132337 !important;
+  border-color: #334b60 !important;
+}
+
+/* Scrollbars are intentionally subtle but visible in dark mode. */
+.dark #root * { scrollbar-color: #36556d #0b1723; }
+.dark #root *::-webkit-scrollbar-thumb { background-color: #36556d; }
+.dark #root *::-webkit-scrollbar-track { background-color: #0b1723; }
+
+/* Keep native checkboxes/radios visible on iOS/Safari. */
+.dark #root input[type='checkbox'],
+.dark #root input[type='radio'] { accent-color: #1594d0; }
+
+@media (max-width: 767px) {
+  .dark #root .ui-surface,
+  .dark #root .ui-surface-soft,
+  .dark #root .ui-glass {
+    box-shadow: 0 8px 24px rgba(0,0,0,.18) !important;
+  }
+}
