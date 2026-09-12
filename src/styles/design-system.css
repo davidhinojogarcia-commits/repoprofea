@@ -188,6 +188,41 @@ body {
 .ui-status--error { color: #97263a; background: #fff0f2; border-color: #f2c6cf; }
 .ui-status--info { color: var(--ui-brand-800); background: var(--ui-brand-50); border-color: var(--ui-brand-200); }
 
+/* Sidebar/navigation language */
+.profea-sidebar-shell {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,251,253,.94)),
+    var(--ui-surface);
+  box-shadow: 10px 0 34px rgba(23, 50, 77, .045);
+}
+
+.dark .profea-sidebar-shell {
+  background: linear-gradient(180deg, rgba(15,28,42,.98), rgba(9,20,32,.98));
+}
+
+.profea-sidebar-item {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.profea-sidebar-item:not(.profea-sidebar-item--active):hover {
+  color: var(--ui-brand-800);
+  background: linear-gradient(135deg, rgba(238,247,251,.96), rgba(216,237,247,.72));
+  border-color: rgba(0, 84, 142, .10);
+}
+
+.dark .profea-sidebar-item:not(.profea-sidebar-item--active):hover {
+  color: #8fc4dc;
+  background: rgba(22, 125, 172, .10);
+  border-color: rgba(82, 162, 201, .14);
+}
+
+.profea-sidebar-item--active {
+  background: var(--ui-gradient-brand);
+  border-color: rgba(255,255,255,.12);
+  box-shadow: 0 8px 20px rgba(0,84,142,.18), inset 0 1px 0 rgba(255,255,255,.18);
+}
+
 /* Consistent focus for legacy Tailwind-heavy screens until components are migrated. */
 #root button:focus-visible,
 #root input:focus-visible,
