@@ -358,16 +358,18 @@ async function analyzeWithFallback(
       });
     }
 
-    for (const worker of currentWorkers) {
-      const dni = normalizeSearchText(worker?.dni || '');
-      const name = normalizeSearchText(worker?.apellidosNombre || worker?.name || '');
-      if ((dni && searchable.includes(dni)) || (name.length > 5 && searchable.includes(name))) {
-        trabajadoresDetectados.push({
-          nombre: worker.apellidosNombre || worker.name || '',
-          dni: worker.dni || '',
-          archivoOrigen: file.name
-        });
-      }
+    // Personnel is extracted only from the subcontractor's own dossier.
+    // In fallback mode we can safely recover DNI/NIE identifiers from native text;
+    // the human reviewer remains responsible for confirming identity/name.
+    const rawText = officeText || '';
+    const workerIds = rawText.match(/\b(?:[XYZxyz]\s*[- ]?\s*\d{7}\s*[- ]?\s*[A-Za-z]|\d{8}\s*[- ]?\s*[A-Za-z])\b/g) || [];
+    for (const rawDni of workerIds) {
+      const dni = rawDni.replace(/[\s-]/g, '').toUpperCase();
+      trabajadoresDetectados.push({
+        nombre: 'Nombre pendiente de revisión manual',
+        dni,
+        archivoOrigen: file.name
+      });
     }
   }
 
@@ -386,7 +388,7 @@ async function analyzeWithFallback(
     resumenDiagnostico: `Análisis de respaldo completado: ${documentosAnalizados.length} documento(s) identificado(s). Revise manualmente los datos marcados con confianza baja.`,
     veredictoAcceso: hasProblems || relacionFaltantes.length ? 'CONDICIONADO' : 'APTO',
     relacionFaltantes,
-    comparativaTrabajadores: compareWorkers(uniqueWorkers, currentWorkers),
+    trabajadoresDetectados: uniqueWorkers,
     alertasCaducidad: documentosAnalizados
       .filter(item => item.estaCaducado || item.esProximaCaducidad)
       .map(item => `${item.nombreDetectado || item.docId}: ${item.motivoCaducidad}`),
@@ -463,7 +465,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
     }
 
-    const comparison = compareWorkers(allWorkers, Array.isArray(body.currentObraWorkers) ? body.currentObraWorkers : []);
+    const uniqueWorkers = allWorkers.filter((worker, index, list) => {
+      const key = `${String(worker.dni || '').replace(/[\s-]/g, '').toUpperCase()}|${String(worker.nombre || '').trim().toUpperCase()}`;
+      return list.findIndex(candidate => `${String(candidate.dni || '').replace(/[\s-]/g, '').toUpperCase()}|${String(candidate.nombre || '').trim().toUpperCase()}` === key) === index;
+    });
     const alertasCaducidad = allDocs.filter(d => d.estaCaducado || d.esProximaCaducidad).map(d => `${d.nombreDetectado || d.docId}: ${d.motivoCaducidad}`);
 
     return sendJson(res, 200, {
@@ -472,7 +477,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       resumenDiagnostico: summaries.join(' | '),
       veredictoAcceso: allDocs.some(d => d.estaCaducado || d.estado === 'incompleto') ? 'CONDICIONADO' : 'APTO',
       relacionFaltantes: [],
-      comparativaTrabajadores: comparison,
+      trabajadoresDetectados: uniqueWorkers,
       alertasCaducidad,
       documentosIlegibles,
       textoRequerimiento: ''
