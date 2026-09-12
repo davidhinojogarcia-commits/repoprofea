@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth } from './src/lib/supabaseData';
 import { Header } from './components/Header';
 import { PrintHeader } from './components/PrintHeader';
@@ -9,14 +9,8 @@ import { RegistrationForm } from './components/RegistrationForm';
 import { PersonList } from './components/PersonList';
 import { EditPersonModal } from './components/EditPersonModal';
 import { BulkEditModal } from './components/BulkEditModal';
-import { Configuracion } from './components/Configuracion';
 import { PeriodicReportModal } from './components/PeriodicReportModal';
-import { Papelera } from './components/Papelera';
 import { CameraScannerModal } from './components/CameraScannerModal';
-import { GestionCitas } from './components/GestionCitas';
-import { CalendarioIntegrado } from './components/CalendarioIntegrado';
-import { SubcontratasSection } from './components/SubcontratasSection';
-import { AdminPanel } from './components/AdminPanel';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
@@ -63,6 +57,22 @@ import {
   DriveAutoBackupConfig 
 } from './src/lib/driveBackup';
 import { compressToGzip } from './src/lib/compression';
+
+const Configuracion = lazy(() => import('./components/Configuracion').then(module => ({ default: module.Configuracion })));
+const Papelera = lazy(() => import('./components/Papelera').then(module => ({ default: module.Papelera })));
+const GestionCitas = lazy(() => import('./components/GestionCitas').then(module => ({ default: module.GestionCitas })));
+const CalendarioIntegrado = lazy(() => import('./components/CalendarioIntegrado').then(module => ({ default: module.CalendarioIntegrado })));
+const SubcontratasSection = lazy(() => import('./components/SubcontratasSection').then(module => ({ default: module.SubcontratasSection })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
+
+const ViewLoadingFallback = () => (
+  <div className="ui-surface p-8 min-h-48 flex items-center justify-center">
+    <div className="flex items-center gap-3 text-sm font-semibold text-[var(--ui-text-muted)]">
+      <RefreshCw className="w-4 h-4 animate-spin text-[var(--ui-brand-700)]" />
+      Cargando módulo…
+    </div>
+  </div>
+);
 
 const WatermarkLogo = () => (
   <div className="fixed bottom-6 right-8 pointer-events-none select-none z-0">
@@ -1956,73 +1966,22 @@ function App() {
           />
           
           {activeView === 'dashboard' && (
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-              {/* Left Column: Form */}
-              <div className="xl:col-span-5">
-                 <RegistrationForm 
-                   onRegister={handleRegister} 
-                   savedObras={savedObras} 
-                   savedLugares={savedLugares} 
-                   savedSitios={savedSitios} 
-                   savedTelefonos={savedTelefonos}
-                   savedCategorias={savedCategorias}
-                   people={visiblePeople}
-                 />
-              </div>
-
-              {/* Right Column: Stats & List */}
-              <div className="xl:col-span-7 space-y-8 xl:sticky xl:top-8 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto custom-scrollbar xl:pr-2 self-start">
-                <Stats 
-                  stats={stats} 
-                  filterMode={statsFilterMode}
-                  setFilterMode={setStatsFilterMode}
-                  startDate={statsStartDate}
-                  setStartDate={setStatsStartDate}
-                  endDate={statsEndDate}
-                  setEndDate={setStatsEndDate}
-                  obraFilter={statsObraFilter}
-                  setObraFilter={setStatsObraFilter}
-                  savedObras={savedObras}
-                  onOpenReportModal={() => setIsReportModalOpen(true)}
-                  onExportObraSummary={handleExportObraSummary}
-                  onExportStatsSummaryPDF={handleExportStatsPDF}
-                />
-                <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
-                  <PersonList 
-                    people={visiblePeople} 
-                    onDelete={handleDelete} 
-                    onEdit={handleEdit} 
-                    onDeleteMultiple={handleDeleteMultiple}
-                    onEditMultiple={handleBulkEditStart}
-                    onExport={handleExportExcel} 
-                    onExportPDF={handleExportPDF} 
-                    onExportRRMMExcel={handleExportRRMMExcel}
-                    onExportRRMMPDF={handleExportRRMMPDF}
-                    onExportPRLExcel={handleExportPRLExcel}
-                    onExportPRLPDF={handleExportPRLPDF}
-                    onExportCalzadoExcel={handleExportCalzadoExcel}
-                    onExportCalzadoPDF={handleExportCalzadoPDF}
-                    onEmail={handleEmailFilesWrapped}
-                    onImport={handleImportExcel}
-                    onGenerateIDCard={handleGenerateIDCard}
-                    onExportHistoryPDF={handleGenerateWorkerHistoryPDF}
-                    savedObras={savedObras}
-                    searchTerm={searchTerm}
-                    setSearchTerm={setSearchTerm}
-                    selectedObraFilter={selectedObraFilter}
-                    setSelectedObraFilter={setSelectedObraFilter}
-                    selectedQuincenaFilter={selectedQuincenaFilter}
-                    setSelectedQuincenaFilter={setSelectedQuincenaFilter}
-                    googleToken={googleToken}
-                    onGoogleLogin={handleGoogleLogin}
-                    onToast={(message, type) => setToast({ message, type })}
-                    onUndo={handleUndo}
-                    onRedo={handleRedo}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                  />
-                </div>
-              </div>
+            <div className="max-w-7xl mx-auto">
+              <Stats
+                stats={stats}
+                filterMode={statsFilterMode}
+                setFilterMode={setStatsFilterMode}
+                startDate={statsStartDate}
+                setStartDate={setStatsStartDate}
+                endDate={statsEndDate}
+                setEndDate={setStatsEndDate}
+                obraFilter={statsObraFilter}
+                setObraFilter={setStatsObraFilter}
+                savedObras={savedObras}
+                onOpenReportModal={() => setIsReportModalOpen(true)}
+                onExportObraSummary={handleExportObraSummary}
+                onExportStatsSummaryPDF={handleExportStatsPDF}
+              />
             </div>
           )}
 
@@ -2101,6 +2060,7 @@ function App() {
           )}
 
           {activeView === 'configuracion' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
             <Configuracion 
               savedObras={savedObras}
               setSavedObras={setSavedObras}
@@ -2134,15 +2094,19 @@ function App() {
               isBackingUpToDrive={isBackingUpToDrive}
               setToast={setToast}
             />
+            </Suspense>
           )}
 
           {activeView === 'administracion' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
             <div className="max-w-7xl mx-auto">
               <AdminPanel onClose={() => setActiveView('dashboard')} />
             </div>
+            </Suspense>
           )}
 
           {activeView === 'papelera' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
             <div className="max-w-6xl mx-auto">
               <Papelera
                 deletedPeople={visibleDeletedPeople}
@@ -2151,9 +2115,11 @@ function App() {
                 onEmptyTrash={handleEmptyTrash}
               />
             </div>
+            </Suspense>
           )}
 
           {activeView === 'calendario' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
             <div className="max-w-7xl mx-auto">
               <CalendarioIntegrado
                 people={visiblePeople}
@@ -2164,9 +2130,11 @@ function App() {
                 onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
               />
             </div>
+            </Suspense>
           )}
 
           {activeView === 'citas' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
             <div className="max-w-6xl mx-auto">
               <GestionCitas
                 people={visiblePeople}
@@ -2194,18 +2162,20 @@ function App() {
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>
+            </Suspense>
           )}
 
           {activeView === 'subcontratas' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
             <div className="w-full max-w-[1600px] mx-auto min-w-0">
               <SubcontratasSection
                 savedObras={savedObras}
                 onUpdateSavedObras={setSavedObras}
                 supervisoresDisponibles={supervisoresDisponibles}
-                workers={visiblePeople}
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>
+            </Suspense>
           )}
 
           {editingPerson && (

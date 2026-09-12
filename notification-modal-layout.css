@@ -204,28 +204,6 @@ body.profea-modal-open aside.app-navigation-panel {
     justify-content: center !important;
   }
 
-  /* Footer stays visible above Safari/Chrome bottom UI instead of becoming part of
-     the scrolling content. */
-  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child {
-    flex: 0 0 auto !important;
-    padding: 0.75rem 0.875rem calc(0.75rem + env(safe-area-inset-bottom)) !important;
-    gap: 0.75rem !important;
-    background: rgba(241, 245, 249, 0.98) !important;
-  }
-
-  .dark #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child {
-    background: rgba(15, 23, 42, 0.98) !important;
-  }
-
-  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child > span {
-    max-width: 62% !important;
-    line-height: 1.25 !important;
-  }
-
-  #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl > :last-child > button {
-    flex: 0 0 auto !important;
-    min-height: 2.5rem !important;
-  }
 }
 
 /* Notification manager uses explicit surfaces because the runtime Tailwind CDN can
@@ -244,8 +222,7 @@ body.profea-modal-open aside.app-navigation-panel {
 #root .profea-notifications-body { background: #f7fafc !important; }
 #root .profea-notifications-permission,
 #root .profea-notifications-preferences { background: #fff !important; }
-#root .profea-notifications-diagnostics,
-#root .profea-notifications-footer { background: #f1f5f9 !important; }
+#root .profea-notifications-diagnostics { background: #f1f5f9 !important; }
 #root .profea-notifications-option { background: #f8fafc !important; }
 
 .dark #root .profea-notifications-dialog {
@@ -259,7 +236,6 @@ body.profea-modal-open aside.app-navigation-panel {
 .dark #root .profea-notifications-preferences { background: #111c2f !important; border-color: #334155 !important; }
 .dark #root .profea-notifications-diagnostics { background: #172337 !important; border-color: #3b4b61 !important; }
 .dark #root .profea-notifications-option { background: #1b293d !important; border-color: #43536a !important; }
-.dark #root .profea-notifications-footer { background: #0f172a !important; border-color: #334155 !important; }
 
 .dark #root .profea-notifications-permission .text-slate-800,
 .dark #root .profea-notifications-preferences .text-slate-800,
@@ -284,8 +260,7 @@ body.profea-modal-open aside.app-navigation-panel {
   #root .profea-notifications-body { padding: 0.75rem !important; }
   #root .profea-notifications-permission,
   #root .profea-notifications-preferences { padding: 0.875rem !important; }
-  #root .profea-notifications-footer > span { display: none; }
-  #root .profea-notifications-footer { justify-content: flex-end !important; }
+  #root .profea-notifications-body { padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important; }
 }
 
 /* Notification modal close controls need explicit contrast in both themes. */

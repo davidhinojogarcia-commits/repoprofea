@@ -388,40 +388,6 @@ const validateDocuments = (raw: any, file: InputFile, ocr: OcrDocument, checklis
   return results;
 };
 
-function compareWorkers(detected: any[], currentWorkers: any[]) {
-  const uniqueDetected = detected.filter((worker, index, list) => {
-    const key = `${cleanIdentity(worker?.dni)}|${cleanIdentity(worker?.nombre)}`;
-    return key !== '|' && list.findIndex(candidate => `${cleanIdentity(candidate?.dni)}|${cleanIdentity(candidate?.nombre)}` === key) === index;
-  });
-  const coincidentes: any[] = [];
-  const noRegistradosEnObra: any[] = [];
-  for (const detectedWorker of uniqueDetected) {
-    const dni = cleanIdentity(detectedWorker?.dni);
-    const name = cleanIdentity(detectedWorker?.nombre);
-    const found = currentWorkers.find((worker: any) => {
-      const workerDni = cleanIdentity(worker?.dni);
-      const workerName = cleanIdentity(worker?.apellidosNombre || worker?.name);
-      return (dni.length >= 8 && workerDni === dni) || (name.length >= 8 && (workerName === name || workerName.includes(name) || name.includes(workerName)));
-    });
-    const item = {
-      nombreDetectado: detectedWorker?.nombre || '', dniDetectado: detectedWorker?.dni || '', archivoOrigen: detectedWorker?.archivoOrigen || '',
-      coincideConObra: Boolean(found), trabajadorObraId: found?.id, nombreEnObra: found?.apellidosNombre || found?.name,
-      dniEnObra: found?.dni, categoriaEnObra: found?.categoria || found?.category,
-      estadoCotejo: found ? 'coincidente' : 'no_registrado',
-      detalles: found ? 'Coincidencia inequívoca encontrada en el censo de la obra.' : 'No se encontró una coincidencia inequívoca en el censo de la obra.'
-    };
-    (found ? coincidentes : noRegistradosEnObra).push(item);
-  }
-  const pending = currentWorkers.filter((worker: any) => !coincidentes.some(match => String(match.trabajadorObraId) === String(worker.id))).map((worker: any) => ({
-    id: Number(worker.id) || 0, apellidosNombre: worker.apellidosNombre || worker.name || '', dni: worker.dni || '', categoria: worker.categoria || worker.category || ''
-  }));
-  return {
-    totalTrabajadoresObra: currentWorkers.length, totalDetectadosEnDocs: uniqueDetected.length,
-    coincidentes, noRegistradosEnObra, pendientesDeAcreditar: pending,
-    porcentajeAcreditacion: currentWorkers.length ? Math.round((coincidentes.length / currentWorkers.length) * 100) : 0
-  };
-}
-
 const validateInputs = (files: InputFile[]) => {
   if (!files.length) throw new Error('No se proporcionaron archivos para analizar.');
   if (files.length > MAX_FILES) throw new Error(`Analice un máximo de ${MAX_FILES} archivos por petición.`);
@@ -496,7 +462,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const detected = new Set(documents.filter(document => document.estado === 'entregado' || document.estado === 'no_aplica').map(document => document.docId));
     const relacionFaltantes = checklist.filter(item => item.obligatorio !== false && !detected.has(item.id)).map(item => item.nombre);
     const hasBlockingIssues = relacionFaltantes.length > 0 || documents.some(document => ['caducado', 'incompleto', 'pendiente'].includes(document.estado));
-    const comparison = compareWorkers(allWorkers, Array.isArray(body.currentObraWorkers) ? body.currentObraWorkers : []);
+    // Personnel belongs exclusively to the subcontractor dossier. Never compare or
+    // enrich it with the principal contractor workforce. Keep only OCR/assessment
+    // detections and let the human reviewer confirm the relationship.
+    const uniqueWorkers = allWorkers.filter((worker, index, list) => {
+      const key = `${cleanIdentity(worker?.dni)}|${cleanIdentity(worker?.nombre)}`;
+      return key !== '|' && list.findIndex(candidate => `${cleanIdentity(candidate?.dni)}|${cleanIdentity(candidate?.nombre)}` === key) === index;
+    });
 
     return sendJson(res, 200, {
       success: true,
@@ -506,7 +478,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       resumenDiagnostico: summaries.join(' | '),
       veredictoAcceso: hasBlockingIssues ? 'CONDICIONADO' : 'APTO',
       relacionFaltantes,
-      comparativaTrabajadores: comparison,
+      trabajadoresDetectados: uniqueWorkers,
       alertasCaducidad: documents.filter(document => document.estaCaducado || document.esProximaCaducidad).map(document => `${document.nombreDetectado || document.docId}: ${document.motivoCaducidad}`),
       documentosIlegibles,
       textoRequerimiento: '',

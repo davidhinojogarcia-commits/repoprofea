@@ -359,12 +359,16 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const cleanCategorias = useMemo(() => Array.from(new Set((savedCategorias || []).map(c => c.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedCategorias]);
 
   return (
-    <div id="form-container" className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 h-fit transition-all duration-300">
-      <div className="flex items-center gap-3 mb-8 border-b border-slate-200 dark:border-slate-800 pb-4">
-        <div className="p-2 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-xl">
-          <UserCheck className="w-5 h-5 text-brand-primary dark:text-blue-400" />
+    <div id="form-container" className="ui-surface p-5 sm:p-6 md:p-8 text-slate-800 dark:text-slate-100 h-fit">
+      <div className="flex items-start gap-3 mb-7 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="p-2.5 bg-[var(--ui-gradient-brand)] rounded-xl text-white shadow-sm">
+          <UserCheck className="w-5 h-5" />
         </div>
-        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 uppercase tracking-tight">REGISTRO CONTRATACIÓN</h2>
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--ui-brand-700)]">Operativa</div>
+          <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-slate-100">Nueva contratación</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Alta de trabajador y datos necesarios para su incorporación PROFEA.</p>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">

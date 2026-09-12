@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { DeletedPerson } from '../types';
 import { Trash2, RotateCcw, Search, AlertTriangle, Calendar, User, MapPin, HardHat, Info, ShieldAlert } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
+import { PageHeader } from './ui/PageHeader';
 
 interface PapeleraProps {
   deletedPeople: DeletedPerson[];
@@ -80,34 +81,23 @@ export const Papelera: React.FC<PapeleraProps> = ({
 
   return (
     <div className="space-y-6" id="papelera-view">
-      {/* Informative Header Card */}
-      <div className="bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border border-amber-200/60 dark:border-amber-800/40 rounded-3xl p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex gap-4 items-start">
-            <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-600 dark:text-amber-400 shrink-0">
-              <ShieldAlert className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Papelera de Reciclaje de Contrataciones</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-2xl">
-                Los registros de trabajadores eliminados se almacenan temporalmente aquí durante <strong className="text-amber-700 dark:text-amber-400">30 días</strong>. Durante este período puedes restaurarlos con toda su información. Pasados los 30 días, se eliminarán permanentemente de forma automática.
-              </p>
-            </div>
-          </div>
-          
-          {deletedPeople.length > 0 && (
-            <button
-              onClick={() => setConfirmEmptyOpen(true)}
-              disabled={emptyingTrash}
-              className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-red-500/15 flex items-center justify-center gap-2 cursor-pointer self-start md:self-center shrink-0"
-              title="Vaciar papelera permanentemente"
-            >
-              <Trash2 className="w-4 h-4" />
-              {emptyingTrash ? 'Vaciando…' : 'Vaciar Papelera'}
-            </button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Sistema"
+        title="Papelera"
+        description="Los registros eliminados permanecen disponibles para restauración durante 30 días antes de su eliminación definitiva."
+        icon={<Trash2 className="w-5 h-5" />}
+        actions={deletedPeople.length > 0 ? (
+          <button
+            onClick={() => setConfirmEmptyOpen(true)}
+            disabled={emptyingTrash}
+            className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+            title="Vaciar papelera permanentemente"
+          >
+            <Trash2 className="w-4 h-4" />
+            {emptyingTrash ? 'Vaciando…' : 'Vaciar Papelera'}
+          </button>
+        ) : undefined}
+      />
 
       {/* Control Bar: Search and Stats */}
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -120,7 +110,7 @@ export const Papelera: React.FC<PapeleraProps> = ({
             placeholder="Buscar en la papelera por nombre, DNI, obra..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary dark:text-slate-100 transition-all shadow-sm"
+            className="ui-field pl-10 pr-4 py-2.5 text-sm"
           />
         </div>
         
@@ -134,7 +124,7 @@ export const Papelera: React.FC<PapeleraProps> = ({
 
       {/* Items Section */}
       {filteredPeople.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center shadow-sm">
+        <div className="ui-surface p-12 text-center">
           <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <Trash2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
           </div>
@@ -148,7 +138,7 @@ export const Papelera: React.FC<PapeleraProps> = ({
           </p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
+        <div className="ui-surface overflow-hidden">
           {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full border-collapse text-left">

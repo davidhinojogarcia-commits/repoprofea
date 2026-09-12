@@ -522,7 +522,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
     <div className="space-y-8 animate-in fade-in duration-300">
       
       {/* 1. Header Banner */}
-      <div className="bg-gradient-to-r from-[#00548E] to-blue-800 text-white rounded-3xl p-6 sm:p-8 shadow-md relative overflow-hidden">
+      <div className="bg-[var(--ui-gradient-brand)] text-white rounded-[var(--ui-radius-xl)] p-6 sm:p-8 shadow-[var(--ui-shadow-md)] relative overflow-hidden">
         <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-96 h-96 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute left-1/3 bottom-0 translate-y-24 w-64 h-64 rounded-full bg-blue-500/10 pointer-events-none" />
         
@@ -551,7 +551,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Navigation Selector between Reconocimientos Médicos & Generador de Citas */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-2 shadow-xs flex flex-col sm:flex-row gap-2">
+        <div className="ui-surface p-2 flex flex-col sm:flex-row gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('reconocimientos')}
@@ -604,7 +604,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         <div className="space-y-6">
           
           {/* Card: Configuración de la hora de comienzo de trabajo */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-300">
+          <div className="ui-surface p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-[#00548E]/10 dark:bg-blue-500/20 text-[#00548E] dark:text-blue-400 rounded-2xl">
                 <Clock className="w-5 h-5" />
@@ -631,7 +631,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           </div>
           
           {/* Card: Generador de Citaciones */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-6">
+          <div className="ui-surface p-6 space-y-6">
             
             {/* Tabs for choosing generator method */}
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">

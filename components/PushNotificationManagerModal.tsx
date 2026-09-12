@@ -696,18 +696,6 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
 
         </div>
 
-        {/* Footer */}
-        <div className="profea-notifications-footer px-6 py-4 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <span className="text-[11px] text-slate-500 font-medium">
-            Sistema PROFEA · Notificaciones Web Integradas con Service Worker
-          </span>
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900 rounded-xl text-xs font-bold transition-all cursor-pointer"
-          >
-            Cerrar Modal
-          </button>
-        </div>
 
       </div>
     </div>

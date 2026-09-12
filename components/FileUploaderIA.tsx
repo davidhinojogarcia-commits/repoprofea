@@ -12,9 +12,6 @@ import {
   SubcontrataDocEstado, 
   SubcontrataEstadoExpediente, 
   SubcontrataDocAnalysisResult,
-  Person,
-  WorkerObraComparisonSummary,
-  WorkerComparisonItem,
   DocumentoIlegibleAlerta
 } from '../types';
 import { getSubcontrataCompliance } from '../src/lib/subcontratasDefaults';
@@ -23,7 +20,6 @@ import { notifyDatabaseSync } from '../src/lib/syncNotifier';
 
 interface FileUploaderIAProps {
   subcontrata: Subcontratista;
-  currentObraWorkers?: Person[];
   onChecklistUpdate: (
     updatedChecklist: SubcontrataDocItem[],
     newEstadoExpediente: SubcontrataEstadoExpediente,
@@ -36,7 +32,6 @@ interface FileUploaderIAProps {
 
 export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
   subcontrata,
-  currentObraWorkers = [],
   onChecklistUpdate,
   onToast,
   onFilterMissingInRed,
@@ -53,7 +48,7 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
     veredicto: 'APTO' | 'DENEGADO' | 'CONDICIONADO';
     faltantes: string[];
     analizados: SubcontrataDocAnalysisResult[];
-    comparativaTrabajadores?: WorkerObraComparisonSummary;
+    personalDetectado?: { nombre: string; dni?: string; archivoOrigen?: string }[];
     alertasCaducidad?: string[];
     documentosIlegibles?: DocumentoIlegibleAlerta[];
   } | null>(null);
@@ -152,10 +147,9 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
 
       const aggregatedDocs: SubcontrataDocAnalysisResult[] = [];
       const aggregatedIllegible: DocumentoIlegibleAlerta[] = [];
-      const aggregatedWorkers: WorkerComparisonItem[] = [];
+      const aggregatedWorkers: { nombre: string; dni?: string; archivoOrigen?: string }[] = [];
       const summaries: string[] = [];
       const expiryAlerts: string[] = [];
-      let latestWorkerComparison: WorkerObraComparisonSummary | undefined;
 
       // One OCR request per file is intentional: it avoids a large-document request masking pages
       // from other files and guarantees explicit progress/coverage for every imported document.
@@ -174,17 +168,7 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
               obra: subcontrata.obra,
               supervisorResponsable: subcontrata.supervisorResponsable
             },
-            currentChecklist: subcontrata.checklist,
-            currentObraWorkers: (currentObraWorkers || []).map(w => ({
-              id: w.id,
-              name: w.name,
-              apellidosNombre: w.name,
-              dni: w.dni,
-              category: w.category,
-              categoria: w.category,
-              role: w.role,
-              obra: w.obra
-            }))
+            currentChecklist: subcontrata.checklist
           })
         });
 
@@ -199,9 +183,12 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
         aggregatedIllegible.push(...(Array.isArray(data.documentosIlegibles) ? data.documentosIlegibles : []));
         expiryAlerts.push(...(Array.isArray(data.alertasCaducidad) ? data.alertasCaducidad : []));
         if (data.resumenDiagnostico) summaries.push(data.resumenDiagnostico);
-        if (data.comparativaTrabajadores) {
-          latestWorkerComparison = data.comparativaTrabajadores;
-          aggregatedWorkers.push(...(data.comparativaTrabajadores.coincidentes || []), ...(data.comparativaTrabajadores.noRegistradosEnObra || []));
+        if (Array.isArray(data.trabajadoresDetectados)) {
+          aggregatedWorkers.push(...data.trabajadoresDetectados.map((worker: any) => ({
+            nombre: worker.nombre || 'Nombre pendiente de revisión',
+            dni: worker.dni || '',
+            archivoOrigen: worker.archivoOrigen || file.name
+          })));
         }
       }
 
@@ -303,18 +290,22 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
       const deliveredCount = proposedList.filter(item => item.estadoPropuesto === 'entregado').length;
 
       const consolidatedSummary = `OCR/IA completado sobre ${convertedFiles.length} archivo(s). Checklist evaluado: ${proposedList.length} puntos; ${deliveredCount} con evidencia conforme; ${missing.length} pendientes/incidencias; ${expiredCount} caducados; ${unreadableCount} ilegibles. Revisión humana obligatoria antes de aplicar.`;
+      const personalDetectado = aggregatedWorkers.filter((worker, index, list) => {
+        const key = `${String(worker.dni || '').replace(/[\s-]/g, '').toUpperCase()}|${String(worker.nombre || '').trim().toUpperCase()}`;
+        return list.findIndex(candidate => `${String(candidate.dni || '').replace(/[\s-]/g, '').toUpperCase()}|${String(candidate.nombre || '').trim().toUpperCase()}` === key) === index;
+      });
       setLastAnalysisResults({
         resumen: consolidatedSummary + (summaries.length ? ` ${summaries.join(' ')}` : ''),
         veredicto: missing.length === 0 ? 'APTO' : 'CONDICIONADO',
         faltantes: missing,
         analizados: aggregatedDocs,
-        comparativaTrabajadores: latestWorkerComparison,
+        personalDetectado,
         alertasCaducidad: Array.from(new Set(expiryAlerts)),
         documentosIlegibles: aggregatedIllegible
       });
 
       if (aggregatedIllegible.length > 0) setActiveResultTab('legibilidad');
-      else if (latestWorkerComparison?.noRegistradosEnObra?.length) setActiveResultTab('operarios');
+      else if (personalDetectado.length > 0) setActiveResultTab('operarios');
       else if (expiredCount > 0) setActiveResultTab('caducidades');
       else setActiveResultTab('resumen');
 
@@ -384,7 +375,7 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
   };
 
   const expiredDocsCount = lastAnalysisResults?.analizados.filter(d => d.estaCaducado).length || 0;
-  const unauthorizedWorkersCount = lastAnalysisResults?.comparativaTrabajadores?.noRegistradosEnObra.length || 0;
+  const detectedPersonnelCount = lastAnalysisResults?.personalDetectado?.length || 0;
 
   return (
     <div id="file-uploader-ia-root" className="bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -405,7 +396,7 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
                 </span>
               </div>
               <p className="text-xs text-blue-100/90 mt-0.5">
-                Arrastre PDFs para extraer datos, validar vigencias reales (TGSS, AEAT, REA) y comparar automáticamente la lista de operarios contra la obra actual.
+                Importe la documentación completa de la subcontrata: la IA extrae evidencias, vigencias y personal detectado exclusivamente desde su propio expediente.
               </p>
             </div>
           </div>
@@ -462,7 +453,7 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
               <span>•</span>
               <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300">✓ Aptitud Médica (1 año)</span>
               <span>•</span>
-              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300">✓ Filtro Anti-Personal Propio</span>
+              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300">✓ Personal extraído del expediente</span>
             </div>
           </div>
         </div>
@@ -674,16 +665,12 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>Cotejo de Operarios vs Obra Actual</span>
-                {unauthorizedWorkersCount > 0 ? (
-                  <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[10px] rounded-full animate-pulse">
-                    {unauthorizedWorkersCount} no autorizado(s)
+                <span>Personal detectado en expediente</span>
+                {detectedPersonnelCount > 0 && (
+                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[10px] rounded-full">
+                    {detectedPersonnelCount} detectado(s)
                   </span>
-                ) : lastAnalysisResults.comparativaTrabajadores ? (
-                  <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full">
-                    ✓ Verificado
-                  </span>
-                ) : null}
+                )}
               </button>
 
               <button
@@ -843,212 +830,36 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
               </div>
             )}
 
-            {/* TAB 3: Cotejo de Operarios vs Obra Actual */}
+            {/* TAB 3: Personal detectado exclusivamente en el expediente de la subcontrata */}
             {activeResultTab === 'operarios' && (
               <div className="space-y-3">
-                {lastAnalysisResults.comparativaTrabajadores ? (
-                  <div className="space-y-3">
-                    {/* Comparative Summary Metrics */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl">
-                        <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 block">
-                          Operarios de la Obra '{subcontrata.obra}'
-                        </span>
-                        <span className="text-xl font-black text-slate-800 dark:text-slate-100">
-                          {lastAnalysisResults.comparativaTrabajadores.totalTrabajadoresObra}
-                        </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                          registrados en la base de datos
-                        </span>
-                      </div>
-
-                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-                        <span className="text-[11px] font-bold uppercase text-emerald-700 dark:text-emerald-400 block">
-                          Operarios Acreditados y Coincidentes
-                        </span>
-                        <span className="text-xl font-black text-emerald-800 dark:text-emerald-200">
-                          {lastAnalysisResults.comparativaTrabajadores.coincidentes.length}
-                        </span>
-                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400 block mt-0.5">
-                          reconocidos en la documentación
-                        </span>
-                      </div>
-
-                      <div className={`p-3 rounded-xl border ${
-                        lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.length > 0
-                          ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800'
-                          : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800'
-                      }`}>
-                        <span className={`text-[11px] font-bold uppercase block ${
-                          lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.length > 0
-                            ? 'text-rose-700 dark:text-rose-400'
-                            : 'text-slate-500 dark:text-slate-400'
-                        }`}>
-                          Operarios No Registrados en la Obra
-                        </span>
-                        <span className={`text-xl font-black ${
-                          lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.length > 0
-                            ? 'text-rose-800 dark:text-rose-200'
-                            : 'text-slate-800 dark:text-slate-100'
-                        }`}>
-                          {lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.length}
-                        </span>
-                        <span className={`text-[11px] block mt-0.5 ${
-                          lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.length > 0
-                            ? 'text-rose-700 dark:text-rose-400 font-bold'
-                            : 'text-slate-500 dark:text-slate-400'
-                        }`}>
-                          {lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.length > 0
-                            ? '¡Acceso a obra Prohibido!'
-                            : 'Sin anomalías externas'}
-                        </span>
-                      </div>
+                <div className="ui-surface-soft p-4">
+                  <div className="flex items-start gap-3">
+                    <Users className="w-5 h-5 text-[var(--ui-brand-700)] shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Personal detectado en la documentación de la subcontrata</h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Esta relación procede únicamente de los archivos aportados por <strong>{subcontrata.nombreEmpresa}</strong>. No se cruza ni se completa con la plantilla propia del contratista principal.</p>
                     </div>
+                  </div>
+                </div>
 
-                    {/* CRITICAL ALERT: Company workers mistakenly recognized in subcontrata documentation */}
-                    {((lastAnalysisResults.comparativaTrabajadores.trabajadoresEmpresaPrincipalDetectados && 
-                       lastAnalysisResults.comparativaTrabajadores.trabajadoresEmpresaPrincipalDetectados.length > 0) ||
-                      lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.some(w => w.esTrabajadorEmpresaPrincipal || w.prohibidoEnSubcontrata)) && (
-                      <div className="p-4 bg-red-100 dark:bg-red-950/80 border-2 border-red-600 dark:border-red-500 rounded-xl text-xs space-y-2.5 shadow-sm">
-                        <div className="flex items-center gap-2 text-red-950 dark:text-red-100 font-black text-sm">
-                          <ShieldAlert className="w-5 h-5 text-red-700 dark:text-red-400 shrink-0" />
-                          <span>⛔ PROHIBICIÓN TERMINANTE: PERSONAL PROPIO DE SU EMPRESA DETECTADO EN LA SUBCONTRATA</span>
+                {(lastAnalysisResults.personalDetectado?.length || 0) > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    {lastAnalysisResults.personalDetectado!.map((worker, index) => (
+                      <div key={`${worker.dni || worker.nombre}_${index}`} className="ui-surface p-3 flex items-start gap-3">
+                        <div className="mt-0.5 h-8 w-8 rounded-full bg-[var(--ui-brand-50)] text-[var(--ui-brand-700)] flex items-center justify-center shrink-0">
+                          <UserCheck className="w-4 h-4" />
                         </div>
-                        <p className="text-red-900 dark:text-red-200 leading-relaxed font-medium">
-                          La IA ha detectado trabajadores pertenecientes a la <strong>plantilla propia de la entidad principal contratante (PROFEA)</strong> en la documentación aportada. 
-                          Por estricta directiva legal y normativa de contratación, <strong>los trabajadores de su propia empresa NO deben figurar en el control de subcontratas</strong>. Han sido excluidos y bloqueados de la acreditación de la subcontrata.
-                        </p>
-                        <div className="space-y-1.5 pt-1">
-                          {(lastAnalysisResults.comparativaTrabajadores.trabajadoresEmpresaPrincipalDetectados || 
-                            lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.filter(w => w.esTrabajadorEmpresaPrincipal || w.prohibidoEnSubcontrata)
-                          ).map((worker, index) => (
-                            <div
-                              key={index}
-                              className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border-2 border-red-400 dark:border-red-700 flex items-center justify-between text-xs"
-                            >
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-red-600 dark:bg-red-500" />
-                                  <strong className="text-slate-900 dark:text-slate-100 font-bold text-sm">{worker.nombreDetectado}</strong>
-                                  {(worker.dniDetectado || worker.dniEnObra) && (
-                                    <span className="text-slate-600 dark:text-slate-400 font-mono font-semibold">DNI: {worker.dniDetectado || worker.dniEnObra}</span>
-                                  )}
-                                  {worker.archivoOrigen && (
-                                    <span className="text-slate-400 dark:text-slate-500 text-[11px]">(Doc: {worker.archivoOrigen})</span>
-                                  )}
-                                </div>
-                                <span className="text-red-700 dark:text-red-400 font-semibold text-[11px] mt-0.5">
-                                  {worker.detalles || 'Trabajador de la plantilla propia PROFEA. Prohibida su inclusión en la subcontrata.'}
-                                </span>
-                              </div>
-                              <span className="px-2.5 py-1 bg-red-600 text-white font-black text-[10px] rounded uppercase tracking-wide">
-                                Prohibido en Subcontrata
-                              </span>
-                            </div>
-                          ))}
+                        <div className="min-w-0">
+                          <div className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">{worker.nombre || 'Nombre pendiente de revisión'}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">DNI/NIE: {worker.dni || 'No extraído'}</div>
+                          {worker.archivoOrigen && <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 truncate">Fuente: {worker.archivoOrigen}</div>}
                         </div>
                       </div>
-                    )}
-
-                    {/* Alert for Unauthorized External Workers */}
-                    {lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra.filter(w => !w.esTrabajadorEmpresaPrincipal && !w.prohibidoEnSubcontrata).length > 0 && (
-                      <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-400 dark:border-rose-800 rounded-xl text-xs space-y-2">
-                        <div className="flex items-center gap-2 text-rose-900 dark:text-rose-200 font-bold text-sm">
-                          <UserX className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                          <span>¡ALERTA CAE! OPERARIOS EXTERNOS NO AUTORIZADOS EN LA OBRA '{subcontrata.obra}':</span>
-                        </div>
-                        <p className="text-rose-800 dark:text-rose-300 leading-relaxed">
-                          La IA ha identificado personas en los documentos aportados que no constan en la lista de trabajadores autorizados para esta obra. Por exigencia de la Ley 32/2006 y RD 1627/1997, estas personas <strong>tienen expresamente prohibido el acceso al centro de trabajo</strong> hasta ser inscritas en el libro de subcontratación y validadas por el Coordinador de Seguridad.
-                        </p>
-
-                        <div className="space-y-1.5 pt-1">
-                          {lastAnalysisResults.comparativaTrabajadores.noRegistradosEnObra
-                            .filter(w => !w.esTrabajadorEmpresaPrincipal && !w.prohibidoEnSubcontrata)
-                            .map((worker, index) => (
-                            <div
-                              key={index}
-                              className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-rose-300 dark:border-rose-800 flex items-center justify-between text-xs"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-rose-600 dark:bg-rose-500" />
-                                <strong className="text-slate-900 dark:text-slate-100 font-bold">{worker.nombreDetectado}</strong>
-                                {worker.dniDetectado && (
-                                  <span className="text-slate-500 dark:text-slate-400 font-mono">DNI: {worker.dniDetectado}</span>
-                                )}
-                                {worker.archivoOrigen && (
-                                  <span className="text-slate-400 dark:text-slate-500 text-[11px]">(Doc: {worker.archivoOrigen})</span>
-                                )}
-                              </div>
-                              <span className="px-2 py-0.5 bg-rose-600 text-white font-bold text-[10px] rounded uppercase">
-                                No Autorizado
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Coincident Workers */}
-                    {lastAnalysisResults.comparativaTrabajadores.coincidentes.length > 0 && (
-                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 text-xs space-y-2.5">
-                        <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-bold">
-                          <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                          <span>Operarios Verificados y Acreditados en la Obra Actual</span>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {lastAnalysisResults.comparativaTrabajadores.coincidentes.map((worker, index) => (
-                            <div
-                              key={index}
-                              className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center justify-between"
-                            >
-                              <div>
-                                <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                                  {worker.nombreEnObra || worker.nombreDetectado}
-                                </span>
-                                <span className="text-[11px] text-slate-600 dark:text-slate-400 block">
-                                  DNI: {worker.dniEnObra || worker.dniDetectado || 'N/D'} • Categoría: {worker.categoriaEnObra || 'Operario'}
-                                </span>
-                                {worker.archivoOrigen && (
-                                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300 block mt-0.5">
-                                    Verificado en: {worker.archivoOrigen}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="px-2 py-0.5 bg-emerald-600 text-white font-bold text-[10px] rounded uppercase">
-                                Autorizado
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Obra workers pending documentation */}
-                    {lastAnalysisResults.comparativaTrabajadores.pendientesDeAcreditar && 
-                     lastAnalysisResults.comparativaTrabajadores.pendientesDeAcreditar.length > 0 && (
-                      <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-xs space-y-2">
-                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold">
-                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                          <span>Operarios de la obra pendientes de acreditar en los documentos subidos ({lastAnalysisResults.comparativaTrabajadores.pendientesDeAcreditar.length})</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {lastAnalysisResults.comparativaTrabajadores.pendientesDeAcreditar.map((p, pIdx) => (
-                            <span
-                              key={`pend_operario_${p.id || ''}_${pIdx}`}
-                              className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-slate-700 dark:text-slate-300 text-[11px]"
-                            >
-                              {p.apellidosNombre} ({p.dni || 'Sin DNI'}) - {p.categoria}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                    Cotejo de operarios no ejecutado todavía. Arrastre los PDFs del personal (ITA, Aptitudes Médicas) para comparar automáticamente.
-                  </p>
+                  <div className="ui-surface-soft p-4 text-xs text-slate-500 dark:text-slate-400">No se ha podido extraer una relación nominal de personal de los documentos analizados. Esto no implica que no exista: revise manualmente el expediente.</div>
                 )}
               </div>
             )}

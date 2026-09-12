@@ -11,6 +11,8 @@ import {
 } from 'recharts';
 import { StatsData } from '../types';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
+import { PageHeader } from './ui/PageHeader';
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../constants';
 
 interface StatsProps {
   stats: StatsData;
@@ -180,16 +182,23 @@ export const Stats: React.FC<StatsProps> = ({
 
   return (
     <div className="space-y-6 mb-8">
+      <PageHeader
+        eyebrow="Gestión PROFEA"
+        title="Centro de Control"
+        description="Situación operativa de contrataciones, formación, reconocimientos y distribución por obra."
+        icon={<BarChart3 className="h-5 w-5" />}
+      />
+
       {/* Controles de Filtro */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80">
+      <div className="ui-surface p-5 sm:p-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-2xl">
               <Filter className="w-5 h-5 text-brand-primary dark:text-blue-400" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 uppercase tracking-tight">Resumen de Gestión</h2>
-              <p className="text-slate-400 dark:text-slate-500 text-xs">Filtra y analiza la evolución de contrataciones PROFEA</p>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">Filtros y acciones</h2>
+              <p className="text-slate-400 dark:text-slate-500 text-xs">Acota la información y genera los informes institucionales desde una única zona.</p>
             </div>
           </div>
 
@@ -199,7 +208,7 @@ export const Stats: React.FC<StatsProps> = ({
               <button
                 type="button"
                 onClick={onExportStatsSummaryPDF}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
+                className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
                 title="Exportar documento PDF formateado con el resumen de estadísticas actual para entrega administrativa"
               >
                 <FileText className="w-4 h-4" /> Exportar Resumen PDF
@@ -211,7 +220,7 @@ export const Stats: React.FC<StatsProps> = ({
               <button
                 type="button"
                 onClick={onOpenReportModal}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-500/10 cursor-pointer"
+                className={`${BUTTON_PRIMARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
               >
                 <FileText className="w-4 h-4" /> Generar Informe Periódico
               </button>
@@ -222,7 +231,7 @@ export const Stats: React.FC<StatsProps> = ({
               <button
                 type="button"
                 onClick={onExportObraSummary}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-amber-500/15 cursor-pointer"
+                className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
                 title="Exportar dossier a pie de obra del personal asignado"
               >
                 <Building2 className="w-4 h-4" /> Exportar Resumen de Obra
@@ -363,7 +372,7 @@ export const Stats: React.FC<StatsProps> = ({
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary text-xs font-medium text-slate-700 dark:text-slate-200"
+                  className="ui-field px-3 py-2 text-xs font-medium"
                 />
               </div>
               <div className="space-y-1.5">
@@ -372,7 +381,7 @@ export const Stats: React.FC<StatsProps> = ({
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary text-xs font-medium text-slate-700 dark:text-slate-200"
+                  className="ui-field px-3 py-2 text-xs font-medium"
                 />
               </div>
               {(startDate || endDate) && (
@@ -393,7 +402,7 @@ export const Stats: React.FC<StatsProps> = ({
       {/* Resumen Principal con Sparklines de RechArts */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Card 1: Contratación Total con Sparkline */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between relative overflow-hidden group">
+        <div className="ui-surface p-5 hover:shadow-md transition-all duration-200 flex flex-col justify-between relative overflow-hidden group">
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-blue-50 dark:bg-blue-950/60 rounded-xl text-blue-600 dark:text-blue-400">
@@ -432,7 +441,7 @@ export const Stats: React.FC<StatsProps> = ({
         </div>
 
         {/* Card 2: Formación */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between">
+        <div className="ui-surface p-5 hover:shadow-md transition-all duration-200 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-emerald-50 dark:bg-emerald-950/60 rounded-xl text-emerald-600 dark:text-emerald-400">
@@ -456,7 +465,7 @@ export const Stats: React.FC<StatsProps> = ({
         </div>
 
         {/* Card 3: Obras Activas */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between">
+        <div className="ui-surface p-5 hover:shadow-md transition-all duration-200 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-purple-50 dark:bg-purple-950/60 rounded-xl text-purple-600 dark:text-purple-400">
@@ -473,7 +482,7 @@ export const Stats: React.FC<StatsProps> = ({
         </div>
 
         {/* Card 4: Citas Próximas */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between">
+        <div className="ui-surface p-5 hover:shadow-md transition-all duration-200 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-amber-50 dark:bg-amber-950/60 rounded-xl text-amber-600 dark:text-amber-400">
@@ -490,7 +499,7 @@ export const Stats: React.FC<StatsProps> = ({
         </div>
 
         {/* Card 5: Trabajadores Repetidos */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between">
+        <div className="ui-surface p-5 hover:shadow-md transition-all duration-200 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-rose-50 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400">

@@ -53,10 +53,12 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
   onApplyChanges
 }) => {
   const [items, setItems] = useState<ProposedChecklistChange[]>([]);
+  const [activeCategory, setActiveCategory] = useState<SubcontrataDocCategoria>('empresa');
 
   useEffect(() => {
     if (isOpen) {
       setItems(initialChanges.map(i => ({ ...i })));
+      setActiveCategory(initialChanges[0]?.categoria || 'empresa');
     }
   }, [isOpen, initialChanges]);
 
@@ -82,6 +84,12 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
     });
   };
 
+  const categoryMeta: { id: SubcontrataDocCategoria; label: string; description: string }[] = [
+    { id: 'empresa', label: '1. Empresa', description: 'REA, seguros, certificados, prevención y documentación societaria' },
+    { id: 'trabajadores', label: '2. Personal', description: 'Altas, formación, aptitud médica, EPIs y acreditaciones nominales' },
+    { id: 'maquinaria', label: '3. Maquinaria y equipos', description: 'Marcado CE, seguros, ITV, revisiones y documentación técnica' }
+  ];
+  const visibleItems = items.map((item, index) => ({ item, index })).filter(({ item }) => item.categoria === activeCategory);
   const selectedCount = items.filter(i => i.selected).length;
   const expiredCount = items.filter(i => i.estaCaducado || i.estadoPropuesto === 'caducado').length;
   const deliveredCount = items.filter(i => i.estadoPropuesto === 'entregado').length;
@@ -101,18 +109,18 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
     >
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 p-5 text-white shrink-0">
+        <div className="bg-[var(--ui-gradient-brand)] p-5 text-white shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-xl border border-white/20">
-                <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
+                <Sparkles className="w-6 h-6 text-white" />
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-bold tracking-tight text-white">
                     Notificación de Cambios Propuestos por IA (Checklist CAE)
                   </h3>
-                  <span className="px-2 py-0.5 text-xs font-bold bg-amber-400 text-slate-950 rounded-full">
+                  <span className="px-2 py-0.5 text-xs font-bold bg-white/15 text-white border border-white/20 rounded-full">
                     Revisión Previa Requerida
                   </span>
                 </div>
@@ -180,9 +188,32 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
           </div>
         </div>
 
+        {/* Revisión por bloques CAE */}
+        <div className="px-4 sm:px-6 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0">
+          {categoryMeta.map(category => {
+            const count = items.filter(item => item.categoria === category.id).length;
+            const incidents = items.filter(item => item.categoria === category.id && !['entregado', 'no_aplica'].includes(item.estadoPropuesto)).length;
+            const active = activeCategory === category.id;
+            return (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setActiveCategory(category.id)}
+                className={`text-left rounded-xl border p-3 transition-all ${active ? 'border-[var(--ui-brand-400)] bg-[var(--ui-brand-50)] shadow-sm' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-black ${active ? 'text-[var(--ui-brand-800)]' : 'text-slate-800 dark:text-slate-100'}`}>{category.label}</span>
+                  <span className={incidents ? 'ui-status ui-status--warn' : 'ui-status ui-status--ok'}>{incidents ? `${incidents} revisar` : `${count} revisados`}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-4">{category.description}</p>
+              </button>
+            );
+          })}
+        </div>
+
         {/* List of Proposed Changes */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-          {items.map((item, index) => {
+          {visibleItems.map(({ item, index }) => {
             const isIncidence = item.estadoPropuesto === 'caducado' || item.estadoPropuesto === 'incompleto' || item.estaCaducado;
 
             return (
