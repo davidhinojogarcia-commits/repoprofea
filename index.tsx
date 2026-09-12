@@ -9,6 +9,7 @@ import './src/styles/design-system.css';
 import './notification-modal-layout.css';
 import './subcontratas-mobile.css';
 import './institutional-polish.css';
+import './dark-mode-hardening.css';
 
 // Puente temporal para props históricas de Google Drive que aún quedan en App.tsx.
 // La autenticación de la aplicación sigue siendo exclusivamente Supabase (email/password).
