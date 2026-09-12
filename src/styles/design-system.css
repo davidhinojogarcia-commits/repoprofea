@@ -1,0 +1,208 @@
+/* PROFEA · Diputación Provincial de Cádiz — Design System Foundation */
+:root {
+  color-scheme: light;
+
+  /* Corporate palette */
+  --ui-brand-50: #eef7fb;
+  --ui-brand-100: #d8edf7;
+  --ui-brand-200: #b9dceb;
+  --ui-brand-300: #8fc4dc;
+  --ui-brand-400: #52a2c9;
+  --ui-brand-500: #167dac;
+  --ui-brand-600: #005f97;
+  --ui-brand-700: #00548e;
+  --ui-brand-800: #004477;
+  --ui-brand-900: #003f6b;
+  --ui-brand-950: #003366;
+
+  /* Neutral application surfaces */
+  --ui-bg: #f4f7f9;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f8fafc;
+  --ui-surface-elevated: rgba(255, 255, 255, .86);
+  --ui-text: #17324d;
+  --ui-text-muted: #64748b;
+  --ui-border: #d9e3ea;
+  --ui-border-strong: #bfd0dc;
+
+  /* Functional states */
+  --ui-success: #0f766e;
+  --ui-warning: #b45309;
+  --ui-danger: #b4233d;
+  --ui-info: #00548e;
+
+  /* Geometry */
+  --ui-radius-sm: .65rem;
+  --ui-radius-md: .9rem;
+  --ui-radius-lg: 1.2rem;
+  --ui-radius-xl: 1.5rem;
+  --ui-radius-pill: 999px;
+
+  /* Motion */
+  --ui-motion-fast: 120ms;
+  --ui-motion-base: 180ms;
+  --ui-ease: cubic-bezier(.2, .8, .2, 1);
+
+  /* Elevation */
+  --ui-shadow-sm: 0 2px 8px rgba(15, 23, 42, .055);
+  --ui-shadow-md: 0 10px 30px rgba(23, 50, 77, .09);
+  --ui-shadow-lg: 0 24px 60px rgba(0, 63, 107, .14);
+
+  /* Brand effects */
+  --ui-gradient-brand: linear-gradient(135deg, #0069a8 0%, #00548e 48%, #003f6b 100%);
+  --ui-gradient-brand-soft: linear-gradient(145deg, rgba(255,255,255,.98) 0%, rgba(238,247,251,.96) 56%, rgba(216,237,247,.88) 100%);
+  --ui-gradient-page: radial-gradient(circle at 12% 0%, rgba(0,105,168,.10), transparent 34rem), radial-gradient(circle at 100% 16%, rgba(0,84,142,.07), transparent 30rem), #f4f7f9;
+  --ui-focus: 0 0 0 3px rgba(0, 84, 142, .18);
+
+  /* Glass */
+  --ui-glass-bg: rgba(248, 252, 255, .72);
+  --ui-glass-border: rgba(255, 255, 255, .72);
+  --ui-glass-blur: blur(26px) saturate(165%);
+}
+
+.dark {
+  color-scheme: dark;
+  --ui-bg: #07111d;
+  --ui-surface: #0f1c2a;
+  --ui-surface-soft: #132231;
+  --ui-surface-elevated: rgba(15, 28, 42, .86);
+  --ui-text: #eef6fb;
+  --ui-text-muted: #a5b7c5;
+  --ui-border: #26394a;
+  --ui-border-strong: #365064;
+  --ui-glass-bg: rgba(9, 22, 35, .72);
+  --ui-glass-border: rgba(255, 255, 255, .12);
+}
+
+html,
+body {
+  background: var(--ui-gradient-page);
+  color: var(--ui-text);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Reusable semantic surfaces */
+.ui-surface {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.ui-surface-soft {
+  background: var(--ui-surface-soft);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.ui-glass {
+  background: var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  -webkit-backdrop-filter: var(--ui-glass-blur);
+  backdrop-filter: var(--ui-glass-blur);
+  box-shadow: var(--ui-shadow-lg), inset 0 1px 0 rgba(255,255,255,.32);
+}
+
+/* Reusable action language */
+.ui-button-primary,
+.ui-button-secondary,
+.ui-button-ghost {
+  min-height: 2.5rem;
+  border-radius: var(--ui-radius-md);
+  font-weight: 700;
+  transition: transform var(--ui-motion-fast) var(--ui-ease), box-shadow var(--ui-motion-fast) var(--ui-ease), filter var(--ui-motion-fast) var(--ui-ease), background-color var(--ui-motion-fast) var(--ui-ease);
+}
+
+.ui-button-primary {
+  color: #fff;
+  background: var(--ui-gradient-brand);
+  border: 1px solid rgba(0, 63, 107, .30);
+  box-shadow: 0 7px 20px rgba(0, 84, 142, .18), inset 0 1px 0 rgba(255,255,255,.20);
+}
+
+.ui-button-secondary {
+  color: var(--ui-brand-800);
+  background: var(--ui-brand-50);
+  border: 1px solid var(--ui-brand-200);
+}
+
+.ui-button-ghost {
+  color: var(--ui-text);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.ui-button-primary:hover,
+.ui-button-secondary:hover,
+.ui-button-ghost:hover {
+  transform: translateY(-1px);
+}
+
+.ui-button-primary:active,
+.ui-button-secondary:active,
+.ui-button-ghost:active {
+  transform: translateY(0) scale(.985);
+}
+
+.ui-button-primary:focus-visible,
+.ui-button-secondary:focus-visible,
+.ui-button-ghost:focus-visible,
+.ui-field:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus);
+}
+
+/* Form language */
+.ui-field {
+  width: 100%;
+  min-height: 2.5rem;
+  border-radius: var(--ui-radius-md);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  transition: border-color var(--ui-motion-fast) var(--ui-ease), box-shadow var(--ui-motion-fast) var(--ui-ease), background-color var(--ui-motion-fast) var(--ui-ease);
+}
+
+.ui-field:hover { border-color: var(--ui-border-strong); }
+.ui-field:focus { border-color: var(--ui-brand-500); }
+
+/* Status chips */
+.ui-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border-radius: var(--ui-radius-pill);
+  padding: .28rem .58rem;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+  border: 1px solid transparent;
+}
+
+.ui-status--ok { color: #0f5f58; background: #e7f7f3; border-color: #bde7dc; }
+.ui-status--warn { color: #8b4a08; background: #fff6df; border-color: #f4dca4; }
+.ui-status--error { color: #97263a; background: #fff0f2; border-color: #f2c6cf; }
+.ui-status--info { color: var(--ui-brand-800); background: var(--ui-brand-50); border-color: var(--ui-brand-200); }
+
+/* Consistent focus for legacy Tailwind-heavy screens until components are migrated. */
+#root button:focus-visible,
+#root input:focus-visible,
+#root select:focus-visible,
+#root textarea:focus-visible,
+#root [tabindex]:focus-visible {
+  outline: none !important;
+  box-shadow: var(--ui-focus) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
