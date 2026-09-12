@@ -1987,8 +1987,8 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="medical-recognition-scroll" role="region" aria-label="Tabla de reconocimientos médicos desplazable horizontalmente" tabIndex={0}>
+            <table className="w-full min-w-[1120px] text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 select-none">
                   {/* Trabajador */}

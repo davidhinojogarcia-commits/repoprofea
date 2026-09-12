@@ -118,7 +118,10 @@ body.profea-modal-open aside.app-navigation-panel {
   #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
   .profea-modal-overlay {
     left: var(--profea-modal-gap) !important;
-    z-index: 40 !important;
+    top: max(var(--profea-modal-gap), env(safe-area-inset-top)) !important;
+    bottom: max(var(--profea-modal-gap), env(safe-area-inset-bottom)) !important;
+    z-index: 1000 !important;
+    max-height: calc(100dvh - (2 * var(--profea-modal-gap))) !important;
   }
 
   #root [class~="fixed"][class~="inset-0"] > .max-w-4xl.rounded-3xl {
@@ -152,6 +155,7 @@ body.profea-modal-open aside.app-navigation-panel {
     align-items: stretch !important;
     justify-content: stretch !important;
     overflow: hidden !important;
+    z-index: 1010 !important;
   }
 
   #root [class~="fixed"][class~="inset-0"][class~="z-[110]"] > .max-w-4xl.rounded-3xl {

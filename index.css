@@ -8,6 +8,10 @@ body {
   overflow-x: hidden;
 }
 
+body.profea-modal-open {
+  overflow: hidden;
+}
+
 /* Use the available viewport instead of constraining whole sections to desktop presets. */
 #root .max-w-\[1600px\],
 #root .max-w-7xl,
@@ -255,6 +259,17 @@ body {
     animation: none !important;
     transition-duration: 0s !important;
   }
+}
+
+/* Data-heavy views need a real horizontal scroll surface on touch screens. */
+#root .medical-recognition-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
 }
 
 @media (max-width: 1023px) {
