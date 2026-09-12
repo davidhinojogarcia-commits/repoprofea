@@ -212,6 +212,66 @@ const INSTITUTION_NAME = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ';
 const INSTITUTION_SERVICE = 'GESTIÓN DE FONDOS PROFEA';
 const INSTITUTION_FOOTER = 'Diputación Provincial de Cádiz · Gestión de Fondos PROFEA';
 
+
+/**
+ * Cabecera institucional homogénea para informes de gestión PROFEA.
+ * Mantiene el logotipo sobre fondo blanco para preservar su legibilidad y
+ * separa identidad corporativa, título del documento y metadatos.
+ */
+const renderInstitutionalReportHeader = (
+  doc: jsPDF,
+  reportTitle: string,
+  metaLine?: string
+) => {
+  const config = getStoredPdfConfig();
+
+  // Banda institucional blanca: el logotipo nunca se coloca sobre el azul.
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, 210, 20, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
+  doc.text((config.headerLine1 || INSTITUTION_NAME).toUpperCase(), 15, 8.2);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text((config.headerLine2 || `DESARROLLO LOCAL | ${INSTITUTION_SERVICE}`).toUpperCase(), 15, 13.3);
+
+  renderPdfLogo(doc, 142, 4.5, 53, 10.5, true, config.customLogo);
+
+  doc.setDrawColor(218, 226, 233);
+  doc.setLineWidth(0.25);
+  doc.line(15, 18.2, 195, 18.2);
+
+  // Banda de identificación del informe.
+  doc.setFillColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
+  doc.rect(0, 20, 210, 18, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.7);
+  doc.setTextColor(255, 255, 255);
+  doc.text(reportTitle.toUpperCase(), 15, 27.2);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(226, 241, 249);
+  const issued = `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`;
+  doc.text(issued, 15, 32.3);
+
+  if (metaLine?.trim()) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(240, 249, 255);
+    doc.text(metaLine.toUpperCase(), 15, 36.1, { maxWidth: 180 });
+  }
+
+  // Acento secundario de la propia familia azul corporativa.
+  doc.setFillColor(56, 189, 248);
+  doc.rect(0, 38, 210, 1.6, 'F');
+};
+
 /**
  * Final institutional pass for every generated PDF.
  *
@@ -1978,48 +2038,15 @@ export const generatePeriodicReportPDF = async (
   });
   const repeatedWorkersCount = Object.values(dniCounts).filter(count => count > 1).length;
 
-  // --- PAGE 1: DECORATIVE COVER & EXECUTIVE DASHBOARD ---
-  // Large header block
-  doc.setFillColor(0, 84, 142);
-  doc.rect(0, 0, 210, 38, 'F');
-
-  // Decorative double underline in gold/light-blue
-  doc.setFillColor(56, 189, 248);
-  doc.rect(0, 38, 210, 2.5, 'F');
-
-  // Title text in white
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(255, 255, 255);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 15, 15);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text('PROGRAMA PROFEA - INFORME DE CONTRATACIÓN', 15, 22);
-
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8.5);
-  doc.setTextColor(191, 219, 254);
-  doc.text(`Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`, 15, 28);
-
-  if (supervisorName || zonaName) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(224, 242, 254);
-    const supervisorPart = supervisorName ? `SUPERVISOR RESPONSABLE: ${supervisorName.toUpperCase()}` : '';
-    const zonaPart = zonaName ? `ZONA: ${zonaName.toUpperCase()}` : '';
-    const metaInfo = [supervisorPart, zonaPart].filter(Boolean).join('   |   ');
-    doc.text(metaInfo, 15, 33.5);
-  }
-
-  // Logo in top right corner
-  try {
-    const logoBase64 = await getBase64Image(LOGO_URL);
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 145, 4, 52, 8);
-    }
-  } catch (err) {
-    console.warn('Logo addition failed:', err);
-  }
+  // --- PAGE 1: INSTITUTIONAL COVER & EXECUTIVE DASHBOARD ---
+  const supervisorPart = supervisorName ? `SUPERVISOR RESPONSABLE: ${supervisorName}` : '';
+  const zonaPart = zonaName ? `ZONA: ${zonaName}` : '';
+  const headerMeta = [supervisorPart, zonaPart].filter(Boolean).join('   |   ');
+  renderInstitutionalReportHeader(
+    doc,
+    'PROGRAMA PROFEA · INFORME DE CONTRATACIÓN',
+    headerMeta
+  );
 
   // Large Period subtitle
   doc.setFont('helvetica', 'bold');
@@ -2151,23 +2178,27 @@ export const generatePeriodicReportPDF = async (
   // --- PAGE 2: CHRONOLOGICAL DETAIL REGISTRY ---
   doc.addPage();
 
-  // Mini-Header
-  doc.setFillColor(0, 84, 142);
-  doc.rect(0, 0, 210, 16, 'F');
-  doc.setFillColor(56, 189, 248);
-  doc.rect(0, 16, 210, 1.2, 'F');
-
+  // Cabecera secundaria coherente con la identidad del documento principal.
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, 210, 14, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(7.8);
+  doc.setTextColor(0, 84, 142);
+  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ · GESTIÓN DE FONDOS PROFEA', 15, 7.5);
+  renderPdfLogo(doc, 153, 3, 42, 7, true);
+  doc.setFillColor(0, 84, 142);
+  doc.rect(0, 14, 210, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
-  doc.text('DIPUTACIÓN DE CÁDIZ - PROGRAMA PROFEA', 15, 10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`REGISTRO COMPLETO DE CONTRATACIONES (${periodLabel})`, 110, 10);
+  doc.text(`REGISTRO COMPLETO DE CONTRATACIONES · ${periodLabel.toUpperCase()}`, 15, 18.5);
+  doc.setFillColor(56, 189, 248);
+  doc.rect(0, 21, 210, 1, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(0, 84, 142);
-  doc.text('ANEXO DETALLADO DE CONTRATOS REGISTRADOS', 15, 24);
+  doc.text('ANEXO DETALLADO DE CONTRATOS REGISTRADOS', 15, 28);
 
   // Table of ALL transactions in this period
   const listCols = [
@@ -2202,7 +2233,7 @@ export const generatePeriodicReportPDF = async (
   autoTable(doc, {
     columns: listCols,
     body: listRows,
-    startY: 28,
+    startY: 32,
     theme: 'striped',
     styles: { fontSize: 7, cellPadding: 2 },
     headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -2241,37 +2272,11 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
   const prlPercent = totalWorkers > 0 ? Math.round((prlCount / totalWorkers) * 100) : 0;
   const uniqueCategories = new Set(workers.map(p => p.categoria).filter(Boolean)).size;
 
-  // Header block
-  doc.setFillColor(0, 84, 142);
-  doc.rect(0, 0, 210, 38, 'F');
-
-  // Decorative double underline in gold/light-blue
-  doc.setFillColor(217, 119, 6); // Beautiful Amber
-  doc.rect(0, 38, 210, 2.5, 'F');
-
-  // Title text in white
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(255, 255, 255);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 15, 14);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text('PROGRAMA PROFEA - INFORME RESUMEN DE OBRA (PIE DE OBRA)', 15, 21);
-
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.setTextColor(191, 219, 254);
-  doc.text(`Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`, 15, 27);
-
-  // Logo in top right corner
-  try {
-    const logoBase64 = await getBase64Image(LOGO_URL);
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 145, 4, 52, 8);
-    }
-  } catch (err) {
-    console.warn('Logo addition failed:', err);
-  }
+  // Cabecera institucional común: logotipo visible sobre blanco y título homogéneo.
+  renderInstitutionalReportHeader(
+    doc,
+    'PROGRAMA PROFEA · INFORME RESUMEN DE OBRA (PIE DE OBRA)'
+  );
 
   // Large Work subtitle Panel
   doc.setFillColor(248, 250, 252);
