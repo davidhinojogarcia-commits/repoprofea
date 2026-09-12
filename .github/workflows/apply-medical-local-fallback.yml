@@ -1,0 +1,28 @@
+name: Apply medical local fallback
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-medical-local-fallback.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/patch-medical-local-fallback.py
+      - name: Commit fix and cleanup
+        run: |
+          rm -f scripts/patch-medical-local-fallback.py .github/workflows/apply-medical-local-fallback.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: improve local medical recognition fallback"
+          git push
