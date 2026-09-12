@@ -11,42 +11,11 @@
   --profea-modal-gap: 1.25rem;
 }
 
-/* While any application modal is open, the page behind it must not move. Lock only
-   html/body: forcing #root to 100dvh while the user is already scrolled deep inside
-   Configuración can clip a non-portaled modal on iOS Safari and make the page look
-   frozen after choosing a backup file. */
-html:has(body.profea-modal-open),
-body.profea-modal-open {
-  overflow: hidden !important;
-  overscroll-behavior: none !important;
-}
-
 /* Navigation always remains above application modals. */
 #root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel,
 #root:has(.profea-modal-overlay) aside.app-navigation-panel,
 body.profea-modal-open aside.app-navigation-panel {
   z-index: 50 !important;
-}
-
-/* On desktop the sidebar is normally sticky. Locking body scroll for a portaled
-   dialog can make that sticky box keep the page's previous scroll offset, hiding
-   its upper navigation. Pin it to the viewport while a modal is open. */
-@media (min-width: 1024px) {
-  body.profea-modal-open #root aside.app-navigation-panel {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-  }
-
-  body.profea-modal-open #root:has(aside.app-navigation-panel.lg\:w-64) .relative.z-10.flex-1 {
-    margin-left: 16rem !important;
-  }
-
-  body.profea-modal-open #root:has(aside.app-navigation-panel.lg\:w-20) .relative.z-10.flex-1 {
-    margin-left: 5rem !important;
-  }
 }
 
 /* Shared geometry for normal and portaled application modals. */
@@ -350,36 +319,4 @@ body.profea-modal-open aside.app-navigation-panel {
   background: rgb(241 245 249) !important;
   color: rgb(15 23 42) !important;
   border-color: rgb(241 245 249) !important;
-}
-
-/* Medical-recognition quick editor is portaled to body so table/section layout can
-   never clip or cover the dialog. Keep the sidebar available on desktop. */
-.profea-medical-edit-overlay {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 1rem !important;
-  overflow-y: auto !important;
-}
-
-.profea-medical-edit-dialog {
-  width: min(32rem, 100%) !important;
-  max-width: 32rem !important;
-  max-height: 100% !important;
-  overflow-y: auto !important;
-}
-
-@media (max-width: 639px) {
-  .profea-medical-edit-overlay {
-    top: max(0.5rem, env(safe-area-inset-top)) !important;
-    right: 0.5rem !important;
-    bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
-    left: 0.5rem !important;
-    padding: 0.5rem !important;
-  }
-
-  .profea-medical-edit-dialog {
-    padding: 1rem !important;
-    border-radius: 1rem !important;
-  }
 }

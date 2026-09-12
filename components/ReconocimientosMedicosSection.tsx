@@ -2199,8 +2199,8 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
 
       {/* 6. Quick Individual Edit Modal for Medical Recognition */}
       {editingPerson && createPortal(
-        <div className="profea-modal-overlay profea-medical-edit-overlay fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="medical-edit-title">
-          <div className="profea-medical-edit-dialog bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-lg w-full shadow-2xl space-y-5">
+        <div className="profea-modal-overlay fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="medical-edit-title">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-lg w-full max-h-full overflow-y-auto shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-[#00548E] dark:text-blue-400" />
