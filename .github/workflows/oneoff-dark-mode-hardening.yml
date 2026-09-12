@@ -1,0 +1,39 @@
+name: One-off dark mode hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-dark-mode-hardening.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+      - run: python scripts/apply_dark_mode_hardening.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: |
+          grep -n "dark-mode-hardening.css" index.tsx
+          grep -n "ui-button-secondary" dark-mode-hardening.css
+          grep -n "button.bg-white" dark-mode-hardening.css
+          grep -n "subcontratas-section-container" dark-mode-hardening.css
+      - run: git rm -f .github/workflows/oneoff-dark-mode-hardening.yml scripts/apply_dark_mode_hardening.py
+      - run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add index.tsx dark-mode-hardening.css
+          git commit -m "fix: normalize dark mode across application"
+          git push origin main
