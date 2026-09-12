@@ -15,6 +15,8 @@ type ChecklistItem = {
 
 type InputFile = { name: string; type?: string; base64: string };
 
+type KeyDatum = { etiqueta?: string; valor?: string };
+
 type AnalysisItem = {
   docId: string;
   nombreDetectado?: string;
@@ -23,7 +25,9 @@ type AnalysisItem = {
   fechaCaducidad?: string;
   empresaDetectada?: string;
   cifDetectado?: string;
+  entidadEmisora?: string;
   observaciones?: string;
+  datosClave?: KeyDatum[];
   archivoOrigen?: string;
   confianza?: 'alta' | 'media' | 'baja';
   esLegible?: boolean;
@@ -50,7 +54,15 @@ const sendJson = (res: ServerResponse, status: number, data: any) => {
   res.end(JSON.stringify(data));
 };
 
-const cleanJson = (value: string) => (value || '')
+const resolveGeminiApiKey = (): string =>
+  process.env.GEMINI_API_KEY ||
+  process.env.GOOGLE_API_KEY ||
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+  process.env.GEMINI_KEY ||
+  process.env.VITE_GEMINI_API_KEY ||
+  '';
+
+const cleanJson = (value: string) => String(value || '')
   .trim()
   .replace(/^```json\s*/i, '')
   .replace(/^```\s*/i, '')
@@ -58,10 +70,8 @@ const cleanJson = (value: string) => (value || '')
   .trim();
 
 const splitDataUrl = (input: string, fallbackMime = 'application/octet-stream') => {
-  const match = (input || '').match(/^data:([^;,]+);base64,(.+)$/s);
-  return match
-    ? { mimeType: match[1], data: match[2] }
-    : { mimeType: fallbackMime, data: input || '' };
+  const match = String(input || '').match(/^data:([^;,]+);base64,(.+)$/s);
+  return match ? { mimeType: match[1], data: match[2] } : { mimeType: fallbackMime, data: input || '' };
 };
 
 const isoDate = (raw?: string): string => {
@@ -89,7 +99,7 @@ const evaluateExpiration = (docId: string, issuedRaw?: string, expiresRaw?: stri
     const d = new Date(`${issued}T00:00:00`);
     if (!Number.isNaN(d.getTime())) {
       if (docId === 'cert_tgss') d.setMonth(d.getMonth() + 3);
-      else if (docId === 'cert_aeat' || docId === 'aptitud_medica' || docId === 'seguro_rc' || docId === 'seguro_itv_maquinaria') d.setFullYear(d.getFullYear() + 1);
+      else if (['cert_aeat', 'aptitud_medica', 'seguro_rc', 'seguro_itv_maquinaria'].includes(docId)) d.setFullYear(d.getFullYear() + 1);
       else if (docId === 'rea') d.setFullYear(d.getFullYear() + 3);
       else return { issued, expires: '', expired: false, daysExpired: 0, daysRemaining: 9999, nearExpiry: false };
       expires = d.toISOString().slice(0, 10);
@@ -120,16 +130,20 @@ async function extractOfficeText(file: InputFile): Promise<string> {
       const rows: string[] = [];
       workbook.eachSheet((sheet) => {
         rows.push(`HOJA: ${sheet.name}`);
-        sheet.eachRow((row) => {
-          const values = (row.values as any[]).slice(1).map(v => typeof v === 'object' && v && 'text' in v ? String((v as any).text || '') : String(v ?? '')).filter(Boolean);
-          if (values.length) rows.push(values.join(' | '));
+        sheet.eachRow((row, rowNumber) => {
+          const values = (row.values as any[]).slice(1).map(v => {
+            if (typeof v === 'object' && v && 'text' in v) return String((v as any).text || '');
+            if (typeof v === 'object' && v && 'result' in v) return String((v as any).result || '');
+            return String(v ?? '');
+          }).filter(Boolean);
+          if (values.length) rows.push(`Fila ${rowNumber}: ${values.join(' | ')}`);
         });
       });
-      return rows.join('\n').slice(0, 120000);
+      return rows.join('\n').slice(0, 140000);
     }
     if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
       const result = await mammoth.extractRawText({ buffer });
-      return (result.value || '').slice(0, 120000);
+      return (result.value || '').slice(0, 140000);
     }
   } catch (error) {
     console.warn(`[CAE OCR] No se pudo extraer texto nativo de ${file.name}:`, error);
@@ -152,10 +166,21 @@ const responseSchema = {
           fechaCaducidad: { type: Type.STRING },
           empresaDetectada: { type: Type.STRING },
           cifDetectado: { type: Type.STRING },
+          entidadEmisora: { type: Type.STRING },
           observaciones: { type: Type.STRING },
           confianza: { type: Type.STRING },
           esLegible: { type: Type.BOOLEAN },
-          motivoIlegible: { type: Type.STRING }
+          motivoIlegible: { type: Type.STRING },
+          datosClave: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                etiqueta: { type: Type.STRING },
+                valor: { type: Type.STRING }
+              }
+            }
+          }
         },
         required: ['docId', 'estado', 'confianza', 'esLegible']
       }
@@ -166,7 +191,12 @@ const responseSchema = {
         type: Type.OBJECT,
         properties: {
           nombre: { type: Type.STRING },
-          dni: { type: Type.STRING }
+          dni: { type: Type.STRING },
+          documento: { type: Type.STRING },
+          situacion: { type: Type.STRING },
+          fechaDesde: { type: Type.STRING },
+          fechaHasta: { type: Type.STRING },
+          detalle: { type: Type.STRING }
         },
         required: ['nombre']
       }
@@ -176,7 +206,44 @@ const responseSchema = {
   required: ['documentosAnalizados', 'trabajadoresDetectados', 'resumenDiagnostico']
 };
 
-async function analyzeOneFile(ai: GoogleGenAI, file: InputFile, checklist: ChecklistItem[], subcontrata: any) {
+const structuredEvidenceText = (raw: any): string => {
+  const details: string[] = [];
+  if (raw.entidadEmisora) details.push(`Entidad/Emisor: ${raw.entidadEmisora}`);
+  for (const item of Array.isArray(raw.datosClave) ? raw.datosClave : []) {
+    const key = String(item?.etiqueta || '').trim();
+    const value = String(item?.valor || '').trim();
+    if (key && value) details.push(`${key}: ${value}`);
+  }
+  return details.length ? `Datos extraídos por OCR/IA: ${details.join(' · ')}` : '';
+};
+
+async function callGemini(ai: GoogleGenAI, parts: any[]) {
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
+  let lastError: any;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await ai.models.generateContent({
+          model,
+          contents: { parts },
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema,
+            temperature: 0.05,
+          }
+        });
+      } catch (error: any) {
+        lastError = error;
+        const transient = /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|overload|high demand|timeout/i.test(String(error?.message || error));
+        if (!transient) break;
+        await new Promise(resolve => setTimeout(resolve, 650 + attempt * 700));
+      }
+    }
+  }
+  throw lastError || new Error('No se pudo completar el análisis OCR/IA.');
+}
+
+async function analyzeOneFile(ai: GoogleGenAI, file: InputFile, checklist: ChecklistItem[], subcontrata: any, currentWorkers: any[]) {
   const lower = file.name.toLowerCase();
   const officeText = await extractOfficeText(file);
   const parts: any[] = [];
@@ -196,60 +263,64 @@ async function analyzeOneFile(ai: GoogleGenAI, file: InputFile, checklist: Check
     obligatorio: !!item.obligatorio,
     categoria: item.categoria || ''
   }));
+  const workerReference = currentWorkers.map(w => ({
+    id: w.id,
+    nombre: w.apellidosNombre || w.name || '',
+    dni: w.dni || '',
+    categoria: w.categoria || w.category || ''
+  }));
 
-  parts.push({
-    text: `Actúa como motor OCR + analista documental CAE especializado en construcción y normativa española. Analiza EXHAUSTIVAMENTE TODAS LAS PÁGINAS, tablas, sellos, membretes, anexos, firmas, fechas y texto legible del archivo "${file.name}".
+  parts.push({ text: `Eres un analista documental CAE senior y motor OCR multimodal para obras de construcción en España. Tu trabajo es extraer evidencia verificable y preparar una propuesta técnica para revisión humana.
 
-SUBCONTRATA ESPERADA:
-${JSON.stringify(subcontrata || {})}
+ARCHIVO: ${file.name}
+SUBCONTRATA ESPERADA: ${JSON.stringify(subcontrata || {})}
+TRABAJADORES DE REFERENCIA DE LA OBRA: ${JSON.stringify(workerReference)}
+CHECKLIST LEGAL CONFIGURADO: ${JSON.stringify(checklistForPrompt)}
 
-CHECKLIST LEGAL CONFIGURADO (usa exclusivamente estos id al clasificar):
-${JSON.stringify(checklistForPrompt)}
+PROTOCOLO OBLIGATORIO:
+1. Examina TODAS las páginas, anexos, tablas, sellos, firmas, códigos, encabezados y pies. Si es imagen/PDF, realiza OCR visual; si es Office, analiza todo el texto y tablas extraídos.
+2. No deduzcas cumplimiento por el nombre del archivo. Solo acredita un requisito cuando el contenido lo demuestra.
+3. Usa exclusivamente docId existentes en el checklist. Un archivo puede acreditar varios requisitos.
+4. Devuelve estado entregado solo con evidencia suficiente y vigente; incompleto si faltan páginas, firma, sello, recibo, vigencia o datos esenciales; caducado si la fecha lo demuestra; pendiente si se menciona pero no se acredita; no_aplica solo cuando el propio documento lo justifique inequívocamente.
+5. Nunca inventes. Si un dato no está visible, omítelo. Indica confianza alta/media/baja.
+6. Extrae empresa, CIF/NIF, entidad emisora, número de registro/póliza/contrato/certificado, fechas de emisión y vencimiento, periodos de cobertura, importes/capital asegurado, especialidades preventivas, actividades autorizadas, matrícula/equipo y cualquier dato útil para auditoría CAE.
+7. REA: extrae nº de inscripción/registro, empresa, CIF, fecha de inscripción/renovación, vigencia o estado, autoridad emisora y actividades/especialidades que consten.
+8. CONCIERTO SPRL Y MEMORIA: identifica claramente qué Servicio de Prevención presta el servicio, a qué empresa, modalidad, nº de contrato si existe, especialidades concertadas (Seguridad, Higiene, Ergonomía/Psicosociología, Vigilancia de la Salud), fecha, vigencia y referencia a memoria/anexo.
+9. SEGURO RC: identifica aseguradora, tomador, nº de póliza, cobertura/objeto, capital o límite si aparece, fecha inicio/fin; comprueba si se aporta último recibo, nº de recibo, importe/fecha de pago y si parece pagado/vigente.
+10. TGSS/AEAT: extrae titular, CIF, resultado positivo/negativo, fecha de expedición y vigencia cuando figure.
+11. DOCUMENTOS DE TRABAJADORES: extrae todos los nombres y DNI/NIE legibles, situación de alta/autorización, formación, aptitud, EPI o maquinaria según corresponda, con fechas y evidencia. Contrasta literalmente con la lista de trabajadores de referencia, pero no fuerces coincidencias ambiguas.
+12. MAQUINARIA: extrae identificación, matrícula/serie, titular, CE, ITV/revisión, seguro, fechas y operador autorizado cuando conste.
+13. En datosClave devuelve pares etiqueta/valor muy concretos y útiles para que aparezcan después en el informe técnico. Evita texto genérico. Ejemplos: "Nº REA", "Servicio de prevención", "Aseguradora", "Nº póliza", "Último recibo", "Vigencia", "Trabajadores incluidos".
+14. En observaciones resume la conclusión técnica y cualquier incidencia. La decisión final siempre es humana.
 
-OBJETIVO:
-1. Haz OCR visual real del documento, no te bases en el nombre del archivo.
-2. Determina qué puntos del checklist están realmente acreditados por el contenido aportado. Un mismo archivo puede acreditar varios puntos.
-3. Para cada punto detectado devuelve un registro con docId exacto, fechas, empresa/CIF si aparecen y una observación breve con la evidencia encontrada.
-4. estado solo puede ser: entregado, incompleto, caducado, pendiente o no_aplica. Usa entregado únicamente si hay evidencia suficiente; incompleto si faltan páginas/datos/firmas esenciales o es parcialmente ilegible; pendiente si el documento menciona el requisito pero no lo acredita.
-5. Si el archivo es ilegible, marca esLegible=false y explica el motivo. Nunca inventes texto no visible.
-6. Extrae trabajadores y DNI/NIE cuando aparezcan relaciones nominales, certificados, RNT/RLC, altas, formación, aptitud médica o EPIs.
-7. NO marques como entregado un punto solo por similitud semántica. Exige evidencia documental.
-8. Si el documento no corresponde a ningún punto, devuelve documentosAnalizados vacío pero explica qué parece ser.
-9. Devuelve fechas preferentemente YYYY-MM-DD.
-10. La confianza debe ser alta, media o baja.
+Devuelve exclusivamente JSON conforme al esquema.` });
 
-La revisión humana es obligatoria: tu salida es una propuesta de cotejo, nunca una aprobación jurídica definitiva.`
-  });
-
-  const models = ['gemini-flash-latest', 'gemini-2.5-flash'];
-  let lastError: any;
-  for (const model of models) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: { parts },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema,
-          temperature: 0.1,
-        }
-      });
-      return JSON.parse(cleanJson(response.text || '{}'));
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError || new Error('No se pudo completar el análisis OCR/IA.');
+  const response = await callGemini(ai, parts);
+  return JSON.parse(cleanJson(response.text || '{}'));
 }
 
+const normalizeIdentity = (value: string) => String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '');
+
 function compareWorkers(detected: any[], currentWorkers: any[]) {
-  const clean = (s: string) => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '');
   const coincidentes: any[] = [];
   const noRegistradosEnObra: any[] = [];
+  const seen = new Set<string>();
+
   for (const det of detected) {
-    const dni = clean(det.dni || '');
-    const name = clean(det.nombre || '');
-    const found = currentWorkers.find((w: any) => (dni && clean(w.dni) === dni) || (name && clean(w.apellidosNombre || w.name).includes(name.slice(0, Math.min(name.length, 12)))));
+    const dni = normalizeIdentity(det.dni || '');
+    const name = normalizeIdentity(det.nombre || '');
+    const dedupeKey = dni || `${name}:${det.archivoOrigen || ''}`;
+    if (dedupeKey && seen.has(dedupeKey)) continue;
+    if (dedupeKey) seen.add(dedupeKey);
+
+    const found = currentWorkers.find((w: any) => {
+      const workerDni = normalizeIdentity(w.dni || '');
+      const workerName = normalizeIdentity(w.apellidosNombre || w.name || '');
+      if (dni && workerDni && dni === workerDni) return true;
+      if (name.length >= 10 && workerName.length >= 10) return workerName.includes(name) || name.includes(workerName);
+      return false;
+    });
+
     const item = {
       nombreDetectado: det.nombre || '',
       dniDetectado: det.dni || '',
@@ -260,19 +331,23 @@ function compareWorkers(detected: any[], currentWorkers: any[]) {
       dniEnObra: found?.dni,
       categoriaEnObra: found?.categoria || found?.category,
       estadoCotejo: found ? 'coincidente' : 'no_registrado',
-      detalles: found ? 'Coincidencia encontrada en el censo de la obra.' : 'No se ha encontrado coincidencia inequívoca en el censo de la obra.'
+      detalles: found
+        ? `Autorizado/censado en la obra. ${det.situacion || det.detalle || ''}`.trim()
+        : `Detectado en documentación pero no localizado inequívocamente en el censo de obra. ${det.situacion || det.detalle || ''}`.trim()
     };
     (found ? coincidentes : noRegistradosEnObra).push(item);
   }
+
   const pending = currentWorkers.filter((w: any) => !coincidentes.some(c => String(c.trabajadorObraId) === String(w.id))).map((w: any) => ({
     id: Number(w.id) || 0,
     apellidosNombre: w.apellidosNombre || w.name || '',
     dni: w.dni || '',
     categoria: w.categoria || w.category || ''
   }));
+
   return {
     totalTrabajadoresObra: currentWorkers.length,
-    totalDetectadosEnDocs: detected.length,
+    totalDetectadosEnDocs: coincidentes.length + noRegistradosEnObra.length,
     coincidentes,
     noRegistradosEnObra,
     pendientesDeAcreditar: pending,
@@ -280,15 +355,44 @@ function compareWorkers(detected: any[], currentWorkers: any[]) {
   };
 }
 
+const appendWorkerAuditToDocuments = (docs: AnalysisItem[], comparison: any) => {
+  const authorized = comparison.coincidentes || [];
+  const notAuthorized = comparison.noRegistradosEnObra || [];
+  const pending = comparison.pendientesDeAcreditar || [];
+  const workerDocIds = new Set(['altas_ss', 'formacion_prl', 'aptitud_medica', 'entrega_epis', 'autorizacion_maquinaria', 'tc1_rlc_mensual']);
+  const summarize = (items: any[], max = 14) => items.slice(0, max).map((item: any) => {
+    const name = item.nombreEnObra || item.nombreDetectado || item.apellidosNombre || 'Sin nombre';
+    const dni = item.dniEnObra || item.dniDetectado || item.dni || '';
+    return dni ? `${name} (${dni})` : name;
+  }).join(', ');
+
+  for (const doc of docs) {
+    if (!workerDocIds.has(doc.docId)) continue;
+    const parts = [doc.observaciones || ''];
+    if (authorized.length) parts.push(`Trabajadores cotejados/autorizados en obra: ${summarize(authorized)}${authorized.length > 14 ? ` (+${authorized.length - 14})` : ''}.`);
+    if (notAuthorized.length) parts.push(`Trabajadores detectados NO localizados en el censo/autorización de obra: ${summarize(notAuthorized)}${notAuthorized.length > 14 ? ` (+${notAuthorized.length - 14})` : ''}.`);
+    if (pending.length) parts.push(`Trabajadores del censo sin acreditación encontrada en estos documentos: ${summarize(pending)}${pending.length > 14 ? ` (+${pending.length - 14})` : ''}.`);
+    doc.observaciones = parts.filter(Boolean).join(' ');
+  }
+};
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Método no permitido.' });
+
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return sendJson(res, 500, { error: 'GEMINI_API_KEY no está configurada en el servidor.' });
+    const apiKey = resolveGeminiApiKey();
+    if (!apiKey) {
+      return sendJson(res, 503, {
+        error: 'El servicio de análisis IA no dispone todavía de una credencial de Gemini en el entorno del servidor.',
+        code: 'AI_CONFIG_MISSING',
+        detail: 'Se admite GEMINI_API_KEY y, por compatibilidad, GOOGLE_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY o GEMINI_KEY.'
+      });
+    }
 
     const body = await readBody(req);
     const files: InputFile[] = Array.isArray(body.files) ? body.files : [];
     const checklist: ChecklistItem[] = Array.isArray(body.currentChecklist) ? body.currentChecklist : [];
+    const currentWorkers: any[] = Array.isArray(body.currentObraWorkers) ? body.currentObraWorkers : [];
     if (!files.length) return sendJson(res, 400, { error: 'No se proporcionaron archivos para analizar.' });
     if (!checklist.length) return sendJson(res, 400, { error: 'No se proporcionó el checklist legal configurado.' });
     if (files.length > 6) return sendJson(res, 400, { error: 'Analice un máximo de 6 archivos por petición. La interfaz los procesa automáticamente por lotes.' });
@@ -300,28 +404,35 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const documentosIlegibles: any[] = [];
 
     for (const file of files) {
-      const parsed = await analyzeOneFile(ai, file, checklist, body.subcontrata || {});
+      const parsed = await analyzeOneFile(ai, file, checklist, body.subcontrata || {}, currentWorkers);
       summaries.push(`${file.name}: ${parsed.resumenDiagnostico || 'analizado'}`);
+
       for (const worker of Array.isArray(parsed.trabajadoresDetectados) ? parsed.trabajadoresDetectados : []) {
         allWorkers.push({ ...worker, archivoOrigen: file.name });
       }
+
       for (const raw of Array.isArray(parsed.documentosAnalizados) ? parsed.documentosAnalizados : []) {
-        const exists = checklist.some(item => item.id === raw.docId);
-        if (!exists) continue;
+        const checklistItem = checklist.find(item => item.id === raw.docId);
+        if (!checklistItem) continue;
         const expiry = evaluateExpiration(raw.docId, raw.fechaEmision, raw.fechaCaducidad);
         const illegible = raw.esLegible === false;
         let estado: AnalysisItem['estado'] = ['entregado', 'incompleto', 'caducado', 'pendiente', 'no_aplica'].includes(raw.estado) ? raw.estado : 'incompleto';
         if (illegible) estado = 'incompleto';
         else if (expiry.expired) estado = 'caducado';
+
+        const evidence = structuredEvidenceText(raw);
+        const observations = [raw.observaciones || '', evidence].filter(Boolean).join(' | ');
         const result: AnalysisItem = {
           docId: raw.docId,
-          nombreDetectado: raw.nombreDetectado || checklist.find(i => i.id === raw.docId)?.nombre,
+          nombreDetectado: raw.nombreDetectado || checklistItem.nombre,
           estado,
           fechaEmision: expiry.issued || raw.fechaEmision || '',
           fechaCaducidad: expiry.expires || raw.fechaCaducidad || '',
           empresaDetectada: raw.empresaDetectada || '',
           cifDetectado: raw.cifDetectado || '',
-          observaciones: raw.observaciones || '',
+          entidadEmisora: raw.entidadEmisora || '',
+          datosClave: Array.isArray(raw.datosClave) ? raw.datosClave : [],
+          observaciones: observations,
           archivoOrigen: file.name,
           confianza: ['alta', 'media', 'baja'].includes(raw.confianza) ? raw.confianza : 'media',
           esLegible: !illegible,
@@ -338,22 +449,36 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
     }
 
-    const comparison = compareWorkers(allWorkers, Array.isArray(body.currentObraWorkers) ? body.currentObraWorkers : []);
+    const comparison = compareWorkers(allWorkers, currentWorkers);
+    appendWorkerAuditToDocuments(allDocs, comparison);
+
     const alertasCaducidad = allDocs.filter(d => d.estaCaducado || d.esProximaCaducidad).map(d => `${d.nombreDetectado || d.docId}: ${d.motivoCaducidad}`);
+    const detectedIds = new Set(allDocs.filter(d => ['entregado', 'no_aplica'].includes(d.estado)).map(d => d.docId));
+    const missing = checklist.filter(i => i.obligatorio && !detectedIds.has(i.id)).map(i => i.nombre);
+    const hasCriticalIssues = allDocs.some(d => d.estaCaducado || d.estado === 'incompleto') || missing.length > 0 || comparison.noRegistradosEnObra.length > 0;
+
+    const auditSummary = [
+      `OCR/IA exhaustivo: ${files.length} archivo(s)`,
+      `${allDocs.length} evidencias asociadas al checklist`,
+      `${comparison.coincidentes.length} trabajador(es) cotejados`,
+      `${comparison.noRegistradosEnObra.length} trabajador(es) detectados no localizados en obra`,
+      `${missing.length} requisito(s) obligatorio(s) sin acreditar en esta revisión`
+    ].join(' · ');
 
     return sendJson(res, 200, {
       success: true,
       documentosAnalizados: allDocs,
-      resumenDiagnostico: summaries.join(' | '),
-      veredictoAcceso: allDocs.some(d => d.estaCaducado || d.estado === 'incompleto') ? 'CONDICIONADO' : 'APTO',
-      relacionFaltantes: [],
+      resumenDiagnostico: `${auditSummary}. ${summaries.join(' | ')}`,
+      veredictoAcceso: hasCriticalIssues ? 'CONDICIONADO' : 'APTO',
+      relacionFaltantes: missing,
       comparativaTrabajadores: comparison,
       alertasCaducidad,
       documentosIlegibles,
-      textoRequerimiento: ''
+      textoRequerimiento: '',
+      motorAnalisis: 'OCR multimodal + extracción estructurada + cotejo CAE'
     });
   } catch (error: any) {
     console.error('[CAE OCR API]', error);
-    return sendJson(res, 500, { error: error?.message || 'Error procesando la documentación CAE con OCR/IA.' });
+    return sendJson(res, 500, { error: error?.message || 'Error procesando la documentación CAE con OCR/IA.', code: 'AI_ANALYSIS_FAILED' });
   }
 }
