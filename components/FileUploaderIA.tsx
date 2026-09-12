@@ -665,16 +665,12 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>Cotejo de Operarios vs Obra Actual</span>
-                {detectedPersonnelCount > 0 ? (
-                  <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[10px] rounded-full animate-pulse">
-                    {detectedPersonnelCount} no autorizado(s)
+                <span>Personal detectado en expediente</span>
+                {detectedPersonnelCount > 0 && (
+                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[10px] rounded-full">
+                    {detectedPersonnelCount} detectado(s)
                   </span>
-                ) : lastAnalysisResults.comparativaTrabajadores ? (
-                  <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full">
-                    ✓ Verificado
-                  </span>
-                ) : null}
+                )}
               </button>
 
               <button

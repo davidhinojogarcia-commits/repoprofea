@@ -58,6 +58,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setItems(initialChanges.map(i => ({ ...i })));
+      setActiveCategory(initialChanges[0]?.categoria || 'empresa');
     }
   }, [isOpen, initialChanges]);
 

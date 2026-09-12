@@ -1201,9 +1201,6 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               {/* FileUploaderIA Component: Drag and drop PDFs, AI extraction against legal checklist, and red alert highlighting */}
               <FileUploaderIA
                 subcontrata={activeSubcontrata}
-                // CAE de subcontratas: nunca mezclar la plantilla propia del contratista principal.
-                // El personal de la subcontrata se obtiene únicamente de su documentación aportada.
-                currentObraWorkers={[]}
                 onChecklistUpdate={(updatedChecklist, newEstadoExpediente, summaryText) => {
                   setSubcontratistas(prev => prev.map(s => {
                     if (s.id !== activeSubcontrata.id) return s;
