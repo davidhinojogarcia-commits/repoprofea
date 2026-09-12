@@ -109,7 +109,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
     >
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-[var(--ui-gradient-brand)] p-5 text-white shrink-0">
+        <div className="profea-cae-review-header bg-[var(--ui-gradient-brand)] p-5 text-white shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-xl border border-white/20">
