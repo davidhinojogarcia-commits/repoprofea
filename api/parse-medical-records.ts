@@ -96,57 +96,84 @@ const getGatewayText = (payload: any): string => {
   return '';
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const callGateway = async (model: string, input: any) => {
   const token = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
   if (!token) throw new Error('AI_GATEWAY_UNAVAILABLE');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 110_000);
-  try {
-    const response = await fetch(GATEWAY_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        input,
-        max_output_tokens: 12_000,
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'medical_records',
-            strict: true,
-            schema: gatewaySchema
-          }
+  let lastError: any;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 95_000);
+
+    try {
+      const response = await fetch(GATEWAY_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        metadata: {
-          feature: 'profea-medical-records'
-        }
-      })
-    });
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          input,
+          max_output_tokens: 8_000,
+          text: {
+            format: {
+              type: 'json_schema',
+              name: 'medical_records',
+              strict: true,
+              schema: gatewaySchema
+            }
+          },
+          metadata: {
+            feature: 'profea-medical-records',
+            attempt: String(attempt + 1)
+          }
+        })
+      });
 
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(`AI_GATEWAY_${response.status}: ${JSON.stringify(payload).slice(0, 500)}`);
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) {
+        const text = getGatewayText(payload);
+        if (!text) throw new Error('AI_GATEWAY_EMPTY_RESPONSE');
+        return text;
+      }
+
+      const error = new Error(`AI_GATEWAY_${response.status}: ${JSON.stringify(payload).slice(0, 500)}`);
+      lastError = error;
+      const transient = [429, 500, 502, 503, 504].includes(response.status);
+      if (!transient || attempt === 2) throw error;
+
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      const waitMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.min(retryAfterSeconds * 1000, 8_000)
+        : [900, 2_000, 4_000][attempt];
+
+      await sleep(waitMs + Math.floor(Math.random() * 350));
+    } catch (error: any) {
+      lastError = error;
+      const raw = String(error?.message || error || '');
+      const transient = /429|500|502|503|504|ECONNRESET|ETIMEDOUT|AbortError|UNAVAILABLE|overload|high demand/i.test(raw);
+      if (!transient || attempt === 2) throw error;
+      await sleep([900, 2_000, 4_000][attempt] + Math.floor(Math.random() * 350));
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const text = getGatewayText(payload);
-    if (!text) throw new Error('AI_GATEWAY_EMPTY_RESPONSE');
-    return text;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError || new Error('AI_GATEWAY_UNAVAILABLE');
 };
 
 const callGemini = async (ai: GoogleGenAI, contents: any) => {
-  const models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+  const models = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
   let lastError: any;
 
   for (const model of models) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await ai.models.generateContent({
           model,
@@ -177,9 +204,9 @@ const callGemini = async (ai: GoogleGenAI, contents: any) => {
       } catch (error: any) {
         lastError = error;
         const message = String(error?.message || error);
-        const transient = /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|high demand|overload/i.test(message);
-        if (!transient) break;
-        await new Promise(resolve => setTimeout(resolve, 700 + Math.floor(Math.random() * 500)));
+        const transient = /429|500|502|503|504|RESOURCE_EXHAUSTED|UNAVAILABLE|high demand|overload/i.test(message);
+        if (!transient || attempt === 2) break;
+        await sleep([900, 2_000, 4_000][attempt] + Math.floor(Math.random() * 350));
       }
     }
   }
@@ -289,7 +316,14 @@ La aplicación vinculará después por nombre con su plantilla. Como ayuda, esto
     let provider = 'vercel-ai-gateway';
     let gatewayError: any;
 
-    for (const model of ['google/gemini-2.5-flash', 'anthropic/claude-sonnet-5', 'openai/gpt-5.6-sol']) {
+    const gatewayModels = [
+      'google/gemini-2.5-flash-lite',
+      'google/gemini-2.5-flash',
+      'anthropic/claude-sonnet-5',
+      'openai/gpt-5.6-sol'
+    ];
+
+    for (const model of gatewayModels) {
       try {
         rawText = await callGateway(model, [{ type: 'message', role: 'user', content: gatewayContent }]);
         if (rawText) break;
@@ -336,9 +370,9 @@ La aplicación vinculará después por nombre con su plantilla. Como ayuda, esto
     let message = 'Error al procesar los reconocimientos médicos con IA.';
 
     if (/429|RESOURCE_EXHAUSTED/i.test(raw)) {
-      message = 'Se ha alcanzado temporalmente el límite de solicitudes de IA. Vuelva a intentarlo en unos instantes.';
-    } else if (/503|UNAVAILABLE|high demand|overload/i.test(raw)) {
-      message = 'El servicio de IA está temporalmente saturado. Vuelva a intentarlo en unos segundos.';
+      message = 'El servicio de IA está temporalmente ocupado. Se han agotado los reintentos automáticos; vuelva a intentarlo en unos instantes.';
+    } else if (/500|502|503|504|UNAVAILABLE|high demand|overload/i.test(raw)) {
+      message = 'El servicio de IA está temporalmente ocupado. Se han probado varios proveedores automáticamente; vuelva a intentarlo en unos instantes.';
     } else if (/API key|GEMINI_API_KEY|credential/i.test(raw)) {
       message = 'La configuración del proveedor de IA en el servidor no es válida.';
     } else if (/AI_GATEWAY_UNAVAILABLE|No hay un proveedor de IA disponible/i.test(raw)) {
@@ -347,6 +381,6 @@ La aplicación vinculará después por nombre con su plantilla. Como ayuda, esto
       message = raw;
     }
 
-    return res.status(500).json({ error: message });
+    return res.status(503).json({ error: message, retryable: true });
   }
 }
