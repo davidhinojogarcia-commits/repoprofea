@@ -438,7 +438,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   
   if (people.length === 0) {
     return (
-      <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl h-full flex flex-col items-center justify-center text-center text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+      <div className="ui-surface p-8 h-full flex flex-col items-center justify-center text-center text-slate-800 dark:text-slate-100">
         <input 
           type="file" 
           ref={fileInputRef} 
@@ -579,10 +579,10 @@ export const PersonList: React.FC<PersonListProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 lg:p-8 rounded-2xl shadow-xl text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+    <div className="ui-surface p-4 sm:p-6 lg:p-8 text-slate-800 dark:text-slate-100">
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-800 gap-4">
-        <h2 className="text-[#00548E] dark:text-blue-400 text-2xl font-bold flex items-center">
-          <User className="w-8 h-8 mr-3" /> Registros ({people.length})
+        <h2 className="text-[var(--ui-text)] text-xl sm:text-2xl font-black tracking-tight flex items-center">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white mr-3"><User className="w-5 h-5" /></span> Directorio ({people.length})
         </h2>
         <div className="flex flex-col gap-2 w-full md:w-auto">
           <div className="flex flex-wrap gap-2 justify-end items-center">

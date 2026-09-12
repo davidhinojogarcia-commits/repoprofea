@@ -13,6 +13,7 @@ import { restoreBackupToSupabase } from '../src/services/backupRestoreService';
 import { getDocuments } from '../src/services/databaseService';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { downloadPDF } from '../src/lib/exportUtils';
+import { PageHeader } from './ui/PageHeader';
 import {
   getStoredReporteTecnicoConfig,
   saveStoredReporteTecnicoConfig,
@@ -434,17 +435,13 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-3">
-          <div className="bg-brand-primary p-2 rounded-xl shadow-lg shadow-brand-primary/20">
-            <Settings className="w-8 h-8 text-white" />
-          </div>
-          Configuración de Autocompletado
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
-          Gestione las listas de sugerencias que se guardan automáticamente durante el uso de la aplicación.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Sistema"
+        title="Configuración"
+        description="Catálogos, jornada laboral, recursos de obra y copias de seguridad de PROFEA."
+        icon={<Settings className="w-5 h-5" />}
+        className="mb-8"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Sidebar Tabs */}
@@ -463,7 +460,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
               className={`
                 w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
                 ${activeTab === tab.id 
-                  ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                  ? 'profea-sidebar-item--active text-white' 
                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
                 }
               `}
@@ -490,7 +487,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
             className={`
               w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
               ${activeTab === 'jornada' 
-                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                ? 'profea-sidebar-item--active text-white' 
                 : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
               }
             `}
@@ -511,7 +508,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
             className={`
               w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
               ${activeTab === 'backup' 
-                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                ? 'profea-sidebar-item--active text-white' 
                 : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
               }
             `}

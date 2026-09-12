@@ -350,10 +350,10 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
     <div className="space-y-6">
       
       {/* Top Banner & Title Header */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="ui-surface p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2.5 bg-gradient-to-br from-[#00548E] to-blue-700 text-white rounded-2xl shadow-md">
+            <div className="p-2.5 bg-[var(--ui-gradient-brand)] text-white rounded-xl shadow-sm">
               <CalendarDays className="w-6 h-6" />
             </div>
             <div>
@@ -441,7 +441,7 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
       </div>
 
       {/* Control Bar: Filters & Navigation */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+      <div className="ui-surface p-5 space-y-4">
         
         {/* Month Navigation & Stats Summary Row */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">

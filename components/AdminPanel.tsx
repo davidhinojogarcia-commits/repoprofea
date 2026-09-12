@@ -4,6 +4,7 @@ import {supabase} from '../src/lib/supabase';
 import {createManagedUser,deleteManagedUser,sendManagedPasswordReset,setManagedUserActive,setManagedUserRole,updateManagedPermissions,updateManagedUserProfile} from '../src/lib/functions';
 import {showAppToast} from '../src/lib/appToast';
 import {AdminShareManager} from './AdminShareManager';
+import {PageHeader} from './ui/PageHeader';
 
 type Role='admin'|'user';
 type ModuleName='contratacion'|'trabajadores'|'obras'|'reconocimientos'|'subcontratas'|'citas';
@@ -37,9 +38,9 @@ export function AdminPanel({onClose}:AdminPanelProps){
  const filteredUserLabel=useMemo(()=>users.find(u=>u.id===auditUserFilter),[users,auditUserFilter]);
  const hasAuditFilters=Boolean(auditUserFilter||auditActionFilter||auditResourceFilter||auditDateFrom||auditDateTo);
  return <section className="w-full bg-transparent"><div className="w-full max-w-none mx-auto p-3 sm:p-4 lg:p-6 space-y-5">
-  <header className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-5 py-4 flex items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-brand-primary text-white p-2.5"><ShieldCheck size={22}/></div><div><h1 className="text-2xl font-bold">Administración</h1><p className="text-sm text-slate-500">Usuarios, permisos, compartición y auditoría</p></div></div>{onClose&&<button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={20}/></button>}</header>
-  <nav className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 flex flex-wrap gap-2">{([['users','Usuarios'],['permissions','Permisos'],['audit','Auditoría']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${tab===k?'bg-brand-primary text-white':'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{l}</button>)}</nav>
-  <div className="min-w-0 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-5 lg:p-6 relative min-h-[420px]">{error&&<div role="alert" className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
+  <PageHeader eyebrow="Sistema" title="Administración" description="Usuarios, permisos, compartición y trazabilidad de la actividad." icon={<ShieldCheck size={20}/>} actions={onClose?<button type="button" onClick={onClose} className="ui-button-ghost px-3 py-2" aria-label="Cerrar administración"><X size={20}/></button>:undefined}/>
+  <nav className="ui-surface p-2 flex flex-wrap gap-2">{([['users','Usuarios'],['permissions','Permisos'],['audit','Auditoría']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${tab===k?'bg-brand-primary text-white':'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{l}</button>)}</nav>
+  <div className="ui-surface min-w-0 p-4 sm:p-5 lg:p-6 relative min-h-[420px]">{error&&<div role="alert" className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
    {tab==='users'&&<>
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
      <h2 className="font-semibold flex items-center gap-2"><Users size={18}/>Usuarios</h2>
