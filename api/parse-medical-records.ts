@@ -234,8 +234,14 @@ const localMedicalFallback = async (files: any[], workers: any[]) => {
   for (const file of files) {
     const base64 = String(file?.fileBase64 || file?.base64 || file?.data || '');
     const mimeType = normalizeMime(file?.mimeType || file?.type || 'application/pdf');
-    if (!base64 || mimeType !== 'application/pdf') continue;
-    const text = await extractPdfText(base64);
+    if (!base64) continue;
+
+    // Prefer text/OCR already extracted in the browser. This works for scanned PDFs
+    // and images and avoids depending on an external AI provider for basic parsing.
+    let text = String(file?.extractedText || '').trim();
+    if (normalizeText(text).length < 30 && mimeType === 'application/pdf') {
+      text = await extractPdfText(base64);
+    }
     if (normalizeText(text).length < 30) continue;
     const filename = String(file?.filename || file?.fileName || 'documento.pdf');
     const globalAptitud = parseGlobalAptitud(text);

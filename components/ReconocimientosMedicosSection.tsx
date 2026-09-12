@@ -30,6 +30,7 @@ import {
   Check
 } from 'lucide-react';
 import { Person, MedicalRecordImportItem, getAptitudMedicaInfo } from '../types';
+import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { 
   formatDate, 
   prepareExcelData, 
@@ -375,6 +376,19 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
       // Read all files as base64 concurrently
       const filesPayload = await Promise.all(
         validFiles.map(async (file) => {
+          let extractedText = '';
+          let extractionSource = 'none';
+          try {
+            const extracted = await extractClientDocumentText(
+              file,
+              message => setUploadProgressText(`${file.name}: ${message}`)
+            );
+            extractedText = extracted.text;
+            extractionSource = extracted.source;
+          } catch (error) {
+            console.warn(`[Reconocimientos médicos] OCR local no disponible para ${file.name}:`, error);
+          }
+
           const base64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
@@ -392,15 +406,17 @@ export const ReconocimientosMedicosSection: React.FC<ReconocimientosMedicosSecti
           return {
             filename: file.name,
             mimeType,
-            fileBase64: base64
+            fileBase64: base64,
+            extractedText,
+            extractionSource
           };
         })
       );
 
       setUploadProgressText(
         validFiles.length > 1 
-          ? `Analizando ${validFiles.length} documentos conjuntamente con IA...` 
-          : 'Analizando documento con IA...'
+          ? `Procesando ${validFiles.length} documentos (OCR local + respaldo IA)...` 
+          : 'Procesando documento (OCR local + respaldo IA)...'
       );
 
       // Send payload with both files array and single file fields for backward and forward compatibility
