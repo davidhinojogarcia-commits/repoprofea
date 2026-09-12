@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { APP_TOAST_EVENT, type AppToastDetail } from '../src/lib/appToast';
+import { playMessageSound } from '../src/lib/uiSounds';
 
 export function AppToastHost() {
   const [toast, setToast] = useState<AppToastDetail | null>(null);
@@ -13,6 +14,7 @@ export function AppToastHost() {
 
   useEffect(() => {
     if (!toast) return;
+    playMessageSound(toast.type === 'success' ? 'success' : 'error');
     const id = window.setTimeout(() => setToast(null), 4200);
     return () => window.clearTimeout(id);
   }, [toast]);
