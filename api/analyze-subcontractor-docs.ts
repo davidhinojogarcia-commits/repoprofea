@@ -360,93 +360,60 @@ REGLAS:
 
 async function analyzeOcr(file: InputFile, ocr: OcrDocument, checklist: ChecklistItem[], subcontrata: any): Promise<{ raw: any; provider: Provider }> {
   const prompt = analysisPrompt(file, ocr, checklist, subcontrata);
-  let gatewayError: unknown = new Error('AI_GATEWAY_UNAVAILABLE');
-  for (const model of ['openai/gpt-5.6-sol', 'anthropic/claude-sonnet-5', 'google/gemini-2.5-flash']) {
-    try {
-      const raw = await callGateway(model, prompt, analysisSchema, 'cae_document_assessment', 8_000);
-      return { raw, provider: 'vercel-ai-gateway' };
-    } catch (error) {
-      gatewayError = error;
-      console.warn(`[CAE] Cotejo IA falló con ${model} para ${file.name}:`, error instanceof Error ? error.message : 'error');
-    }
+  try {
+    const raw = await callGateway('openai/gpt-5.6-sol', prompt, analysisSchema, 'cae_document_assessment', 8_000);
+    return { raw, provider: 'vercel-ai-gateway' };
+  } catch (gatewayError) {
+    const key = geminiKey();
+    if (!key) throw gatewayError;
+    const ai = new GoogleGenAI({ apiKey: key });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash', contents: prompt,
+      config: { responseMimeType: 'application/json', responseSchema: analysisSchema as any, temperature: 0 }
+    });
+    return { raw: JSON.parse(String(response.text || '{}')), provider: 'gemini' };
   }
+}
 
-  const key = geminiKey();
-  if (!key) throw gatewayError;
-  const ai = new GoogleGenAI({ apiKey: key }const semanticConcepts: Array<{ keys: string[]; aliases: string[]; strong: string[][] }> = [
-  { keys: ['rea', 'registro empresas acreditadas', 'empresa acreditada'], aliases: ['registro de empresas acreditadas', 'certificado rea', 'inscripcion rea', 'empresa acreditada'], strong: [['registro de empresas acreditadas'], ['certificado', 'inscripcion']] },
-  { keys: ['adhesion', 'plan seguridad', 'pss'], aliases: ['adhesion al plan de seguridad', 'plan de seguridad y salud', 'acta de adhesion'], strong: [['plan de seguridad y salud'], ['adhesion']] },
-  { keys: ['seguro', 'responsabilidad civil', 'rc'], aliases: ['responsabilidad civil', 'poliza de seguro', 'seguro de responsabilidad civil'], strong: [['responsabilidad civil'], ['poliza']] },
-  { keys: ['tgss', 'seguridad social', 'corriente seguridad social'], aliases: ['tesoreria general de la seguridad social', 'corriente en las obligaciones de seguridad social'], strong: [['tesoreria general'], ['seguridad social']] },
-  { keys: ['aeat', 'tributaria', 'hacienda'], aliases: ['agencia estatal de administracion tributaria', 'obligaciones tributarias', 'corriente obligaciones tributarias'], strong: [['agencia estatal'], ['tributaria']] },
-  { keys: ['reconocimiento medico', 'aptitud medica', 'vigilancia salud', 'apto'], aliases: ['aptitud medica', 'apto medico', 'vigilancia de la salud', 'reconocimiento medico'], strong: [['aptitud'], ['medic']] },
-  { keys: ['formacion prl', 'prevencion riesgos', 'curso prl'], aliases: ['formacion en prevencion', 'prevencion de riesgos laborales', 'curso prl', 'tarjeta profesional de la construccion'], strong: [['prevencion'], ['formacion']] },
-  { keys: ['epis', 'equipos proteccion'], aliases: ['entrega de epis', 'equipos de proteccion individual', 'entrega de equipos de proteccion'], strong: [['proteccion individual']] },
-  { keys: ['altas ss', 'rnt', 'rlc', 'trabajadores alta'], aliases: ['informe de trabajadores en alta', 'relacion nominal de trabajadores', 'rnt', 'rlc'], strong: [['trabajadores'], ['seguridad social']] },
-  { keys: ['recurso preventivo'], aliases: ['recurso preventivo', 'designacion de recurso preventivo'], strong: [['recurso preventivo']] },
-  { keys: ['evaluacion riesgos', 'planificacion preventiva'], aliases: ['evaluacion de riesgos', 'planificacion preventiva'], strong: [['evaluacion de riesgos']] },
-  { keys: ['libro subcontratacion'], aliases: ['libro de subcontratacion', 'diligencia de habilitacion'], strong: [['libro de subcontratacion']] },
-  { keys: ['servicio prevencion', 'sprl', 'concierto prevencion'], aliases: ['servicio de prevencion ajeno', 'concierto de prevencion'], strong: [['servicio de prevencion']] },
-  { keys: ['marcado ce', 'declaracion conformidad'], aliases: ['declaracion ce de conformidad', 'marcado ce'], strong: [['ce'], ['conformidad']] },
-  { keys: ['itv', 'maquinaria'], aliases: ['inspeccion tecnica', 'itv', 'seguro de maquinaria'], strong: [['inspeccion tecnica']] }
-];
-
-const conceptsForItem = (item: ChecklistItem) => {
-  const fingerprint = normalizeText(`${item.id} ${item.nombre} ${item.descripcion || ''} ${item.normativa || ''} ${item.categoria || ''}`);
-  return semanticConcepts.filter(concept => concept.keys.some(key => fingerprint.includes(normalizeText(key))));
+const strongDeterministicEvidence = (itemId: string, searchable: string) => {
+  const has = (...terms: string[]) => terms.every(term => searchable.includes(normalizeText(term)));
+  if (itemId === 'rea') return has('registro de empresas acreditadas') && (has('certificado de inscripcion') || has('n inscripcion rea'));
+  if (itemId === 'adhesion_pss') return has('plan de seguridad y salud') && (has('acta de adhesion') || has('se adhiere al plan')) && has('subcontratista');
+  if (itemId === 'cert_tgss') return has('tesoreria general de la seguridad social') && has('corriente en las obligaciones');
+  if (itemId === 'cert_aeat') return has('agencia estatal de administracion tributaria') && has('obligaciones tributarias');
+  if (itemId === 'seguro_rc') return has('responsabilidad civil') && (has('poliza') || has('aseguradora'));
+  if (itemId === 'formacion_prl') return has('prevencion de riesgos laborales') && (has('formacion') || has('curso'));
+  if (itemId === 'aptitud_medica') return has('aptitud') && (has('medica') || has('vigilancia de la salud'));
+  if (itemId === 'entrega_epis') return has('equipos de proteccion individual') || has('entrega de epis');
+  return false;
 };
 
-const strongDeterministicEvidence = (item: ChecklistItem, searchable: string) => {
-  const concepts = conceptsForItem(item);
-  return concepts.some(concept => concept.strong.some(group => group.every(term => searchable.includes(normalizeText(term)))));
+const fallbackAliases: Record<string, string[]> = {
+  rea: ['registro de empresas acreditadas', 'empresa acreditada', 'certificado rea'],
+  libro_subcontratacion: ['libro de subcontratacion', 'diligencia de habilitacion'],
+  adhesion_pss: ['adhesion al plan de seguridad', 'plan de seguridad y salud'],
+  concierto_sprl: ['servicio de prevencion ajeno', 'concierto de prevencion'],
+  cert_tgss: ['tesoreria general de la seguridad social', 'corriente en las obligaciones de seguridad social'],
+  cert_aeat: ['agencia estatal de administracion tributaria', 'corriente de obligaciones tributarias'],
+  seguro_rc: ['responsabilidad civil', 'poliza de seguro'],
+  recurso_preventivo: ['recurso preventivo', 'designacion preventiva'],
+  evaluacion_especifica: ['evaluacion de riesgos', 'planificacion preventiva'],
+  altas_ss: ['informe de trabajadores en alta', 'relacion nominal de trabajadores', 'rnt', 'rlc'],
+  formacion_prl: ['formacion en prevencion', 'curso prl', 'tarjeta profesional de la construccion'],
+  aptitud_medica: ['apto medico', 'aptitud medico laboral', 'vigilancia de la salud'],
+  entrega_epis: ['entrega de equipos de proteccion', 'entrega de epis'],
+  marcado_ce_maquinaria: ['declaracion ce de conformidad', 'marcado ce'],
+  seguro_itv_maquinaria: ['inspeccion tecnica', 'seguro de maquinaria']
 };
 
 function deterministicAssessment(file: InputFile, ocr: OcrDocument, checklist: ChecklistItem[]) {
   const searchable = normalizeText(ocr.plainText);
-  const fileName = normalizeText(file.name);
   const documents = checklist.flatMap(item => {
-    const concepts = conceptsForItem(item);
-    const phrases = [
-      item.nombre,
-      item.descripcion || '',
-      ...concepts.flatMap(concept => concept.aliases)
-    ].map(normalizeText).filter(value => value.length > 4);
-
-    const evidencePhrase = phrases.find(phrase => searchable.includes(phrase));
-    if (!evidencePhrase) return [];
-
-    const strong = strongDeterministicEvidence(item, searchable);
-    const filenameSupports = phrases.some(phrase => phrase.length > 4 && fileName.includes(phrase))
-      || concepts.some(concept => concept.keys.some(key => fileName.includes(normalizeText(key))));
-
-    return [{
-      docId: item.id,
-      state: strong && ocr.legible ? 'entregado' : (ocr.legible ? 'incompleto' : 'pendiente'),
-      issuedDate: '',
-      expiryDate: '',
-      company: '',
-      taxId: '',
-      evidence: evidencePhrase,
-      evidencePage: 1,
-      observations: strong
-        ? 'Evidencia textual compatible con este punto del checklist detectada en el contenido del documento.'
-        : filenameSupports
-          ? 'El nombre del archivo orienta el tipo documental, pero la propuesta se basa en coincidencia real dentro del contenido extraído.'
-          : 'Coincidencia textual detectada en el contenido; requiere revisión humana.',
-      confidence: strong ? 'media' : 'baja'
-    }];
-  });
-
-  return {
-    documents,
-    workers: ocr.workers || [],
-    summary: documents.length
-      ? `Se encontraron evidencias para ${documents.length} punto(s) del checklist en este archivo.`
-      : ''
-  };
-}
-
-da; requiere cotejo humano.', confidence: strong ? 'media' : 'baja' }];
+    const phrases = [...(fallbackAliases[item.id] || []), item.nombre].map(normalizeText).filter(value => value.length > 5);
+    const evidence = phrases.find(phrase => searchable.includes(phrase));
+    if (!evidence) return [];
+    const strong = strongDeterministicEvidence(item.id, searchable);
+    return [{ docId: item.id, state: strong && ocr.legible ? 'entregado' : (ocr.legible ? 'incompleto' : 'pendiente'), issuedDate: '', expiryDate: '', company: '', taxId: '', evidence, evidencePage: 1, observations: strong ? 'Evidencia documental fuerte detectada por lectura local/determinista. Requiere confirmación humana antes de aplicar.' : 'Coincidencia textual detectada; requiere cotejo humano.', confidence: strong ? 'media' : 'baja' }];
   });
   return { documents, workers: ocr.workers || [], summary: documents.length ? `Se detectaron ${documents.length} coincidencias textuales que requieren revisión.` : `No se encontró evidencia suficiente en ${file.name}.` };
 }
@@ -540,8 +507,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       allDocuments.push(...validated);
       const workers = [...(Array.isArray(ocr.workers) ? ocr.workers : []), ...(Array.isArray(assessed?.workers) ? assessed.workers : [])];
       allWorkers.push(...workers.map(worker => ({ ...worker, archivoOrigen: file.name })));
-      const fileSummary = String(assessed?.summary || '').trim();
-      if (fileSummary) summaries.push(fileSummary);
+      summaries.push(`${file.name}: ${String(assessed?.summary || ocr.observations || 'analizado')}`);
       if (!ocr.legible && !String(ocr.observations || '').includes('Servicio OCR/IA visual no disponible')) {
         documentosIlegibles.push({ archivo: file.name, motivo: ocr.observations || 'OCR insuficiente.', docRelacionado: validated[0]?.docId || '', confianza: ocr.quality });
       }
@@ -571,9 +537,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return sendJson(res, 200, {
       success: true,
       analysisMode: providers.has('vercel-ai-gateway') ? 'ocr-ai-v2' : providers.has('gemini') ? 'ocr-ai-v2-gemini' : 'deterministic-review',
-      engineVersion: '2.3.0',
+      engineVersion: '2.2.0',
       documentosAnalizados: documents,
-      resumenDiagnostico: summaries.length ? summaries.join(' ') : 'Expediente procesado contra el checklist configurado.',
+      resumenDiagnostico: summaries.join(' | '),
       veredictoAcceso: hasBlockingIssues ? 'CONDICIONADO' : 'APTO',
       relacionFaltantes,
       trabajadoresDetectados: uniqueWorkers,
@@ -586,6 +552,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     console.error('[CAE analysis v2]', error instanceof Error ? error.message : 'error');
     const message = String(error?.message || 'Error procesando la documentación CAE.');
     const clientError = /No se proporcion|máximo|supera|sin nombre|checklist/i.test(message);
-    return sendJson(res, clientError ? 400 : 500, { error: message, engineVersion: '2.3.0' });
+    return sendJson(res, clientError ? 400 : 500, { error: message, engineVersion: '2.2.0' });
   }
 }
