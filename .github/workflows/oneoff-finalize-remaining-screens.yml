@@ -1,0 +1,34 @@
+name: One-off finalize remaining screens
+
+on:
+  push:
+    branches: [refactor-ui-foundation]
+    paths:
+      - '.github/workflows/oneoff-finalize-remaining-screens.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  unify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: refactor-ui-foundation
+      - run: python scripts/finalize_remaining_screens.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: git rm -f .github/workflows/oneoff-finalize-remaining-screens.yml scripts/finalize_remaining_screens.py
+      - run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add components/RegistrationForm.tsx components/PersonListView.tsx components/CalendarioIntegrado.tsx components/GestionCitas.tsx components/Configuracion.tsx components/Papelera.tsx components/AdminPanel.tsx
+          git commit -m "style: unify remaining application screens with institutional UI"
+          git push origin refactor-ui-foundation
