@@ -1,0 +1,39 @@
+name: One-off final PR polish
+
+on:
+  push:
+    branches: [refactor-ui-foundation]
+    paths:
+      - '.github/workflows/oneoff-final-pr-polish.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: refactor-ui-foundation
+      - run: python scripts/final_pr_polish.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: |
+          if grep -R "comparativaTrabajadores\|currentObraWorkers" components/FileUploaderIA.tsx components/SubcontratasSection.tsx App.tsx; then
+            echo "Obsolete principal-workforce CAE comparison reference found"
+            exit 1
+          fi
+      - run: git rm -f .github/workflows/oneoff-final-pr-polish.yml scripts/final_pr_polish.py .github/workflows/validate-ui-refactor.yml
+      - run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add components/FileUploaderIA.tsx components/ChecklistReviewModal.tsx
+          git commit -m "fix: finish CAE personnel review semantics and clean branch CI"
+          git push origin refactor-ui-foundation
