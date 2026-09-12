@@ -21,6 +21,8 @@ import {
 import { formatDate } from '../src/lib/exportUtils';
 import { FileUploaderIA } from './FileUploaderIA';
 import { ChecklistConfigModal } from './ChecklistConfigModal';
+import { PageHeader } from './ui/PageHeader';
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../constants';
 import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/databaseService';
 import { loadSubcontrataSettings, saveSubcontrataSettings } from '../src/services/subcontrataSettingsService';
 
@@ -634,89 +636,75 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
   return (
     <div id="subcontratas-section-container" className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className="p-3 bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-xl shrink-0">
-            <HardHat className="w-8 h-8" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-                Control de Subcontratas de Obra (CAE)
-              </h1>
-              <span className="px-2.5 py-0.5 text-xs font-semibold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-full">
-                Ley 32/2006 & RD 1627/1997
+      <PageHeader
+        eyebrow="Prevención y Coordinación de Actividades Empresariales"
+        title="Control de Subcontratas de Obra (CAE)"
+        description="Expediente documental por empresa, personal y maquinaria, con revisión asistida por IA y validación humana antes de aplicar cambios."
+        icon={<HardHat className="h-5 w-5" />}
+        actions={
+          <>
+            <button
+              id="btn-reporte-consolidado-top"
+              type="button"
+              onClick={() => handleExportConsolidatedPDF()}
+              className={`${BUTTON_SECONDARY} text-xs`}
+              title="Exportar reporte técnico consolidado en PDF de la obra"
+            >
+              <Download className="w-4 h-4" />
+              <span>Reporte Técnico PDF</span>
+            </button>
+
+            <button
+              id="btn-firmas-reporte-top"
+              type="button"
+              onClick={() => setIsFirmasModalOpen(true)}
+              className={`${BUTTON_SECONDARY} text-xs`}
+              title="Configurar las firmas oficiales del reporte técnico"
+            >
+              <FileSignature className="w-4 h-4" />
+              <span>Firmas</span>
+            </button>
+
+            <button
+              id="btn-gestionar-obras-top"
+              type="button"
+              onClick={() => setIsManageObrasModalOpen(true)}
+              className={`${BUTTON_SECONDARY} text-xs`}
+              title="Gestionar catálogo de obras"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Obras</span>
+            </button>
+
+            <button
+              id="btn-configurar-checklist-top"
+              type="button"
+              onClick={() => setIsConfigModalOpen(true)}
+              className={`${BUTTON_SECONDARY} text-xs`}
+              title="Configurar la documentación obligatoria del checklist legal"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>Checklist</span>
+              <span className="ui-status ui-status--info !px-1.5 !py-1 text-[10px]">
+                {checklistTemplate.filter(i => i.obligatorio).length}
               </span>
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Checklist legal de documentación obligatoria por obra, cotejo y verificación automática con Inteligencia Artificial, alertas en rojo de faltantes e informe oficial con sello de Diputación.
-            </p>
-          </div>
-        </div>
+            </button>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
-            id="btn-reporte-consolidado-top"
-            type="button"
-            onClick={() => handleExportConsolidatedPDF()}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
-            title="Exportar reporte técnico consolidado en PDF de la obra con diseño de Diputación"
-          >
-            <Download className="w-4 h-4 text-blue-700 dark:text-blue-400" />
-            <span>Reporte Técnico PDF</span>
-          </button>
-
-          <button
-            id="btn-firmas-reporte-top"
-            type="button"
-            onClick={() => setIsFirmasModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
-            title="Configurar firmas oficiales para el reporte técnico (Técnico, Coordinador CSS, Supervisor de obra)"
-          >
-            <FileSignature className="w-4 h-4 text-blue-700 dark:text-blue-400" />
-            <span>Firmas Reporte Técnico</span>
-          </button>
-
-          <button
-            id="btn-gestionar-obras-top"
-            type="button"
-            onClick={() => setIsManageObrasModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
-            title="Gestionar el catálogo de obras (añadir, editar o eliminar obras)"
-          >
-            <Building2 className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-            <span>Gestionar Obras</span>
-          </button>
-
-          <button
-            id="btn-configurar-checklist-top"
-            type="button"
-            onClick={() => setIsConfigModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
-            title="Configurar y editar la lista de documentos obligatorios del checklist legal (Seguro RC, TC1, Certificados de estar al corriente...)"
-          >
-            <SlidersHorizontal className="w-4 h-4 text-blue-700 dark:text-blue-400" />
-            <span className="hidden sm:inline">Configurar Checklist Legal</span>
-            <span className="sm:hidden">Checklist</span>
-            <span className="px-1.5 py-0.5 text-[10px] font-black bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded-md">
-              {checklistTemplate.filter(i => i.obligatorio).length} obligatorios
-            </span>
-          </button>
-
-          <button
-            id="btn-nueva-subcontrata"
-            onClick={() => setIsNewModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium rounded-lg shadow-xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nueva Subcontrata</span>
-          </button>
-        </div>
-      </div>
+            <button
+              id="btn-nueva-subcontrata"
+              type="button"
+              onClick={() => setIsNewModalOpen(true)}
+              className={`${BUTTON_PRIMARY} text-xs`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nueva Subcontrata</span>
+            </button>
+          </>
+        }
+      />
 
       {/* Visual Progress Bar Section for Each Obra */}
-      <div id="progreso-cumplimiento-obras" className="bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 p-5 space-y-4">
+      <div id="progreso-cumplimiento-obras" className="ui-surface p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 rounded-lg">
