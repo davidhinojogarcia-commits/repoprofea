@@ -1,0 +1,32 @@
+name: Apply CAE recognition patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/patch-cae-recognition.py'
+      - '.github/workflows/apply-cae-recognition-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply patch
+        run: python scripts/patch-cae-recognition.py
+      - name: Commit backend fix
+        run: |
+          if git diff --quiet -- api/analyze-subcontractor-docs.ts; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/analyze-subcontractor-docs.ts
+          git commit -m "fix: improve CAE checklist document recognition"
+          git push origin HEAD:main
