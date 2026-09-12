@@ -52,7 +52,7 @@ import {
   getStoredPdfConfig,
   saveStoredPdfConfig
 } from './src/lib/exportUtils';
-import { registerServiceWorker, checkAndTriggerUpcomingAlerts, getNotificationAlertsSummary } from './src/lib/pushNotifications';
+import { checkAndTriggerUpcomingAlerts, getNotificationAlertsSummary } from './src/lib/pushNotifications';
 import { 
   loadDriveBackupConfig, 
   saveDriveBackupConfig, 
@@ -288,11 +288,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('personasPROFEA_autoSaveToDrive', String(autoSaveToDrive));
   }, [autoSaveToDrive]);
-
-  // Register Service Worker on startup
-  useEffect(() => {
-    registerServiceWorker();
-  }, []);
 
   // Check for upcoming medical appointments and contract ends to trigger background SW alerts
   useEffect(() => {

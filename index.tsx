@@ -21,8 +21,6 @@ if (typeof globalThis !== 'undefined') {
   runtime['handle' + 'GoogleLogout'] ??= async () => undefined;
 }
 
-const App = React.lazy(() => import('./App'));
-
 type RootErrorBoundaryProps = { children: React.ReactNode };
 type RootErrorBoundaryState = { error: Error | null };
 
@@ -40,6 +38,8 @@ class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErro
   }
 }
 
+const App = React.lazy(() => import('./App'));
+
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 
@@ -48,7 +48,7 @@ installButtonSounds();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+    navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).catch((error) => {
       console.warn('No se pudo registrar el service worker de PROFEA:', error);
     });
   });

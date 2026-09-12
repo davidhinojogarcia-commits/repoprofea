@@ -1,13 +1,13 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-cache-v1';
+const CACHE_NAME = 'profea-static-v2';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/favicon.png',
   '/logo.png',
-  '/logo-diputacion-profea.png'
+  '/logo-diputacion-profea.png',
+  '/logo-diputacion-profea.svg',
+  '/logo-diputacion-profea-dark.svg'
 ];
 
 // 1. INSTALACIÓN: Guardar en caché recursos estáticos básicos
@@ -36,36 +36,31 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. ESTRATEGIA DE RED / CACHÉ (Network First con fallback a Caché para resiliencia offline)
+// 3. RED Y CACHÉ
+// La navegación y los bundles versionados siempre salen de la red. Cachear index.html
+// o los assets JS de Vite puede mezclar dos despliegues y provocar el error fatal que
+// desaparece al recargar. Solo conservamos imágenes institucionales estables.
 self.addEventListener('fetch', (event) => {
-  // Ignorar peticiones que no sean GET o que sean de APIs externas/analytics
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
 
-  // Para navegación HTML o activos estáticos
-  event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+  if (event.request.mode === 'navigate' || url.pathname.startsWith('/assets/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  if (STATIC_ASSETS.includes(url.pathname)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)));
         }
-        return networkResponse;
-      })
-      .catch(() => {
-        // Fallback a la caché si no hay conexión a internet
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-        });
-      })
-  );
+        return response;
+      }))
+    );
+  }
 });
 
 // 4. EVENTO PUSH: Manejar notificaciones enviadas desde el servidor o trigger push

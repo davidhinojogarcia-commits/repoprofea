@@ -157,17 +157,17 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print">
-      <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col my-8 max-h-[90vh]">
+    <div className="profea-notifications-overlay fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print" role="dialog" aria-modal="true" aria-labelledby="profea-notifications-title">
+      <div className="profea-notifications-dialog relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col my-8 max-h-[90vh]">
         
         {/* Header Modal */}
-        <div className="px-6 py-5 bg-gradient-to-r from-slate-900 via-[#00548E] to-slate-900 text-white flex items-center justify-between shrink-0">
+        <div className="profea-notifications-header px-6 py-5 bg-gradient-to-r from-slate-900 via-[#00548E] to-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
               <BellRing className="w-6 h-6 text-amber-300 animate-bounce" />
             </div>
             <div>
-              <h3 className="text-lg font-black tracking-wide">Gestión de Notificaciones Push</h3>
+              <h3 id="profea-notifications-title" className="text-lg font-black tracking-wide">Gestión de Notificaciones Push</h3>
               <p className="text-xs text-blue-100 font-medium">Alertas proactivas en navegador para Citas Médicas y Fines de Contrato</p>
             </div>
           </div>
@@ -181,10 +181,10 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar bg-slate-50 dark:bg-slate-950/60">
+        <div className="profea-notifications-body p-6 overflow-y-auto space-y-6 custom-scrollbar bg-slate-50 dark:bg-slate-950/60">
           
           {/* Permission Status Banner */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="profea-notifications-permission bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
               {permission === 'granted' ? (
                 <div className="p-3 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-2xl shrink-0">
@@ -258,7 +258,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
           </div>
 
           {/* Diagnostics Bar */}
-          <div className="bg-slate-100 dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs gap-3">
+          <div className="profea-notifications-diagnostics bg-slate-100 dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs gap-3">
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium">
               <ShieldCheck className="w-4 h-4 text-brand-primary dark:text-blue-400 shrink-0" />
               <span>
@@ -278,7 +278,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
           </div>
 
           {/* Preferences Section */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <div className="profea-notifications-preferences bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
             <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
               Configuración de Alertas Proactivas
@@ -287,7 +287,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               
               {/* Citas Vencidas Switch */}
-              <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
+              <label className="profea-notifications-option flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-lg">
                     <AlertTriangle className="w-4 h-4" />
@@ -306,7 +306,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
               </label>
 
               {/* Citas Hoy y Mañana Switch */}
-              <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
+              <label className="profea-notifications-option flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-lg">
                     <Calendar className="w-4 h-4" />
@@ -325,7 +325,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
               </label>
 
               {/* Contratos Vencidos Switch */}
-              <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
+              <label className="profea-notifications-option flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-lg">
                     <FileText className="w-4 h-4" />
@@ -344,7 +344,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
               </label>
 
               {/* Contratos Próximos Switch */}
-              <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
+              <label className="profea-notifications-option flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/80 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-lg">
                     <Clock className="w-4 h-4" />
@@ -697,7 +697,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div className="profea-notifications-footer px-6 py-4 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <span className="text-[11px] text-slate-500 font-medium">
             Sistema PROFEA · Notificaciones Web Integradas con Service Worker
           </span>

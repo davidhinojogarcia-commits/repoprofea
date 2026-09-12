@@ -63,7 +63,8 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
   try {
     const registration = await navigator.serviceWorker.register('/service-worker.js', {
-      scope: '/'
+      scope: '/',
+      updateViaCache: 'none'
     });
     console.log('[SW] Service Worker registrado exitosamente con scope:', registration.scope);
     
