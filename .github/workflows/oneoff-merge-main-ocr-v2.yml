@@ -1,0 +1,48 @@
+name: One-off merge main OCR v2
+
+on:
+  push:
+    branches: [refactor-ui-foundation]
+    paths:
+      - '.github/workflows/oneoff-merge-main-ocr-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: refactor-ui-foundation
+          fetch-depth: 0
+      - run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main || true
+          if git diff --name-only --diff-filter=U | grep -q '^api/analyze-subcontractor-docs.ts$'; then
+            git checkout --theirs api/analyze-subcontractor-docs.ts
+            git add api/analyze-subcontractor-docs.ts
+          fi
+          unresolved=$(git diff --name-only --diff-filter=U)
+          if [ -n "$unresolved" ]; then
+            echo "Unresolved merge conflicts:"
+            echo "$unresolved"
+            exit 1
+          fi
+      - run: python scripts/merge_main_ocr_v2.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: git rm -f .github/workflows/oneoff-merge-main-ocr-v2.yml scripts/merge_main_ocr_v2.py
+      - run: |
+          git add api/analyze-subcontractor-docs.ts
+          git commit -m "merge: integrate OCR-first CAE v2 into UI refactor"
+          git push origin refactor-ui-foundation
