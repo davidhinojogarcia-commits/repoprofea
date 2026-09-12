@@ -1,0 +1,43 @@
+name: One-off CAE worker matrix refinement
+
+on:
+  push:
+    branches: [wip-cae-worker-matrix-3]
+    paths:
+      - '.github/workflows/oneoff-cae-worker-matrix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: wip-cae-worker-matrix-3
+
+      - name: Apply CAE worker-document matrix
+        run: python scripts/refine_cae_worker_matrix.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build validation only
+        run: npm run build
+
+      - name: Clean one-off files
+        run: git rm -f .github/workflows/oneoff-cae-worker-matrix.yml scripts/refine_cae_worker_matrix.py
+
+      - name: Commit validated changes
+        run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add api/analyze-subcontractor-docs.ts components/FileUploaderIA.tsx
+          git commit -m "feat: interrelate CAE evidence by worker and checklist [skip ci]"
+          git push origin wip-cae-worker-matrix-3
