@@ -17,6 +17,7 @@ import {
 import { getSubcontrataCompliance } from '../src/lib/subcontratasDefaults';
 import { ChecklistReviewModal, ProposedChecklistChange } from './ChecklistReviewModal';
 import { notifyDatabaseSync } from '../src/lib/syncNotifier';
+import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 
 interface FileUploaderIAProps {
   subcontrata: Subcontratista;
@@ -138,12 +139,27 @@ export const FileUploaderIA: React.FC<FileUploaderIAProps> = ({
     setLastAnalysisResults(null);
 
     try {
-      const convertedFiles = await Promise.all(selectedFiles.map(file => new Promise<{ name: string; type: string; base64: string }>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve({ name: file.name, type: file.type || 'application/octet-stream', base64: reader.result as string });
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      })));
+      const convertedFiles = [];
+      for (let fileIndex = 0; fileIndex < selectedFiles.length; fileIndex += 1) {
+        const file = selectedFiles[fileIndex];
+        setAnalysisProgress(`Preparando ${fileIndex + 1}/${selectedFiles.length}: ${file.name}…`);
+        let extractedText = '';
+        let extractionSource = 'none';
+        try {
+          const extracted = await extractClientDocumentText(file, message => setAnalysisProgress(`${file.name}: ${message}`));
+          extractedText = extracted.text;
+          extractionSource = extracted.source;
+        } catch (error) {
+          console.warn(`[CAE] Extracción local no disponible para ${file.name}:`, error);
+        }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        convertedFiles.push({ name: file.name, type: file.type || 'application/octet-stream', base64, extractedText, extractionSource });
+      }
 
       const aggregatedDocs: SubcontrataDocAnalysisResult[] = [];
       const aggregatedIllegible: DocumentoIlegibleAlerta[] = [];

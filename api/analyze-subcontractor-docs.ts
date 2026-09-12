@@ -15,7 +15,7 @@ type ChecklistItem = {
   mesesValidez?: number;
 };
 
-type InputFile = { name: string; type?: string; base64: string };
+type InputFile = { name: string; type?: string; base64: string; extractedText?: string; extractionSource?: string };
 type Confidence = 'alta' | 'media' | 'baja';
 type DocumentState = 'pendiente' | 'entregado' | 'caducado' | 'incompleto' | 'no_aplica';
 
@@ -184,6 +184,10 @@ async function extractPdfNativeText(buffer: Buffer): Promise<string> {
 }
 
 async function extractNativeText(file: InputFile): Promise<string> {
+  const clientText = String(file.extractedText || '').trim();
+  if (normalizeText(clientText).length >= 40) {
+    return clientText.slice(0, MAX_NATIVE_TEXT);
+  }
   const { data } = splitDataUrl(file.base64, file.type || 'application/octet-stream');
   const buffer = Buffer.from(data, 'base64');
   const lower = file.name.toLowerCase();
@@ -371,6 +375,19 @@ async function analyzeOcr(file: InputFile, ocr: OcrDocument, checklist: Checklis
   }
 }
 
+const strongDeterministicEvidence = (itemId: string, searchable: string) => {
+  const has = (...terms: string[]) => terms.every(term => searchable.includes(normalizeText(term)));
+  if (itemId === 'rea') return has('registro de empresas acreditadas') && (has('certificado de inscripcion') || has('n inscripcion rea'));
+  if (itemId === 'adhesion_pss') return has('plan de seguridad y salud') && (has('acta de adhesion') || has('se adhiere al plan')) && has('subcontratista');
+  if (itemId === 'cert_tgss') return has('tesoreria general de la seguridad social') && has('corriente en las obligaciones');
+  if (itemId === 'cert_aeat') return has('agencia estatal de administracion tributaria') && has('obligaciones tributarias');
+  if (itemId === 'seguro_rc') return has('responsabilidad civil') && (has('poliza') || has('aseguradora'));
+  if (itemId === 'formacion_prl') return has('prevencion de riesgos laborales') && (has('formacion') || has('curso'));
+  if (itemId === 'aptitud_medica') return has('aptitud') && (has('medica') || has('vigilancia de la salud'));
+  if (itemId === 'entrega_epis') return has('equipos de proteccion individual') || has('entrega de epis');
+  return false;
+};
+
 const fallbackAliases: Record<string, string[]> = {
   rea: ['registro de empresas acreditadas', 'empresa acreditada', 'certificado rea'],
   libro_subcontratacion: ['libro de subcontratacion', 'diligencia de habilitacion'],
@@ -395,7 +412,8 @@ function deterministicAssessment(file: InputFile, ocr: OcrDocument, checklist: C
     const phrases = [...(fallbackAliases[item.id] || []), item.nombre].map(normalizeText).filter(value => value.length > 5);
     const evidence = phrases.find(phrase => searchable.includes(phrase));
     if (!evidence) return [];
-    return [{ docId: item.id, state: ocr.legible ? 'incompleto' : 'pendiente', issuedDate: '', expiryDate: '', company: '', taxId: '', evidence, evidencePage: 0, observations: 'Coincidencia textual detectada; requiere cotejo humano.', confidence: 'baja' }];
+    const strong = strongDeterministicEvidence(item.id, searchable);
+    return [{ docId: item.id, state: strong && ocr.legible ? 'entregado' : (ocr.legible ? 'incompleto' : 'pendiente'), issuedDate: '', expiryDate: '', company: '', taxId: '', evidence, evidencePage: 1, observations: strong ? 'Evidencia documental fuerte detectada por lectura local/determinista. Requiere confirmación humana antes de aplicar.' : 'Coincidencia textual detectada; requiere cotejo humano.', confidence: strong ? 'media' : 'baja' }];
   });
   return { documents, workers: ocr.workers || [], summary: documents.length ? `Se detectaron ${documents.length} coincidencias textuales que requieren revisión.` : `No se encontró evidencia suficiente en ${file.name}.` };
 }
@@ -468,7 +486,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         providers.add(ocrResult.provider);
       } catch (error) {
         console.warn(`[CAE] OCR no disponible para ${file.name}:`, error instanceof Error ? error.message : 'error');
-        ocr = normalizeOcr({ legible: false, quality: 'baja', pageCount: 1, plainText: nativeText, observations: 'No se pudo completar el OCR visual.', dates: [], identifiers: [], workers: [], signatures: [], stamps: [] });
+        const hasLocalText = normalizeText(nativeText).length >= 40;
+        ocr = normalizeOcr({ legible: hasLocalText, quality: hasLocalText ? 'media' : 'baja', pageCount: 1, plainText: nativeText, observations: hasLocalText ? 'Texto recuperado localmente; el servicio OCR/IA visual no respondió.' : 'Servicio OCR/IA visual no disponible para este archivo. No se infiere que el documento sea borroso.', dates: [], identifiers: [], workers: [], signatures: [], stamps: [] });
         providers.add('deterministic');
       }
 
@@ -489,7 +508,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const workers = [...(Array.isArray(ocr.workers) ? ocr.workers : []), ...(Array.isArray(assessed?.workers) ? assessed.workers : [])];
       allWorkers.push(...workers.map(worker => ({ ...worker, archivoOrigen: file.name })));
       summaries.push(`${file.name}: ${String(assessed?.summary || ocr.observations || 'analizado')}`);
-      if (!ocr.legible) documentosIlegibles.push({ archivo: file.name, motivo: ocr.observations || 'OCR insuficiente.', docRelacionado: validated[0]?.docId || '', confianza: ocr.quality });
+      if (!ocr.legible && !String(ocr.observations || '').includes('Servicio OCR/IA visual no disponible')) {
+        documentosIlegibles.push({ archivo: file.name, motivo: ocr.observations || 'OCR insuficiente.', docRelacionado: validated[0]?.docId || '', confianza: ocr.quality });
+      }
     }
 
     const bestByDocument = new Map<string, AnalysisItem>();
@@ -516,7 +537,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return sendJson(res, 200, {
       success: true,
       analysisMode: providers.has('vercel-ai-gateway') ? 'ocr-ai-v2' : providers.has('gemini') ? 'ocr-ai-v2-gemini' : 'deterministic-review',
-      engineVersion: '2.1.0',
+      engineVersion: '2.2.0',
       documentosAnalizados: documents,
       resumenDiagnostico: summaries.join(' | '),
       veredictoAcceso: hasBlockingIssues ? 'CONDICIONADO' : 'APTO',
@@ -531,6 +552,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     console.error('[CAE analysis v2]', error instanceof Error ? error.message : 'error');
     const message = String(error?.message || 'Error procesando la documentación CAE.');
     const clientError = /No se proporcion|máximo|supera|sin nombre|checklist/i.test(message);
-    return sendJson(res, clientError ? 400 : 500, { error: message, engineVersion: '2.1.0' });
+    return sendJson(res, clientError ? 400 : 500, { error: message, engineVersion: '2.2.0' });
   }
 }

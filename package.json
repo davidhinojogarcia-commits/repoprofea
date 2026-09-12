@@ -24,7 +24,8 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "recharts": "^3.10.1"
+    "recharts": "^3.10.1",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
