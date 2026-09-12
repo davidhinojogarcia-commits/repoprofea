@@ -1956,73 +1956,22 @@ function App() {
           />
           
           {activeView === 'dashboard' && (
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-              {/* Left Column: Form */}
-              <div className="xl:col-span-5">
-                 <RegistrationForm 
-                   onRegister={handleRegister} 
-                   savedObras={savedObras} 
-                   savedLugares={savedLugares} 
-                   savedSitios={savedSitios} 
-                   savedTelefonos={savedTelefonos}
-                   savedCategorias={savedCategorias}
-                   people={visiblePeople}
-                 />
-              </div>
-
-              {/* Right Column: Stats & List */}
-              <div className="xl:col-span-7 space-y-8 xl:sticky xl:top-8 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto custom-scrollbar xl:pr-2 self-start">
-                <Stats 
-                  stats={stats} 
-                  filterMode={statsFilterMode}
-                  setFilterMode={setStatsFilterMode}
-                  startDate={statsStartDate}
-                  setStartDate={setStatsStartDate}
-                  endDate={statsEndDate}
-                  setEndDate={setStatsEndDate}
-                  obraFilter={statsObraFilter}
-                  setObraFilter={setStatsObraFilter}
-                  savedObras={savedObras}
-                  onOpenReportModal={() => setIsReportModalOpen(true)}
-                  onExportObraSummary={handleExportObraSummary}
-                  onExportStatsSummaryPDF={handleExportStatsPDF}
-                />
-                <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
-                  <PersonList 
-                    people={visiblePeople} 
-                    onDelete={handleDelete} 
-                    onEdit={handleEdit} 
-                    onDeleteMultiple={handleDeleteMultiple}
-                    onEditMultiple={handleBulkEditStart}
-                    onExport={handleExportExcel} 
-                    onExportPDF={handleExportPDF} 
-                    onExportRRMMExcel={handleExportRRMMExcel}
-                    onExportRRMMPDF={handleExportRRMMPDF}
-                    onExportPRLExcel={handleExportPRLExcel}
-                    onExportPRLPDF={handleExportPRLPDF}
-                    onExportCalzadoExcel={handleExportCalzadoExcel}
-                    onExportCalzadoPDF={handleExportCalzadoPDF}
-                    onEmail={handleEmailFilesWrapped}
-                    onImport={handleImportExcel}
-                    onGenerateIDCard={handleGenerateIDCard}
-                    onExportHistoryPDF={handleGenerateWorkerHistoryPDF}
-                    savedObras={savedObras}
-                    searchTerm={searchTerm}
-                    setSearchTerm={setSearchTerm}
-                    selectedObraFilter={selectedObraFilter}
-                    setSelectedObraFilter={setSelectedObraFilter}
-                    selectedQuincenaFilter={selectedQuincenaFilter}
-                    setSelectedQuincenaFilter={setSelectedQuincenaFilter}
-                    googleToken={googleToken}
-                    onGoogleLogin={handleGoogleLogin}
-                    onToast={(message, type) => setToast({ message, type })}
-                    onUndo={handleUndo}
-                    onRedo={handleRedo}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                  />
-                </div>
-              </div>
+            <div className="max-w-7xl mx-auto">
+              <Stats
+                stats={stats}
+                filterMode={statsFilterMode}
+                setFilterMode={setStatsFilterMode}
+                startDate={statsStartDate}
+                setStartDate={setStatsStartDate}
+                endDate={statsEndDate}
+                setEndDate={setStatsEndDate}
+                obraFilter={statsObraFilter}
+                setObraFilter={setStatsObraFilter}
+                savedObras={savedObras}
+                onOpenReportModal={() => setIsReportModalOpen(true)}
+                onExportObraSummary={handleExportObraSummary}
+                onExportStatsSummaryPDF={handleExportStatsPDF}
+              />
             </div>
           )}
 
