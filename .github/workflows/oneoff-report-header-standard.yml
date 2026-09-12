@@ -1,0 +1,42 @@
+name: One-off report header standard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-report-header-standard.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply report header standard
+        run: python scripts/apply_report_header_standard.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Clean one-off files
+        run: git rm -f .github/workflows/oneoff-report-header-standard.yml scripts/apply_report_header_standard.py
+
+      - name: Commit changes
+        run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add src/lib/exportUtils.ts
+          git commit -m "fix: homogenize periodic and obra report headers"
+          git push origin main
