@@ -2151,7 +2151,6 @@ function App() {
                 savedObras={savedObras}
                 onUpdateSavedObras={setSavedObras}
                 supervisoresDisponibles={supervisoresDisponibles}
-                workers={visiblePeople}
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>

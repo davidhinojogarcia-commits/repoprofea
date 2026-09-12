@@ -7,7 +7,7 @@ import {
   AlertCircle, Phone, Mail, Check, X, Info, BarChart3, SlidersHorizontal,
   FileSignature, Eye, Briefcase
 } from 'lucide-react';
-import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, Person, ReporteTecnicoConfig } from '../types';
+import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, ReporteTecnicoConfig } from '../types';
 import { 
   createNewSubcontratista, 
   getSubcontrataCompliance, 
@@ -29,7 +29,6 @@ import { loadSubcontrataSettings, saveSubcontrataSettings } from '../src/service
 interface SubcontratasSectionProps {
   savedObras: string[];
   supervisoresDisponibles?: string[];
-  workers?: Person[];
   onToast: (message: string, type: 'success' | 'error') => void;
   onUpdateSavedObras?: (newObras: string[]) => void;
 }
@@ -39,7 +38,6 @@ const STORAGE_KEY = 'profea_subcontratas_v1';
 export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   savedObras,
   supervisoresDisponibles = [],
-  workers = [],
   onToast,
   onUpdateSavedObras
 }) => {
@@ -161,15 +159,6 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     if (!selectedSubId) return null;
     return subcontratistas.find(s => s.id === selectedSubId) || null;
   }, [subcontratistas, selectedSubId]);
-
-  // Workers belonging to the active subcontractor's obra
-  const activeObraWorkers = useMemo(() => {
-    const allWorkers = workers || [];
-    if (!activeSubcontrata?.obra) return allWorkers;
-    const cleanSubObra = activeSubcontrata.obra.trim().toLowerCase();
-    const matched = allWorkers.filter(w => (w.obra || '').trim().toLowerCase() === cleanSubObra);
-    return matched.length > 0 ? matched : allWorkers;
-  }, [workers, activeSubcontrata?.obra]);
 
   // Filtered subcontractors by Obra & Search
   const filteredSubcontratistas = useMemo(() => {
@@ -1212,7 +1201,9 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               {/* FileUploaderIA Component: Drag and drop PDFs, AI extraction against legal checklist, and red alert highlighting */}
               <FileUploaderIA
                 subcontrata={activeSubcontrata}
-                currentObraWorkers={activeObraWorkers}
+                // CAE de subcontratas: nunca mezclar la plantilla propia del contratista principal.
+                // El personal de la subcontrata se obtiene únicamente de su documentación aportada.
+                currentObraWorkers={[]}
                 onChecklistUpdate={(updatedChecklist, newEstadoExpediente, summaryText) => {
                   setSubcontratistas(prev => prev.map(s => {
                     if (s.id !== activeSubcontrata.id) return s;
