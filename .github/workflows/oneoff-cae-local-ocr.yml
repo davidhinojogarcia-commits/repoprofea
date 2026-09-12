@@ -36,3 +36,4 @@ jobs:
           git add package.json package-lock.json components/FileUploaderIA.tsx api/analyze-subcontractor-docs.ts src/lib/clientDocumentText.ts
           git commit -m "fix: add local PDF OCR fallback for CAE"
           git push origin main
+# retrigger 2026-09-12
