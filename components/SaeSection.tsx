@@ -39,6 +39,7 @@ type NeedForm = {
   mes: string;
   ano: string;
   categorias: { categoria: string; cantidad: number }[];
+  notas: string;
 };
 
 const emptyNeed: NeedForm = {
@@ -47,6 +48,7 @@ const emptyNeed: NeedForm = {
   mes: '',
   ano: String(new Date().getFullYear()),
   categorias: [{ categoria: '', cantidad: 1 }],
+  notas: '',
 };
 
 const norm = (value: string) => String(value || '')
@@ -79,6 +81,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [reports, setReports] = useState<SaeReport[]>([]);
   const [candidates, setCandidates] = useState<SaeCandidate[]>([]);
   const [needForm, setNeedForm] = useState<NeedForm>(emptyNeed);
+  const [pendingImportedNeeds, setPendingImportedNeeds] = useState<NeedForm[]>([]);
   const [showNeedForm, setShowNeedForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
@@ -159,15 +162,24 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     setProgress('Analizando necesidad de contratación…');
     try {
       const parsed = await parseSaeNeedFile(file, setProgress);
-      setNeedForm({
-        obra: parsed.obra,
-        codigoObra: parsed.codigoObra,
-        mes: parsed.mes,
-        ano: parsed.ano ? String(parsed.ano) : String(new Date().getFullYear()),
-        categorias: parsed.categorias.length ? parsed.categorias : [{ categoria: '', cantidad: 1 }],
-      });
+      const units = parsed.detectedNeeds?.length ? parsed.detectedNeeds : [parsed];
+      const forms: NeedForm[] = units.map(item => ({
+        obra: item.obra,
+        codigoObra: item.codigoObra,
+        mes: item.mes,
+        ano: item.ano ? String(item.ano) : String(new Date().getFullYear()),
+        categorias: item.categorias.length ? item.categorias : [{ categoria: '', cantidad: 1 }],
+        notas: item.notas || '',
+      }));
+      setNeedForm(forms[0]);
+      setPendingImportedNeeds(forms.slice(1));
       setShowNeedForm(true);
-      onToast('Necesidad analizada. Revise los datos antes de confirmar.', 'success');
+      onToast(
+        forms.length > 1
+          ? `${forms.length} necesidades/obras detectadas. Revise y confirme cada una por separado.`
+          : 'Necesidad analizada. Revise los datos antes de confirmar.',
+        'success'
+      );
     } catch (e: any) {
       onToast(e.message || 'No se pudo analizar el documento.', 'error');
     } finally {
@@ -178,7 +190,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
 
   const saveNeed = async () => {
     if (!needForm.obra.trim() || !needForm.mes.trim()) return onToast('Indique obra y mes.', 'error');
-    const validCategories = needForm.categorias.filter(c => c.categoria.trim() && c.cantidad > 0);
+    const validCategories = needForm.categorias.filter(c => c.categoria.trim() && (c.cantidad > 0 || /PENDIENTE/i.test(c.categoria)));
     if (!validCategories.length) return onToast('Añada al menos una categoría y cantidad.', 'error');
     setBusy(true);
     try {
@@ -190,12 +202,21 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         estado: 'Pendiente de candidatos SAE',
         categorias: validCategories.map((c, i) => ({ id: `draft_${i}`, ...c })),
       });
-      setShowNeedForm(false);
-      setNeedForm(emptyNeed);
       setSelectedNeedId(created.id);
       await refresh(created.id);
-      setActiveStep(2);
-      onToast('Necesidad SAE creada correctamente.', 'success');
+      if (pendingImportedNeeds.length) {
+        const [next, ...rest] = pendingImportedNeeds;
+        setNeedForm(next);
+        setPendingImportedNeeds(rest);
+        setShowNeedForm(true);
+        setActiveStep(1);
+        onToast(`Necesidad ${created.codigoObra || created.obra} guardada. Quedan ${rest.length + 1} por revisar del mismo documento.`, 'success');
+      } else {
+        setShowNeedForm(false);
+        setNeedForm(emptyNeed);
+        setActiveStep(2);
+        onToast('Necesidad SAE creada correctamente.', 'success');
+      }
     } catch (e: any) {
       onToast(e.message || 'No se pudo crear la necesidad.', 'error');
     } finally {
@@ -210,6 +231,31 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     try {
       const parsed = await parseSaeReportFile(file, setProgress);
       if (!parsed.candidates.length) throw new Error('No se han reconocido candidatos. Revise que sea un informe de resultado de selección del SAE.');
+
+      const normalizeWorkCode = (value: string) => norm(value).replace(/[.\s-]+/g, '');
+      const expectedWork = normalizeWorkCode(selectedNeed.codigoObra);
+      const detectedWork = normalizeWorkCode(parsed.codigoObra);
+      if (expectedWork && detectedWork && expectedWork !== detectedWork) {
+        throw new Error(`El informe SAE corresponde a la obra ${parsed.codigoObra}, pero la necesidad seleccionada es ${selectedNeed.codigoObra}. Seleccione la necesidad correcta.`);
+      }
+      if (selectedNeed.mes && parsed.mes && norm(selectedNeed.mes) !== norm(parsed.mes)) {
+        throw new Error(`El informe SAE corresponde a ${parsed.mes}, pero la necesidad seleccionada es de ${selectedNeed.mes}.`);
+      }
+      const ignoredCategoryTokens = new Set(['oficial', 'primera', 'segunda', 'quincena', 'construccion', 'edificios', 'obras', 'publicas']);
+      const categoryTokens = (value: string) => norm(value)
+        .replace(/cn\s*\d+/g, ' ')
+        .split(/[^a-z0-9ñ]+/)
+        .filter(token => token.length >= 4 && !ignoredCategoryTokens.has(token));
+      const reportTokens = categoryTokens(parsed.categoria);
+      if (reportTokens.length && selectedNeed.categorias.length) {
+        const compatible = selectedNeed.categorias.some(req => {
+          const requiredTokens = categoryTokens(req.categoria);
+          return requiredTokens.some(token => reportTokens.includes(token) || reportTokens.some(r => r.includes(token) || token.includes(r)));
+        });
+        if (!compatible) {
+          throw new Error(`La categoría detectada en el informe (${parsed.categoria || 'sin categoría'}) no coincide con las categorías solicitadas para esta necesidad.`);
+        }
+      }
       const fileBase64 = await fileToDataUrl(file);
       await createSaeReport(selectedNeed.id, {
         fileName: file.name,
@@ -443,6 +489,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       {showNeedForm && (
         <div className="ui-surface p-5 space-y-4">
           <h2 className="font-black text-lg">Revisión de necesidad de contratación</h2>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
+            <div className="text-[11px] font-black tracking-[0.12em] uppercase text-[#00548E] dark:text-blue-400">Ofertas mano de obra · {needForm.mes || 'Mes'} {needForm.ano || ''}</div>
+            <div className="mt-1 text-base font-black text-slate-900 dark:text-white">{needForm.codigoObra || 'Código obra'}{needForm.obra ? ` — ${needForm.obra}` : ''}</div>
+            {!!pendingImportedNeeds.length && <div className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Hay {pendingImportedNeeds.length} obra(s) más detectadas en este mismo documento pendientes de revisión.</div>}
+          </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <input value={needForm.obra} onChange={e => setNeedForm(f => ({ ...f, obra: e.target.value }))} placeholder="Obra" className="ui-input" />
             <input value={needForm.codigoObra} onChange={e => setNeedForm(f => ({ ...f, codigoObra: e.target.value }))} placeholder="Código obra" className="ui-input" />
@@ -457,6 +508,10 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                 <button onClick={() => setNeedForm(f => ({ ...f, categorias: f.categorias.filter((_, j) => j !== i) }))} className="rounded-xl border border-red-200 text-red-600"><Trash2 className="w-4 h-4 mx-auto" /></button>
               </div>
             ))}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5">Observaciones del modelo de necesidad</label>
+            <textarea value={needForm.notas} onChange={e => setNeedForm(f => ({ ...f, notas: e.target.value }))} rows={2} className="ui-input w-full resize-y" placeholder="Continuidades, prórrogas u observaciones del documento…" />
           </div>
           <div className="flex justify-between gap-3">
             <button onClick={() => setNeedForm(f => ({ ...f, categorias: [...f.categorias, { categoria: '', cantidad: 1 }] }))} className="text-sm font-bold text-[#00548E]">+ Añadir categoría</button>
