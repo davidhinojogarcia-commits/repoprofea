@@ -29,6 +29,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add App.tsx components/Sidebar.tsx
-          git commit -m 'feat(sae): integrate SAE module in main navigation'
+          git add App.tsx components/Sidebar.tsx components/SaeSection.tsx
+          git commit -m 'fix(sae): persist validated SAE integration'
           git push
