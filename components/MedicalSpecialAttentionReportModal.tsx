@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { FileText, Download, X } from 'lucide-react';
 import { Person, getAptitudMedicaInfo } from '../types';
 import { generateMedicalSpecialAttentionPdf, SpecialAttentionColumns } from '../src/lib/medicalSpecialAttentionPdf';
+import { downloadPDF } from '../src/lib/exportUtils';
 
 interface Props {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
   const [mes, setMes] = useState('');
   const [quincena, setQuincena] = useState('');
   const [estado, setEstado] = useState<StatusFilter>('limitados');
+  const [isExporting, setIsExporting] = useState(false);
   const [columns, setColumns] = useState<SpecialAttentionColumns>({ dni: true, obra: true, quincena: true, fecha: true, estado: true, limitaciones: true });
 
   const obras = useMemo<string[]>(() => Array.from(new Set<string>(people.map(p => safe(p.obra)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [people]);
@@ -55,13 +57,29 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
   if (!isOpen) return null;
 
   const toggle = (key: keyof SpecialAttentionColumns) => setColumns(prev => ({ ...prev, [key]: !prev[key] }));
-  const generatePdf = () => generateMedicalSpecialAttentionPdf(rows, {
-    obra,
-    mes,
-    mesLabel: mes ? monthLabel(mes) : '',
-    quincena,
-    estadoLabel: statusLabel(estado),
-  }, columns);
+
+  const generatePdf = async () => {
+    if (!rows.length) {
+      alert('No hay trabajadores que coincidan con los filtros seleccionados.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const { doc, filename } = generateMedicalSpecialAttentionPdf(rows, {
+        obra,
+        mes,
+        mesLabel: mes ? monthLabel(mes) : '',
+        quincena,
+        estadoLabel: statusLabel(estado),
+      }, columns);
+      downloadPDF(doc, filename);
+    } catch (err) {
+      console.error('Error rendering special attention PDF:', err);
+      alert('Ocurrió un error al compilar el informe. Por favor, inténtelo de nuevo.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return <div className="fixed inset-0 z-[120] bg-slate-950/60 p-3 sm:p-6 flex items-center justify-center" role="dialog" aria-modal="true">
     <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
@@ -93,7 +111,7 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2.5 rounded-xl border font-bold text-sm">Cerrar</button>
-          <button onClick={generatePdf} className="px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm inline-flex items-center gap-2"><Download className="w-4 h-4"/>Generar PDF</button>
+          <button disabled={isExporting || !rows.length} onClick={()=>void generatePdf()} className="px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"><Download className="w-4 h-4"/>{isExporting ? 'Generando…' : 'Generar PDF'}</button>
         </div>
       </div>
     </div>
