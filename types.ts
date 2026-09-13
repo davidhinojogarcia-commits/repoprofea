@@ -12,18 +12,17 @@ export interface Person {
   periodoFin: string;
   telefono: string;
   calzado: string;
-  formacion: string; // 'Sí' | 'No'
+  formacion: string;
   lugarFormacion?: string;
   citaDia: string;
   citaHora: string;
   sitioReconocimiento: string;
-  documentacionCompleta: string; // 'Sí' | 'No'
+  documentacionCompleta: string;
   observaciones?: string;
   fechaRegistro: string;
   documentos?: File[]; 
   sincronizadoEnNube?: boolean;
-  necesitaReconocimiento?: string; // 'Sí' | 'No'
-  // Reconocimiento Médico y Aptitud
+  necesitaReconocimiento?: string;
   aptitudMedica?: 'Apto' | 'No Apto' | 'Apto con limitaciones' | 'Pendiente' | string;
   limitacionesAptitud?: string;
   reconocimientoEstado?: 'Apto' | 'No Apto' | 'Apto con Limitación' | 'Pendiente' | string;
@@ -31,8 +30,8 @@ export interface Person {
   reconocimientoValidez?: string;
   reconocimientoLimitaciones?: string;
   reconocimientoObservaciones?: string;
-  ownerId?: string; // ID of user account that owns this worker
-  ownerDisplayName?: string; // Display name of the owner
+  ownerId?: string;
+  ownerDisplayName?: string;
 }
 
 const safeText = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -45,18 +44,11 @@ export const getAptitudMedicaInfo = (p: Person): {
   const rawEstado = safeText(p.aptitudMedica) || safeText(p.reconocimientoEstado) || 'Pendiente';
   const normalized = rawEstado.toLowerCase();
   let estado: 'Apto' | 'No Apto' | 'Apto con limitaciones' | 'Pendiente' = 'Pendiente';
-  
-  if (normalized.includes('limitaci')) {
-    estado = 'Apto con limitaciones';
-  } else if (normalized === 'apto') {
-    estado = 'Apto';
-  } else if (normalized === 'no apto') {
-    estado = 'No Apto';
-  }
-
+  if (normalized.includes('limitaci')) estado = 'Apto con limitaciones';
+  else if (normalized === 'apto') estado = 'Apto';
+  else if (normalized === 'no apto') estado = 'No Apto';
   const limitaciones = safeText(p.limitacionesAptitud) || safeText(p.reconocimientoLimitaciones);
   const validez = safeText(p.reconocimientoValidez) || new Date().getFullYear().toString();
-
   return { estado, limitaciones, validez };
 };
 
@@ -90,10 +82,7 @@ export interface StatsData {
   desgloseObra: { [key: string]: number }; 
 }
 
-export interface DeletedPerson {
-  person: Person;
-  fechaEliminacion: string; // ISO string representing when the person was deleted
-}
+export interface DeletedPerson { person: Person; fechaEliminacion: string; }
 
 export interface PdfCustomConfig {
   headerLine1: string;
@@ -104,10 +93,24 @@ export interface PdfCustomConfig {
   showPageNumbers?: boolean;
 }
 
-// Subcontratas de Obra y CAE (Coordinación de Actividades Empresariales)
 export type SubcontrataDocEstado = 'entregado' | 'pendiente' | 'caducado' | 'incompleto' | 'no_aplica';
 export type SubcontrataDocCategoria = 'empresa' | 'trabajadores' | 'maquinaria';
 export type SubcontrataEstadoExpediente = 'apto' | 'pendiente' | 'denegado' | 'condicionado';
+export type LibroSubcontratacionEstado = 'registrado' | 'no_registrado';
+export type SubcontrataTrabajadorEstadoAcceso = 'autorizado' | 'no_autorizado';
+
+export interface SubcontrataTrabajadorCAE {
+  id: string;
+  nombreApellidos: string;
+  dni: string;
+  puestoTrabajo: string;
+  estadoAcceso: SubcontrataTrabajadorEstadoAcceso;
+  motivosNoAutorizado: string[];
+  documentosAcreditados: string[];
+  archivosOrigen?: string[];
+  confianza?: 'alta' | 'media' | 'baja';
+  confirmadoPorUsuario?: boolean;
+}
 
 export interface SubcontrataDocItem {
   id: string;
@@ -125,6 +128,8 @@ export interface SubcontrataDocItem {
   validezIA?: string;
   esLegible?: boolean;
   solicitarReintento?: boolean;
+  diasValidez?: number;
+  mesesValidez?: number;
 }
 
 export interface Subcontratista {
@@ -146,6 +151,8 @@ export interface Subcontratista {
   fechaRegistro: string;
   fechaActualizacion: string;
   notas?: string;
+  libroSubcontratacionEstado?: LibroSubcontratacionEstado;
+  trabajadoresCae?: SubcontrataTrabajadorCAE[];
 }
 
 export interface SubcontrataDocAnalysisResult {
@@ -190,12 +197,7 @@ export interface WorkerObraComparisonSummary {
   coincidentes: WorkerComparisonItem[];
   noRegistradosEnObra: WorkerComparisonItem[];
   trabajadoresEmpresaPrincipalDetectados?: WorkerComparisonItem[];
-  pendientesDeAcreditar: {
-    id: number;
-    apellidosNombre: string;
-    dni: string;
-    categoria: string;
-  }[];
+  pendientesDeAcreditar: { id: number; apellidosNombre: string; dni: string; categoria: string; }[];
   porcentajeAcreditacion: number;
 }
 
@@ -206,11 +208,7 @@ export interface DocumentoIlegibleAlerta {
   confianza: 'alta' | 'media' | 'baja';
 }
 
-export interface ObraRecursoPreventivo {
-  obra: string;
-  recursoPreventivoNombre: string;
-  recursoPreventivoCategoria: string; // Habitualmente "Encargado de Obra"
-}
+export interface ObraRecursoPreventivo { obra: string; recursoPreventivoNombre: string; recursoPreventivoCategoria: string; }
 
 export interface ReporteTecnicoConfig {
   tecnicoNombre: string;
@@ -228,6 +226,7 @@ export interface SubcontrataAnalysisResponse {
   textoRequerimiento: string;
   comparativaTrabajadores?: WorkerObraComparisonSummary;
   trabajadoresEmpresaPrincipalDetectados?: WorkerComparisonItem[];
+  trabajadoresDetectados?: SubcontrataTrabajadorCAE[];
   alertasCaducidad?: string[];
   documentosIlegibles?: DocumentoIlegibleAlerta[];
   error?: string;
@@ -236,10 +235,10 @@ export interface SubcontrataAnalysisResponse {
 export type UserRole = 'admin' | 'user';
 
 export interface UserAccount {
-  id: string; // Unique identifier (e.g. user ID, email key, or username)
-  username: string; // Login username or email
+  id: string;
+  username: string;
   email: string;
-  password?: string; // Optional password hash/string
+  password?: string;
   displayName: string;
   role: UserRole;
   departamento?: string;
