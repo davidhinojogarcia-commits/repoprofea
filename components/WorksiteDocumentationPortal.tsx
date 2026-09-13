@@ -39,7 +39,7 @@ const formatDate = (value: string) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : safe(value) || '-';
 };
 
-const periodLabelFor = (person: Person) => {
+const periodLabelFor = (person: Person): string => {
   if (safe(person.quincena)) return safe(person.quincena);
   if (safe(person.periodoInicio) || safe(person.periodoFin)) {
     return `${formatDate(person.periodoInicio)} – ${formatDate(person.periodoFin)}`;
@@ -117,7 +117,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     };
   }, [isOpen]);
 
-  const workNames = useMemo(() => {
+  const workNames = useMemo<string[]>(() => {
     const names = new Set<string>();
     workers.forEach(person => { if (safe(person.obra)) names.add(safe(person.obra)); });
     workRows.forEach(row => { if (safe(row.nombre)) names.add(safe(row.nombre)); });
@@ -134,8 +134,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     [workers, selectedWork],
   );
 
-  const periods = useMemo(() => {
-    const values = new Set(selectedWorkWorkers.map(periodLabelFor).filter(Boolean));
+  const periods = useMemo<string[]>(() => {
+    const values = new Set<string>(selectedWorkWorkers.map(periodLabelFor));
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   }, [selectedWorkWorkers]);
 
