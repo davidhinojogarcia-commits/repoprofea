@@ -1,14 +1,18 @@
 import { extractClientDocumentText } from './clientDocumentText';
 
 export type SaeNeedCategoryDraft = { categoria: string; cantidad: number };
-export type SaeNeedDraft = {
+export type SaeNeedUnitDraft = {
   obra: string;
   codigoObra: string;
   mes: string;
   ano: number | null;
   categorias: SaeNeedCategoryDraft[];
+  notas?: string;
+};
+export type SaeNeedDraft = SaeNeedUnitDraft & {
   sourceText: string;
   source: string;
+  detectedNeeds: SaeNeedUnitDraft[];
 };
 
 export type SaeCandidateDraft = {
@@ -71,9 +75,82 @@ function detectWork(text: string) {
   return { codigoObra, obra: explicit?.[1]?.trim() || codigoObra };
 }
 
-export async function parseSaeNeedFile(file: File, onProgress?: (message: string) => void): Promise<SaeNeedDraft> {
-  const extracted = await extractClientDocumentText(file, onProgress);
-  const text = extracted.text || '';
+const compact = (value: string) => String(value || '').replace(/\s+/g, ' ').trim();
+
+function extractOfficialCategories(block: string): SaeNeedCategoryDraft[] {
+  const categories: SaeNeedCategoryDraft[] = [];
+  const regex = /(\d{1,3})\s+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .ºª/\-]{2,80}?)\s*\(\s*CN\s*:\s*(\d{5,10})\s*\)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(block))) {
+    let role = compact(match[2])
+      .replace(/^OFICIAL\s*1[ªºA]?\s*:\s*/i, '')
+      .replace(/^[-–•]+\s*/, '')
+      .trim();
+    if (!role) continue;
+    categories.push({
+      categoria: `Oficial 1ª · ${titleCaseSpanish(role)} · CN ${match[3]}`,
+      cantidad: Number(match[1]),
+    });
+  }
+  return categories;
+}
+
+function extractNeedNotes(block: string): string {
+  const notes: string[] = [];
+  const sentences = block.split(/(?<=\.)\s+|\n+/).map(compact).filter(Boolean);
+  for (const sentence of sentences) {
+    if (/\b(termina|pr[oó]rroga|posible\s+cambio|pendiente)\b/i.test(sentence) && !/quincena\s*:\s*pendiente/i.test(sentence)) {
+      notes.push(sentence.replace(/^[-–•]+\s*/, ''));
+    }
+  }
+  return notes.join(' · ');
+}
+
+function extractStructuredProfeaNeeds(text: string): SaeNeedUnitDraft[] {
+  const flat = text
+    .replace(/\[P[ÁA]GINA\s+\d+\]/gi, ' ')
+    .replace(/\r/g, '\n')
+    .replace(/[\t ]+/g, ' ')
+    .replace(/\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const month = titleCaseSpanish(detectMonth(text));
+  const year = detectYear(text);
+  const out: SaeNeedUnitDraft[] = [];
+  const blockRegex = /\b(\d{5})\s*(GR|EE)\s*[-–]\s*([\s\S]*?)(?=\b\d{5}\s*(?:GR|EE)\s*[-–]|T[ÉE]CNICO\s+DE\s+EJECUCI[ÓO]N|Fdo\.|$)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockRegex.exec(flat))) {
+    const codigoObra = `${match[1]} ${String(match[2]).toUpperCase()}`;
+    const block = compact(match[3]);
+    const obraRaw = block.match(/^([\s\S]*?)(?=(?:[-–]\s*)?1[ªºA]?\s*QUINCENA\s*:)/i)?.[1] || '';
+    const obra = titleCaseSpanish(compact(obraRaw).replace(/[-–\s]+$/, ''));
+    const categorias: SaeNeedCategoryDraft[] = [];
+
+    const q1 = block.match(/1[ªºA]?\s*QUINCENA\s*:\s*(\d{1,3})\s*PEONES?/i);
+    if (q1) categorias.push({ categoria: 'Peones · 1ª Quincena', cantidad: Number(q1[1]) });
+    const q2 = block.match(/2[ªºA]?\s*QUINCENA\s*:\s*(\d{1,3})\s*PEONES?/i);
+    if (q2) categorias.push({ categoria: 'Peones · 2ª Quincena', cantidad: Number(q2[1]) });
+    categorias.push(...extractOfficialCategories(block));
+
+    const pending1 = /1[ªºA]?\s*QUINCENA\s*:\s*PENDIENTE/i.test(block);
+    const pending2 = /2[ªºA]?\s*QUINCENA\s*:\s*PENDIENTE/i.test(block);
+    if (pending1) categorias.push({ categoria: 'Peones · 1ª Quincena · PENDIENTE', cantidad: 0 });
+    if (pending2) categorias.push({ categoria: 'Peones · 2ª Quincena · PENDIENTE', cantidad: 0 });
+
+    out.push({
+      obra: obra || codigoObra,
+      codigoObra,
+      mes: month,
+      ano: year,
+      categorias,
+      notas: extractNeedNotes(block),
+    });
+  }
+  return out;
+}
+
+function extractGenericNeed(text: string): SaeNeedUnitDraft {
   const { obra, codigoObra } = detectWork(text);
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const categories: SaeNeedCategoryDraft[] = [];
@@ -101,8 +178,21 @@ export async function parseSaeNeedFile(file: File, onProgress?: (message: string
     mes: titleCaseSpanish(detectMonth(text)),
     ano: detectYear(text),
     categorias: categories,
+    notas: '',
+  };
+}
+
+export async function parseSaeNeedFile(file: File, onProgress?: (message: string) => void): Promise<SaeNeedDraft> {
+  const extracted = await extractClientDocumentText(file, onProgress);
+  const text = extracted.text || '';
+  const structured = extractStructuredProfeaNeeds(text);
+  const detectedNeeds = structured.length ? structured : [extractGenericNeed(text)];
+  const first = detectedNeeds[0];
+  return {
+    ...first,
     sourceText: text,
     source: extracted.source,
+    detectedNeeds,
   };
 }
 
