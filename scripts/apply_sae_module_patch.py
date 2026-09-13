@@ -43,6 +43,12 @@ sidebar = replace_once(
 )
 sidebar_path.write_text(sidebar, encoding='utf-8')
 
-print('SAE integrado en App.tsx y Sidebar.tsx')
+sae_path = Path('components/SaeSection.tsx')
+sae = sae_path.read_text(encoding='utf-8')
+sae = sae.replace(
+    "await page.render({ canvasContext: ctx, viewport }).promise;",
+    "await page.render({ canvas, canvasContext: ctx, viewport }).promise;",
+)
+sae_path.write_text(sae, encoding='utf-8')
 
-# trigger workflow
+print('SAE integrado en App.tsx y Sidebar.tsx; PDF renderer actualizado')
