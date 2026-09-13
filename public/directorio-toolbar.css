@@ -1,3 +1,5 @@
+@import url('/button-effects.css');
+
 /* Directorio: primera fila de acciones de relación de trabajadores. */
 #directorio-section .directorio-primary-actions::before {
   content: 'RELACIÓN DE TRABAJADORES:';
