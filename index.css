@@ -364,6 +364,11 @@ body.profea-modal-open {
   }
 }
 
+/* Hide the obsolete “Documento oficial / Fichas en Blanco (A4)” badge in the medical appointments banner. */
+#root .bg-\[var\(--ui-gradient-brand\)\] .relative.z-10.flex > .shrink-0.bg-white\/10 {
+  display: none !important;
+}
+
 @media print {
   #root .app-navigation-panel {
     position: static !important;
