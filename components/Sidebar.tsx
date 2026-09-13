@@ -1,6 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
-import { MultiSearchableDropdown } from './MultiSearchableDropdown';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
 import { useAuthShell } from './AuthGate';
 
 export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'administracion';
@@ -30,14 +29,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setIsCollapsed,
   isMobileOpen,
   setIsMobileOpen,
-  searchTerm = '',
-  setSearchTerm = (_: string) => {},
-  selectedObraFilter = ['Todas'],
-  setSelectedObraFilter = (_: string[]) => {},
-  selectedQuincenaFilter = ['Todas'],
-  setSelectedQuincenaFilter = (_: string[]) => {},
-  savedObras = [],
-  uniqueQuincenas = [],
   onOpenScanner,
 }) => {
   const { user, role, signOut, signingOut } = useAuthShell();
@@ -52,13 +43,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const menuGroups: { label: string; items: { id: ViewMode; label: string; icon: React.ElementType }[] }[] = [
     {
-      label: 'Operativa',
+      label: 'Contratación',
       items: [
-        { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
-        { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
-        { id: 'registro', label: 'Nuevo Registro', icon: UserPlus },
         { id: 'sae', label: 'SAE', icon: BriefcaseBusiness },
         { id: 'directorio', label: 'Directorio', icon: Users },
+        { id: 'registro', label: 'Nuevo Registro', icon: UserPlus },
+        { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
+        { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
       ],
     },
     {
@@ -115,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="hidden lg:flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
-            title={isCollapsed ? "Expandir menú" : "Colapsar menú"}
+            title={isCollapsed ? 'Expandir menú' : 'Colapsar menú'}
           >
             {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
@@ -160,50 +151,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           ))}
-
-          <div className={`mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
-            <div className="px-3 mb-4 flex items-center gap-2 text-slate-500 dark:text-slate-400">
-              <Filter className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-wider">Filtros</span>
-            </div>
-
-            <div className="space-y-4 px-1">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-4 w-4 text-slate-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Buscar..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 rounded-lg text-sm focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary dark:text-slate-100 transition-all"
-                />
-              </div>
-
-              <MultiSearchableDropdown
-                options={savedObras}
-                selectedValues={selectedObraFilter}
-                onChange={setSelectedObraFilter}
-                placeholder="Obra: Todas"
-                allLabel="Todas las obras"
-                icon={<MapPin className="w-4 h-4" />}
-                className="!w-full"
-                buttonClassName="!bg-slate-50 dark:!bg-slate-800/50 !border-slate-200 dark:!border-slate-700/80 hover:!bg-slate-100 dark:hover:!bg-slate-800 !py-2 !h-auto"
-              />
-
-              <MultiSearchableDropdown
-                options={uniqueQuincenas}
-                selectedValues={selectedQuincenaFilter}
-                onChange={setSelectedQuincenaFilter}
-                placeholder="Quincena: Todas"
-                allLabel="Todas las quincenas"
-                icon={<Clock className="w-4 h-4" />}
-                className="!w-full"
-                buttonClassName="!bg-slate-50 dark:!bg-slate-800/50 !border-slate-200 dark:!border-slate-700/80 hover:!bg-slate-100 dark:hover:!bg-slate-800 !py-2 !h-auto"
-              />
-            </div>
-          </div>
         </nav>
 
         <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-800/80 no-print">
