@@ -1,0 +1,83 @@
+/* Global tactile 3D feedback for interactive buttons.
+   Uses individual transform properties so existing component transforms/animations are preserved. */
+#root button:not(:disabled),
+#root [role="button"]:not([aria-disabled="true"]) {
+  translate: 0 -1px;
+  scale: 1;
+  box-shadow:
+    0 3px 0 rgba(15, 23, 42, 0.16),
+    0 6px 12px rgba(15, 23, 42, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  transition:
+    translate 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    scale 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 150ms ease,
+    filter 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #root button:not(:disabled):hover,
+  #root [role="button"]:not([aria-disabled="true"]):hover {
+    translate: 0 -2px;
+    scale: 1.012;
+    box-shadow:
+      0 4px 0 rgba(15, 23, 42, 0.15),
+      0 9px 17px rgba(15, 23, 42, 0.13),
+      inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  }
+}
+
+#root button:not(:disabled):active,
+#root [role="button"]:not([aria-disabled="true"]):active {
+  translate: 0 2px;
+  scale: 0.975;
+  box-shadow:
+    0 0 0 rgba(15, 23, 42, 0),
+    0 2px 4px rgba(15, 23, 42, 0.10),
+    inset 0 2px 5px rgba(15, 23, 42, 0.16);
+  filter: brightness(0.96);
+  transition-duration: 65ms;
+}
+
+html.dark #root button:not(:disabled),
+html.dark #root [role="button"]:not([aria-disabled="true"]) {
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.42),
+    0 7px 15px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
+}
+
+html.dark #root button:not(:disabled):active,
+html.dark #root [role="button"]:not([aria-disabled="true"]):active {
+  box-shadow:
+    0 0 0 rgba(0, 0, 0, 0),
+    0 2px 4px rgba(0, 0, 0, 0.22),
+    inset 0 2px 6px rgba(0, 0, 0, 0.30);
+}
+
+#root button:disabled,
+#root [role="button"][aria-disabled="true"] {
+  translate: 0 0;
+  scale: 1;
+}
+
+/* Do not carry interface depth effects into printed/PDF browser output. */
+@media print {
+  #root button,
+  #root [role="button"] {
+    translate: none !important;
+    scale: 1 !important;
+    box-shadow: none !important;
+    filter: none !important;
+  }
+}
+
+/* Keep motion accessibility preferences while preserving immediate press feedback. */
+@media (prefers-reduced-motion: reduce) {
+  #root button,
+  #root [role="button"] {
+    transition-duration: 0.01ms !important;
+  }
+}
