@@ -7,7 +7,8 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:sae": "node --import tsx scripts/test-sae-engine.ts"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
@@ -17,9 +18,11 @@
     "express": "^5.2.1",
     "jspdf": "2.5.1",
     "jspdf-autotable": "3.8.1",
+    "jszip": "3.10.1",
     "lucide-react": "^0.563.0",
     "mammoth": "^1.12.2",
     "motion": "^12.42.0",
+    "pdf-lib": "1.17.1",
     "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
