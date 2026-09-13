@@ -26,10 +26,23 @@ const canvasForPage = async (page: any, scale = 1.7) => {
   canvas.height = Math.ceil(viewport.height);
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('No se pudo crear el lienzo de OCR.');
-  // pdfjs-dist 5.x necesita el elemento canvas de forma explícita. En Safari/WKWebView,
-  // omitirlo puede terminar en un error minificado "undefined is not a function".
   await page.render({ canvas, canvasContext: context, viewport }).promise;
   return canvas;
+};
+
+const textItemsToLines = (items: any[]) => {
+  let text = '';
+  for (const item of items) {
+    const value = typeof item?.str === 'string' ? item.str.trim() : '';
+    if (!value) continue;
+    text += value;
+    text += item?.hasEOL ? '\n' : ' ';
+  }
+  return text
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
 };
 
 export async function extractClientDocumentText(
@@ -51,11 +64,7 @@ export async function extractClientDocumentText(
       onProgress?.(`Leyendo texto del PDF · página ${pageNumber}/${pdf.numPages}…`);
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      const text = (content.items as any[])
-        .map(item => typeof item?.str === 'string' ? item.str : '')
-        .filter(Boolean)
-        .join(' ')
-        .trim();
+      const text = textItemsToLines(content.items as any[]);
       if (text) nativePages.push(`[PÁGINA ${pageNumber}]\n${text}`);
     }
 
