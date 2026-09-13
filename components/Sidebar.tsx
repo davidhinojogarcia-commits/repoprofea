@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files } from 'lucide-react';
 import { useAuthShell } from './AuthGate';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -57,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
+        { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
       ],
     },
     {
@@ -70,6 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleNavClick = (id: ViewMode) => {
     setActiveView(id);
+    window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: id } }));
     setIsMobileOpen(false);
   };
 
@@ -131,6 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <button
                       key={item.id}
+                      data-profea-view={item.id}
                       onClick={() => handleNavClick(item.id)}
                       className={`profea-sidebar-item w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative ${isActive ? 'profea-sidebar-item--active text-white' : 'text-slate-700 dark:text-slate-300'}`}
                       title={isCollapsed && !isMobileOpen ? item.label : undefined}
@@ -179,6 +182,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {role === 'admin' && (
             <button
               type="button"
+              data-profea-view="administracion"
               onClick={() => handleNavClick('administracion')}
               className={`w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition-colors ${activeView === 'administracion' ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20 hover:bg-brand-secondary dark:bg-brand-primary dark:text-white dark:border-brand-primary dark:hover:bg-brand-secondary' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-brand-primary dark:hover:text-blue-400'} ${isCollapsed && !isMobileOpen ? 'lg:h-11 lg:w-11 lg:p-0 lg:mx-auto lg:rounded-full' : ''}`}
               title="Administración"
