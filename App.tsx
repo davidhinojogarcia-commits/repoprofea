@@ -64,6 +64,7 @@ const GestionCitas = lazy(() => import('./components/GestionCitas').then(module 
 const CalendarioIntegrado = lazy(() => import('./components/CalendarioIntegrado').then(module => ({ default: module.CalendarioIntegrado })));
 const SubcontratasSection = lazy(() => import('./components/SubcontratasSection').then(module => ({ default: module.SubcontratasSection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
+const SaeSection = lazy(() => import('./components/SaeSection'));
 
 const ViewLoadingFallback = () => (
   <div className="ui-surface p-8 min-h-48 flex items-center justify-center">
@@ -339,7 +340,7 @@ function App() {
 
   const uploadToGoogleDrive = async (blob: Blob, filename: string, showToastOnSuccess = true) => {
     if (!googleToken || !autoSaveToDrive) {
-      return;
+      return false;
     }
     
     try {
@@ -831,6 +832,7 @@ function App() {
     setPeopleWithHistory(prev => [...prev, newPerson]);
     updateAutocompleteLists(finalPersonData);
     setToast({ message: 'Registro guardado correctamente', type: 'success' });
+    return true;
   };
 
   const commitAddMultipleWorkers = async (
@@ -2175,6 +2177,20 @@ function App() {
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>
+            </Suspense>
+          )}
+
+          {activeView === 'sae' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <div className="w-full max-w-[1600px] mx-auto min-w-0">
+                <SaeSection
+                  people={people}
+                  savedObras={savedObras}
+                  savedCategorias={savedCategorias}
+                  onRegister={handleRegister}
+                  onToast={(message, type) => setToast({ message, type })}
+                />
+              </div>
             </Suspense>
           )}
 
