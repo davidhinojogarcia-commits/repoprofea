@@ -44,3 +44,5 @@ sidebar = replace_once(
 sidebar_path.write_text(sidebar, encoding='utf-8')
 
 print('SAE integrado en App.tsx y Sidebar.tsx')
+
+# trigger workflow
