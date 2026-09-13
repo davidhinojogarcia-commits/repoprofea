@@ -69,8 +69,12 @@ function detectYear(text: string): number | null {
 
 function detectWork(text: string) {
   const norm = normalizeSaeText(text);
+  const explicitCode = norm.match(/\b(\d{5})\s*(G\.?\s*R\.?|E\.?\s*E\.?)\b/i);
+  const normalizedCode = explicitCode
+    ? `${explicitCode[1]} ${explicitCode[2].replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`
+    : '';
   const obraMatch = norm.match(/\bOBRA\s+([0-9A-Z.-]+(?:\s+[A-Z.]{1,5})?)/i);
-  const codigoObra = obraMatch?.[1]?.trim() || '';
+  const codigoObra = normalizedCode || obraMatch?.[1]?.trim() || '';
   const explicit = text.match(/(?:OBRA|PROYECTO)\s*[:\-]?\s*([^\n\r]{3,80})/i);
   return { codigoObra, obra: explicit?.[1]?.trim() || codigoObra };
 }
