@@ -1,0 +1,34 @@
+name: Apply SAE module integration
+
+on:
+  push:
+    paths:
+      - 'scripts/apply_sae_module_patch.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Apply integration patch
+        run: python3 scripts/apply_sae_module_patch.py
+      - name: Validate TypeScript
+        run: npm ci && npm run lint
+      - name: Commit integration
+        run: |
+          if git diff --quiet; then
+            echo 'No changes needed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add App.tsx components/Sidebar.tsx
+          git commit -m 'feat(sae): integrate SAE module in main navigation'
+          git push
