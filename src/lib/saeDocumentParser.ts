@@ -1,4 +1,4 @@
-import { extractClientDocumentText } from './clientDocumentText';
+import { extractClientDocumentText, readPdfTextContent } from './clientDocumentText';
 
 export type SaeNeedCategoryDraft = { categoria: string; cantidad: number };
 export type SaeNeedUnitDraft = {
@@ -246,8 +246,8 @@ async function enrichCoordinatesFromPdf(file: File, candidates: SaeCandidateDraf
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const viewport = page.getViewport({ scale: 1 });
-      const content = await page.getTextContent();
-      const items = (content.items as any[]).filter(i => typeof i?.str === 'string' && i.str.trim());
+      const content = await readPdfTextContent(page);
+      const items = content.items.filter(i => typeof i?.str === 'string' && i.str.trim());
       for (let i = 0; i < items.length; i += 1) {
         const item = items[i];
         const order = Number(String(item.str).trim());
