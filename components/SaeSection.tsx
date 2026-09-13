@@ -194,7 +194,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         const viewport = page.getViewport({ scale: 2 });
         const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
         const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('No se pudo preparar la vista del PDF.');
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
         const widthMm = viewport.width * 25.4 / (72 * 2); const heightMm = viewport.height * 25.4 / (72 * 2);
         if (!doc) doc = new jsPDF({ orientation: widthMm > heightMm ? 'landscape' : 'portrait', unit: 'mm', format: [widthMm, heightMm] });
         else doc.addPage([widthMm, heightMm], widthMm > heightMm ? 'landscape' : 'portrait');
