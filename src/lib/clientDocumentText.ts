@@ -30,6 +30,34 @@ const canvasForPage = async (page: any, scale = 1.7) => {
   return canvas;
 };
 
+// PDF.js 6 recorre ReadableStream con for-await dentro de getTextContent().
+// Safari/WebKit 26 implementa getReader(), pero no el iterador asíncrono del stream.
+// Consumir el reader directamente evita "undefined is not a function" en iPhone/iPad.
+export const readPdfTextContent = async (page: any) => {
+  const stream = page.streamTextContent();
+  const reader = stream.getReader();
+  const content = {
+    items: [] as any[],
+    styles: Object.create(null) as Record<string, unknown>,
+    lang: null as string | null,
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (!content.lang && value.lang) content.lang = value.lang;
+      if (value.styles) Object.assign(content.styles, value.styles);
+      if (Array.isArray(value.items)) content.items.push(...value.items);
+    }
+  } finally {
+    if (typeof reader.releaseLock === 'function') reader.releaseLock();
+  }
+
+  return content;
+};
+
 const textItemsToLines = (items: any[]) => {
   let text = '';
   for (const item of items) {
@@ -63,8 +91,8 @@ export async function extractClientDocumentText(
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       onProgress?.(`Leyendo texto del PDF · página ${pageNumber}/${pdf.numPages}…`);
       const page = await pdf.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const text = textItemsToLines(content.items as any[]);
+      const content = await readPdfTextContent(page);
+      const text = textItemsToLines(content.items);
       if (text) nativePages.push(`[PÁGINA ${pageNumber}]\n${text}`);
     }
 
