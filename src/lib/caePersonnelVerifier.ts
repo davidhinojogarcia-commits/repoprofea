@@ -56,7 +56,7 @@ export const verifySubcontractorPersonnel = (rawWorkers: any[], files: CaeTextFi
   for (const dni of itaRoster) {
     const raw = findRawWorker(Array.isArray(rawWorkers) ? rawWorkers : [], dni) || {};
     const ev = evidence.get(dni) || { kinds: new Set<PersonalKind>(['altas_ss']), files: new Set<string>() };
-    const docs = [...ev.kinds].filter(kind => kind !== 'dni_nie');
+    const docs: PersonalKind[] = [...ev.kinds].filter(kind => kind !== 'dni_nie');
     const motivos: string[] = [];
 
     for (const id of required) {
