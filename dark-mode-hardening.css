@@ -286,3 +286,92 @@ html.dark body {
     box-shadow: 0 8px 24px rgba(0,0,0,.18) !important;
   }
 }
+
+
+/* Directorio mobile action layout */
+#directorio-section .directorio-primary-actions button,
+#directorio-section .directorio-export-row button {
+  min-width: 0;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  text-wrap: balance;
+}
+
+@media (max-width: 767px) {
+  #directorio-section {
+    padding: 1rem !important;
+    overflow: hidden;
+  }
+
+  #directorio-section > div:first-child {
+    align-items: stretch !important;
+  }
+
+  #directorio-section h2 {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  #directorio-section .directorio-primary-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: .65rem !important;
+    justify-content: stretch !important;
+  }
+
+  #directorio-section .directorio-primary-actions > button {
+    width: 100% !important;
+    min-height: 3rem;
+    padding: .65rem .75rem !important;
+    font-size: .82rem !important;
+    line-height: 1.05rem !important;
+    border-radius: .9rem !important;
+  }
+
+  #directorio-section .directorio-import-button {
+    grid-column: 1 / -1;
+  }
+
+  #directorio-section .directorio-export-groups {
+    width: 100%;
+    padding-top: .9rem !important;
+    gap: .75rem !important;
+  }
+
+  #directorio-section .directorio-export-groups > div {
+    width: 100% !important;
+  }
+
+  #directorio-section .directorio-export-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: .55rem !important;
+    align-items: stretch !important;
+  }
+
+  #directorio-section .directorio-export-row > span {
+    grid-column: 1 / -1;
+    margin: 0 0 .05rem 0 !important;
+    font-size: .68rem !important;
+    line-height: .9rem !important;
+    letter-spacing: .035em;
+  }
+
+  #directorio-section .directorio-export-row > button {
+    width: 100% !important;
+    min-height: 2.8rem;
+    padding: .55rem .65rem !important;
+    font-size: .72rem !important;
+    line-height: .95rem !important;
+    border-radius: .8rem !important;
+  }
+
+  #directorio-section .directorio-primary-actions svg,
+  #directorio-section .directorio-export-row svg {
+    flex: 0 0 auto;
+  }
+}
