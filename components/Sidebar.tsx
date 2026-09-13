@@ -1,9 +1,10 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, ShieldCheck, LogOut, Loader2, BriefcaseBusiness } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { useAuthShell } from './AuthGate';
+import { supabase } from '../src/lib/supabase';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'sae' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -41,6 +42,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenScanner,
 }) => {
   const { user, role, signOut, signingOut } = useAuthShell();
+  const [canViewSae, setCanViewSae] = React.useState(role === 'admin');
+  React.useEffect(() => {
+    if (role === 'admin') { setCanViewSae(true); return; }
+    let active = true;
+    void supabase.query('user_permissions', { query: `select=modules&user_id=eq.${encodeURIComponent(user.id)}&limit=1` })
+      .then(rows => { if (active) setCanViewSae(Boolean(rows?.[0]?.modules?.sae?.read)); })
+      .catch(() => { if (active) setCanViewSae(false); });
+    return () => { active = false; };
+  }, [role, user.id]);
   const metadata = (user.user_metadata || {}) as Record<string, any>;
   const signedInName = [metadata.nombre, metadata.apellidos].filter(Boolean).join(' ').trim() || user.email || 'Usuario';
   const signedInInitials = signedInName
@@ -58,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
         { id: 'registro', label: 'Nuevo Registro', icon: UserPlus },
         { id: 'directorio', label: 'Directorio', icon: Users },
+        ...(canViewSae ? [{ id: 'sae' as ViewMode, label: 'SAE', icon: BriefcaseBusiness }] : []),
       ],
     },
     {
