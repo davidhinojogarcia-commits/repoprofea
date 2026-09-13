@@ -4,20 +4,19 @@ import {supabase} from '../src/lib/supabase';
 import {createManagedUser,deleteManagedUser,sendManagedPasswordReset,setManagedUserActive,setManagedUserRole,updateManagedPermissions,updateManagedUserProfile} from '../src/lib/functions';
 import {showAppToast} from '../src/lib/appToast';
 import {AdminShareManager} from './AdminShareManager';
-import {PageHeader} from './ui/PageHeader';
 
 type Role='admin'|'user';
-type ModuleName='contratacion'|'trabajadores'|'obras'|'reconocimientos'|'subcontratas'|'citas';
+type ModuleName='contratacion'|'trabajadores'|'obras'|'reconocimientos'|'subcontratas'|'citas'|'sae';
 type PermissionSet=Record<'read'|'create'|'update'|'delete',boolean>;
 type Modules=Record<ModuleName,PermissionSet>;
 interface AdminPanelProps{onClose:()=>void;}
 interface UserForm{nombre:string;apellidos:string;email:string;telefono:string;password:string;role:Role;}
-const moduleLabels:Record<ModuleName,string>={contratacion:'Contratación',trabajadores:'Trabajadores',obras:'Obras',reconocimientos:'Reconocimientos',subcontratas:'Subcontratas',citas:'Citas'};
+const moduleLabels:Record<ModuleName,string>={contratacion:'Contratación',trabajadores:'Trabajadores',obras:'Obras',reconocimientos:'Reconocimientos',subcontratas:'Subcontratas',citas:'Citas',sae:'SAE'};
 const defaultPermissions=():Modules=>Object.fromEntries(Object.keys(moduleLabels).map(k=>[k,{read:true,create:true,update:true,delete:true}])) as Modules;
 const emptyForm=():UserForm=>({nombre:'',apellidos:'',email:'',telefono:'',password:'',role:'user'});
 const dateValue=(v:any)=>v?new Date(v).toLocaleString('es-ES'):'—';
 const auditActionOptions=[['CREATE','Crear'],['INSERT','Insertar'],['UPDATE','Actualizar'],['DELETE','Eliminar'],['LOGIN','Inicio de sesión'],['CREATE_USER','Crear usuario'],['UPDATE_USER','Actualizar usuario'],['RESET_PASSWORD','Restablecer contraseña']] as const;
-const auditResourceOptions=[['trabajadores','Trabajadores'],['trash','Papelera'],['subcontratas','Subcontratas'],['contrataciones','Contrataciones'],['reconocimientos','Reconocimientos médicos'],['citas','Citas'],['obras','Obras'],['profiles','Administración / Usuarios'],['auth','Autenticación'],['workers','Trabajadores (legado)']] as const;
+const auditResourceOptions=[['trabajadores','Trabajadores'],['trash','Papelera'],['subcontratas','Subcontratas'],['contrataciones','Contrataciones'],['reconocimientos','Reconocimientos médicos'],['citas','Citas'],['obras','Obras'],['sae_needs','SAE / Necesidades'],['sae_reports','SAE / Informes'],['sae_candidates','SAE / Candidatos'],['sae_registration_drafts','SAE / Nuevos registros'],['sae_generated_documents','SAE / Devoluciones'],['profiles','Administración / Usuarios'],['auth','Autenticación'],['workers','Trabajadores (legado)']] as const;
 
 export function AdminPanel({onClose}:AdminPanelProps){
  const [tab,setTab]=useState<'users'|'permissions'|'audit'>('users');
@@ -38,9 +37,9 @@ export function AdminPanel({onClose}:AdminPanelProps){
  const filteredUserLabel=useMemo(()=>users.find(u=>u.id===auditUserFilter),[users,auditUserFilter]);
  const hasAuditFilters=Boolean(auditUserFilter||auditActionFilter||auditResourceFilter||auditDateFrom||auditDateTo);
  return <section className="w-full bg-transparent"><div className="w-full max-w-none mx-auto p-3 sm:p-4 lg:p-6 space-y-5">
-  <PageHeader eyebrow="Sistema" title="Administración" description="Usuarios, permisos, compartición y trazabilidad de la actividad." icon={<ShieldCheck size={20}/>} actions={onClose?<button type="button" onClick={onClose} className="ui-button-ghost px-3 py-2" aria-label="Cerrar administración"><X size={20}/></button>:undefined}/>
-  <nav className="ui-surface p-2 flex flex-wrap gap-2">{([['users','Usuarios'],['permissions','Permisos'],['audit','Auditoría']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${tab===k?'bg-brand-primary text-white':'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{l}</button>)}</nav>
-  <div className="ui-surface min-w-0 p-4 sm:p-5 lg:p-6 relative min-h-[420px]">{error&&<div role="alert" className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
+  <header className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-5 py-4 flex items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-brand-primary text-white p-2.5"><ShieldCheck size={22}/></div><div><h1 className="text-2xl font-bold">Administración</h1><p className="text-sm text-slate-500">Usuarios, permisos, compartición y auditoría</p></div></div>{onClose&&<button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={20}/></button>}</header>
+  <nav className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 flex flex-wrap gap-2">{([['users','Usuarios'],['permissions','Permisos'],['audit','Auditoría']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${tab===k?'bg-brand-primary text-white':'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{l}</button>)}</nav>
+  <div className="min-w-0 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-5 lg:p-6 relative min-h-[420px]">{error&&<div role="alert" className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
    {tab==='users'&&<>
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
      <h2 className="font-semibold flex items-center gap-2"><Users size={18}/>Usuarios</h2>
