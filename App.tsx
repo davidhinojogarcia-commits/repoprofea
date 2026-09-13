@@ -63,6 +63,7 @@ const Papelera = lazy(() => import('./components/Papelera').then(module => ({ de
 const GestionCitas = lazy(() => import('./components/GestionCitas').then(module => ({ default: module.GestionCitas })));
 const CalendarioIntegrado = lazy(() => import('./components/CalendarioIntegrado').then(module => ({ default: module.CalendarioIntegrado })));
 const SubcontratasSection = lazy(() => import('./components/SubcontratasSection').then(module => ({ default: module.SubcontratasSection })));
+const SaeSection = lazy(() => import('./components/SaeSection').then(module => ({ default: module.SaeSection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 
 const ViewLoadingFallback = () => (
@@ -2172,6 +2173,17 @@ function App() {
                 savedObras={savedObras}
                 onUpdateSavedObras={setSavedObras}
                 supervisoresDisponibles={supervisoresDisponibles}
+                onToast={(message, type) => setToast({ message, type })}
+              />
+            </div>
+            </Suspense>
+          )}
+
+          {activeView === 'sae' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
+            <div className="w-full max-w-[1600px] mx-auto min-w-0">
+              <SaeSection
+                people={visiblePeople}
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>

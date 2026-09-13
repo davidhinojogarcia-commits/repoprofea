@@ -1,9 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Filter, MapPin, Clock, Search, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { useAuthShell } from './AuthGate';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -57,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
         { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
         { id: 'registro', label: 'Nuevo Registro', icon: UserPlus },
+        { id: 'sae', label: 'SAE', icon: BriefcaseBusiness },
         { id: 'directorio', label: 'Directorio', icon: Users },
       ],
     },
