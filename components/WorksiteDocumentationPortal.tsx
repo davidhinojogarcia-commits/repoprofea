@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardCheck, FileDown, HardHat, RefreshCw, Save, Users, X, Wrench, GraduationCap, ShieldCheck } from 'lucide-react';
+import { ClipboardCheck, Clock, FileDown, HardHat, RefreshCw, Save, Users, X, Wrench, GraduationCap, ShieldCheck } from 'lucide-react';
 import { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
 import { supabase } from '../src/lib/supabase';
@@ -9,6 +9,7 @@ import {
   generateMachineryAuthorizationPdf,
   generateTrainingInformationPdf,
 } from '../src/lib/worksiteDocumentsPdf';
+import { generateFortnightAttendancePdf } from '../src/lib/worksiteAttendancePdf';
 
 type WorkRow = {
   id: string;
@@ -45,6 +46,21 @@ const periodLabelFor = (person: Person): string => {
     return `${formatDate(person.periodoInicio)} – ${formatDate(person.periodoFin)}`;
   }
   return 'Sin periodo';
+};
+
+const fortnightForWorker = (person: Person): 1 | 2 | null => {
+  const raw = normalize(person.quincena || '');
+  if (raw.includes('1ª') || raw.includes('1º') || raw.includes('1a') || raw.includes('primera') || /^1\b/.test(raw)) return 1;
+  if (raw.includes('2ª') || raw.includes('2º') || raw.includes('2a') || raw.includes('segunda') || /^2\b/.test(raw)) return 2;
+  const dateMatch = safe(person.periodoInicio).match(/^\d{4}-\d{2}-(\d{2})/);
+  if (dateMatch) return Number(dateMatch[1]) <= 15 ? 1 : 2;
+  return null;
+};
+
+const workerMonthKey = (person: Person) => {
+  const source = safe(person.periodoInicio) || safe(person.periodoFin) || safe(person.fechaRegistro);
+  const match = source.match(/^(\d{4}-\d{2})/);
+  return match?.[1] || '';
 };
 
 export const WorksiteDocumentationPortal: React.FC = () => {
@@ -148,6 +164,25 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     [selectedWorkWorkers, selectedPeriod],
   );
 
+  const documentMonthKey = safe(documentDate).slice(0, 7);
+  const firstFortnightWorkers = useMemo(() => {
+    const matched = selectedWorkWorkers.filter(person => {
+      const month = workerMonthKey(person);
+      return fortnightForWorker(person) === 1 && (!documentMonthKey || !month || month === documentMonthKey);
+    });
+    if (matched.length) return matched;
+    return /(^|\D)1|primera/i.test(selectedPeriod) ? periodWorkers : [];
+  }, [selectedWorkWorkers, documentMonthKey, selectedPeriod, periodWorkers]);
+
+  const secondFortnightWorkers = useMemo(() => {
+    const matched = selectedWorkWorkers.filter(person => {
+      const month = workerMonthKey(person);
+      return fortnightForWorker(person) === 2 && (!documentMonthKey || !month || month === documentMonthKey);
+    });
+    if (matched.length) return matched;
+    return /(^|\D)2|segunda/i.test(selectedPeriod) ? periodWorkers : [];
+  }, [selectedWorkWorkers, documentMonthKey, selectedPeriod, periodWorkers]);
+
   useEffect(() => {
     const row = workRows.find(item => normalize(item.nombre) === normalize(selectedWork));
     setEmpresa(safe(row?.empresa) || DEFAULT_COMPANY);
@@ -233,6 +268,13 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     return true;
   };
 
+  const ensureAttendanceReady = (attendanceWorkers: Person[], label: string) => {
+    if (!selectedWork) return showToast('Selecciona una obra.', 'error'), false;
+    if (!safe(recursoPreventivo)) return showToast('Indica el encargado/recurso preventivo antes de generar el control horario.', 'error'), false;
+    if (!attendanceWorkers.length) return showToast(`No hay trabajadores registrados para la ${label} en el mes seleccionado.`, 'error'), false;
+    return true;
+  };
+
   const context = useMemo(() => ({
     obra: selectedWork,
     empresa: safe(empresa) || DEFAULT_COMPANY,
@@ -261,6 +303,17 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     const missing = periodWorkers.filter(p => !safe(machineryByWorker[String(p.id)]));
     if (missing.length && !window.confirm(`${missing.length} trabajador(es) no tienen maquinaria indicada. ¿Generar el PDF igualmente?`)) return;
     const { doc, filename } = generateMachineryAuthorizationPdf(periodWorkers, context);
+    downloadPDF(doc, filename);
+  };
+  const exportAttendance = (fortnight: 1 | 2) => {
+    const attendanceWorkers = fortnight === 1 ? firstFortnightWorkers : secondFortnightWorkers;
+    const label = fortnight === 1 ? '1ª quincena' : '2ª quincena';
+    if (!ensureAttendanceReady(attendanceWorkers, label)) return;
+    const attendanceContext = {
+      ...context,
+      periodoLabel: fortnight === 1 ? '1ª Quincena · Del 1 al 15' : '2ª Quincena · Del 16 al 31',
+    };
+    const { doc, filename } = generateFortnightAttendancePdf(attendanceWorkers, attendanceContext, fortnight);
     downloadPDF(doc, filename);
   };
 
@@ -296,7 +349,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                   <ClipboardCheck className="w-7 h-7" />
                   <h1 className="text-2xl font-black tracking-tight">Documentación de obra</h1>
                 </div>
-                <p className="text-sm text-blue-100 mt-1">Documentos preventivos rellenados automáticamente por obra y periodo.</p>
+                <p className="text-sm text-blue-100 mt-1">Documentos preventivos y de control rellenados automáticamente por obra y periodo.</p>
               </div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20">
@@ -380,6 +433,23 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                   <button type="button" onClick={exportMachinery} className="mt-auto pt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> Generar PDF Maquinaria</button>
                 </section>
               </div>
+
+              <section className="rounded-3xl border border-blue-200 dark:border-blue-900/70 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+                  <div className="max-w-3xl">
+                    <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-[#00548E] dark:text-blue-400" /><h3 className="font-black text-lg">Control horario quincenal</h3></div>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Genera los modelos corporativos de jornada con empresa, obra, mes, encargado/recurso preventivo, trabajadores, DNI/NIE y puesto ya rellenados. Las casillas de entrada (E), salida (S), horas totales (HT) y firmas quedan preparadas para cumplimentarlas en obra.</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                      <span className="rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 px-3 py-1.5">1ª quincena: {firstFortnightWorkers.length} trabajador(es)</span>
+                      <span className="rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 px-3 py-1.5">2ª quincena: {secondFortnightWorkers.length} trabajador(es)</span>
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3 min-w-[300px]">
+                    <button type="button" onClick={() => exportAttendance(1)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> PDF 1ª quincena · 1–15</button>
+                    <button type="button" onClick={() => exportAttendance(2)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> PDF 2ª quincena · 16–31</button>
+                  </div>
+                </div>
+              </section>
 
               <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4"><Wrench className="w-5 h-5 text-amber-600" /><h2 className="font-black text-lg">Maquinaria autorizada por trabajador</h2></div>
