@@ -29,32 +29,6 @@ const formatDate = (value: unknown) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : text || '-';
 };
 
-const exportPdfFile = (doc: jsPDF, filename: string) => {
-  const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const isIOS = /iPad|iPhone|iPod/i.test(ua) || (/Macintosh/i.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
-
-  try {
-    if (isIOS) {
-      const opened = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!opened) window.location.href = url;
-    } else {
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.rel = 'noopener';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    }
-  } finally {
-    // Safari needs the object URL to remain alive while its PDF viewer opens it.
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  }
-};
-
 export const generateMedicalSpecialAttentionPdf = (
   people: Person[],
   filters: SpecialAttentionFilters,
@@ -186,6 +160,5 @@ export const generateMedicalSpecialAttentionPdf = (
   applyPdfFooters(doc, config);
   const suffix = [filters.obra, filters.mes, filters.quincena].filter(Boolean).join('_').replace(/[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ_-]+/g, '_');
   const filename = `INFORME_ESPECIAL_ATENCION${suffix ? `_${suffix}` : ''}_${new Date().toISOString().slice(0, 10)}.pdf`;
-  exportPdfFile(doc, filename);
   return { doc, filename };
 };
