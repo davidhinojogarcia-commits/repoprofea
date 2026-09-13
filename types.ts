@@ -35,26 +35,27 @@ export interface Person {
   ownerDisplayName?: string; // Display name of the owner
 }
 
+const safeText = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+
 export const getAptitudMedicaInfo = (p: Person): {
   estado: 'Apto' | 'No Apto' | 'Apto con limitaciones' | 'Pendiente';
   limitaciones: string;
   validez: string;
 } => {
-  const rawEstado = (p.aptitudMedica || p.reconocimientoEstado || 'Pendiente').trim();
+  const rawEstado = safeText(p.aptitudMedica) || safeText(p.reconocimientoEstado) || 'Pendiente';
+  const normalized = rawEstado.toLowerCase();
   let estado: 'Apto' | 'No Apto' | 'Apto con limitaciones' | 'Pendiente' = 'Pendiente';
   
-  if (rawEstado.toLowerCase().includes('limitaci')) {
+  if (normalized.includes('limitaci')) {
     estado = 'Apto con limitaciones';
-  } else if (rawEstado.toLowerCase() === 'apto') {
+  } else if (normalized === 'apto') {
     estado = 'Apto';
-  } else if (rawEstado.toLowerCase() === 'no apto') {
+  } else if (normalized === 'no apto') {
     estado = 'No Apto';
-  } else {
-    estado = 'Pendiente';
   }
 
-  const limitaciones = (p.limitacionesAptitud || p.reconocimientoLimitaciones || '').trim();
-  const validez = p.reconocimientoValidez || new Date().getFullYear().toString();
+  const limitaciones = safeText(p.limitacionesAptitud) || safeText(p.reconocimientoLimitaciones);
+  const validez = safeText(p.reconocimientoValidez) || new Date().getFullYear().toString();
 
   return { estado, limitaciones, validez };
 };
@@ -91,7 +92,7 @@ export interface StatsData {
 
 export interface DeletedPerson {
   person: Person;
-  fechaEliminacion: string; // ISO string representing when it was deleted
+  fechaEliminacion: string; // ISO string representing when the person was deleted
 }
 
 export interface PdfCustomConfig {
@@ -247,4 +248,3 @@ export interface UserAccount {
   avatarUrl?: string;
   workersCount?: number;
 }
-
