@@ -52,3 +52,5 @@ sae = sae.replace(
 sae_path.write_text(sae, encoding='utf-8')
 
 print('SAE integrado en App.tsx y Sidebar.tsx; PDF renderer actualizado')
+
+# final integration validation trigger
