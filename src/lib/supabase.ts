@@ -81,6 +81,7 @@ export const supabase = {
   get url() { return SUPABASE_URL; },
   get key() { return SUPABASE_KEY; },
   auth: client.auth,
+  storage: client.storage,
   channel(name: string) {
     return client.channel(name);
   },
