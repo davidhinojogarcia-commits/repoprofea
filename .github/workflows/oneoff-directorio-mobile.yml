@@ -1,0 +1,37 @@
+name: One-off directorio mobile layout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-directorio-mobile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+      - run: python scripts/fix_directorio_mobile_actions.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
+      - run: |
+          grep -n "directorio-section" components/PersonListView.tsx
+          grep -n "directorio-primary-actions" dark-mode-hardening.css
+      - run: git rm -f .github/workflows/oneoff-directorio-mobile.yml scripts/fix_directorio_mobile_actions.py
+      - run: |
+          git config user.name "davidhinojogarcia-commits"
+          git config user.email "davidhinojogarcia@gmail.com"
+          git add components/PersonListView.tsx dark-mode-hardening.css
+          git commit -m "fix: improve directorio mobile action layout"
+          git push origin main
