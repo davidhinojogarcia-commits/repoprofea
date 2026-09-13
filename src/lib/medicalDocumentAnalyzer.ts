@@ -26,7 +26,7 @@ const scoreName = (documentLine: string, workerName: string) => {
 
 const detectResult = (value: string): MedicalRecordImportItem['resultado'] | '' => {
   const text = normalize(value);
-  if (/APTO\s+CON\s+(LIMITACION|LIMITACIONES|RESTRICCION|RESTRICCIONES)/.test(text) || /APTO.{0,60}LIMITACI/.test(text)) return 'Apto con Limitación';
+  if (/APTO\s+CON\s+(LIMITACION|LIMITACIONES|RESTRICCION|RESTRICCIONES)/.test(text) || /APTO.{0,80}LIMITACI/.test(text) || /APTO.{0,80}RESTRIC/.test(text)) return 'Apto con Limitación';
   if (/NO\s+APTO/.test(text) || /INAPTO/.test(text)) return 'No Apto';
   if (/\bAPTO\b/.test(text) || /APTITUD\s+(FAVORABLE|POSITIVA)/.test(text)) return 'Apto';
   return '';
@@ -55,10 +55,13 @@ const detectValidity = (text: string, date: string) => {
   return addYear(date);
 };
 
-const LIMITATION_STOP = /\b(?:FECHA(?:\s+DEL)?\s+(?:RECONOCIMIENTO|EXAMEN|EMISI[ÓO]N)|VALIDEZ|VIGENCIA|CADUCIDAD|CENTRO\s+M[EÉ]DICO|SERVICIO\s+DE\s+PREVENCI[ÓO]N|ENTIDAD|DNI|NIF|APELLIDOS|NOMBRE|RESULTADO|APTITUD|FIRMA|SELLO)\b/i;
+const LIMITATION_STOP = /\b(?:FECHA(?:\s+DEL)?\s+(?:RECONOCIMIENTO|EXAMEN|EMISI[ÓO]N)|VALIDEZ|VIGENCIA|CADUCIDAD|CENTRO\s+M[EÉ]DICO|SERVICIO\s+DE\s+PREVENCI[ÓO]N|ENTIDAD|DNI|NIF|APELLIDOS|NOMBRE|FIRMA|SELLO)\b/i;
+const LIMITATION_LABEL = /(?:LIMITACIONES?|RESTRICCIONES?|CONDICIONES?|OBSERVACIONES\s+(?:M[EÉ]DICAS?|LABORALES?)|ADAPTACIONES?|MEDIDAS\s+PREVENTIVAS?|RECOMENDACIONES?)\s*[:\-–—]?\s*/i;
+const LIMITATION_HINT = /\b(?:NO\s+(?:REALIZAR|TRABAJAR|MANIPULAR|LEVANTAR|CARGAR|SUBIR|BAJAR|CONDUCIR|USAR|EFECTUAR|EXPONERSE)|EVITAR|RESTRINGIR|RESTRICCI[ÓO]N|LIMITAR|LIMITACI[ÓO]N|PROHIBIDO|SIN\s+(?:TRABAJOS?|TAREAS?|EXPOSICI[ÓO]N)|USO\s+(?:OBLIGATORIO|NECESARIO)|UTILIZAR\s+EPI|EPI\s+(?:OBLIGATORIO|ESPEC[IÍ]FICO)|NO\s+LEVANTAR\s+M[AÁ]S\s+DE|PAUSAS?\s+(?:FRECUENTES?|PERI[ÓO]DICAS?)|CAMBIO\s+POSTURAL|ADAPTAR|ADAPTACI[ÓO]N|LIMITACI[ÓO]N\s+TEMPORAL|TRABAJO\s+EN\s+ALTURA|ALTURAS?|CARGAS?|RUIDO|VIBRACIONES?|POLVO|S[IÍ]LICE|CALOR|FR[IÍ]O|CONDUCCI[ÓO]N|MAQUINARIA|MOVIMIENTOS?\s+REPETITIVOS?|POSTURAS?\s+FORZADAS?)\b/i;
 
 const cleanLimitation = (value: string) => String(value || '')
-  .replace(/^\s*[:\-–—|]+\s*/, '')
+  .replace(/^\s*[:\-–—|•·*]+\s*/, '')
+  .replace(/^\s*(?:LIMITACIONES?|RESTRICCIONES?|CONDICIONES?|OBSERVACIONES\s+(?:M[EÉ]DICAS?|LABORALES?)|ADAPTACIONES?|MEDIDAS\s+PREVENTIVAS?|RECOMENDACIONES?)\s*[:\-–—]?\s*/i, '')
   .replace(/\s*\|\s*/g, ' ')
   .replace(/\s+/g, ' ')
   .replace(/[,:;\-–—]+\s*$/, '')
@@ -67,40 +70,79 @@ const cleanLimitation = (value: string) => String(value || '')
 const limitationLooksReal = (value: string) => {
   const n = normalize(value);
   if (n.length < 5) return false;
-  if (/^(SI|NO|APTO|APTO CON LIMITACIONES?|LIMITACIONES?|RESTRICCIONES?|CONDICIONES?)$/.test(n)) return false;
+  if (/^(SI|NO|APTO|APTO CON LIMITACIONES?|LIMITACIONES?|RESTRICCIONES?|CONDICIONES?|OBSERVACIONES?)$/.test(n)) return false;
   if (/^(FECHA|DNI|NIF|NOMBRE|APELLIDOS|CENTRO|VIGENCIA|VALIDEZ)\b/.test(n)) return false;
+  if (/^(RESULTADO|APTITUD)\s*[:\-]?\s*APTO\s+CON\s+(LIMITACION|LIMITACIONES|RESTRICCION|RESTRICCIONES)$/.test(n)) return false;
   return true;
 };
 
-/** Extract only the text belonging to the limitations field. It deliberately stops
- * at known form labels so a date, centre or the following worker is never stored as
- * a medical restriction. */
+const collectLimitationTail = (tail: string) => {
+  const pieces = tail.split(/\r?\n/);
+  const collected: string[] = [];
+  for (const piece of pieces) {
+    let clean = cleanLimitation(piece);
+    if (!clean) continue;
+    if (LIMITATION_STOP.test(clean)) break;
+    if (/^(?:RESULTADO|APTITUD)\b/i.test(clean) && collected.length) break;
+    if (/\b(?:NO\s+APTO|INAPTO)\b/i.test(clean)) break;
+    if (/\bAPTO\b/i.test(clean) && !/APTO\s+CON\s+(?:LIMITACIONES?|RESTRICCIONES?)/i.test(clean) && collected.length) break;
+    clean = clean.replace(/^(?:RESULTADO|APTITUD)\s*[:\-]?\s*APTO\s+CON\s+(?:LIMITACIONES?|RESTRICCIONES?)\s*[:\-]?\s*/i, '');
+    clean = cleanLimitation(clean);
+    if (!clean) continue;
+    collected.push(clean);
+    if (collected.join(' ').length >= 420) break;
+  }
+  return cleanLimitation(collected.join(' ')).slice(0, 420);
+};
+
+/**
+ * Extrae la limitación real aunque el OCR cambie saltos de línea, etiquetas o columnas.
+ * Prioriza campos explícitos y, si no existen, usa frases médicas/restrictivas próximas
+ * al "Apto con limitaciones" del trabajador.
+ */
 const detectLimitations = (windowLines: string[]) => {
   const joined = windowLines.join('\n');
   const anchors = [
-    /(?:LIMITACIONES?|RESTRICCIONES?|CONDICIONES?|OBSERVACIONES\s+M[EÉ]DICAS?)\s*[:\-]?\s*/ig,
-    /APTO\s+CON\s+(?:LIMITACIONES?|RESTRICCIONES?)\s*[:\-]?\s*/ig,
+    /(?:LIMITACIONES?|RESTRICCIONES?|CONDICIONES?|OBSERVACIONES\s+(?:M[EÉ]DICAS?|LABORALES?)|ADAPTACIONES?|MEDIDAS\s+PREVENTIVAS?|RECOMENDACIONES?)\s*[:\-–—]?\s*/ig,
+    /APTO\s+CON\s+(?:LIMITACIONES?|RESTRICCIONES?)\s*[:\-–—]?\s*/ig,
   ];
 
   for (const re of anchors) {
     let match: RegExpExecArray | null;
     while ((match = re.exec(joined))) {
+      const sameLineEnd = joined.indexOf('\n', match.index);
+      const sameLine = joined.slice(match.index + match[0].length, sameLineEnd >= 0 ? sameLineEnd : undefined);
+      const sameLineClean = cleanLimitation(sameLine);
+      if (limitationLooksReal(sameLineClean)) return sameLineClean.slice(0, 420);
+
       const tail = joined.slice(match.index + match[0].length);
-      const pieces = tail.split(/\r?\n/);
-      const collected: string[] = [];
-      for (const piece of pieces) {
-        const clean = cleanLimitation(piece);
-        if (!clean) continue;
-        if (LIMITATION_STOP.test(clean)) break;
-        if (/\b(?:APTO|NO\s+APTO|INAPTO)\b/i.test(clean) && collected.length) break;
-        collected.push(clean);
-        if (collected.join(' ').length >= 260) break;
-      }
-      const result = cleanLimitation(collected.join(' ')).slice(0, 300);
+      const result = collectLimitationTail(tail);
       if (limitationLooksReal(result)) return result;
     }
   }
-  return '';
+
+  // OCR de tablas: la etiqueta puede perderse y quedar solo la frase restrictiva
+  // en una fila próxima al resultado. Buscamos primero después del resultado y,
+  // como último recurso, en toda la ventana del trabajador.
+  const resultIndex = windowLines.findIndex(line => /APTO.{0,80}(?:LIMITACI|RESTRIC)/i.test(normalize(line)));
+  const ordered = resultIndex >= 0
+    ? [...windowLines.slice(resultIndex + 1), ...windowLines.slice(0, resultIndex)]
+    : windowLines;
+
+  const candidates: string[] = [];
+  for (const raw of ordered) {
+    if (LIMITATION_STOP.test(raw)) continue;
+    let clean = cleanLimitation(raw);
+    if (!clean) continue;
+    clean = clean.replace(/^(?:RESULTADO|APTITUD)\s*[:\-]?\s*APTO\s+CON\s+(?:LIMITACIONES?|RESTRICCIONES?)\s*[:\-]?\s*/i, '');
+    clean = cleanLimitation(clean);
+    if (!clean || !limitationLooksReal(clean)) continue;
+    if (LIMITATION_HINT.test(clean)) candidates.push(clean);
+    if (candidates.join(' ').length >= 420) break;
+  }
+
+  const fallback = cleanLimitation(candidates.join('; ')).slice(0, 420);
+  return limitationLooksReal(fallback) ? fallback : '';
 };
 
 const detectCentre = (text: string) => {
@@ -119,7 +161,7 @@ const hasGlobalApto = (text: string) => {
 };
 
 const findNextWorkerBoundary = (lines: string[], start: number, workers: Person[], currentId: number) => {
-  for (let i = start + 1; i < Math.min(lines.length, start + 12); i += 1) {
+  for (let i = start + 1; i < Math.min(lines.length, start + 24); i += 1) {
     const lineDni = compactDni(lines[i]);
     for (const other of workers) {
       if (other.id === currentId) continue;
@@ -128,7 +170,7 @@ const findNextWorkerBoundary = (lines: string[], start: number, workers: Person[
       if (scoreName(lines[i], other.apellidosNombre) >= 0.9) return i;
     }
   }
-  return Math.min(lines.length, start + 10);
+  return Math.min(lines.length, start + 22);
 };
 
 export function analyzeMedicalDocumentText(text: string, workers: Person[], sourceFilename: string): MedicalRecordImportItem[] {
@@ -157,9 +199,9 @@ export function analyzeMedicalDocumentText(text: string, workers: Person[], sour
     }
     if (bestIndex < 0 || bestScore < 0.62) continue;
 
-    const from = Math.max(0, bestIndex - 2);
+    const from = Math.max(0, bestIndex - 3);
     const boundary = findNextWorkerBoundary(lines, bestIndex, workers, worker.id);
-    const to = Math.min(boundary, bestIndex + 10);
+    const to = Math.min(boundary, bestIndex + 22);
     const workerLines = lines.slice(from, to);
     const windowText = workerLines.join('\n');
     let resultado = detectResult(windowText);
@@ -176,7 +218,7 @@ export function analyzeMedicalDocumentText(text: string, workers: Person[], sour
 
     const localResult = !!detectResult(windowText);
     let confianza: 'alta' | 'media' | 'baja' = bestScore >= 0.92 && localResult ? 'alta' : bestScore >= 0.75 ? 'media' : 'baja';
-    // A limited worker is never auto-applied unless the actual restriction was captured.
+    // Un apto con limitaciones no se autoaplica si no se ha capturado la restricción real.
     if (resultado === 'Apto con Limitación' && !limitaciones) confianza = 'baja';
 
     out.push({
