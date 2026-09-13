@@ -1,0 +1,32 @@
+/* Directorio: primera fila de acciones de relación de trabajadores. */
+#directorio-section .directorio-primary-actions::before {
+  content: 'RELACIÓN DE TRABAJADORES:';
+  margin-right: auto;
+  align-self: center;
+  padding-right: 0.5rem;
+  font-size: 0.625rem;
+  line-height: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(100 116 139);
+  white-space: nowrap;
+}
+
+html.dark #directorio-section .directorio-primary-actions::before {
+  color: rgb(148 163 184);
+}
+
+/* El segundo botón directo era Gmail. Se retira solo de esta fila del Directorio. */
+#directorio-section .directorio-primary-actions > button:nth-of-type(2) {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  #directorio-section .directorio-primary-actions::before {
+    flex: 0 0 100%;
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 0.125rem;
+  }
+}
