@@ -46,9 +46,9 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
   const [estado, setEstado] = useState<StatusFilter>('limitados');
   const [columns, setColumns] = useState<Columns>({ dni: true, obra: true, quincena: true, fecha: true, estado: true, limitaciones: true });
 
-  const obras = useMemo(() => Array.from(new Set(people.map(p => safe(p.obra)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [people]);
-  const meses = useMemo(() => Array.from(new Set(people.map(personMonth).filter(Boolean))).sort().reverse(), [people]);
-  const quincenas = useMemo(() => Array.from(new Set(people.map(p => safe(p.quincena)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [people]);
+  const obras = useMemo<string[]>(() => Array.from(new Set<string>(people.map(p => safe(p.obra)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [people]);
+  const meses = useMemo<string[]>(() => Array.from(new Set<string>(people.map(personMonth).filter(Boolean))).sort().reverse(), [people]);
+  const quincenas = useMemo<string[]>(() => Array.from(new Set<string>(people.map(p => safe(p.quincena)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [people]);
 
   const rows = useMemo(() => people.filter(p => {
     const info = getAptitudMedicaInfo(p);
