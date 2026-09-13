@@ -1,11 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, FileUp, HeartPulse, Loader2, Search, ShieldAlert, UserCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileUp, HeartPulse, Loader2, Search, ShieldAlert, UserCheck } from 'lucide-react';
 import { Person, MedicalRecordImportItem, getAptitudMedicaInfo } from '../types';
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { analyzeMedicalDocumentText } from '../src/lib/medicalDocumentAnalyzer';
 import { updateDocument } from '../src/services/databaseService';
 import { persistMedicalRecognition } from '../src/services/medicalRecognitionService';
-import { MedicalSpecialAttentionReportModal } from './MedicalSpecialAttentionReportModal';
 
 interface Props {
   people: Person[];
@@ -37,7 +36,6 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
   const [progress, setProgress] = useState('');
   const [review, setReview] = useState<ReviewItem[]>([]);
   const [search, setSearch] = useState('');
-  const [reportOpen, setReportOpen] = useState(false);
 
   const stats = useMemo(() => ({
     total: people.length,
@@ -148,7 +146,6 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
           <p className="text-sm text-slate-500 mt-1 max-w-3xl">Extracción de texto + OCR local. Identifica trabajadores registrados y aplica Apto, Apto con limitaciones o No apto sin depender de proveedores de IA.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-          <button type="button" onClick={()=>setReportOpen(true)} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-amber-300 text-amber-800 dark:text-amber-300 dark:border-amber-700 font-bold text-sm"><FileText className="w-4 h-4"/>Informe especial atención</button>
           <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm cursor-pointer"><FileUp className="w-4 h-4"/> Analizar documentos<input ref={inputRef} type="file" multiple accept=".pdf,image/*" className="hidden" disabled={busy} onChange={e => e.target.files && void processFiles(e.target.files)}/></label>
         </div>
       </div>
@@ -176,6 +173,5 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
     <div className="ui-surface p-4 text-xs text-slate-500 flex gap-2 items-start"><ShieldAlert className="w-4 h-4 text-[#00548E] shrink-0 mt-0.5"/><span>El motor no realiza diagnósticos: únicamente identifica al trabajador y transcribe su aptitud y limitaciones. Las coincidencias dudosas nunca se aplican automáticamente.</span></div>
     {stats.noAptos>0 && <div className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-4 flex gap-3"><AlertTriangle className="w-5 h-5 text-red-600 shrink-0"/><div className="text-sm"><strong>{stats.noAptos} trabajador(es) constan como No apto.</strong> Su documentación queda marcada como incompleta.</div></div>}
     {stats.aptos+stats.limitados>0 && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 p-4 flex gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0"/><div className="text-sm">Los resultados quedan guardados en la ficha y se reflejan en los informes que utilizan los datos actuales del trabajador.</div></div>}
-    <MedicalSpecialAttentionReportModal isOpen={reportOpen} people={people} onClose={()=>setReportOpen(false)}/>
   </div>;
 };
