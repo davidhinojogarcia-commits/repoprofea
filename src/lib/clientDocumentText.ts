@@ -26,7 +26,9 @@ const canvasForPage = async (page: any, scale = 1.7) => {
   canvas.height = Math.ceil(viewport.height);
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('No se pudo crear el lienzo de OCR.');
-  await page.render({ canvasContext: context, viewport }).promise;
+  // pdfjs-dist 5.x necesita el elemento canvas de forma explícita. En Safari/WKWebView,
+  // omitirlo puede terminar en un error minificado "undefined is not a function".
+  await page.render({ canvas, canvasContext: context, viewport }).promise;
   return canvas;
 };
 
