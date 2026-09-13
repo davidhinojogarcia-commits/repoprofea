@@ -57,10 +57,19 @@ const fortnightForWorker = (person: Person): 1 | 2 | null => {
   return null;
 };
 
-const workerMonthKey = (person: Person) => {
-  const source = safe(person.periodoInicio) || safe(person.periodoFin) || safe(person.fechaRegistro);
-  const match = source.match(/^(\d{4}-\d{2})/);
-  return match?.[1] || '';
+const contractOverlapsFortnight = (person: Person, monthKey: string, fortnight: 1 | 2) => {
+  const monthMatch = safe(monthKey).match(/^(\d{4})-(\d{2})$/);
+  if (!monthMatch) return fortnightForWorker(person) === fortnight;
+  const year = Number(monthMatch[1]);
+  const month = Number(monthMatch[2]);
+  const lastDay = new Date(year, month, 0).getDate();
+  const startDay = fortnight === 1 ? 1 : 16;
+  const endDay = fortnight === 1 ? Math.min(15, lastDay) : lastDay;
+  const rangeStart = `${monthKey}-${String(startDay).padStart(2, '0')}`;
+  const rangeEnd = `${monthKey}-${String(endDay).padStart(2, '0')}`;
+  const contractStart = safe(person.periodoInicio).slice(0, 10) || rangeStart;
+  const contractEnd = safe(person.periodoFin).slice(0, 10) || rangeEnd;
+  return contractStart <= rangeEnd && contractEnd >= rangeStart;
 };
 
 export const WorksiteDocumentationPortal: React.FC = () => {
@@ -166,19 +175,13 @@ export const WorksiteDocumentationPortal: React.FC = () => {
 
   const documentMonthKey = safe(documentDate).slice(0, 7);
   const firstFortnightWorkers = useMemo(() => {
-    const matched = selectedWorkWorkers.filter(person => {
-      const month = workerMonthKey(person);
-      return fortnightForWorker(person) === 1 && (!documentMonthKey || !month || month === documentMonthKey);
-    });
+    const matched = selectedWorkWorkers.filter(person => contractOverlapsFortnight(person, documentMonthKey, 1));
     if (matched.length) return matched;
     return /(^|\D)1|primera/i.test(selectedPeriod) ? periodWorkers : [];
   }, [selectedWorkWorkers, documentMonthKey, selectedPeriod, periodWorkers]);
 
   const secondFortnightWorkers = useMemo(() => {
-    const matched = selectedWorkWorkers.filter(person => {
-      const month = workerMonthKey(person);
-      return fortnightForWorker(person) === 2 && (!documentMonthKey || !month || month === documentMonthKey);
-    });
+    const matched = selectedWorkWorkers.filter(person => contractOverlapsFortnight(person, documentMonthKey, 2));
     if (matched.length) return matched;
     return /(^|\D)2|segunda/i.test(selectedPeriod) ? periodWorkers : [];
   }, [selectedWorkWorkers, documentMonthKey, selectedPeriod, periodWorkers]);
@@ -271,7 +274,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const ensureAttendanceReady = (attendanceWorkers: Person[], label: string) => {
     if (!selectedWork) return showToast('Selecciona una obra.', 'error'), false;
     if (!safe(recursoPreventivo)) return showToast('Indica el encargado/recurso preventivo antes de generar el control horario.', 'error'), false;
-    if (!attendanceWorkers.length) return showToast(`No hay trabajadores registrados para la ${label} en el mes seleccionado.`, 'error'), false;
+    if (!attendanceWorkers.length) return showToast(`No hay trabajadores con contrato vigente durante la ${label} del mes seleccionado.`, 'error'), false;
     return true;
   };
 
@@ -311,7 +314,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     if (!ensureAttendanceReady(attendanceWorkers, label)) return;
     const attendanceContext = {
       ...context,
-      periodoLabel: fortnight === 1 ? '1ª Quincena · Del 1 al 15' : '2ª Quincena · Del 16 al 31',
+      periodoLabel: label,
     };
     const { doc, filename } = generateFortnightAttendancePdf(attendanceWorkers, attendanceContext, fortnight);
     downloadPDF(doc, filename);
@@ -438,15 +441,15 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
                   <div className="max-w-3xl">
                     <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-[#00548E] dark:text-blue-400" /><h3 className="font-black text-lg">Control horario quincenal</h3></div>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Genera los modelos corporativos de jornada con empresa, obra, mes, encargado/recurso preventivo, trabajadores, DNI/NIE y puesto ya rellenados. Las casillas de entrada (E), salida (S), horas totales (HT) y firmas quedan preparadas para cumplimentarlas en obra.</p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Genera los controles con los días reales del mes y del periodo contratado. Los trabajadores que tengan contrato atravesando ambas quincenas aparecerán en ambos documentos; los días fuera de su contrato quedarán marcados como no aplicables.</p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                       <span className="rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 px-3 py-1.5">1ª quincena: {firstFortnightWorkers.length} trabajador(es)</span>
                       <span className="rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 px-3 py-1.5">2ª quincena: {secondFortnightWorkers.length} trabajador(es)</span>
                     </div>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3 min-w-[300px]">
-                    <button type="button" onClick={() => exportAttendance(1)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> PDF 1ª quincena · 1–15</button>
-                    <button type="button" onClick={() => exportAttendance(2)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> PDF 2ª quincena · 16–31</button>
+                    <button type="button" onClick={() => exportAttendance(1)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> PDF 1ª quincena</button>
+                    <button type="button" onClick={() => exportAttendance(2)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-4 py-3 font-bold"><FileDown className="w-4 h-4" /> PDF 2ª quincena</button>
                   </div>
                 </div>
               </section>
