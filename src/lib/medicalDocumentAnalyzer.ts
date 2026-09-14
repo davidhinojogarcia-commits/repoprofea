@@ -47,6 +47,12 @@ const detectValidity = (text: string, date: string) => {
   return addYear(date);
 };
 
+const hasAmbiguousUnlabelledDates = (text: string) => {
+  if (/(?:FECHA\s+(?:DEL\s+)?(?:RECONOCIMIENTO|EXAMEN|REALIZACI[ÓO]N)|REALIZADO\s+EL)\s*[:\-]?\s*\d{1,2}[\/.-]\d{1,2}[\/.-]20\d{2}/i.test(text)) return false;
+  const unique = new Set(dateMatches(text).map(toIso));
+  return unique.size > 1;
+};
+
 const LIMITATION_LABEL = /(?:LIMITACIONES?|RESTRICCIONES?|CONDICIONES?|OBSERVACIONES(?:\s+(?:M[EÉ]DICAS?|LABORALES?|DE\s+APTITUD))?|ADAPTACIONES?|MEDIDAS\s+PREVENTIVAS?|RECOMENDACIONES?|APTITUD\s+CONDICIONADA)\s*[:\-–—]?\s*/i;
 const LIMITATION_STOP = /\b(?:FECHA(?:\s+DEL)?\s+(?:RECONOCIMIENTO|EXAMEN|EMISI[ÓO]N)|VALIDEZ|VIGENCIA|CADUCIDAD|CENTRO\s+M[EÉ]DICO|SERVICIO\s+DE\s+PREVENCI[ÓO]N|ENTIDAD|DNI|NIF|APELLIDOS|NOMBRE|FIRMA|SELLO|PROTOCOLOS?|PUESTO\s+DE\s+TRABAJO|EMPRESA)\b/i;
 const LIMITATION_HINT = /\b(?:NO\s+(?:REALIZAR|TRABAJAR|MANIPULAR|LEVANTAR|CARGAR|SUBIR|BAJAR|CONDUCIR|USAR|EFECTUAR|EXPONERSE|PERMANECER|TRABAJAR\s+EN)|EVITAR|RESTRINGIR|RESTRICCI[ÓO]N|LIMITAR|LIMITACI[ÓO]N|PROHIBIDO|SIN\s+(?:TRABAJOS?|TAREAS?|EXPOSICI[ÓO]N)|USO\s+(?:OBLIGATORIO|NECESARIO)|UTILIZAR\s+EPI|EPI\s+(?:OBLIGATORIO|ESPEC[IÍ]FICO)|NO\s+LEVANTAR\s+M[AÁ]S\s+DE|PAUSAS?\s+(?:FRECUENTES?|PERI[ÓO]DICAS?)|CAMBIO\s+POSTURAL|ADAPTAR|ADAPTACI[ÓO]N|LIMITACI[ÓO]N\s+TEMPORAL|TRABAJO\s+EN\s+ALTURA|ALTURAS?|CARGAS?|RUIDO|VIBRACIONES?|POLVO|S[IÍ]LICE|CALOR|FR[IÍ]O|CONDUCCI[ÓO]N|MAQUINARIA|MOVIMIENTOS?\s+REPETITIVOS?|POSTURAS?\s+FORZADAS?|BIPEDESTACI[ÓO]N|SEDENTACI[ÓO]N|ESCALERAS?|ANDAMIOS?|ESPACIOS?\s+CONFINADOS?|PANTALLAS?\s+DE\s+VISUALIZACI[ÓO]N|CARGA\s+F[IÍ]SICA|SOBREESFUERZOS?)\b/i;
@@ -230,16 +236,20 @@ export function analyzeMedicalDocumentText(text: string, workers: Person[], sour
     if (!resultado && globalApto) resultado = 'Apto';
     if (!resultado) continue;
 
-    const fechaReconocimiento = detectDate(workerLines.join('\n')) || globalDate;
-    const validez = detectValidity(workerLines.join('\n'), fechaReconocimiento) || globalValidity;
+    const workerText = workerLines.join('\n');
+    const fechaReconocimiento = detectDate(workerText) || globalDate;
+    const validez = detectValidity(workerText, fechaReconocimiento) || globalValidity;
     const broaderLines = totalLimitedMarkers <= 1 ? lines : workerLines;
     const limitaciones = resultado === 'Apto con Limitación' ? detectLimitations(workerLines, broaderLines, worker) : '';
+    const dateAmbiguous = hasAmbiguousUnlabelledDates(workerText);
     const inconsistencias: string[] = [];
     if (resultado === 'Apto con Limitación' && !limitaciones) inconsistencias.push('El documento indica apto con limitaciones, pero no se ha podido aislar el texto exacto de la limitación. Revisar antes de guardar.');
+    if (dateAmbiguous) inconsistencias.push('Se han detectado varias fechas sin etiqueta inequívoca. Confirme manualmente la fecha del reconocimiento y su vigencia.');
 
-    const localResult = !!detectResult(windowText) || !!detectResult(workerLines.join('\n'));
+    const localResult = !!detectResult(windowText) || !!detectResult(workerText);
     let confianza: 'alta' | 'media' | 'baja' = bestScore >= 0.92 && localResult ? 'alta' : bestScore >= 0.75 ? 'media' : 'baja';
     if (resultado === 'Apto con Limitación' && !limitaciones) confianza = 'baja';
+    if (dateAmbiguous) confianza = 'baja';
     if (resultado === 'Apto con Limitación' && limitaciones && bestScore >= 0.92) confianza = 'alta';
 
     out.push({
