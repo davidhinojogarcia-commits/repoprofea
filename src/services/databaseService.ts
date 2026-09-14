@@ -18,6 +18,19 @@ const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value, (_k, v) => v 
 const dateOrNull = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 const timeOrNull = (value: unknown) => typeof value === 'string' && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 8) : null;
 const isLegacyNumericTable = (table: string) => table === 'trash';
+const normalizeDni = (value: unknown) => String(value || '').replace(/[\s-]/g, '').trim().toUpperCase();
+
+const resolveContractYear = (value: DatabaseRecord) => {
+  const start = String(value.periodoInicio || value.periodo_inicio || '').trim();
+  const startYear = start.match(/^(\d{4})-/)?.[1];
+  if (startYear) return Number(startYear);
+  const fortnight = String(value.quincena || '').trim();
+  const fortnightYear = fortnight.match(/(?:^|\s)(20\d{2})(?:$|\s)/)?.[1];
+  if (fortnightYear) return Number(fortnightYear);
+  const registered = String(value.fechaRegistro || value.fecha_registro || '').trim();
+  const registeredYear = registered.match(/^(\d{4})-/)?.[1];
+  return registeredYear ? Number(registeredYear) : new Date().getFullYear();
+};
 
 async function requireUser() {
   const { data } = await supabase.auth.getUser();
@@ -30,6 +43,31 @@ async function resolveObraId(obra: unknown): Promise<string | null> {
   const name = obra.trim();
   const rows = await supabase.query('obras', { query: `select=id&nombre=eq.${encodeURIComponent(name)}&limit=1` });
   return rows?.[0]?.id || null;
+}
+
+async function enrichWorkerAnnualHiring(data: DatabaseRecord, ownerId: string): Promise<DatabaseRecord> {
+  const dni = normalizeDni(data.dni);
+  const annuality = resolveContractYear(data);
+  if (!dni) {
+    return { ...data, anualidadContratacion: annuality, numeroContratacionAnual: 1, contratacionesEnAnualidad: 1, esRepetidorAnual: false };
+  }
+
+  const rows = await supabase.query('trabajadores', {
+    query: `select=id,dni,periodo_inicio,quincena,fecha_registro,data&owner_id=eq.${encodeURIComponent(ownerId)}`,
+  });
+  const sameWorkerSameYear = (rows || []).filter((row: any) => {
+    if (normalizeDni(row.dni || row.data?.dni) !== dni) return false;
+    const hydrated = { ...(row.data || {}), periodoInicio: row.periodo_inicio || row.data?.periodoInicio, quincena: row.quincena || row.data?.quincena, fechaRegistro: row.fecha_registro || row.data?.fechaRegistro };
+    return resolveContractYear(hydrated) === annuality;
+  });
+  const hireNumber = sameWorkerSameYear.length + 1;
+  return {
+    ...data,
+    anualidadContratacion: annuality,
+    numeroContratacionAnual: hireNumber,
+    contratacionesEnAnualidad: hireNumber,
+    esRepetidorAnual: hireNumber > 1,
+  };
 }
 
 async function serialize(table: string, value: DatabaseRecord) {
@@ -125,7 +163,7 @@ async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRe
       await supabase.query('subcontrata_documentos', {
         method: 'DELETE',
         prefer: 'return=minimal',
-        query: `id=eq.${encodeURIComponent(String(row.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
+        query: `id=eq.${encodeURIComponent(String(item.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
       });
     }
   }
@@ -153,7 +191,8 @@ function hydrate(row: any, table: string): any {
 export async function createDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, data: T) {
   const user = await requireUser();
   const table = canonicalTable(collectionName);
-  const serialized = await serialize(table, data);
+  const effectiveData = table === 'trabajadores' ? await enrichWorkerAnnualHiring(data, user.id) : data;
+  const serialized = await serialize(table, effectiveData);
   const body = table === 'trabajadores'
     ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
     : isLegacyNumericTable(table)
@@ -161,11 +200,11 @@ export async function createDocument<T extends DatabaseRecord>(collectionName: s
       : { id: String(id), ...serialized };
   await supabase.query(table, { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body });
   if (table === 'trabajadores') {
-    void syncMedicalAppointmentFromWorker(data, id, user.id).catch(error => {
+    void syncMedicalAppointmentFromWorker(effectiveData, id, user.id).catch(error => {
       console.error('Error sincronizando cita médica automática:', error);
     });
   }
-  if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), data);
+  if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), effectiveData);
 }
 
 export async function updateDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, patch: Partial<T>) {
@@ -221,10 +260,6 @@ export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string,
     } catch (error) {
       if (!active) return;
       consecutiveReadFailures += 1;
-
-      // Mobile browsers frequently suspend sockets while changing network, locking the
-      // screen or moving Safari to the background. Treat the first failures as transient
-      // and retry silently instead of surfacing a false "Supabase read" error to users.
       if (consecutiveReadFailures < 3) {
         if (retryTimer !== null) window.clearTimeout(retryTimer);
         retryTimer = window.setTimeout(() => {
@@ -233,7 +268,6 @@ export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string,
         }, consecutiveReadFailures === 1 ? 500 : 1500);
         return;
       }
-
       onError?.(error instanceof Error ? error : new Error(String(error)));
     }
   };
@@ -252,15 +286,11 @@ export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string,
     scheduleRefresh();
   };
 
-  // Initial snapshot, then refresh only when Postgres reports an actual change.
   void run();
   const channel = supabase
     .channel(`profea:${table}:${Math.random().toString(36).slice(2)}`)
     .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
     .subscribe((status) => {
-      // CHANNEL_ERROR/TIMED_OUT are commonly transient on iOS when Safari suspends or
-      // resumes a tab. Supabase Realtime reconnects automatically, so don't show a
-      // user-facing data error merely because the websocket was interrupted briefly.
       if (status === 'SUBSCRIBED') {
         consecutiveReadFailures = 0;
         scheduleRefresh();
