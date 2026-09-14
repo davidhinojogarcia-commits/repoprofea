@@ -46,7 +46,51 @@ export const SaeSection:React.FC<SaeSectionProps>=({people,onToast})=>{
   const handleReportFile=async(file?:File)=>{if(!file||!selectedNeed)return;setBusy(true);setProgress('Leyendo informe SAE…');try{const parsed=await parseSaeReportFile(file,setProgress);if(!parsed.candidates.length)throw new Error('No se han reconocido candidatos.');const workKey=(v:string)=>{const s=norm(v).replace(/[.\s_\-/:]+/g,'');const code=s.match(/(\d{5})/)?.[1]||'';const type=s.includes('gr')?'gr':s.includes('ee')?'ee':'';return code&&type?`${code}${type}`:s;};if(workKey(selectedNeed.codigoObra)&&workKey(parsed.codigoObra)&&workKey(selectedNeed.codigoObra)!==workKey(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);if(selectedNeed.mes&&parsed.mes&&norm(selectedNeed.mes)!==norm(parsed.mes))throw new Error(`El informe corresponde a ${parsed.mes}, pero la necesidad es de ${selectedNeed.mes}.`);const fileBase64=await fileToDataUrl(file);await createSaeReport(selectedNeed.id,{fileName:file.name,fileBase64,extractedText:parsed.sourceText,extractionSource:parsed.source,offerNumber:parsed.offerNumber,obra:parsed.obra||selectedNeed.obra,codigoObra:parsed.codigoObra||selectedNeed.codigoObra,mes:parsed.mes||selectedNeed.mes,quincena:parsed.quincena,categoria:parsed.categoria},parsed.candidates.map(c=>({orderNumber:c.orderNumber,fullNameOriginal:c.fullNameOriginal,normalizedName:c.normalizedName,apellidos:c.apellidos,nombre:c.nombre,categoria:parsed.categoria,obra:parsed.obra||selectedNeed.obra,codigoObra:parsed.codigoObra||selectedNeed.codigoObra,offerNumber:parsed.offerNumber,mes:parsed.mes||selectedNeed.mes,quincena:'',estado:'Sin asignar',resultCode:'',linkedWorkerId:null,pageNumber:c.pageNumber,overlayX:c.overlayX,overlayY:c.overlayY,confidence:c.confidence})));await refresh(selectedNeed.id);setActiveStep(3);onToast(`${parsed.candidates.length} candidatos SAE reconocidos.`,'success');}catch(e:any){onToast(e.message||'No se pudo analizar el informe SAE.','error');}finally{setBusy(false);setProgress('');}};
 
   const registerWorker=async(candidate:SaeCandidate)=>{if(!candidate.quincena)return onToast('Asigne primero una quincena.','error');const previous=people.find(p=>norm(p.apellidosNombre)===norm(candidate.normalizedName));const workerId=Date.now()+Math.floor(Math.random()*900000);const worker={id:workerId,fechaRegistro:new Date().toISOString(),supervisorResponsable:previous?.supervisorResponsable||'',numOferta:candidate.offerNumber,obra:candidate.obra||selectedNeed?.obra||'',categoria:candidate.categoria||'',quincena:candidate.quincena,apellidosNombre:candidate.normalizedName,dni:previous?.dni||'',fechaNacimiento:previous?.fechaNacimiento||'',periodoInicio:'',periodoFin:'',telefono:previous?.telefono||'',calzado:previous?.calzado||'',formacion:previous?.formacion||'No',lugarFormacion:previous?.lugarFormacion||'',citaDia:'',citaHora:'',sitioReconocimiento:'',documentacionCompleta:'No',observaciones:`Contratación SAE · Oferta ${candidate.offerNumber} · Orden ${candidate.orderNumber}.`,necesitaReconocimiento:previous?.necesitaReconocimiento||'No',sincronizadoEnNube:true};try{await createDocument('trabajadores',workerId,worker as any);await patchCandidate(candidate,{estado:'Contratado',resultCode:'2001',linkedWorkerId:workerId});onToast('Trabajador registrado y contratación SAE confirmada (2001).','success');}catch(e:any){onToast(e.message||'No se pudo registrar al trabajador.','error');}};
-  const revertWorker=async(candidate:SaeCandidate)=>{if(!candidate.linkedWorkerId)return;if(!window.confirm(`¿Revertir la contratación de ${candidate.normalizedName}? Se eliminará el registro de trabajador creado por SAE y el candidato volverá a su quincena.`))return;try{await deleteDocument('trabajadores',candidate.linkedWorkerId);const nextEstado=candidate.quincena||'Sin asignar';await patchCandidate(candidate,{estado:nextEstado,resultCode:'',linkedWorkerId:null});onToast('Contratación revertida. El candidato vuelve a estar editable.','success');}catch(e:any){onToast(e.message||'No se pudo revertir la contratación.','error');}};
+  const revertWorker=async(candidate:SaeCandidate)=>{
+    const workerId=candidate.linkedWorkerId;
+    if(!workerId){
+      onToast('Este candidato no tiene un trabajador SAE vinculado para revertir.','error');
+      return;
+    }
+    if(!window.confirm(`¿Revertir la contratación de ${candidate.normalizedName}? Se eliminará únicamente el registro de trabajador creado por esta contratación SAE y el candidato volverá a su quincena.`))return;
+
+    const nextEstado=candidate.quincena||'Sin asignar';
+    const revertedPatch={estado:nextEstado,resultCode:'',linkedWorkerId:null};
+    const originalPatch={estado:'Contratado',resultCode:candidate.resultCode||'2001',linkedWorkerId:workerId};
+
+    // Actualizamos primero el candidato de forma estricta. patchCandidate no se usa aquí
+    // porque captura sus propios errores y podía mostrar una reversión como correcta aunque
+    // Supabase no hubiese guardado el cambio.
+    try{
+      await updateSaeCandidate(candidate.id,revertedPatch);
+    }catch(e:any){
+      onToast(e.message||'No se pudo actualizar el candidato SAE. No se ha eliminado ningún trabajador.','error');
+      return;
+    }
+
+    try{
+      await deleteDocument('trabajadores',workerId);
+      setCandidates(prev=>prev.map(c=>c.id===candidate.id?{...c,...revertedPatch}:c));
+      // Recargamos desde Supabase para que cada reversión parta siempre del estado real y
+      // puedan revertirse consecutivamente todos los candidatos que el usuario necesite.
+      const fresh=await listSaeCandidates(candidate.needId);
+      setCandidates(fresh);
+      onToast('Contratación revertida correctamente. El candidato vuelve a estar editable.','success');
+    }catch(e:any){
+      // Si falla el borrado del trabajador, restauramos el candidato a Contratado para no
+      // dejar una contratación a medias ni perder el vínculo.
+      try{
+        await updateSaeCandidate(candidate.id,originalPatch);
+      }catch(rollbackError){
+        console.error('No se pudo restaurar el candidato tras fallar la reversión SAE:',rollbackError);
+      }
+      try{
+        const fresh=await listSaeCandidates(candidate.needId);
+        setCandidates(fresh);
+      }catch{}
+      onToast(e.message||'No se pudo eliminar el trabajador vinculado. La contratación se ha mantenido.','error');
+    }
+  };
 
   const buildReturnPdfBytes=async(report:SaeReport,offsetX=0,offsetY=0,requireComplete=true):Promise<Uint8Array>=>{const rows=candidates.filter(c=>c.reportId===report.id);if(!rows.length)throw new Error('No hay candidatos asociados al informe.');if(requireComplete){const p=rows.filter(c=>!c.resultCode);if(p.length)throw new Error(`Quedan ${p.length} candidatos sin código SAE.`);}if(!report.fileBase64.startsWith('data:application/pdf'))throw new Error('La devolución sobre original requiere PDF.');const {PDFDocument,StandardFonts,rgb}=await loadPdfLib();const pdf=await PDFDocument.load(dataUrlToBytes(report.fileBase64));const font=await pdf.embedFont(StandardFonts.HelveticaBold);const pages=pdf.getPages();for(const c of rows){const page=pages[Math.max(0,c.pageNumber-1)];if(!page)continue;const code=c.resultCode||(requireComplete?'':'2001');if(!code)continue;page.drawText(code,{x:(c.overlayX+offsetX)*72/25.4,y:page.getHeight()-((c.overlayY+offsetY)*72/25.4)-8,size:10,font,color:rgb(0,0,0)});}return await pdf.save();};
   const generateReturnPdf=async(report:SaeReport)=>{setBusy(true);setProgress('Generando devolución SAE…');try{const bytes=await buildReturnPdfBytes(report);const url=URL.createObjectURL(bytesToBlob(bytes));const a=document.createElement('a');a.href=url;a.download=`SAE_CUMPLIMENTADO_${report.offerNumber||report.id}.pdf`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);onToast('Documento SAE generado sobre el original.','success');}catch(e:any){onToast(e.message||'No se pudo generar el documento.','error');}finally{setBusy(false);setProgress('');}};
