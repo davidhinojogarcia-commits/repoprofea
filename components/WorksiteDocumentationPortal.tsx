@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardCheck, Clock, FileDown, HardHat, RefreshCw, Save, Users, X, Wrench, GraduationCap, ShieldCheck } from 'lucide-react';
+import { ClipboardCheck, Clock, FileDown, HardHat, RefreshCw, Save, Users, X, Wrench, GraduationCap, ShieldCheck, Plus, Trash2 } from 'lucide-react';
 import { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
-import { loadAppBusinessSettings } from '../src/services/appSettingsService';
+import { loadAppBusinessSettings, saveAppBusinessSettings } from '../src/services/appSettingsService';
+import { deleteStoredObraRecursoPreventivo, getStoredObrasRecursosPreventivos, saveStoredObraRecursoPreventivo } from '../src/lib/subcontratasDefaults';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import {
@@ -92,6 +93,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [workRows, setWorkRows] = useState<WorkRow[]>([]);
   const [configuredWorks, setConfiguredWorks] = useState<string[]>([]);
   const [selectedWork, setSelectedWork] = useState('');
+  const [newWorkName, setNewWorkName] = useState('');
+  const [newWorkResource, setNewWorkResource] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [empresa, setEmpresa] = useState(DEFAULT_COMPANY);
   const [cif, setCif] = useState('');
@@ -118,9 +121,14 @@ export const WorksiteDocumentationPortal: React.FC = () => {
         supabase.query('obras', { query: 'select=id,nombre,empresa,cif,recurso_preventivo&order=nombre.asc' }),
         loadAppBusinessSettings(),
       ]);
+      const rows = (obras || []) as WorkRow[];
+      const mergedWorks = Array.from(new Set([
+        ...(settings.savedObras || []).map(safe),
+        ...rows.map(row => safe(row.nombre)),
+      ].filter(Boolean)));
       setWorkers(people || []);
-      setWorkRows((obras || []) as WorkRow[]);
-      setConfiguredWorks((settings.savedObras || []).map(safe).filter(Boolean));
+      setWorkRows(rows);
+      setConfiguredWorks(mergedWorks);
     } catch (error) {
       console.error('No se pudo cargar Documentación de obra:', error);
       showToast('No se han podido cargar las obras y trabajadores.', 'error');
@@ -269,11 +277,76 @@ export const WorksiteDocumentationPortal: React.FC = () => {
           },
         });
       }
+      const settings = await loadAppBusinessSettings();
+      if (!(settings.savedObras || []).some(work => sameWork(work, selectedWork))) {
+        await saveAppBusinessSettings({ savedObras: [...settings.savedObras, selectedWork] });
+      }
+      const stored = getStoredObrasRecursosPreventivos();
+      const previousKey = Object.keys(stored).find(work => sameWork(work, selectedWork));
+      const category = previousKey ? stored[previousKey]?.recursoPreventivoCategoria : 'Encargado de Obra';
+      if (previousKey && previousKey !== selectedWork) deleteStoredObraRecursoPreventivo(previousKey);
+      saveStoredObraRecursoPreventivo(selectedWork, safe(recursoPreventivo), category);
       await refresh();
-      showToast('Datos de la obra guardados.');
+      showToast('Datos de la obra sincronizados en Configuración y Documentación de obra.');
     } catch (error) {
       console.error('Error guardando configuración de obra:', error);
       showToast('No se ha podido guardar el recurso preventivo de la obra.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createWork = async () => {
+    const name = safe(newWorkName);
+    const resource = safe(newWorkResource);
+    if (!name || !resource) return showToast('Indica el nombre de la obra y su recurso preventivo.', 'error');
+    if (workNames.some(work => sameWork(work, name))) return showToast('La obra ya está registrada.', 'error');
+    setSaving(true);
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) throw new Error('Sesión no disponible');
+      await supabase.query('obras', {
+        method: 'POST',
+        prefer: 'return=minimal',
+        body: {
+          nombre: name, codigo: '', municipio: '', descripcion: '',
+          empresa: DEFAULT_COMPANY, cif: '', recurso_preventivo: resource,
+          owner_id: data.user.id, created_by: data.user.id, updated_by: data.user.id,
+        },
+      });
+      const settings = await loadAppBusinessSettings();
+      await saveAppBusinessSettings({ savedObras: [...settings.savedObras, name] });
+      saveStoredObraRecursoPreventivo(name, resource, 'Encargado de Obra');
+      setNewWorkName('');
+      setNewWorkResource('');
+      setSelectedWork(workIdentity(name) || name);
+      await refresh();
+      showToast('Obra creada y sincronizada con Configuración.');
+    } catch (error: any) {
+      showToast(error?.message || 'No se pudo crear la obra.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteWork = async (work: string) => {
+    if (!window.confirm(`¿Eliminar la obra "${work}" de Configuración y Documentación de obra? Los trabajadores no se eliminarán.`)) return;
+    setSaving(true);
+    try {
+      const matches = workRows.filter(row => sameWork(row.nombre, work));
+      for (const row of matches) {
+        await supabase.query('obras', { method: 'DELETE', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(row.id)}` });
+      }
+      const settings = await loadAppBusinessSettings();
+      await saveAppBusinessSettings({ savedObras: settings.savedObras.filter(item => !sameWork(item, work)) });
+      const stored = getStoredObrasRecursosPreventivos();
+      Object.keys(stored).filter(item => sameWork(item, work)).forEach(deleteStoredObraRecursoPreventivo);
+      setConfiguredWorks(prev => prev.filter(item => !sameWork(item, work)));
+      setSelectedWork(prev => sameWork(prev, work) ? '' : prev);
+      await refresh();
+      showToast('Obra eliminada de ambos apartados.');
+    } catch (error: any) {
+      showToast(error?.message || 'No se pudo eliminar la obra.', 'error');
     } finally {
       setSaving(false);
     }
@@ -387,14 +460,22 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 <h2 className="font-black text-sm uppercase tracking-wider text-slate-600 dark:text-slate-300">Obras</h2>
                 <span className="text-xs font-bold rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 px-2.5 py-1">{workNames.length}</span>
               </div>
+              <div className="space-y-2 mb-4 rounded-2xl border border-slate-200 dark:border-slate-800 p-3">
+                <input value={newWorkName} onChange={e => setNewWorkName(e.target.value)} placeholder="Nueva obra" className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm" />
+                <input value={newWorkResource} onChange={e => setNewWorkResource(e.target.value)} placeholder="Recurso preventivo" className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm" />
+                <button type="button" disabled={saving} onClick={() => void createWork()} className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2 text-sm font-bold disabled:opacity-60"><Plus className="w-4 h-4" /> Crear obra</button>
+              </div>
               <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
                 {workNames.map(work => {
                   const count = workers.filter(p => sameWork(p.obra || '', work)).length;
                   return (
-                    <button key={work} type="button" onClick={() => setSelectedWork(work)} className={`w-full text-left rounded-2xl border px-4 py-3 transition ${selectedWork === work ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 shadow-sm' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}>
-                      <div className="font-bold text-sm leading-tight">{work}</div>
-                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{count} registro(s) de trabajadores</div>
-                    </button>
+                    <div key={work} className={`rounded-2xl border p-2 transition ${selectedWork === work ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 shadow-sm' : 'border-slate-200 dark:border-slate-800'}`}>
+                      <button type="button" onClick={() => setSelectedWork(work)} className="w-full text-left px-2 py-1">
+                        <div className="font-bold text-sm leading-tight">{work}</div>
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{count} registro(s) de trabajadores</div>
+                      </button>
+                      <button type="button" disabled={saving} onClick={() => void deleteWork(work)} className="mt-1 inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-rose-700 dark:text-rose-300 disabled:opacity-60"><Trash2 className="w-3.5 h-3.5" /> Eliminar</button>
+                    </div>
                   );
                 })}
                 {!workNames.length && <div className="p-4 text-sm text-slate-500">No hay obras registradas en Configuración → Obras.</div>}
