@@ -1,0 +1,132 @@
+import type { Person } from '../../types';
+import { generateMedicalTicketsPDF } from './exportUtils';
+
+const normalizePhone = (value: string): string => {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.length === 9) digits = `34${digits}`;
+  return digits;
+};
+
+const formatDate = (value: string): string => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value || '-';
+};
+
+export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = false): string => {
+  const observations = String(person.observaciones || '').trim();
+  const lines = reminder
+    ? [
+        'RECORDATORIO DE RECONOCIMIENTO MÉDICO - PROFEA',
+        `Hola ${person.apellidosNombre || 'trabajador/a'}.`,
+        `Te recordamos tu reconocimiento médico del ${formatDate(person.citaDia)} a las ${person.citaHora || '-'} h.`,
+        `Lugar: ${person.sitioReconocimiento || '-'}`,
+        `Obra: ${person.obra || '-'}`,
+      ]
+    : [
+        'CITA PARA RECONOCIMIENTO MÉDICO - PROFEA',
+        `Hola ${person.apellidosNombre || 'trabajador/a'}.`,
+        `Tienes programado tu reconocimiento médico el ${formatDate(person.citaDia)} a las ${person.citaHora || '-'} h.`,
+        `Lugar: ${person.sitioReconocimiento || '-'}`,
+        `Obra: ${person.obra || '-'}`,
+      ];
+  if (observations) lines.push(`Observaciones: ${observations}`);
+  lines.push('', 'Se adjunta la citación oficial con todos los datos e instrucciones para el reconocimiento médico.');
+  lines.push('Por favor, confirma respondiendo CONFIRMO. Si no puedes asistir, responde NO PUEDO ASISTIR.');
+  return lines.join('\n');
+};
+
+const overlayWorkerIdentity = (doc: any, person: Person) => {
+  try {
+    doc.setPage(1);
+    const namePlaceholder = '___________________________________________';
+    const dniPlaceholder = '___________________________';
+    const prefix = 'El trabajador ';
+    const middle = ' con DNI ';
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+
+    const startX = 18;
+    const baselineY = 70;
+    const nameX = startX + doc.getTextWidth(prefix);
+    const nameW = doc.getTextWidth(namePlaceholder);
+    const dniX = nameX + nameW + doc.getTextWidth(middle);
+    const dniW = doc.getTextWidth(dniPlaceholder);
+
+    doc.setFillColor(255, 255, 255);
+    doc.rect(nameX - 0.5, baselineY - 3.5, nameW + 1, 4.5, 'F');
+    doc.rect(dniX - 0.5, baselineY - 3.5, dniW + 1, 4.5, 'F');
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.text((person.apellidosNombre || '-').toUpperCase(), nameX, baselineY, { maxWidth: nameW });
+    doc.text((person.dni || '-').toUpperCase(), dniX, baselineY, { maxWidth: dniW });
+  } catch (error) {
+    console.warn('No se pudo completar la identidad del trabajador en la citación PDF:', error);
+  }
+};
+
+export const createMedicalAppointmentPdfFile = async (person: Person): Promise<File> => {
+  const observations = String(person.observaciones || '').trim();
+  const site = observations
+    ? `${person.sitioReconocimiento || '-'}\nOBSERVACIONES / INDICACIONES PARTICULARES: ${observations}`
+    : (person.sitioReconocimiento || '-');
+
+  const { doc } = await generateMedicalTicketsPDF([
+    {
+      id: person.id,
+      apellidosNombre: person.apellidosNombre,
+      dni: person.dni,
+      obra: person.obra,
+      numOferta: person.numOferta,
+      categoria: person.categoria,
+      quincena: person.quincena,
+      citaDia: person.citaDia,
+      citaHora: person.citaHora,
+      sitioReconocimiento: site,
+      supervisorResponsable: person.supervisorResponsable,
+      diaComienzo: person.periodoInicio,
+      diaFinContrato: person.periodoFin,
+      diaContratacion: person.fechaRegistro?.slice(0, 10),
+    },
+  ], {}, '08:00');
+
+  overlayWorkerIdentity(doc, person);
+  const safeName = (person.apellidosNombre || 'trabajador').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_');
+  const filename = `CITACION_RECONOCIMIENTO_${safeName}_${formatDate(person.citaDia).replace(/\//g, '-')}.pdf`;
+  const blob = doc.output('blob');
+  return new File([blob], filename, { type: 'application/pdf' });
+};
+
+export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder = false): Promise<'shared' | 'opened' | 'cancelled'> => {
+  const phone = normalizePhone(person.telefono || '');
+  if (phone.length < 10) throw new Error('El trabajador no tiene un teléfono válido para WhatsApp.');
+
+  const text = buildMedicalAppointmentWhatsAppText(person, reminder);
+  const pdfFile = await createMedicalAppointmentPdfFile(person);
+
+  if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+    try {
+      await navigator.share({
+        title: reminder ? 'Recordatorio de reconocimiento médico' : 'Citación para reconocimiento médico',
+        text,
+        files: [pdfFile],
+      });
+      return 'shared';
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return 'cancelled';
+      console.warn('No se pudo compartir directamente el PDF; se usará WhatsApp con texto.', error);
+    }
+  }
+
+  const url = URL.createObjectURL(pdfFile);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = pdfFile.name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  return 'opened';
+};
