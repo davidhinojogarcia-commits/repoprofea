@@ -5,6 +5,7 @@ import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
+import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import './src/styles/design-system.css';
@@ -69,7 +70,11 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-const isMedicalConfirmation = new URLSearchParams(window.location.search).get('confirmacion_reconocimiento') === '1';
+const initialSearchParams = new URLSearchParams(window.location.search);
+const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
+// Se captura antes de que AuthGate pueda normalizar la URL tras iniciar sesión.
+// Así, un QR abierto en un dispositivo sin sesión conserva el trabajador solicitado.
+const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
@@ -78,12 +83,16 @@ ReactDOM.createRoot(rootElement).render(
         <MedicalAppointmentConfirmationPortal />
       ) : (
         <AuthGate>
-          <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
-            <App />
-            <WorksiteDocumentationPortal />
-            <AppToastHost />
-            <AppInstallPromo />
-          </React.Suspense>
+          {workerQrDni ? (
+            <WorkerQrPortal dni={workerQrDni} />
+          ) : (
+            <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
+              <App />
+              <WorksiteDocumentationPortal />
+              <AppToastHost />
+              <AppInstallPromo />
+            </React.Suspense>
+          )}
         </AuthGate>
       )}
     </RootErrorBoundary>
