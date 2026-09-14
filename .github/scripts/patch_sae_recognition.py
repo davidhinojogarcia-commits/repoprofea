@@ -1,122 +1,125 @@
 from pathlib import Path
 
+path = Path("components/Configuracion.tsx")
+text = path.read_text(encoding="utf-8")
 
-def replace_once(path: str, old: str, new: str) -> None:
-    target = Path(path)
-    text = target.read_text(encoding="utf-8")
+def replace_once(old: str, new: str) -> None:
+    global text
     if old not in text:
-        raise SystemExit(f"Expected target not found in {path}")
-    target.write_text(text.replace(old, new, 1), encoding="utf-8")
+        raise SystemExit("Expected Configuracion target not found")
+    text = text.replace(old, new, 1)
 
-
-# Restore the Obras tab. The full specialized UI already exists in Configuracion.
 replace_once(
-    "components/Configuracion.tsx",
-    "  const tabs = [\n    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },",
-    "  const tabs = [\n    { id: 'obras', label: 'Obras', icon: Building2, list: savedObras, setter: setSavedObras },\n    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },",
+'''  const [editingObraRecurso, setEditingObraRecurso] = useState<{
+    obra: string;
+    recurso: string;
+    categoria: string;
+  } | null>(null);''',
+'''  const [editingObraRecurso, setEditingObraRecurso] = useState<{
+    obra: string;
+    nombre: string;
+    recurso: string;
+    categoria: string;
+  } | null>(null);'''
 )
 
-# Harden SAE month and work-code recognition.
-parser = Path("src/lib/saeDocumentParser.ts")
-text = parser.read_text(encoding="utf-8")
-start = text.index("function detectMonth(text: string): string {")
-end = text.index("\nconst compact =", start)
-replacement = r'''const MONTH_PATTERN = MONTHS.join('|');
-
-function detectMonth(text: string): string {
-  const norm = normalizeSaeText(text);
-  if (!norm) return '';
-
-  const contextualPatterns = [
-    new RegExp(`\\b[12](?:A|ª|º)?\\s*QUINCENA\\s+(?:DE\\s+)?(${MONTH_PATTERN})\\b`, 'i'),
-    new RegExp(`\\b(?:MES|PERIODO|NECESIDAD(?:ES)?(?:\\s+DE\\s+CONTRATACION)?|OFERTA)\\s*[:\\-]?\\s*(${MONTH_PATTERN})\\b`, 'i'),
-    new RegExp(`\\bPFEA\\b[^\\n]{0,80}\\b(${MONTH_PATTERN})\\b`, 'i'),
-  ];
-  for (const pattern of contextualPatterns) {
-    const match = norm.match(pattern);
-    if (match?.[1]) return match[1].toUpperCase();
-  }
-
-  let best = { month: '', score: -1, index: Number.MAX_SAFE_INTEGER };
-  for (const month of MONTHS) {
-    const monthRegex = new RegExp(`\\b${month}\\b`, 'gi');
-    let match: RegExpExecArray | null;
-    while ((match = monthRegex.exec(norm))) {
-      const nearby = norm.slice(
-        Math.max(0, match.index - 90),
-        Math.min(norm.length, match.index + month.length + 90),
-      );
-      let score = 0;
-      if (/QUINCENA/.test(nearby)) score += 8;
-      if (/\bMES\b|PERIODO/.test(nearby)) score += 6;
-      if (/NECESIDAD|CONTRATACION|OFERTA/.test(nearby)) score += 4;
-      if (/PFEA|SAE/.test(nearby)) score += 2;
-      if (/FECHA\s+(?:DE\s+)?(?:EMISION|FIRMA|REGISTRO)/.test(nearby)) score -= 5;
-      if (score > best.score || (score === best.score && match.index < best.index)) {
-        best = { month, score, index: match.index };
-      }
+replace_once(
+'''    const { obra, recurso, categoria } = editingObraRecurso;
+    if (!recurso.trim()) {
+      if (setToast) setToast({ message: 'El nombre del Recurso Preventivo no puede estar vacío.', type: 'error' });
+      return;
     }
-  }
-  return best.month;
-}
+    saveStoredObraRecursoPreventivo(obra, recurso.trim(), categoria.trim());
+    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    setEditingObraRecurso(null);
+    if (setToast) {
+      setToast({ message: `Recurso Preventivo de "${obra}" actualizado correctamente.`, type: 'success' });
+    }''',
+'''    const { obra, nombre, recurso, categoria } = editingObraRecurso;
+    const trimmedNombre = nombre.trim();
+    if (!trimmedNombre) {
+      if (setToast) setToast({ message: 'El nombre de la obra no puede estar vacío.', type: 'error' });
+      return;
+    }
+    if (!recurso.trim()) {
+      if (setToast) setToast({ message: 'El nombre del Recurso Preventivo no puede estar vacío.', type: 'error' });
+      return;
+    }
+    if (trimmedNombre.toLowerCase() !== obra.toLowerCase() && savedObras.some(o => o.toLowerCase() === trimmedNombre.toLowerCase())) {
+      if (setToast) setToast({ message: 'Ya existe otra obra registrada con ese nombre.', type: 'error' });
+      return;
+    }
 
-function detectYear(text: string): number | null {
-  const m = text.match(/\b(20\d{2})\b/);
-  return m ? Number(m[1]) : null;
-}
+    if (trimmedNombre !== obra) {
+      setSavedObras(prev => prev.map(item => item === obra ? trimmedNombre : item).sort((a, b) => a.localeCompare(b)));
+      deleteStoredObraRecursoPreventivo(obra);
+    }
+    saveStoredObraRecursoPreventivo(trimmedNombre, recurso.trim(), categoria.trim());
+    setObrasRecursos(getStoredObrasRecursosPreventivos());
+    setEditingObraRecurso(null);
+    if (setToast) {
+      setToast({ message: `Obra "${trimmedNombre}" actualizada correctamente.`, type: 'success' });
+    }'''
+)
 
-function canonicalWorkCode(value: string): string {
-  const norm = normalizeSaeText(value);
-  const digits = norm.match(/\b(\d{5})\b/)?.[1] || '';
-  const compactValue = norm.replace(/[.\s_\-/:]+/g, '');
-  const type = compactValue.includes('GR') ? 'GR' : compactValue.includes('EE') ? 'EE' : '';
-  return digits && type ? `${digits} ${type}` : '';
-}
+replace_once(
+'''                                  onClick={() => setEditingObraRecurso({
+                                    obra,
+                                    recurso: recursoData?.recursoPreventivoNombre || '',
+                                    categoria: recursoData?.recursoPreventivoCategoria || 'Encargado de Obra'
+                                  })}''',
+'''                                  onClick={() => setEditingObraRecurso({
+                                    obra,
+                                    nombre: obra,
+                                    recurso: recursoData?.recursoPreventivoNombre || '',
+                                    categoria: recursoData?.recursoPreventivoCategoria || 'Encargado de Obra'
+                                  })}'''
+)
 
-function detectWork(text: string) {
-  const norm = normalizeSaeText(text);
-  const variants = [
-    norm.match(/\b(\d{5})\s*[-–/:]?\s*(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/i)?.[0] || '',
-    norm.match(/\b(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*(\d{5})\b/i)?.[0] || '',
-    norm.match(/(?:CODIGO|COD\.?|EXPEDIENTE)\s*(?:DE\s+)?(?:OBRA)?\s*[:#\-]?\s*([^\n]{0,35})/i)?.[1] || '',
-  ];
-  const codigoObra = variants.map(canonicalWorkCode).find(Boolean) || '';
+replace_once(
+'''                                  title="Editar Recurso Preventivo"''',
+'''                                  title="Editar obra"'''
+)
 
-  const explicit = text.match(
-    /(?:OBRA|PROYECTO|DENOMINACI[ÓO]N\s+(?:DE\s+LA\s+)?OBRA)\s*[:\-]?\s*([^\n\r]{3,120})/i,
-  );
-  const obra = (explicit?.[1] || '')
-    .replace(/\b(?:G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*\d{5}\b/ig, ' ')
-    .replace(/\b\d{5}\s*[-–/:]?\s*(?:G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/ig, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/^[-–:;,.\s]+|[-–:;,.\s]+$/g, '')
-    .trim();
-  return { codigoObra, obra: obra || codigoObra };
-}
-'''
-text = text[:start] + replacement + text[end:]
+replace_once(
+'''              {/* Modal para Editar Recurso Preventivo de Obra */}''',
+'''              {/* Modal para Editar Obra y Recurso Preventivo */}'''
+)
 
-# Normalize GR/EE before parsing structured needs, regardless of whether the SAE
-# technician writes the letters before/after the code or uses punctuation.
-flat_start = text.index("  const flat = text", text.index("function extractStructuredProfeaNeeds"))
-flat_end = text.index("\n  const month =", flat_start)
-flat_replacement = r'''  const flat = text
-    .replace(/\[P[ÁA]GINA\s+\d+\]/gi, ' ')
-    .replace(/\r/g, '\n')
-    .replace(/\b(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*(\d{5})\b/gi, (_m, type, code) => `${code} ${String(type).replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`)
-    .replace(/\b(\d{5})\s*[-–/:]?\s*(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/gi, (_m, code, type) => `${code} ${String(type).replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`)
-    .replace(/[\t ]+/g, ' ')
-    .replace(/\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();'''
-text = text[:flat_start] + flat_replacement + text[flat_end:]
-parser.write_text(text, encoding="utf-8")
+replace_once(
+'''                            Recurso Preventivo Asignado''',
+'''                            Editar Obra'''
+)
 
-# Validate report vs selected need by canonical work key, not by literal formatting.
-sae = Path("components/SaeSection.tsx")
-text = sae.read_text(encoding="utf-8")
-old = "const nw=(v:string)=>norm(v).replace(/[.\\s-]+/g,'');if(nw(selectedNeed.codigoObra)&&nw(parsed.codigoObra)&&nw(selectedNeed.codigoObra)!==nw(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);"
-new = "const workKey=(v:string)=>{const s=norm(v).replace(/[.\\s_\\-/:]+/g,'');const code=s.match(/(\\d{5})/)?.[1]||'';const type=s.includes('gr')?'gr':s.includes('ee')?'ee':'';return code&&type?`${code}${type}`:s;};if(workKey(selectedNeed.codigoObra)&&workKey(parsed.codigoObra)&&workKey(selectedNeed.codigoObra)!==workKey(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);"
-if old not in text:
-    raise SystemExit("SAE report comparison target not found")
-sae.write_text(text.replace(old, new, 1), encoding="utf-8")
+replace_once(
+'''                            {editingObraRecurso.obra}''',
+'''                            Modifica los datos de la obra y su recurso preventivo'''
+)
+
+replace_once(
+'''                    <form onSubmit={handleSaveEditObraRecurso} className="space-y-4">
+                      <div>''',
+'''                    <form onSubmit={handleSaveEditObraRecurso} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          Nombre de la Obra *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingObraRecurso.nombre}
+                          onChange={(e) => setEditingObraRecurso({ ...editingObraRecurso, nombre: e.target.value })}
+                          placeholder="Nombre de la obra"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                        />
+                      </div>
+
+                      <div>'''
+)
+
+replace_once(
+'''                          <span>Guardar Recurso</span>''',
+'''                          <span>Guardar Cambios</span>'''
+)
+
+path.write_text(text, encoding="utf-8")
