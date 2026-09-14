@@ -373,9 +373,10 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     applyToActive: boolean,
     applyToAll: boolean
   ) => {
+    const normalizedTemplate = normalizeSubcontrataChecklist(newTemplate);
     try {
-      await saveSubcontrataSettings({ checklistTemplate: newTemplate });
-      setChecklistTemplate(newTemplate);
+      await saveSubcontrataSettings({ checklistTemplate: normalizedTemplate });
+      setChecklistTemplate(normalizedTemplate);
     } catch (error) {
       console.error('Error guardando checklist en Supabase:', error);
       onToast('No se pudo guardar el checklist en Supabase.', 'error');
@@ -384,7 +385,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
     if (applyToAll) {
       setSubcontratistas(prev => prev.map(sub => {
-        const syncedChecklist = syncSubcontrataChecklistWithTemplate(sub.checklist, newTemplate);
+        const syncedChecklist = syncSubcontrataChecklistWithTemplate(sub.checklist, normalizedTemplate);
         const compliance = getSubcontrataCompliance({ ...sub, checklist: syncedChecklist });
         return {
           ...sub,
@@ -397,7 +398,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     } else if (applyToActive && activeSubcontrata) {
       setSubcontratistas(prev => prev.map(sub => {
         if (sub.id !== activeSubcontrata.id) return sub;
-        const syncedChecklist = syncSubcontrataChecklistWithTemplate(sub.checklist, newTemplate);
+        const syncedChecklist = syncSubcontrataChecklistWithTemplate(sub.checklist, normalizedTemplate);
         const compliance = getSubcontrataCompliance({ ...sub, checklist: syncedChecklist });
         return {
           ...sub,
