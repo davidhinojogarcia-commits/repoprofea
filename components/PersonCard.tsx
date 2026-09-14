@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Person, getAptitudMedicaInfo } from '../types';
+import { ShareRecordButton } from './ShareRecordButton';
 import { 
   Trash2, 
   Calendar, 
@@ -637,6 +638,13 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                   </span>
                 </div>
               )}
+              <ShareRecordButton
+                resourceType="trabajadores"
+                resourceId={person.id}
+                ownerId={person.ownerId}
+                compact
+                className="flex-1 sm:flex-none"
+              />
               <button
                 type="button"
                 id={`btn-idcard-${person.id}`}
