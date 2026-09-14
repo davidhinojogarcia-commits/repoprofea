@@ -147,10 +147,49 @@ export async function createSaeNeed(input: NeedInput): Promise<SaeNeed> {
 }
 
 export async function updateSaeNeed(id: string, input: NeedInput): Promise<void> {
-  const ownerId = await uid(); const normalized = needBody(input, ownerId);
-  await supabase.query('sae_needs', { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(id)}`, body: normalized.body });
-  await supabase.query('sae_need_categories', { method: 'DELETE', prefer: 'return=minimal', query: `need_id=eq.${encodeURIComponent(id)}` });
-  for (const category of input.categorias) await supabase.query('sae_need_categories', { method: 'POST', prefer: 'return=minimal', body: { id: uuid(), need_id: id, category: category.categoria, requested_count: category.cantidad, created_by: ownerId } });
+  const ownerId = await uid();
+  const normalized = needBody(input, ownerId);
+  const [previousNeeds, previousCategories] = await Promise.all([
+    supabase.query('sae_needs', { query: `select=*&id=eq.${encodeURIComponent(id)}&limit=1` }),
+    supabase.query('sae_need_categories', { query: `select=*&need_id=eq.${encodeURIComponent(id)}` }),
+  ]);
+  const previousNeed = previousNeeds?.[0];
+  if (!previousNeed) throw new Error('La necesidad SAE ya no existe o no tiene acceso a ella.');
+
+  try {
+    await supabase.query('sae_needs', { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(id)}`, body: normalized.body });
+    await supabase.query('sae_need_categories', { method: 'DELETE', prefer: 'return=minimal', query: `need_id=eq.${encodeURIComponent(id)}` });
+    for (const category of input.categorias) {
+      await supabase.query('sae_need_categories', { method: 'POST', prefer: 'return=minimal', body: {
+        id: uuid(), need_id: id, category: category.categoria, requested_count: category.cantidad, created_by: ownerId,
+      } });
+    }
+  } catch (error) {
+    try {
+      await supabase.query('sae_needs', { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(id)}`, body: {
+        work_name: previousNeed.work_name,
+        work_code: previousNeed.work_code,
+        hiring_month: previousNeed.hiring_month,
+        hiring_year: previousNeed.hiring_year,
+        total_requested: previousNeed.total_requested,
+        status: previousNeed.status,
+        updated_by: ownerId,
+      } });
+      await supabase.query('sae_need_categories', { method: 'DELETE', prefer: 'return=minimal', query: `need_id=eq.${encodeURIComponent(id)}` });
+      for (const category of previousCategories || []) {
+        await supabase.query('sae_need_categories', { method: 'POST', prefer: 'return=minimal', body: {
+          id: category.id || uuid(),
+          need_id: id,
+          category: category.category,
+          requested_count: category.requested_count,
+          created_by: category.created_by || ownerId,
+        } });
+      }
+    } catch (rollbackError) {
+      console.error('[SAE] No se pudo restaurar completamente la necesidad tras un fallo de edición.', rollbackError);
+    }
+    throw error;
+  }
 }
 
 export async function deleteSaeNeed(id: string): Promise<void> {
