@@ -6,6 +6,7 @@ import {
   getStoredObrasRecursosPreventivos,
   getStoredReporteTecnicoConfig,
   getSubcontrataCompliance,
+  normalizeSubcontrataChecklist,
 } from './subcontratasDefaultsBase';
 
 type ReportOptions = {
@@ -166,7 +167,7 @@ export const generateSubcontrataReportPDF = async (
   const effectiveTecnico = clean(options?.tecnicoNombre ?? defaultCfg.tecnicoNombre);
   const effectiveCoordinador = clean(options?.coordinadorNombre ?? defaultCfg.coordinadorNombre);
   const effectiveSupervisorFirma = clean(options?.supervisorNombre ?? defaultCfg.supervisorNombre);
-  const effectiveRecursoNombre = clean(options?.recursoPreventivoObra) || clean(sub.recursoPreventivo) || clean(obraRecurso?.recursoPreventivoNombre);
+  const effectiveRecursoNombre = clean(options?.recursoPreventivoObra) || clean(obraRecurso?.recursoPreventivoNombre);
   const supNombre = clean(supervisorResponsable) || clean(sub.supervisorResponsable) || clean(defaultCfg.supervisorNombre) || 'Supervisor Responsable';
 
   const marginLeft = 14;
@@ -232,7 +233,7 @@ export const generateSubcontrataReportPDF = async (
   }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(0, 84, 142); doc.text('DATOS DE LA OBRA', marginLeft + 3, metaY + 5);
   doc.setFontSize(7.2); doc.setTextColor(71, 85, 105); doc.setFont('helvetica', 'normal');
-  doc.text('Obra:', marginLeft + 3, metaY + 11); doc.text('Municipio:', marginLeft + 3, metaY + 16); doc.text('Supervisor:', marginLeft + 3, metaY + 21); doc.text('Inicio:', marginLeft + 3, metaY + 26); doc.text('Rec. preventivo:', marginLeft + 3, metaY + 31);
+  doc.text('Obra:', marginLeft + 3, metaY + 11); doc.text('Municipio:', marginLeft + 3, metaY + 16); doc.text('Supervisor:', marginLeft + 3, metaY + 21); doc.text('Inicio:', marginLeft + 3, metaY + 26); doc.text('Rec. prev. obra:', marginLeft + 3, metaY + 31);
   doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
   doc.text(sub.obra || 'Sin asignar', marginLeft + 27, metaY + 11, { maxWidth: colW - 30 });
   doc.text(sub.municipio || 'Provincia de Cádiz', marginLeft + 27, metaY + 16, { maxWidth: colW - 30 });
@@ -242,7 +243,7 @@ export const generateSubcontrataReportPDF = async (
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(0, 84, 142); doc.text('DATOS DE LA EMPRESA SUBCONTRATISTA', col2X + 3, metaY + 5);
   doc.setFontSize(7.2); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
-  doc.text('Razón social:', col2X + 3, metaY + 11); doc.text('CIF / NIF:', col2X + 3, metaY + 16); doc.text('Actividad:', col2X + 3, metaY + 21); doc.text('Contacto:', col2X + 3, metaY + 26); doc.text('Libro subcontr.:', col2X + 3, metaY + 31);
+  doc.text('Razón social:', col2X + 3, metaY + 11); doc.text('CIF / NIF:', col2X + 3, metaY + 16); doc.text('Actividad:', col2X + 3, metaY + 21); doc.text('Interlocutor:', col2X + 3, metaY + 26); doc.text('Libro subcontr.:', col2X + 3, metaY + 31);
   doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
   doc.text(sub.nombreEmpresa || 'No especificada', col2X + 28, metaY + 11, { maxWidth: colW - 31 });
   doc.text(sub.cif || 'Sin CIF', col2X + 28, metaY + 16);
@@ -259,7 +260,7 @@ export const generateSubcontrataReportPDF = async (
   doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
   doc.text(`Conformes: ${compliance.entregados} · Pendientes: ${compliance.pendientes} · Caducados/Incidencias: ${compliance.caducados} · Total: ${compliance.total}`, marginLeft + 51, statsY + 5.2);
 
-  const tableData = sub.checklist.map((item, index) => {
+  const tableData = normalizeSubcontrataChecklist(sub.checklist).map((item, index) => {
     const state = item.estado === 'entregado' ? 'ENTREGADO (OK)' : item.estado === 'caducado' ? 'CADUCADO' : item.estado === 'incompleto' ? 'INCOMPLETO' : item.estado === 'no_aplica' ? 'NO APLICA' : 'PENDIENTE';
     let notes = item.observaciones || '';
     if (item.fechaCaducidad) notes = `${notes ? `${notes} · ` : ''}Caduca: ${formatDate(item.fechaCaducidad)}`;
