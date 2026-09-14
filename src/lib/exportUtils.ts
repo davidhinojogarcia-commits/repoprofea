@@ -1525,7 +1525,9 @@ export const generateWorkerIDCardPDF = async (selectedPerson: Person, allPeople:
 
   const appUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : 'https://ais-dev-z7d4v355a6bfwlbnq24eyg-269075130225.europe-west2.run.app';
 
-  let qrText = `${appUrl}?view-worker-pdf=${cleanDni}`;
+  // The QR carries only the internal record id. Personal identifiers and medical data
+  // remain behind Supabase authentication and row-level sharing permissions.
+  const qrText = `${appUrl}?worker-profile=${encodeURIComponent(String(selectedPerson.id))}`;
   
   let qrCodeDataUrl = '';
   try {
