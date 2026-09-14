@@ -12,6 +12,7 @@ import { compressToGzip, decompressFromGzip, isCompressionSupported } from '../s
 import { restoreBackupToSupabase } from '../src/services/backupRestoreService';
 import { getDocuments } from '../src/services/databaseService';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
+import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { PageHeader } from './ui/PageHeader';
 import {
@@ -100,6 +101,42 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     recurso: string;
     categoria: string;
   } | null>(null);
+
+  const upsertDocumentationWork = async (name: string, resource: string, previousName?: string) => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) throw new Error('Sesión no disponible');
+    const rows = await supabase.query('obras', { query: 'select=id,nombre' });
+    const sourceName = (previousName || name).trim().toLocaleLowerCase('es');
+    const row = (rows || []).find((item: any) => String(item.nombre || '').trim().toLocaleLowerCase('es') === sourceName);
+    if (row) {
+      await supabase.query('obras', {
+        method: 'PATCH',
+        prefer: 'return=minimal',
+        query: `id=eq.${encodeURIComponent(row.id)}`,
+        body: { nombre: name.trim(), recurso_preventivo: resource.trim(), updated_by: data.user.id },
+      });
+    } else {
+      await supabase.query('obras', {
+        method: 'POST',
+        prefer: 'return=minimal',
+        body: {
+          nombre: name.trim(), codigo: '', municipio: '', descripcion: '',
+          empresa: 'AEPSA (Diputación Provincial de Cádiz)', cif: '',
+          recurso_preventivo: resource.trim(),
+          owner_id: data.user.id, created_by: data.user.id, updated_by: data.user.id,
+        },
+      });
+    }
+  };
+
+  const deleteDocumentationWork = async (name: string) => {
+    const rows = await supabase.query('obras', { query: 'select=id,nombre' });
+    const normalized = name.trim().toLocaleLowerCase('es');
+    const matches = (rows || []).filter((item: any) => String(item.nombre || '').trim().toLocaleLowerCase('es') === normalized);
+    for (const row of matches) {
+      await supabase.query('obras', { method: 'DELETE', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(row.id)}` });
+    }
+  };
 
   // State for parsed backup verification
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
@@ -341,17 +378,22 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     setNewItem('');
   };
 
-  const handleDeleteItem = (itemToDelete: string) => {
+  const handleDeleteItem = async (itemToDelete: string) => {
     if (!currentTab) return;
-    currentTab.setter(prev => prev.filter(item => item !== itemToDelete));
-    if (activeTab === 'obras') {
-      deleteStoredObraRecursoPreventivo(itemToDelete);
-      setObrasRecursos(getStoredObrasRecursosPreventivos());
+    try {
+      if (activeTab === 'obras') await deleteDocumentationWork(itemToDelete);
+      currentTab.setter(prev => prev.filter(item => item !== itemToDelete));
+      if (activeTab === 'obras') {
+        deleteStoredObraRecursoPreventivo(itemToDelete);
+        setObrasRecursos(getStoredObrasRecursosPreventivos());
+      }
+      setDeletingItem(null);
+    } catch (error: any) {
+      if (setToast) setToast({ message: error?.message || 'No se pudo eliminar la obra en Documentación de obra.', type: 'error' });
     }
-    setDeletingItem(null);
   };
 
-  const handleAddObraWithRecurso = (e: React.FormEvent) => {
+  const handleAddObraWithRecurso = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedObra = newItem.trim();
     const trimmedRecurso = newObraRecurso.trim();
@@ -368,6 +410,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       return;
     }
 
+    try {
+      await upsertDocumentationWork(trimmedObra, trimmedRecurso);
+    } catch (error: any) {
+      if (setToast) setToast({ message: error?.message || 'No se pudo crear la obra en Documentación de obra.', type: 'error' });
+      return;
+    }
     setSavedObras(prev => [...prev, trimmedObra].sort((a, b) => a.localeCompare(b)));
     saveStoredObraRecursoPreventivo(trimmedObra, trimmedRecurso, newObraCategoria);
     setObrasRecursos(getStoredObrasRecursosPreventivos());
@@ -379,7 +427,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
-  const handleSaveEditObraRecurso = (e: React.FormEvent) => {
+  const handleSaveEditObraRecurso = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingObraRecurso) return;
     const { obra, nombre, recurso, categoria } = editingObraRecurso;
@@ -397,6 +445,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       return;
     }
 
+    try {
+      await upsertDocumentationWork(trimmedNombre, recurso.trim(), obra);
+    } catch (error: any) {
+      if (setToast) setToast({ message: error?.message || 'No se pudo actualizar la obra en Documentación de obra.', type: 'error' });
+      return;
+    }
     if (trimmedNombre !== obra) {
       setSavedObras(prev => prev.map(item => item === obra ? trimmedNombre : item).sort((a, b) => a.localeCompare(b)));
       deleteStoredObraRecursoPreventivo(obra);
@@ -428,8 +482,16 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (!currentTab) return;
+    try {
+      if (activeTab === 'obras') {
+        for (const item of selectedItems) await deleteDocumentationWork(item);
+      }
+    } catch (error: any) {
+      if (setToast) setToast({ message: error?.message || 'No se pudieron eliminar todas las obras.', type: 'error' });
+      return;
+    }
     currentTab.setter(prev => prev.filter(item => !selectedItems.includes(item)));
     if (activeTab === 'obras') {
       selectedItems.forEach(item => deleteStoredObraRecursoPreventivo(item));
