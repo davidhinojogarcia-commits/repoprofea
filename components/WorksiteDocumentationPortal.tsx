@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClipboardCheck, Clock, FileDown, HardHat, RefreshCw, Save, Users, X, Wrench, GraduationCap, ShieldCheck } from 'lucide-react';
 import { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
+import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import {
@@ -34,6 +35,17 @@ const DEFAULT_EPIS: Record<EpiKey, boolean> = {
 
 const safe = (value: unknown) => String(value ?? '').trim();
 const normalize = (value: string) => safe(value).toLocaleLowerCase('es').replace(/\s+/g, ' ');
+const workIdentity = (value: string): string => {
+  const raw = normalize(value).replace(/[._\-/:]+/g, ' ');
+  const code = raw.match(/\b(\d{5})\b/)?.[1] || '';
+  const compact = raw.replace(/\s+/g, '');
+  const type = compact.includes('gr') ? 'GR' : compact.includes('ee') ? 'EE' : '';
+  return code && type ? `${code} ${type}` : '';
+};
+const sameWork = (left: string, right: string) => {
+  const a = workIdentity(left); const b = workIdentity(right);
+  return a && b ? a === b : normalize(left) === normalize(right);
+};
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const formatDate = (value: string) => {
   const match = safe(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -78,6 +90,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [workers, setWorkers] = useState<Person[]>([]);
   const [workRows, setWorkRows] = useState<WorkRow[]>([]);
+  const [configuredWorks, setConfiguredWorks] = useState<string[]>([]);
   const [selectedWork, setSelectedWork] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [empresa, setEmpresa] = useState(DEFAULT_COMPANY);
@@ -100,12 +113,14 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [people, obras] = await Promise.all([
+      const [people, obras, settings] = await Promise.all([
         getDocuments<Person>('trabajadores'),
         supabase.query('obras', { query: 'select=id,nombre,empresa,cif,recurso_preventivo&order=nombre.asc' }),
+        loadAppBusinessSettings(),
       ]);
       setWorkers(people || []);
       setWorkRows((obras || []) as WorkRow[]);
+      setConfiguredWorks((settings.savedObras || []).map(safe).filter(Boolean));
     } catch (error) {
       console.error('No se pudo cargar Documentación de obra:', error);
       showToast('No se han podido cargar las obras y trabajadores.', 'error');
@@ -143,11 +158,9 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [isOpen]);
 
   const workNames = useMemo<string[]>(() => {
-    const names = new Set<string>();
-    workers.forEach(person => { if (safe(person.obra)) names.add(safe(person.obra)); });
-    workRows.forEach(row => { if (safe(row.nombre)) names.add(safe(row.nombre)); });
-    return Array.from(names).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [workers, workRows]);
+    return Array.from(new Set(configuredWorks.map(work => workIdentity(work) || safe(work)).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  }, [configuredWorks]);
 
   useEffect(() => {
     if (!selectedWork && workNames.length) setSelectedWork(workNames[0]);
@@ -155,7 +168,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [selectedWork, workNames]);
 
   const selectedWorkWorkers = useMemo(
-    () => workers.filter(person => normalize(person.obra) === normalize(selectedWork)),
+    () => workers.filter(person => sameWork(person.obra || '', selectedWork)),
     [workers, selectedWork],
   );
 
@@ -187,7 +200,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [selectedWorkWorkers, documentMonthKey, selectedPeriod, periodWorkers]);
 
   useEffect(() => {
-    const row = workRows.find(item => normalize(item.nombre) === normalize(selectedWork));
+    const row = workRows.find(item => sameWork(item.nombre, selectedWork));
     setEmpresa(safe(row?.empresa) || DEFAULT_COMPANY);
     setCif(safe(row?.cif));
     setRecursoPreventivo(safe(row?.recurso_preventivo));
@@ -222,7 +235,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     try {
       const { data } = await supabase.auth.getUser();
       if (!data.user) throw new Error('Sesión no disponible');
-      const row = workRows.find(item => normalize(item.nombre) === normalize(selectedWork));
+      const row = workRows.find(item => sameWork(item.nombre, selectedWork));
       if (row) {
         await supabase.query('obras', {
           method: 'PATCH',
@@ -352,7 +365,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                   <ClipboardCheck className="w-7 h-7" />
                   <h1 className="text-2xl font-black tracking-tight">Documentación de obra</h1>
                 </div>
-                <p className="text-sm text-blue-100 mt-1">Documentos preventivos y de control rellenados automáticamente por obra y periodo.</p>
+                <p className="text-sm text-blue-100 mt-1">Documentos preventivos y de control por obra y periodo. El catálogo de obras se gestiona exclusivamente desde Configuración → Obras.</p>
               </div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20">
@@ -373,7 +386,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
               </div>
               <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
                 {workNames.map(work => {
-                  const count = workers.filter(p => normalize(p.obra) === normalize(work)).length;
+                  const count = workers.filter(p => sameWork(p.obra || '', work)).length;
                   return (
                     <button key={work} type="button" onClick={() => setSelectedWork(work)} className={`w-full text-left rounded-2xl border px-4 py-3 transition ${selectedWork === work ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 shadow-sm' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}>
                       <div className="font-bold text-sm leading-tight">{work}</div>
@@ -381,7 +394,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                     </button>
                   );
                 })}
-                {!workNames.length && <div className="p-4 text-sm text-slate-500">No hay obras con trabajadores registrados.</div>}
+                {!workNames.length && <div className="p-4 text-sm text-slate-500">No hay obras registradas en Configuración → Obras.</div>}
               </div>
             </aside>
 

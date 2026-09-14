@@ -3,11 +3,14 @@ import { AlertTriangle, BriefcaseBusiness, CalendarRange, CheckCircle2, Download
 import { parseSaeNeedFile, parseSaeReportFile, fileToDataUrl, titleCaseSpanish } from '../src/lib/saeDocumentParser';
 import { createDocument, deleteDocument } from '../src/services/databaseService';
 import { SAE_RESULT_CODES, SaeCandidate, SaeNeed, SaeReport, createSaeNeed, createSaeReport, deleteSaeNeed, listSaeCandidates, listSaeNeeds, listSaeReports, monthNumber, updateSaeCandidate, updateSaeNeed } from '../src/services/saeService';
+import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 
 interface SaeSectionProps { people:any[]; onToast:(message:string,type:'success'|'error')=>void; }
 type NeedForm={obra:string;codigoObra:string;mes:string;ano:string;categorias:{categoria:string;cantidad:number}[];notas:string};
 const emptyNeed:NeedForm={obra:'',codigoObra:'',mes:'',ano:String(new Date().getFullYear()),categorias:[{categoria:'',cantidad:1}],notas:''};
 const norm=(v:string)=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+const workIdentity=(value:string)=>{const raw=norm(value).replace(/[._\-/:]+/g,' ');const code=raw.match(/\b(\d{5})\b/)?.[1]||'';const compact=raw.replace(/\s+/g,'');const type=compact.includes('gr')?'GR':compact.includes('ee')?'EE':'';return code&&type?`${code} ${type}`:'';};
+const normalizeSaeCategory=(value:string)=>{const n=norm(value);if(/\bpeon(?:es)?\b/.test(n))return 'Peón';return String(value||'').trim();};
 const dataUrlToBytes=(dataUrl:string)=>{const raw=atob(dataUrl.split(',')[1]||'');const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);return bytes;};
 const bytesToBlob=(bytes:Uint8Array)=>new Blob([bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer],{type:'application/pdf'});
 const loadPdfLib=async()=>await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm') as any;
@@ -45,7 +48,26 @@ export const SaeSection:React.FC<SaeSectionProps>=({people,onToast})=>{
 
   const handleReportFile=async(file?:File)=>{if(!file||!selectedNeed)return;setBusy(true);setProgress('Leyendo informe SAE…');try{const parsed=await parseSaeReportFile(file,setProgress);if(!parsed.candidates.length)throw new Error('No se han reconocido candidatos.');const workKey=(v:string)=>{const s=norm(v).replace(/[.\s_\-/:]+/g,'');const code=s.match(/(\d{5})/)?.[1]||'';const type=s.includes('gr')?'gr':s.includes('ee')?'ee':'';return code&&type?`${code}${type}`:s;};if(workKey(selectedNeed.codigoObra)&&workKey(parsed.codigoObra)&&workKey(selectedNeed.codigoObra)!==workKey(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);if(selectedNeed.mes&&parsed.mes&&norm(selectedNeed.mes)!==norm(parsed.mes))throw new Error(`El informe corresponde a ${parsed.mes}, pero la necesidad es de ${selectedNeed.mes}.`);const fileBase64=await fileToDataUrl(file);await createSaeReport(selectedNeed.id,{fileName:file.name,fileBase64,extractedText:parsed.sourceText,extractionSource:parsed.source,offerNumber:parsed.offerNumber,obra:parsed.obra||selectedNeed.obra,codigoObra:parsed.codigoObra||selectedNeed.codigoObra,mes:parsed.mes||selectedNeed.mes,quincena:parsed.quincena,categoria:parsed.categoria},parsed.candidates.map(c=>({orderNumber:c.orderNumber,fullNameOriginal:c.fullNameOriginal,normalizedName:c.normalizedName,apellidos:c.apellidos,nombre:c.nombre,categoria:parsed.categoria,obra:parsed.obra||selectedNeed.obra,codigoObra:parsed.codigoObra||selectedNeed.codigoObra,offerNumber:parsed.offerNumber,mes:parsed.mes||selectedNeed.mes,quincena:'',estado:'Sin asignar',resultCode:'',linkedWorkerId:null,pageNumber:c.pageNumber,overlayX:c.overlayX,overlayY:c.overlayY,confidence:c.confidence})));await refresh(selectedNeed.id);setActiveStep(3);onToast(`${parsed.candidates.length} candidatos SAE reconocidos.`,'success');}catch(e:any){onToast(e.message||'No se pudo analizar el informe SAE.','error');}finally{setBusy(false);setProgress('');}};
 
-  const registerWorker=async(candidate:SaeCandidate)=>{if(!candidate.quincena)return onToast('Asigne primero una quincena.','error');const previous=people.find(p=>norm(p.apellidosNombre)===norm(candidate.normalizedName));const workerId=Date.now()+Math.floor(Math.random()*900000);const worker={id:workerId,fechaRegistro:new Date().toISOString(),supervisorResponsable:previous?.supervisorResponsable||'',numOferta:candidate.offerNumber,obra:candidate.obra||selectedNeed?.obra||'',categoria:candidate.categoria||'',quincena:candidate.quincena,apellidosNombre:candidate.normalizedName,dni:previous?.dni||'',fechaNacimiento:previous?.fechaNacimiento||'',periodoInicio:'',periodoFin:'',telefono:previous?.telefono||'',calzado:previous?.calzado||'',formacion:previous?.formacion||'No',lugarFormacion:previous?.lugarFormacion||'',citaDia:'',citaHora:'',sitioReconocimiento:'',documentacionCompleta:'No',observaciones:`Contratación SAE · Oferta ${candidate.offerNumber} · Orden ${candidate.orderNumber}.`,necesitaReconocimiento:previous?.necesitaReconocimiento||'No',sincronizadoEnNube:true};try{await createDocument('trabajadores',workerId,worker as any);await patchCandidate(candidate,{estado:'Contratado',resultCode:'2001',linkedWorkerId:workerId});onToast('Trabajador registrado y contratación SAE confirmada (2001).','success');}catch(e:any){onToast(e.message||'No se pudo registrar al trabajador.','error');}};
+  const registerWorker=async(candidate:SaeCandidate)=>{
+    if(!candidate.quincena)return onToast('Asigne primero una quincena.','error');
+    const previous=people.find(p=>norm(p.apellidosNombre)===norm(candidate.normalizedName));
+    const workerId=Date.now()+Math.floor(Math.random()*900000);
+    try{
+      const settings=await loadAppBusinessSettings();
+      const detectedIdentity=workIdentity(selectedNeed?.codigoObra||candidate.codigoObra||candidate.obra||selectedNeed?.obra||'');
+      const configuredMatch=(settings.savedObras||[]).find(obra=>workIdentity(obra)===detectedIdentity);
+      const canonicalWork=workIdentity(configuredMatch||'')||detectedIdentity;
+      if(!canonicalWork){
+        throw new Error('No se ha podido asociar el candidato a una obra configurada con código y tipo (por ejemplo 11002 GR). Revise Configuración → Obras.');
+      }
+      const sourceCategory=candidate.categoria||selectedNeed?.categorias?.[0]?.categoria||'';
+      const canonicalCategory=normalizeSaeCategory(sourceCategory);
+      const worker={id:workerId,fechaRegistro:new Date().toISOString(),supervisorResponsable:previous?.supervisorResponsable||'',numOferta:candidate.offerNumber,obra:canonicalWork,categoria:canonicalCategory,quincena:candidate.quincena,apellidosNombre:candidate.normalizedName,dni:previous?.dni||'',fechaNacimiento:previous?.fechaNacimiento||'',periodoInicio:'',periodoFin:'',telefono:previous?.telefono||'',calzado:previous?.calzado||'',formacion:previous?.formacion||'No',lugarFormacion:previous?.lugarFormacion||'',citaDia:'',citaHora:'',sitioReconocimiento:'',documentacionCompleta:'No',observaciones:`Contratación SAE · Oferta ${candidate.offerNumber} · Orden ${candidate.orderNumber}. Obra normalizada: ${canonicalWork}.`,necesitaReconocimiento:previous?.necesitaReconocimiento||'No',sincronizadoEnNube:true};
+      await createDocument('trabajadores',workerId,worker as any);
+      await patchCandidate(candidate,{estado:'Contratado',resultCode:'2001',linkedWorkerId:workerId});
+      onToast(`Trabajador registrado en ${canonicalWork}${canonicalCategory?` como ${canonicalCategory}`:''} y contratación SAE confirmada (2001).`,'success');
+    }catch(e:any){onToast(e.message||'No se pudo registrar al trabajador.','error');}
+  };
   const revertWorker=async(candidate:SaeCandidate)=>{
     const workerId=candidate.linkedWorkerId;
     if(!workerId){
