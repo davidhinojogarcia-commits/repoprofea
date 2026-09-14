@@ -209,6 +209,8 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
 
   const applyReviewed = async () => {
     const selected = review.filter(i => i.selected && i.matchedPersonId && i.resultado !== 'Pendiente');
+    const incompleteLimited = selected.filter(i => i.resultado === 'Apto con Limitación' && !String(i.limitaciones || '').trim());
+    if (incompleteLimited.length) return onToast('Complete las limitaciones concretas de todos los casos «Apto con limitaciones» antes de aplicarlos.', 'error');
     if (!selected.length) return onToast('No hay resultados revisados seleccionados.', 'error');
     setBusy(true); setProgress('Guardando resultados revisados…');
     try {
@@ -284,7 +286,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
     </div>
 
     {!!review.length && <div className="ui-surface p-4 sm:p-5 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><h2 className="font-black text-lg">Casos para revisión</h2><p className="text-xs text-slate-500">Solo aparecen coincidencias medias/bajas o resultados contradictorios.</p></div><button onClick={() => void applyReviewed()} className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold inline-flex items-center gap-2 justify-center"><UserCheck className="w-4 h-4"/> Aplicar seleccionados</button></div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><h2 className="font-black text-lg">Casos para revisión</h2><p className="text-xs text-slate-500">Se revisan coincidencias dudosas y todo «Apto con limitaciones» cuyo texto concreto no haya quedado transcrito.</p></div><button onClick={() => void applyReviewed()} className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold inline-flex items-center gap-2 justify-center"><UserCheck className="w-4 h-4"/> Aplicar seleccionados</button></div>
       <div className="space-y-3">{review.map(item => <div key={item.id} className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
         <div className="flex flex-col lg:flex-row gap-3 lg:items-center"><label className="flex items-start gap-3 flex-1"><input type="checkbox" checked={item.selected} onChange={e => setReview(prev => prev.map(x => x.id === item.id ? {...x,selected:e.target.checked}:x))} className="mt-1"/><div><div className="font-black text-sm">{item.matchedPersonName || item.apellidosNombre}</div><div className="text-xs text-slate-500 mt-1">{item.archivoOrigen} · confianza {item.confianza}</div>{!!item.inconsistencias?.length && <div className="text-xs text-amber-700 mt-1">{item.inconsistencias.join(' · ')}</div>}</div></label>
         <div className="grid sm:grid-cols-2 gap-2 lg:w-[520px]"><select value={item.resultado} onChange={e => setReview(prev => prev.map(x => x.id===item.id?{...x,resultado:e.target.value}:x))} className="ui-input text-sm"><option>Apto</option><option value="Apto con Limitación">Apto con limitaciones</option><option value="No Apto">No apto</option><option>Pendiente</option></select><input value={item.limitaciones || ''} disabled={item.resultado !== 'Apto con Limitación'} onChange={e=>setReview(prev=>prev.map(x=>x.id===item.id?{...x,limitaciones:e.target.value}:x))} className="ui-input text-sm" placeholder="Limitaciones"/></div></div>
