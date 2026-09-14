@@ -28,7 +28,12 @@ async function requireUser() {
 async function resolveObraId(obra: unknown): Promise<string | null> {
   if (!obra || typeof obra !== 'string') return null;
   const name = obra.trim();
-  const rows = await supabase.query('obras', { query: `select=id&nombre=eq.${encodeURIComponent(name)}&limit=1` });
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) return null;
+  // Never bind a new record to another supervisor's shared work with the same name.
+  const rows = await supabase.query('obras', {
+    query: `select=id&owner_id=eq.${encodeURIComponent(data.user.id)}&nombre=eq.${encodeURIComponent(name)}&limit=1`
+  });
   return rows?.[0]?.id || null;
 }
 
