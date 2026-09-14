@@ -131,19 +131,20 @@ const needBody = (input: NeedInput, ownerId: string) => {
   if (!hiringMonth) throw new Error('El mes de contratación no es válido.');
   const hiringYear = input.ano || new Date().getFullYear();
   const totalRequested = input.categorias.reduce((sum, c) => sum + Number(c.cantidad || 0), 0);
-  return { hiringMonth, hiringYear, totalRequested, body: {
+  const status = totalRequested === 0 ? 'sin_necesidad' : (input.estado === 'sin_necesidad' ? 'pendiente_candidatos_sae' : input.estado || 'pendiente_candidatos_sae');
+  return { hiringMonth, hiringYear, totalRequested, status, body: {
     work_name: input.obra, work_code: input.codigoObra || null, hiring_month: hiringMonth, hiring_year: hiringYear,
-    total_requested: totalRequested, notes: input.notas || null, updated_by: ownerId,
+    total_requested: totalRequested, status, notes: input.notas || null, updated_by: ownerId,
   }};
 };
 
 export async function createSaeNeed(input: NeedInput): Promise<SaeNeed> {
   const ownerId = await uid(); const id = uuid(); const normalized = needBody(input, ownerId);
   await supabase.query('sae_needs', { method: 'POST', prefer: 'return=minimal', body: {
-    id, owner_id: ownerId, ...normalized.body, status: 'pendiente_candidatos_sae', created_by: ownerId,
+    id, owner_id: ownerId, ...normalized.body, created_by: ownerId,
   }});
   for (const category of input.categorias) await supabase.query('sae_need_categories', { method: 'POST', prefer: 'return=minimal', body: { id: uuid(), need_id: id, category: category.categoria, requested_count: category.cantidad, created_by: ownerId } });
-  return { ...input, id, ownerId, ano: normalized.hiringYear, estado: 'pendiente_candidatos_sae' };
+  return { ...input, id, ownerId, ano: normalized.hiringYear, estado: normalized.status };
 }
 
 export async function updateSaeNeed(id: string, input: NeedInput): Promise<void> {
