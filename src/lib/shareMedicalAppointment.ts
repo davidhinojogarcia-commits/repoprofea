@@ -13,7 +13,9 @@ const formatDate = (value: string): string => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value || '-';
 };
 
-export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = false): string => {
+export type MedicalConfirmationLinks = { confirm: string; decline: string };
+
+export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = false, confirmationLinks?: MedicalConfirmationLinks): string => {
   const observations = String(person.observaciones || '').trim();
   const lines = reminder
     ? [
@@ -32,7 +34,14 @@ export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = f
       ];
   if (observations) lines.push(`Observaciones: ${observations}`);
   lines.push('', 'Se adjunta la citación oficial con todos los datos e instrucciones para el reconocimiento médico.');
-  lines.push('Por favor, confirma respondiendo CONFIRMO. Si no puedes asistir, responde NO PUEDO ASISTIR.');
+  if (confirmationLinks) {
+    lines.push('', 'CONFIRMACIÓN DE ASISTENCIA');
+    lines.push(`✅ Confirmar asistencia: ${confirmationLinks.confirm}`);
+    lines.push(`❌ No puedo asistir: ${confirmationLinks.decline}`);
+    lines.push('La respuesta quedará registrada automáticamente en GestionProfea.');
+  } else {
+    lines.push('Por favor, confirma respondiendo CONFIRMO. Si no puedes asistir, responde NO PUEDO ASISTIR.');
+  }
   return lines.join('\n');
 };
 
@@ -97,11 +106,11 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
   return new File([blob], filename, { type: 'application/pdf' });
 };
 
-export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder = false): Promise<'shared' | 'opened' | 'cancelled'> => {
+export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder = false, confirmationLinks?: MedicalConfirmationLinks): Promise<'shared' | 'opened' | 'cancelled'> => {
   const phone = normalizePhone(person.telefono || '');
   if (phone.length < 10) throw new Error('El trabajador no tiene un teléfono válido para WhatsApp.');
 
-  const text = buildMedicalAppointmentWhatsAppText(person, reminder);
+  const text = buildMedicalAppointmentWhatsAppText(person, reminder, confirmationLinks);
   const pdfFile = await createMedicalAppointmentPdfFile(person);
 
   if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {

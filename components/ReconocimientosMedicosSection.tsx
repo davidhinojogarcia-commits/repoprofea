@@ -6,6 +6,7 @@ import { analyzeMedicalDocumentText } from '../src/lib/medicalDocumentAnalyzer';
 import { updateDocument } from '../src/services/databaseService';
 import { persistMedicalRecognition } from '../src/services/medicalRecognitionService';
 import { shareMedicalAppointmentByWhatsApp } from '../src/lib/shareMedicalAppointment';
+import { prepareMedicalAppointmentConfirmation } from '../src/lib/medicalAppointmentConfirmation';
 
 interface Props {
   people: Person[];
@@ -100,7 +101,9 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
       return;
     }
     try {
-      const result = await shareMedicalAppointmentByWhatsApp(person, reminder);
+      const prepared = await prepareMedicalAppointmentConfirmation(person);
+      onUpdatePeople(people.map(p => p.id === person.id ? prepared.updatedPerson : p));
+      const result = await shareMedicalAppointmentByWhatsApp(prepared.updatedPerson, reminder, prepared.links);
       if (result === 'shared') {
         onToast(`Citación PDF preparada para compartir con ${person.apellidosNombre}.`, 'success');
       } else if (result === 'opened') {

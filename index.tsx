@@ -4,6 +4,7 @@ import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
+import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import './src/styles/design-system.css';
@@ -68,17 +69,23 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+const isMedicalConfirmation = new URLSearchParams(window.location.search).get('confirmacion_reconocimiento') === '1';
+
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
-      <AuthGate>
-        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
-          <App />
-          <WorksiteDocumentationPortal />
-          <AppToastHost />
-          <AppInstallPromo />
-        </React.Suspense>
-      </AuthGate>
+      {isMedicalConfirmation ? (
+        <MedicalAppointmentConfirmationPortal />
+      ) : (
+        <AuthGate>
+          <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
+            <App />
+            <WorksiteDocumentationPortal />
+            <AppToastHost />
+            <AppInstallPromo />
+          </React.Suspense>
+        </AuthGate>
+      )}
     </RootErrorBoundary>
   </React.StrictMode>
 );
