@@ -233,6 +233,14 @@ function App() {
   const [pendingPdfDni, setPendingPdfDni] = useState<string | null>(null);
   const [viewingWorkerPdf, setViewingWorkerPdf] = useState<string | null>(null);
   const [viewingWorkerName, setViewingWorkerName] = useState<string>('');
+
+  // QR links are resolved only after authentication. New links use a non-sensitive
+  // internal id; the legacy DNI route remains readable for already printed cards.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const workerRef = params.get('worker-profile') || params.get('view-worker-pdf');
+    if (workerRef) setPendingPdfDni(workerRef.trim().toUpperCase().replace(/[\s-]/g, ''));
+  }, []);
   const [activePdfViewerModal, setActivePdfViewerModal] = useState<{
     isOpen: boolean;
     url: string | null;
@@ -410,7 +418,7 @@ function App() {
     if (!pendingPdfDni) return;
 
     // Search for the worker in the people list
-    const worker = people.find(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === pendingPdfDni);
+    const worker = people.find(p => String(p.id) === pendingPdfDni || p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === pendingPdfDni);
     if (worker) {
       setToast({ message: `¡Ficha de ${worker.apellidosNombre} cargada! Generando vista en PDF...`, type: 'success' });
       
@@ -1850,7 +1858,7 @@ function App() {
   };
 
   if (pendingPdfDni) {
-    const worker = people.find(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === pendingPdfDni);
+    const worker = people.find(p => String(p.id) === pendingPdfDni || p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === pendingPdfDni);
     
     if (viewingWorkerPdf) {
       return (
@@ -1879,7 +1887,7 @@ function App() {
           <div className="space-y-2">
             <h2 className="text-xl font-bold text-white tracking-tight">Expediente Digital PROFEA</h2>
             <p className="text-xs text-slate-400">
-              Buscando y generando ficha para DNI: <span className="font-mono font-bold text-slate-200">{pendingPdfDni}</span>
+              Buscando el expediente autorizado: <span className="font-mono font-bold text-slate-200">{pendingPdfDni}</span>
             </p>
           </div>
           
