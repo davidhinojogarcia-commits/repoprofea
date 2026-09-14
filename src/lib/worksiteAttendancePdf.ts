@@ -280,7 +280,9 @@ const drawDailyTable = (
 const drawSummary = (doc: jsPDF, context: AttendanceContext, startY: number) => {
   const width = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const y = Math.min(startY + 4, pageHeight - 43);
+  // Reserve a dedicated lower band for the legal notes and the global PDF footer.
+  // This prevents the summary boxes and both footer layers from ever sharing the same Y position.
+  const y = Math.min(startY + 4, pageHeight - 50);
 
   const leftX = 10;
   const leftW = 68;
@@ -321,13 +323,14 @@ const drawSummary = (doc: jsPDF, context: AttendanceContext, startY: number) => 
   doc.line(rightX + 18, y + 16.6, rightX + rightW - 3, y + 16.6);
   doc.text('Fecha: ____ / ____ / ______', rightX + 3, y + 23);
 
+  const noticeY = pageHeight - 18;
   doc.setFontSize(5.7);
   doc.setTextColor(75, 95, 115);
-  doc.text('El trabajador firma diariamente la entrada y la salida de la jornada.', 10, pageHeight - 8);
+  doc.text('El trabajador firma diariamente la entrada y la salida de la jornada.', 10, noticeY);
   doc.text(
     'Registro diario individual conforme al art. 34.9 del Estatuto de los Trabajadores. Conservación: 4 años.',
     width - 10,
-    pageHeight - 8,
+    noticeY,
     { align: 'right' },
   );
 };
