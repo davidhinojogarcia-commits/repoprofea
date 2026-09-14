@@ -111,6 +111,54 @@ using (
   )
 );
 
+drop policy if exists trash_select on public.trash;
+create policy trash_select on public.trash
+for select to authenticated
+using (
+  private.has_module_permission('trabajadores','read')
+  and (
+    owner_id = (select auth.uid())
+    or private.has_explicit_resource_permission('trabajadores', id::text, 'read')
+  )
+);
+drop policy if exists trash_insert on public.trash;
+create policy trash_insert on public.trash
+for insert to authenticated
+with check (
+  owner_id = (select auth.uid())
+  and created_by = (select auth.uid())
+  and updated_by = (select auth.uid())
+  and private.has_module_permission('trabajadores','create')
+);
+drop policy if exists trash_update on public.trash;
+create policy trash_update on public.trash
+for update to authenticated
+using (
+  private.has_module_permission('trabajadores','update')
+  and (
+    owner_id = (select auth.uid())
+    or private.has_explicit_resource_permission('trabajadores', id::text, 'update')
+  )
+)
+with check (
+  private.has_module_permission('trabajadores','update')
+  and updated_by = (select auth.uid())
+  and (
+    owner_id = (select auth.uid())
+    or private.has_explicit_resource_permission('trabajadores', id::text, 'update')
+  )
+);
+drop policy if exists trash_delete on public.trash;
+create policy trash_delete on public.trash
+for delete to authenticated
+using (
+  private.has_module_permission('trabajadores','delete')
+  and (
+    owner_id = (select auth.uid())
+    or private.has_explicit_resource_permission('trabajadores', id::text, 'delete')
+  )
+);
+
 drop policy if exists obras_select on public.obras;
 create policy obras_select on public.obras
 for select to authenticated
