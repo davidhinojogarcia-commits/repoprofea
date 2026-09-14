@@ -56,6 +56,45 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
   return data;
 }
 
+const normalizeWork = (value: unknown) => String(value ?? '')
+  .trim()
+  .toLocaleLowerCase('es')
+  .replace(/[._\-/:]+/g, ' ')
+  .replace(/\s+/g, ' ');
+
+const workIdentity = (value: unknown) => {
+  const raw = normalizeWork(value);
+  const code = raw.match(/\b(\d{5})\b/)?.[1] || '';
+  const compact = raw.replace(/\s+/g, '');
+  const type = compact.includes('gr') ? 'gr' : compact.includes('ee') ? 'ee' : '';
+  return code && type ? `${code} ${type}` : raw;
+};
+
+async function syncObrasPreventiveResource(rows: any): Promise<any> {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  try {
+    const { data } = await client.auth.getUser();
+    const user = data.user;
+    if (!user) return rows;
+
+    const settingsRows = await request(`/rest/v1/user_settings?user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`);
+    const mapping = settingsRows?.[0]?.settings?.subcontratasPreferences?.obrasRecursosPreventivos;
+    if (!mapping || typeof mapping !== 'object') return rows;
+
+    const entries = Object.entries(mapping as Record<string, any>);
+    return rows.map((row: any) => {
+      const key = workIdentity(row?.nombre);
+      const match = entries.find(([obra]) => workIdentity(obra) === key)?.[1] as any;
+      const configuredName = String(match?.recursoPreventivoNombre || '').trim();
+      if (!configuredName) return row;
+      return { ...row, recurso_preventivo: configuredName };
+    });
+  } catch (error) {
+    console.warn('No se pudo sincronizar el recurso preventivo de las obras:', error);
+    return rows;
+  }
+}
+
 async function edgeFunctionErrorMessage(error: any): Promise<string> {
   try {
     const response = error?.context;
@@ -91,11 +130,21 @@ export const supabase = {
   async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string } = {}) {
     const headers: Record<string, string> = {};
     if (options.prefer) headers.Prefer = options.prefer;
-    return request(`/rest/v1/${table}${options.query ? `?${options.query}` : ''}`, {
-      method: options.method || 'GET',
+    const method = options.method || 'GET';
+    const result = await request(`/rest/v1/${table}${options.query ? `?${options.query}` : ''}`, {
+      method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
+
+    // Configuración > Obras guarda el recurso preventivo en las preferencias del usuario.
+    // Documentación de obra consulta la tabla `obras`. Al leerla, superponemos la asignación
+    // configurada para que ambos módulos utilicen siempre el mismo nombre y no diverjan.
+    if (table === 'obras' && method.toUpperCase() === 'GET') {
+      return syncObrasPreventiveResource(result);
+    }
+
+    return result;
   },
   async rpc(name: string, body: any = {}) {
     const { data, error } = await client.rpc(name, body);
