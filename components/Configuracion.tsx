@@ -96,6 +96,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const [newObraCategoria, setNewObraCategoria] = useState('Encargado de Obra');
   const [editingObraRecurso, setEditingObraRecurso] = useState<{
     obra: string;
+    nombre: string;
     recurso: string;
     categoria: string;
   } | null>(null);
@@ -381,16 +382,30 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const handleSaveEditObraRecurso = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingObraRecurso) return;
-    const { obra, recurso, categoria } = editingObraRecurso;
+    const { obra, nombre, recurso, categoria } = editingObraRecurso;
+    const trimmedNombre = nombre.trim();
+    if (!trimmedNombre) {
+      if (setToast) setToast({ message: 'El nombre de la obra no puede estar vacío.', type: 'error' });
+      return;
+    }
     if (!recurso.trim()) {
       if (setToast) setToast({ message: 'El nombre del Recurso Preventivo no puede estar vacío.', type: 'error' });
       return;
     }
-    saveStoredObraRecursoPreventivo(obra, recurso.trim(), categoria.trim());
+    if (trimmedNombre.toLowerCase() !== obra.toLowerCase() && savedObras.some(o => o.toLowerCase() === trimmedNombre.toLowerCase())) {
+      if (setToast) setToast({ message: 'Ya existe otra obra registrada con ese nombre.', type: 'error' });
+      return;
+    }
+
+    if (trimmedNombre !== obra) {
+      setSavedObras(prev => prev.map(item => item === obra ? trimmedNombre : item).sort((a, b) => a.localeCompare(b)));
+      deleteStoredObraRecursoPreventivo(obra);
+    }
+    saveStoredObraRecursoPreventivo(trimmedNombre, recurso.trim(), categoria.trim());
     setObrasRecursos(getStoredObrasRecursosPreventivos());
     setEditingObraRecurso(null);
     if (setToast) {
-      setToast({ message: `Recurso Preventivo de "${obra}" actualizado correctamente.`, type: 'success' });
+      setToast({ message: `Obra "${trimmedNombre}" actualizada correctamente.`, type: 'success' });
     }
   };
 
@@ -1115,11 +1130,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                   type="button"
                                   onClick={() => setEditingObraRecurso({
                                     obra,
+                                    nombre: obra,
                                     recurso: recursoData?.recursoPreventivoNombre || '',
                                     categoria: recursoData?.recursoPreventivoCategoria || 'Encargado de Obra'
                                   })}
                                   className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors cursor-pointer"
-                                  title="Editar Recurso Preventivo"
+                                  title="Editar obra"
                                 >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
@@ -1163,7 +1179,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                 })()}
               </div>
 
-              {/* Modal para Editar Recurso Preventivo de Obra */}
+              {/* Modal para Editar Obra y Recurso Preventivo */}
               {editingObraRecurso && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
                   <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in zoom-in duration-200">
@@ -1174,10 +1190,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         </div>
                         <div>
                           <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                            Recurso Preventivo Asignado
+                            Editar Obra
                           </h3>
                           <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[280px]">
-                            {editingObraRecurso.obra}
+                            Modifica los datos de la obra y su recurso preventivo
                           </p>
                         </div>
                       </div>
@@ -1191,6 +1207,20 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                     </div>
 
                     <form onSubmit={handleSaveEditObraRecurso} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          Nombre de la Obra *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingObraRecurso.nombre}
+                          onChange={(e) => setEditingObraRecurso({ ...editingObraRecurso, nombre: e.target.value })}
+                          placeholder="Nombre de la obra"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                        />
+                      </div>
+
                       <div>
                         <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                           Nombre y Apellidos del Recurso Preventivo *
@@ -1239,7 +1269,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                           className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
                         >
                           <Save className="w-3.5 h-3.5" />
-                          <span>Guardar Recurso</span>
+                          <span>Guardar Cambios</span>
                         </button>
                       </div>
                     </form>
