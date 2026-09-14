@@ -50,6 +50,16 @@ jobs:
           grep -q 'IDLE_TIMEOUT_MS = 30 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
       - name: TypeScript validation
-        run: npm run lint
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee tsc-output.log
+      - name: Upload TypeScript diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-diagnostics-${{ github.run_id }}
+          path: tsc-output.log
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Build application
         run: npm run build
