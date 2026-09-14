@@ -112,7 +112,7 @@ export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] = [
     id: 'formacion_prl',
     categoria: 'trabajadores',
     nombre: 'Formación en PRL según Convenio de Construcción (TPC)',
-    descripcion: 'Certificados oficiales de formación por oficio (20 horas o 6h) y formación de Recurso Preventivo (60h).',
+    descripcion: 'Certificados oficiales de formación preventiva correspondiente al oficio o puesto de cada trabajador.',
     normativa: 'Convenio General del Sector de la Construcción',
     obligatorio: true,
     estado: 'pendiente'
@@ -1292,7 +1292,7 @@ export const generateObraConsolidatedReportPDF = async (
     else if (sub.estadoExpediente === 'condicionado') condicionadasCount++;
     else if (sub.estadoExpediente === 'denegado') denegadasCount++;
 
-    sub.checklist.forEach(item => {
+    normalizeSubcontrataChecklist(sub.checklist).forEach(item => {
       if (item.estado !== 'no_aplica') {
         totalDocs++;
         if (item.estado === 'entregado') {
@@ -1550,7 +1550,7 @@ export const generateObraConsolidatedReportPDF = async (
   const table2Data: string[][] = [];
 
   subcontratasInObra.forEach((sub) => {
-    sub.checklist.forEach((item) => {
+    normalizeSubcontrataChecklist(sub.checklist).forEach((item) => {
       let estadoLabel = 'PENDIENTE (FALTA)';
       if (item.estado === 'entregado') estadoLabel = 'ENTREGADO (OK)';
       else if (item.estado === 'caducado') estadoLabel = 'CADUCADO';
