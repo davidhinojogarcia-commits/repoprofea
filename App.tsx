@@ -231,6 +231,7 @@ function App() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 3500); return () => window.clearTimeout(timer); }, [toast]);
   const [pendingPdfDni, setPendingPdfDni] = useState<string | null>(null);
+  const [workersLoaded, setWorkersLoaded] = useState(false);
   const [viewingWorkerPdf, setViewingWorkerPdf] = useState<string | null>(null);
   const [viewingWorkerName, setViewingWorkerName] = useState<string>('');
 
@@ -444,7 +445,9 @@ function App() {
     if (!auth.currentUser?.uid) return;
     const unsubscribe = subscribeToDocuments<Person>('trabajadores', workers => {
       setPeople(workers.map(worker => ({ ...worker, sincronizadoEnNube: true })));
+      setWorkersLoaded(true);
     }, { includeShared: true }, error => {
+      setWorkersLoaded(true);
       console.error('Error leyendo trabajadores de Supabase:', error);
       setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
@@ -1896,11 +1899,16 @@ function App() {
               <CheckCircle className="w-4 h-4 text-emerald-400" />
               <span>¡Localizado! Generando vista completa del PDF...</span>
             </div>
+          ) : workersLoaded ? (
+            <div className="space-y-2 bg-rose-950/30 p-4 rounded-2xl border border-rose-900/60 text-xs text-rose-200">
+              <div className="font-bold">Expediente no disponible</div>
+              <p>Este trabajador no existe o no está compartido con tu cuenta. Solicita acceso al supervisor propietario.</p>
+            </div>
           ) : (
             <div className="space-y-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800/80">
               <div className="text-xs text-slate-300 animate-pulse flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                <span>Buscando el registro en Supabase...</span>
+                <span>Buscando el registro autorizado en Supabase...</span>
               </div>
             </div>
           )}
