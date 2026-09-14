@@ -1,125 +1,57 @@
 from pathlib import Path
 
-path = Path("components/Configuracion.tsx")
+path = Path("components/SaeSection.tsx")
 text = path.read_text(encoding="utf-8")
 
-def replace_once(old: str, new: str) -> None:
-    global text
-    if old not in text:
-        raise SystemExit("Expected Configuracion target not found")
-    text = text.replace(old, new, 1)
+old = '''  const revertWorker=async(candidate:SaeCandidate)=>{if(!candidate.linkedWorkerId)return;if(!window.confirm(`¿Revertir la contratación de ${candidate.normalizedName}? Se eliminará el registro de trabajador creado por SAE y el candidato volverá a su quincena.`))return;try{await deleteDocument('trabajadores',candidate.linkedWorkerId);const nextEstado=candidate.quincena||'Sin asignar';await patchCandidate(candidate,{estado:nextEstado,resultCode:'',linkedWorkerId:null});onToast('Contratación revertida. El candidato vuelve a estar editable.','success');}catch(e:any){onToast(e.message||'No se pudo revertir la contratación.','error');}};'''
 
-replace_once(
-'''  const [editingObraRecurso, setEditingObraRecurso] = useState<{
-    obra: string;
-    recurso: string;
-    categoria: string;
-  } | null>(null);''',
-'''  const [editingObraRecurso, setEditingObraRecurso] = useState<{
-    obra: string;
-    nombre: string;
-    recurso: string;
-    categoria: string;
-  } | null>(null);'''
-)
+new = '''  const revertWorker=async(candidate:SaeCandidate)=>{
+    const workerId=candidate.linkedWorkerId;
+    if(!workerId){
+      onToast('Este candidato no tiene un trabajador SAE vinculado para revertir.','error');
+      return;
+    }
+    if(!window.confirm(`¿Revertir la contratación de ${candidate.normalizedName}? Se eliminará únicamente el registro de trabajador creado por esta contratación SAE y el candidato volverá a su quincena.`))return;
 
-replace_once(
-'''    const { obra, recurso, categoria } = editingObraRecurso;
-    if (!recurso.trim()) {
-      if (setToast) setToast({ message: 'El nombre del Recurso Preventivo no puede estar vacío.', type: 'error' });
-      return;
-    }
-    saveStoredObraRecursoPreventivo(obra, recurso.trim(), categoria.trim());
-    setObrasRecursos(getStoredObrasRecursosPreventivos());
-    setEditingObraRecurso(null);
-    if (setToast) {
-      setToast({ message: `Recurso Preventivo de "${obra}" actualizado correctamente.`, type: 'success' });
-    }''',
-'''    const { obra, nombre, recurso, categoria } = editingObraRecurso;
-    const trimmedNombre = nombre.trim();
-    if (!trimmedNombre) {
-      if (setToast) setToast({ message: 'El nombre de la obra no puede estar vacío.', type: 'error' });
-      return;
-    }
-    if (!recurso.trim()) {
-      if (setToast) setToast({ message: 'El nombre del Recurso Preventivo no puede estar vacío.', type: 'error' });
-      return;
-    }
-    if (trimmedNombre.toLowerCase() !== obra.toLowerCase() && savedObras.some(o => o.toLowerCase() === trimmedNombre.toLowerCase())) {
-      if (setToast) setToast({ message: 'Ya existe otra obra registrada con ese nombre.', type: 'error' });
+    const nextEstado=candidate.quincena||'Sin asignar';
+    const revertedPatch={estado:nextEstado,resultCode:'',linkedWorkerId:null};
+    const originalPatch={estado:'Contratado',resultCode:candidate.resultCode||'2001',linkedWorkerId:workerId};
+
+    // Actualizamos primero el candidato de forma estricta. patchCandidate no se usa aquí
+    // porque captura sus propios errores y podía mostrar una reversión como correcta aunque
+    // Supabase no hubiese guardado el cambio.
+    try{
+      await updateSaeCandidate(candidate.id,revertedPatch);
+    }catch(e:any){
+      onToast(e.message||'No se pudo actualizar el candidato SAE. No se ha eliminado ningún trabajador.','error');
       return;
     }
 
-    if (trimmedNombre !== obra) {
-      setSavedObras(prev => prev.map(item => item === obra ? trimmedNombre : item).sort((a, b) => a.localeCompare(b)));
-      deleteStoredObraRecursoPreventivo(obra);
+    try{
+      await deleteDocument('trabajadores',workerId);
+      setCandidates(prev=>prev.map(c=>c.id===candidate.id?{...c,...revertedPatch}:c));
+      // Recargamos desde Supabase para que cada reversión parta siempre del estado real y
+      // puedan revertirse consecutivamente todos los candidatos que el usuario necesite.
+      const fresh=await listSaeCandidates(candidate.needId);
+      setCandidates(fresh);
+      onToast('Contratación revertida correctamente. El candidato vuelve a estar editable.','success');
+    }catch(e:any){
+      // Si falla el borrado del trabajador, restauramos el candidato a Contratado para no
+      // dejar una contratación a medias ni perder el vínculo.
+      try{
+        await updateSaeCandidate(candidate.id,originalPatch);
+      }catch(rollbackError){
+        console.error('No se pudo restaurar el candidato tras fallar la reversión SAE:',rollbackError);
+      }
+      try{
+        const fresh=await listSaeCandidates(candidate.needId);
+        setCandidates(fresh);
+      }catch{}
+      onToast(e.message||'No se pudo eliminar el trabajador vinculado. La contratación se ha mantenido.','error');
     }
-    saveStoredObraRecursoPreventivo(trimmedNombre, recurso.trim(), categoria.trim());
-    setObrasRecursos(getStoredObrasRecursosPreventivos());
-    setEditingObraRecurso(null);
-    if (setToast) {
-      setToast({ message: `Obra "${trimmedNombre}" actualizada correctamente.`, type: 'success' });
-    }'''
-)
+  };'''
 
-replace_once(
-'''                                  onClick={() => setEditingObraRecurso({
-                                    obra,
-                                    recurso: recursoData?.recursoPreventivoNombre || '',
-                                    categoria: recursoData?.recursoPreventivoCategoria || 'Encargado de Obra'
-                                  })}''',
-'''                                  onClick={() => setEditingObraRecurso({
-                                    obra,
-                                    nombre: obra,
-                                    recurso: recursoData?.recursoPreventivoNombre || '',
-                                    categoria: recursoData?.recursoPreventivoCategoria || 'Encargado de Obra'
-                                  })}'''
-)
+if old not in text:
+    raise SystemExit("Expected revertWorker block not found")
 
-replace_once(
-'''                                  title="Editar Recurso Preventivo"''',
-'''                                  title="Editar obra"'''
-)
-
-replace_once(
-'''              {/* Modal para Editar Recurso Preventivo de Obra */}''',
-'''              {/* Modal para Editar Obra y Recurso Preventivo */}'''
-)
-
-replace_once(
-'''                            Recurso Preventivo Asignado''',
-'''                            Editar Obra'''
-)
-
-replace_once(
-'''                            {editingObraRecurso.obra}''',
-'''                            Modifica los datos de la obra y su recurso preventivo'''
-)
-
-replace_once(
-'''                    <form onSubmit={handleSaveEditObraRecurso} className="space-y-4">
-                      <div>''',
-'''                    <form onSubmit={handleSaveEditObraRecurso} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                          Nombre de la Obra *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={editingObraRecurso.nombre}
-                          onChange={(e) => setEditingObraRecurso({ ...editingObraRecurso, nombre: e.target.value })}
-                          placeholder="Nombre de la obra"
-                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
-                        />
-                      </div>
-
-                      <div>'''
-)
-
-replace_once(
-'''                          <span>Guardar Recurso</span>''',
-'''                          <span>Guardar Cambios</span>'''
-)
-
-path.write_text(text, encoding="utf-8")
+path.write_text(text.replace(old,new,1),encoding="utf-8")
