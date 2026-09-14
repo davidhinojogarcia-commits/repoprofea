@@ -45,10 +45,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'Contratación',
       items: [
+        { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
         { id: 'sae', label: 'SAE', icon: BriefcaseBusiness },
         { id: 'directorio', label: 'Directorio', icon: Users },
         { id: 'registro', label: 'Nuevo Registro', icon: UserPlus },
-        { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
         { id: 'calendario', label: 'Calendario Integrado', icon: CalendarDays },
       ],
     },
@@ -115,7 +115,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
+            className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
