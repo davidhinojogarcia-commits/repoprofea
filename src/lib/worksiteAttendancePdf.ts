@@ -23,10 +23,8 @@ const MONTHS = [
 ];
 
 type Ymd = { year: number; month: number; day: number };
-type AttendanceContext = WorksiteDocumentContext & {
-  codigoObra?: string;
-  municipio?: string;
-};
+export type AttendancePeriod = { year: number; month: number; fortnight: 1 | 2 };
+type AttendanceContext = WorksiteDocumentContext & { codigoObra?: string; municipio?: string };
 
 const parseYmd = (value: unknown): Ymd | null => {
   const match = safe(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -44,15 +42,10 @@ const pad = (value: number) => String(value).padStart(2, '0');
 const fmtDay = (year: number, month: number, day: number) => `${pad(day)}/${pad(month)}/${year}`;
 
 const resolveMonth = (workers: Person[], context: AttendanceContext) => {
-  const candidates = [
-    context.fecha,
-    ...workers.flatMap(worker => [worker.periodoInicio, worker.periodoFin, worker.fechaRegistro]),
-  ];
+  const candidates = [context.fecha, ...workers.flatMap(worker => [worker.periodoInicio, worker.periodoFin, worker.fechaRegistro])];
   const parsed = candidates.map(parseYmd).find(Boolean) as Ymd | undefined;
   const now = new Date();
-  const year = parsed?.year || now.getFullYear();
-  const month = parsed?.month || now.getMonth() + 1;
-  return { year, month, lastDay: daysInMonth(year, month) };
+  return { year: parsed?.year || now.getFullYear(), month: parsed?.month || now.getMonth() + 1 };
 };
 
 export const getFortnightDays = (year: number, month: number, fortnight: 1 | 2) => {
@@ -62,11 +55,11 @@ export const getFortnightDays = (year: number, month: number, fortnight: 1 | 2) 
   return Array.from({ length: Math.max(0, endDay - startDay + 1) }, (_, index) => startDay + index);
 };
 
-const workerOverlapsFortnight = (worker: Person, year: number, month: number, fortnight: 1 | 2) => {
-  const days = getFortnightDays(year, month, fortnight);
+export const workerOverlapsAttendancePeriod = (worker: Person, period: AttendancePeriod) => {
+  const days = getFortnightDays(period.year, period.month, period.fortnight);
   if (!days.length) return false;
-  const rangeStart = dateNumber({ year, month, day: days[0] });
-  const rangeEnd = dateNumber({ year, month, day: days[days.length - 1] });
+  const rangeStart = dateNumber({ year: period.year, month: period.month, day: days[0] });
+  const rangeEnd = dateNumber({ year: period.year, month: period.month, day: days[days.length - 1] });
   const start = parseYmd(worker.periodoInicio);
   const end = parseYmd(worker.periodoFin);
   const workerStart = start ? dateNumber(start) : rangeStart;
@@ -92,15 +85,7 @@ const resolveWorkCode = (context: AttendanceContext) => {
   return code && type ? `${code} ${type}` : code;
 };
 
-const field = (
-  doc: jsPDF,
-  label: string,
-  value: string,
-  x: number,
-  y: number,
-  width: number,
-  labelWidth: number,
-) => {
+const field = (doc: jsPDF, label: string, value: string, x: number, y: number, width: number, labelWidth: number) => {
   doc.setDrawColor(...BORDER);
   doc.setLineWidth(0.18);
   doc.setFillColor(...LIGHT_BLUE);
@@ -118,16 +103,9 @@ const field = (
   doc.text(valueLines[0] || '-', x + labelWidth + 2, y + 4.6);
 };
 
-const drawInstitutionalHeader = (
-  doc: jsPDF,
-  context: AttendanceContext,
-  fortnight: 1 | 2,
-  year: number,
-  month: number,
-) => {
+const drawInstitutionalHeader = (doc: jsPDF, context: AttendanceContext, period: AttendancePeriod) => {
   const config = getStoredPdfConfig();
   const width = doc.internal.pageSize.getWidth();
-
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, width, 22, 'F');
   doc.setFont('helvetica', 'bold');
@@ -141,7 +119,6 @@ const drawInstitutionalHeader = (
   renderPdfLogo(doc, width - 68, 4.2, 53, 10.5, true, config.customLogo);
   doc.setDrawColor(218, 226, 233);
   doc.line(14, 18.2, width - 14, 18.2);
-
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
   doc.setTextColor(...BLUE);
@@ -151,238 +128,112 @@ const drawInstitutionalHeader = (
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.6);
   doc.setTextColor(80, 100, 120);
-  doc.text(
-    `${fortnight === 1 ? '1ª' : '2ª'} quincena · ${MONTHS[month - 1]} ${year}`,
-    width / 2,
-    37.2,
-    { align: 'center' },
-  );
-
-  return { config, width, startY: 41 };
+  doc.text(`${period.fortnight === 1 ? '1ª' : '2ª'} quincena · ${MONTHS[period.month - 1]} ${period.year}`, width / 2, 37.2, { align: 'center' });
+  return 41;
 };
 
-const drawIdentityBlock = (
-  doc: jsPDF,
-  worker: Person,
-  context: AttendanceContext,
-  fortnight: 1 | 2,
-  year: number,
-  month: number,
-  startY: number,
-) => {
+const drawIdentityBlock = (doc: jsPDF, worker: Person, context: AttendanceContext, period: AttendancePeriod, startY: number) => {
   const workCode = resolveWorkCode(context);
-  const monthName = MONTHS[month - 1] || String(month);
+  const monthName = MONTHS[period.month - 1] || String(period.month);
   const x = 10;
   const gap = 3;
   const full = 277;
   const half = (full - gap) / 2;
-
   field(doc, 'Obra', safe(context.obra), x, startY, half, 22);
   field(doc, 'Código obra', workCode, x + half + gap, startY, 67, 24);
   field(doc, 'Municipio', safe(context.municipio), x + half + gap + 70, startY, half - 70, 23);
-
-  field(doc, 'Quincena', fortnight === 1 ? '1ª' : '2ª', x, startY + 9, 55, 22);
+  field(doc, 'Quincena', period.fortnight === 1 ? '1ª' : '2ª', x, startY + 9, 55, 22);
   field(doc, 'Mes', monthName.charAt(0).toUpperCase() + monthName.slice(1), x + 58, startY + 9, 64, 18);
-  field(doc, 'Año', String(year), x + 125, startY + 9, 45, 16);
+  field(doc, 'Año', String(period.year), x + 125, startY + 9, 45, 16);
   field(doc, 'Nº oferta', safe(worker.numOferta), x + 173, startY + 9, 114, 24);
-
   field(doc, 'Empresa', safe(context.empresa), x, startY + 18, half, 22);
   field(doc, 'Responsable / Encargado de obra', safe(context.recursoPreventivo), x + half + gap, startY + 18, half, 51);
-
   field(doc, 'Trabajador', safe(worker.apellidosNombre), x, startY + 27, half, 22);
   field(doc, 'DNI/NIE', safe(worker.dni), x + half + gap, startY + 27, 76, 21);
   field(doc, 'Categoría', safe(worker.categoria), x + half + gap + 79, startY + 27, half - 79, 22);
-
   return startY + 37;
 };
 
-const drawDailyTable = (
-  doc: jsPDF,
-  worker: Person,
-  year: number,
-  month: number,
-  days: number[],
-  startY: number,
-) => {
+const drawDailyTable = (doc: jsPDF, worker: Person, period: AttendancePeriod, startY: number) => {
+  const days = getFortnightDays(period.year, period.month, period.fortnight);
   const body = days.map(day => {
-    const active = workerActiveOnDay(worker, year, month, day);
-    return [
-      String(day),
-      fmtDay(year, month, day),
-      active ? '' : '—',
-      active ? '' : '—',
-      active ? '' : '—',
-      active ? '' : '—',
-      active ? '' : '—',
-      active ? '' : 'Fuera de contrato',
-    ];
+    const active = workerActiveOnDay(worker, period.year, period.month, day);
+    return [String(day), fmtDay(period.year, period.month, day), active ? '' : '—', active ? '' : '—', active ? '' : '—', active ? '' : '—', active ? '' : '—', active ? '' : 'Fuera de contrato'];
   });
-
   autoTable(doc, {
     startY,
-    head: [[
-      'Día',
-      'Fecha',
-      'Hora entrada',
-      'Firma entrada',
-      'Hora salida',
-      'Firma salida',
-      'Horas efectivas',
-      'Incidencias',
-    ]],
+    head: [['Día', 'Fecha', 'Hora entrada', 'Firma entrada', 'Hora salida', 'Firma salida', 'Horas efectivas', 'Incidencias']],
     body,
     margin: { left: 10, right: 10 },
     theme: 'grid',
     tableWidth: 277,
-    styles: {
-      font: 'helvetica',
-      fontSize: 5.5,
-      textColor: TEXT,
-      lineColor: BORDER,
-      lineWidth: 0.18,
-      minCellHeight: 4.8,
-      cellPadding: 0.55,
-      valign: 'middle',
-    },
-    headStyles: {
-      fillColor: BLUE,
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 5.7,
-      halign: 'center',
-      valign: 'middle',
-      minCellHeight: 6.2,
-    },
+    styles: { font: 'helvetica', fontSize: 5.5, textColor: TEXT, lineColor: BORDER, lineWidth: 0.18, minCellHeight: 4.8, cellPadding: 0.55, valign: 'middle' },
+    headStyles: { fillColor: BLUE, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 5.7, halign: 'center', valign: 'middle', minCellHeight: 6.2 },
     alternateRowStyles: { fillColor: [250, 252, 254] },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 24, halign: 'center' },
-      2: { cellWidth: 27, halign: 'center' },
-      3: { cellWidth: 43 },
-      4: { cellWidth: 27, halign: 'center' },
-      5: { cellWidth: 43 },
-      6: { cellWidth: 28, halign: 'center' },
-      7: { cellWidth: 75 },
-    },
+    columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 24, halign: 'center' }, 2: { cellWidth: 27, halign: 'center' }, 3: { cellWidth: 43 }, 4: { cellWidth: 27, halign: 'center' }, 5: { cellWidth: 43 }, 6: { cellWidth: 28, halign: 'center' }, 7: { cellWidth: 75 } },
     didParseCell: data => {
       if (data.section !== 'body') return;
       const day = days[data.row.index];
-      if (!workerActiveOnDay(worker, year, month, day)) {
+      if (!workerActiveOnDay(worker, period.year, period.month, day)) {
         data.cell.styles.fillColor = [238, 241, 244];
         data.cell.styles.textColor = [125, 135, 145];
       }
     },
   });
-
   return (doc as any).lastAutoTable?.finalY || startY + 105;
 };
 
 const drawSummary = (doc: jsPDF, context: AttendanceContext, startY: number) => {
   const width = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  // Reserve a dedicated lower band for the legal notes and the global PDF footer.
-  // This prevents the summary boxes and both footer layers from ever sharing the same Y position.
   const y = Math.min(startY + 4, pageHeight - 50);
-
-  const leftX = 10;
-  const leftW = 68;
-  const centerX = 81;
-  const centerW = 112;
-  const rightX = 196;
-  const rightW = width - rightX - 10;
-  const boxH = 27;
-
+  const leftX = 10, leftW = 68, centerX = 81, centerW = 112, rightX = 196, rightW = width - rightX - 10, boxH = 27;
   const box = (x: number, w: number, title: string) => {
-    doc.setDrawColor(...BORDER);
-    doc.setFillColor(255, 255, 255);
-    doc.rect(x, y, w, boxH, 'FD');
-    doc.setFillColor(...LIGHT_BLUE);
-    doc.rect(x, y, w, 6.5, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(...BLUE);
-    doc.text(title, x + 2.5, y + 4.4);
+    doc.setDrawColor(...BORDER); doc.setFillColor(255, 255, 255); doc.rect(x, y, w, boxH, 'FD');
+    doc.setFillColor(...LIGHT_BLUE); doc.rect(x, y, w, 6.5, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(...BLUE); doc.text(title, x + 2.5, y + 4.4);
   };
-
-  box(leftX, leftW, 'Resumen quincenal');
-  box(centerX, centerW, 'Incidencias / observaciones');
-  box(rightX, rightW, 'Conforme responsable / encargado');
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.1);
-  doc.setTextColor(...TEXT);
-  const summaryRows = ['Días trabajados', 'Horas ordinarias', 'Horas extraordinarias', 'Total horas'];
-  summaryRows.forEach((label, index) => {
-    const rowY = y + 10 + index * 4.5;
-    doc.text(label, leftX + 3, rowY);
-    doc.line(leftX + 39, rowY + 0.8, leftX + leftW - 3, rowY + 0.8);
-  });
-
-  doc.text(`Nombre: ${safe(context.recursoPreventivo)}`, rightX + 3, y + 11);
-  doc.text('Firma:', rightX + 3, y + 16);
-  doc.line(rightX + 18, y + 16.6, rightX + rightW - 3, y + 16.6);
-  doc.text('Fecha: ____ / ____ / ______', rightX + 3, y + 23);
-
-  const noticeY = pageHeight - 18;
-  doc.setFontSize(5.7);
-  doc.setTextColor(75, 95, 115);
+  box(leftX, leftW, 'Resumen quincenal'); box(centerX, centerW, 'Incidencias / observaciones'); box(rightX, rightW, 'Conforme responsable / encargado');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.1); doc.setTextColor(...TEXT);
+  ['Días trabajados', 'Horas ordinarias', 'Horas extraordinarias', 'Total horas'].forEach((label, index) => { const rowY = y + 10 + index * 4.5; doc.text(label, leftX + 3, rowY); doc.line(leftX + 39, rowY + 0.8, leftX + leftW - 3, rowY + 0.8); });
+  doc.text(`Nombre: ${safe(context.recursoPreventivo)}`, rightX + 3, y + 11); doc.text('Firma:', rightX + 3, y + 16); doc.line(rightX + 18, y + 16.6, rightX + rightW - 3, y + 16.6); doc.text('Fecha: ____ / ____ / ______', rightX + 3, y + 23);
+  const noticeY = pageHeight - 18; doc.setFontSize(5.7); doc.setTextColor(75, 95, 115);
   doc.text('El trabajador firma diariamente la entrada y la salida de la jornada.', 10, noticeY);
-  doc.text(
-    'Registro diario individual conforme al art. 34.9 del Estatuto de los Trabajadores. Conservación: 4 años.',
-    width - 10,
-    noticeY,
-    { align: 'right' },
-  );
+  doc.text('Registro diario individual conforme al art. 34.9 del Estatuto de los Trabajadores. Conservación: 4 años.', width - 10, noticeY, { align: 'right' });
 };
 
-const drawWorkerPage = (
-  doc: jsPDF,
-  worker: Person,
-  context: AttendanceContext,
-  fortnight: 1 | 2,
-  year: number,
-  month: number,
-  days: number[],
-) => {
-  const { startY } = drawInstitutionalHeader(doc, context, fortnight, year, month);
-  const tableY = drawIdentityBlock(doc, worker, context, fortnight, year, month, startY);
-  const endY = drawDailyTable(doc, worker, year, month, days, tableY);
+const drawWorkerPage = (doc: jsPDF, worker: Person, context: AttendanceContext, period: AttendancePeriod) => {
+  const startY = drawInstitutionalHeader(doc, context, period);
+  const tableY = drawIdentityBlock(doc, worker, context, period, startY);
+  const endY = drawDailyTable(doc, worker, period, tableY);
   drawSummary(doc, context, endY);
 };
 
-export const generateFortnightAttendancePdf = (
-  workers: Person[],
-  context: AttendanceContext,
-  fortnight: 1 | 2,
-) => {
-  const { year, month } = resolveMonth(workers, context);
-  const days = getFortnightDays(year, month, fortnight);
-  const activeWorkers = workers.filter(worker => workerOverlapsFortnight(worker, year, month, fortnight));
-  const printableWorkers = activeWorkers.length ? activeWorkers : workers;
-
+export const generateAttendancePeriodsPdf = (workers: Person[], context: AttendanceContext, periods: AttendancePeriod[]) => {
+  const uniquePeriods = Array.from(new Map(periods.map(period => [`${period.year}-${period.month}-${period.fortnight}`, period])).values())
+    .sort((a, b) => a.year - b.year || a.month - b.month || a.fortnight - b.fortnight);
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
-  doc.setProperties({
-    title: `REGISTRO DIARIO DE JORNADA · ${fortnight === 1 ? '1ª' : '2ª'} QUINCENA`,
-    author: 'Diputación Provincial de Cádiz',
-    creator: 'Sistema de Gestión PROFEA',
+  doc.setProperties({ title: 'REGISTRO DIARIO DE JORNADA · PERIODOS SELECCIONADOS', author: 'Diputación Provincial de Cádiz', creator: 'Sistema de Gestión PROFEA' });
+  let pages = 0;
+  uniquePeriods.forEach(period => {
+    workers.filter(worker => workerOverlapsAttendancePeriod(worker, period)).forEach(worker => {
+      if (pages > 0) doc.addPage('a4', 'landscape');
+      drawWorkerPage(doc, worker, context, period);
+      pages += 1;
+    });
   });
+  if (!pages) {
+    const fallback = uniquePeriods[0] || { year: new Date().getFullYear(), month: new Date().getMonth() + 1, fortnight: 1 as const };
+    workers.slice(0, 1).forEach(worker => drawWorkerPage(doc, worker, context, fallback));
+  }
+  applyPdfFooters(doc, { ...config, footerText: 'Diputación de Cádiz · PROFEA · Registro diario de jornada' });
+  const first = uniquePeriods[0];
+  const last = uniquePeriods[uniquePeriods.length - 1];
+  const range = first && last ? `${first.year}${pad(first.month)}Q${first.fortnight}_${last.year}${pad(last.month)}Q${last.fortnight}` : 'SELECCION';
+  return { doc, filename: `REGISTRO_DIARIO_JORNADA_${range}_${slug(context.obra)}.pdf` };
+};
 
-  printableWorkers.forEach((worker, index) => {
-    if (index > 0) doc.addPage('a4', 'landscape');
-    drawWorkerPage(doc, worker, context, fortnight, year, month, days);
-  });
-
-  applyPdfFooters(doc, {
-    ...config,
-    footerText: 'Diputación de Cádiz · PROFEA · Registro diario de jornada',
-  });
-
-  const firstDay = days[0] || (fortnight === 1 ? 1 : 16);
-  const lastDay = days[days.length - 1] || firstDay;
-  const monthName = `${MONTHS[month - 1] || month}_${year}`;
-  return {
-    doc,
-    filename: `REGISTRO_DIARIO_JORNADA_${fortnight === 1 ? '1_QUINCENA' : '2_QUINCENA'}_${firstDay}_AL_${lastDay}_${slug(context.obra)}_${slug(monthName)}.pdf`,
-  };
+export const generateFortnightAttendancePdf = (workers: Person[], context: AttendanceContext, fortnight: 1 | 2) => {
+  const { year, month } = resolveMonth(workers, context);
+  return generateAttendancePeriodsPdf(workers, context, [{ year, month, fortnight }]);
 };
