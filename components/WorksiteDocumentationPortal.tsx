@@ -23,6 +23,7 @@ type WorkRow = {
 type EpiKey = 'casco' | 'chaleco' | 'orejeras' | 'gafas' | 'guantes' | 'mascarillas' | 'calzado';
 
 const DEFAULT_COMPANY = 'AEPSA (Diputación Provincial de Cádiz)';
+const DIPUTACION_CADIZ_CIF = 'P1100000G';
 const DEFAULT_EPIS: Record<EpiKey, boolean> = {
   casco: true,
   chaleco: true,
@@ -35,6 +36,14 @@ const DEFAULT_EPIS: Record<EpiKey, boolean> = {
 
 const safe = (value: unknown) => String(value ?? '').trim();
 const normalize = (value: string) => safe(value).toLocaleLowerCase('es').replace(/\s+/g, ' ');
+const normalizeCompany = (value: string) => normalize(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const resolveKnownCompanyCif = (company: string): string => {
+  const normalized = normalizeCompany(company);
+  if ((normalized.includes('diputacion') && normalized.includes('cadiz')) || normalized.includes('aepsa')) {
+    return DIPUTACION_CADIZ_CIF;
+  }
+  return '';
+};
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const workIdentity = (value: string): string => {
   const raw = normalize(value).replace(/[._\-/:]+/g, ' ');
@@ -68,7 +77,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [selectedWork, setSelectedWork] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [empresa, setEmpresa] = useState(DEFAULT_COMPANY);
-  const [cif, setCif] = useState('');
+  const [cif, setCif] = useState(DIPUTACION_CADIZ_CIF);
   const [recursoPreventivo, setRecursoPreventivo] = useState('');
   const [documentDate, setDocumentDate] = useState(todayIso());
   const [trainingAction, setTrainingAction] = useState('Información y formación preventiva del puesto de trabajo y de la obra');
@@ -162,10 +171,16 @@ export const WorksiteDocumentationPortal: React.FC = () => {
 
   useEffect(() => {
     const row = workRows.find(item => sameWork(item.nombre, selectedWork));
-    setEmpresa(safe(row?.empresa) || DEFAULT_COMPANY);
-    setCif(safe(row?.cif));
+    const nextCompany = safe(row?.empresa) || DEFAULT_COMPANY;
+    setEmpresa(nextCompany);
+    setCif(safe(row?.cif) || resolveKnownCompanyCif(nextCompany));
     setRecursoPreventivo(safe(row?.recurso_preventivo));
   }, [selectedWork, workRows]);
+
+  useEffect(() => {
+    const automaticCif = resolveKnownCompanyCif(empresa);
+    if (automaticCif && cif !== automaticCif) setCif(automaticCif);
+  }, [empresa, cif]);
 
   useEffect(() => {
     const dated = periodWorkers.map(p => safe(p.periodoInicio)).filter(Boolean).sort()[0];
@@ -194,7 +209,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       const row = workRows.find(item => sameWork(item.nombre, selectedWork));
       const body = {
         empresa: safe(empresa) || DEFAULT_COMPANY,
-        cif: safe(cif),
+        cif: safe(cif) || resolveKnownCompanyCif(empresa),
         recurso_preventivo: safe(recursoPreventivo),
         updated_by: data.user.id,
       };
@@ -241,7 +256,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const context = useMemo(() => ({
     obra: selectedWork,
     empresa: safe(empresa) || DEFAULT_COMPANY,
-    cif: safe(cif),
+    cif: safe(cif) || resolveKnownCompanyCif(empresa),
     recursoPreventivo: safe(recursoPreventivo),
     fecha: documentDate,
     periodoLabel: selectedPeriod || 'Sin periodo',
@@ -359,7 +374,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                   <label className="text-sm font-semibold">Fecha del documento<input type="date" value={documentDate} onChange={e => setDocumentDate(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5" /></label>
                   <label className="text-sm font-semibold">Trabajadores del periodo<input value={periodWorkers.length} readOnly className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2.5 font-bold" /></label>
                   <label className="text-sm font-semibold sm:col-span-2">Empresa<input value={empresa} onChange={e => setEmpresa(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5" /></label>
-                  <label className="text-sm font-semibold">CIF<input value={cif} onChange={e => setCif(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5" /></label>
+                  <label className="text-sm font-semibold">CIF<input value={cif} onChange={e => setCif(e.target.value.toUpperCase())} placeholder="Se completa automáticamente" className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5" /><span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">Para Diputación Provincial de Cádiz se completa automáticamente con P1100000G.</span></label>
                   <label className="text-sm font-semibold">Encargado / recurso preventivo<input value={recursoPreventivo} onChange={e => setRecursoPreventivo(e.target.value)} placeholder="Nombre y apellidos" className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5" /></label>
                 </div>
                 <div className="mt-4 flex justify-end">
