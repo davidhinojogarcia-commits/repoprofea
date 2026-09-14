@@ -62,7 +62,18 @@ export const deleteDataPermission=async(payload:any)=>{
   return {data:{ok:true}};
 };
 
+export const listShareableUsers=async()=>{
+  const rows=await supabase.rpc('list_shareable_profiles');
+  return Array.isArray(rows)?rows:[];
+};
+
 export const getRecordShares=async(resourceType:string,resourceId:string|number)=>{
+  if(resourceType==='trabajadores'){
+    const workerId=Number(resourceId);
+    if(!Number.isFinite(workerId))throw new Error('Identificador de trabajador no válido.');
+    const rows=await supabase.rpc('get_worker_shares',{p_worker_id:workerId});
+    return Array.isArray(rows)?rows:[];
+  }
   const rows=await supabase.query('data_permissions',{
     query:`select=id,user_id,can_read,can_update,can_delete,created_at&resource_type=eq.${encodeURIComponent(resourceType)}&resource_id=eq.${encodeURIComponent(String(resourceId))}&order=created_at.asc`
   });
@@ -70,10 +81,28 @@ export const getRecordShares=async(resourceType:string,resourceId:string|number)
 };
 
 type ShareAccess='read'|'read_write';
-export const shareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;ownerId:string;userId:string;access:ShareAccess})=>
-  setDataPermission({...payload,canRead:true,canUpdate:payload.access==='read_write',canDelete:false});
+export const shareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;ownerId:string;userId:string;access:ShareAccess})=>{
+  if(payload.resourceType==='trabajadores'){
+    const workerId=Number(payload.resourceId);
+    if(!Number.isFinite(workerId))throw new Error('Identificador de trabajador no válido.');
+    await supabase.rpc('set_worker_share',{
+      p_worker_id:workerId,
+      p_user_id:payload.userId,
+      p_can_update:payload.access==='read_write'
+    });
+    return {data:{ok:true}};
+  }
+  return setDataPermission({...payload,canRead:true,canUpdate:payload.access==='read_write',canDelete:false});
+};
 
-export const unshareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;userId:string})=>
-  deleteDataPermission(payload);
+export const unshareRecordWithUser=async(payload:{resourceType:string;resourceId:string|number;userId:string})=>{
+  if(payload.resourceType==='trabajadores'){
+    const workerId=Number(payload.resourceId);
+    if(!Number.isFinite(workerId))throw new Error('Identificador de trabajador no válido.');
+    await supabase.rpc('remove_worker_share',{p_worker_id:workerId,p_user_id:payload.userId});
+    return {data:{ok:true}};
+  }
+  return deleteDataPermission(payload);
+};
 
 export const writeAuditEvent=async(payload:any)=>{const user=(await supabase.auth.getUser()).data.user;if(user)await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:user.id,user_email:user.email||'',action:payload.action,resource_type:payload.resourceType||'',resource_id:payload.resourceId||'',details:payload.details||{}}});return {data:{ok:true}};};
