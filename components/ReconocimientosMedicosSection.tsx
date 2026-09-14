@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileUp, HeartPulse, Loader2, Search, ShieldAlert, UserCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileUp, HeartPulse, Loader2, MessageCircle, Search, ShieldAlert, UserCheck } from 'lucide-react';
 import { Person, MedicalRecordImportItem, getAptitudMedicaInfo } from '../types';
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { analyzeMedicalDocumentText } from '../src/lib/medicalDocumentAnalyzer';
@@ -30,6 +30,53 @@ const patchPerson = (person: Person, item: MedicalRecordImportItem): Person => {
   };
 };
 
+const normalizeWhatsAppPhone = (value: string): string => {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.length === 9) digits = `34${digits}`;
+  return digits;
+};
+
+const formatAppointmentDate = (value: string): string => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value || '-';
+};
+
+const isTomorrow = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const now = new Date();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const key = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+  return value === key;
+};
+
+const buildAppointmentMessage = (person: Person, reminder: boolean): string => {
+  const name = person.apellidosNombre || 'trabajador/a';
+  const date = formatAppointmentDate(person.citaDia);
+  const time = person.citaHora || '-';
+  const site = person.sitioReconocimiento || '-';
+  const obra = person.obra || '-';
+  const observations = String(person.observaciones || '').trim();
+  const lines = reminder
+    ? [
+        'RECORDATORIO DE RECONOCIMIENTO MÉDICO - PROFEA',
+        `Hola ${name}.`,
+        `Te recordamos que mañana tienes tu reconocimiento médico a las ${time} h.`,
+        `Lugar: ${site}`,
+        `Obra: ${obra}`,
+      ]
+    : [
+        'CITA PARA RECONOCIMIENTO MÉDICO - PROFEA',
+        `Hola ${name}.`,
+        `Tienes programado tu reconocimiento médico el ${date} a las ${time} h.`,
+        `Lugar: ${site}`,
+        `Obra: ${obra}`,
+      ];
+  if (observations) lines.push(`Observaciones: ${observations}`);
+  if (!reminder) lines.push('Por favor, acude siguiendo las instrucciones facilitadas por tu empresa.');
+  return lines.join('\n');
+};
+
 export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdatePeople, onToast }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -50,6 +97,25 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
     if (!q) return people;
     return people.filter(p => `${p.apellidosNombre} ${p.dni} ${p.obra}`.toLowerCase().includes(q));
   }, [people, search]);
+
+  const upcomingAppointments = useMemo(() => {
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return people
+      .filter(p => p.necesitaReconocimiento === 'Sí' && p.citaDia && p.citaHora && p.sitioReconocimiento && p.citaDia >= todayKey)
+      .sort((a, b) => `${a.citaDia} ${a.citaHora}`.localeCompare(`${b.citaDia} ${b.citaHora}`));
+  }, [people]);
+
+  const openWhatsApp = (person: Person, reminder: boolean) => {
+    const phone = normalizeWhatsAppPhone(person.telefono || '');
+    if (phone.length < 10) {
+      onToast(`El trabajador ${person.apellidosNombre} no tiene un teléfono válido para WhatsApp.`, 'error');
+      return;
+    }
+    const text = buildAppointmentMessage(person, reminder);
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   const persist = async (items: MedicalRecordImportItem[]) => {
     const replacements = new Map<number, Person>();
@@ -155,6 +221,36 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
 
     <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
       {([['Trabajadores',stats.total],['Aptos',stats.aptos],['Con limitaciones',stats.limitados],['No aptos',stats.noAptos],['Pendientes',stats.pendientes]] as const).map(([label,value]) => <div key={label} className="ui-surface p-4"><div className="text-2xl font-black">{value}</div><div className="text-xs text-slate-500 mt-1">{label}</div></div>)}
+    </div>
+
+    <div className="ui-surface p-4 sm:p-5 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400"><MessageCircle className="w-5 h-5"/><span className="text-xs font-black uppercase tracking-[0.14em]">WhatsApp gratuito</span></div>
+          <h2 className="font-black text-lg mt-1">Avisos de citas médicas</h2>
+          <p className="text-xs text-slate-500 mt-1">Abre WhatsApp con el mensaje ya preparado. No usa API, Twilio ni tiene coste por mensaje; solo tendrás que pulsar Enviar en WhatsApp.</p>
+        </div>
+        <div className="text-xs font-black px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">{upcomingAppointments.length} cita(s) próximas</div>
+      </div>
+
+      {upcomingAppointments.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-5 text-center text-sm text-slate-500">No hay citas médicas futuras con fecha, hora y lugar completos.</div> : <div className="space-y-2">
+        {upcomingAppointments.map(person => {
+          const reminderToday = isTomorrow(person.citaDia);
+          const phoneOk = normalizeWhatsAppPhone(person.telefono || '').length >= 10;
+          return <div key={`wa_${person.id}`} className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+            <div className="min-w-0">
+              <div className="font-black text-sm truncate">{person.apellidosNombre}</div>
+              <div className="text-xs text-slate-500 mt-1">{formatAppointmentDate(person.citaDia)} · {person.citaHora} h · {person.sitioReconocimiento}</div>
+              <div className="text-xs text-slate-500 mt-1">{person.obra || 'Sin obra'} · {person.telefono || 'Sin teléfono'}</div>
+              {person.observaciones && <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">Observaciones: {person.observaciones}</div>}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, false)} className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-black transition-colors"><MessageCircle className="w-4 h-4"/> Enviar cita</button>
+              <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, true)} className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-colors ${reminderToday ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4"/> {reminderToday ? 'Recordatorio hoy' : 'Enviar recordatorio'}</button>
+            </div>
+          </div>;
+        })}
+      </div>}
     </div>
 
     {!!review.length && <div className="ui-surface p-4 sm:p-5 space-y-4">
