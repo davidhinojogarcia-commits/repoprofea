@@ -82,11 +82,11 @@ export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] = [
   {
     id: 'recurso_preventivo',
     categoria: 'empresa',
-    nombre: 'Designación formal de Recurso Preventivo en Obra',
-    descripcion: 'Nombramiento por la empresa del trabajador que actuará como Recurso Preventivo (curso mín. 60h PRL).',
-    normativa: 'Art. 32 bis Ley 31/1995 y DA 4ª Ley 32/2006',
-    obligatorio: true,
-    estado: 'pendiente'
+    nombre: 'Encargado o interlocutor de la subcontrata (opcional)',
+    descripcion: 'Dato de coordinación de la persona designada por la subcontrata. No sustituye al Recurso Preventivo del contratista ni condiciona por sí solo el acceso a obra.',
+    normativa: 'RD 171/2004 (medios de coordinación) y RD 1627/1997',
+    obligatorio: false,
+    estado: 'no_aplica'
   },
   {
     id: 'evaluacion_especifica',
@@ -166,9 +166,32 @@ export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] = [
   }
 ];
 
+const SUBCONTRATA_INTERLOCUTOR_METADATA = {
+  nombre: 'Encargado o interlocutor de la subcontrata (opcional)',
+  descripcion: 'Dato de coordinación de la persona designada por la subcontrata. No sustituye al Recurso Preventivo del contratista ni condiciona por sí solo el acceso a obra.',
+  normativa: 'RD 171/2004 (medios de coordinación) y RD 1627/1997'
+};
+
+/**
+ * Converts the former mandatory subcontractor resource-preventive requirement
+ * into optional coordination information. Delivered legacy evidence is kept,
+ * while missing or defective legacy entries stop affecting CAE compliance.
+ */
+export const normalizeSubcontrataChecklist = (
+  checklist: SubcontrataDocItem[] = []
+): SubcontrataDocItem[] => checklist.map(item => {
+  if (item.id !== 'recurso_preventivo') return { ...item };
+  return {
+    ...item,
+    ...SUBCONTRATA_INTERLOCUTOR_METADATA,
+    obligatorio: false,
+    estado: item.estado === 'entregado' ? 'entregado' : 'no_aplica'
+  };
+});
+
 // Legacy key name retained only for source compatibility; no browser storage is read or written
 export const CHECKLIST_TEMPLATE_STORAGE_KEY = 'profea_subcontratas_checklist_template';
-let checklistTemplateCache: SubcontrataDocItem[] = DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
+let checklistTemplateCache: SubcontrataDocItem[] = normalizeSubcontrataChecklist(DEFAULT_SUBCONTRATA_CHECKLIST);
 
 // Pre-defined frequent construction documents for quick addition
 export const PRESET_FREQUENT_DOCS: Omit<SubcontrataDocItem, 'estado'>[] = [
@@ -232,7 +255,9 @@ export const getStoredChecklistTemplate = (): SubcontrataDocItem[] =>
  * Saves a new customized checklist template to Supabase
  */
 export const saveStoredChecklistTemplate = (template: SubcontrataDocItem[]): void => {
-  checklistTemplateCache = template.map(item => ({ ...item, estado: item.estado || 'pendiente' }));
+  checklistTemplateCache = normalizeSubcontrataChecklist(
+    template.map(item => ({ ...item, estado: item.estado || 'pendiente' }))
+  );
   void saveSubcontratasPreferences({ checklistTemplate: checklistTemplateCache }).catch(error =>
     console.warn('Error guardando plantilla de subcontratas en Supabase:', error)
   );
@@ -242,7 +267,7 @@ export const saveStoredChecklistTemplate = (template: SubcontrataDocItem[]): voi
  * Resets the stored template to the standard legal defaults
  */
 export const resetStoredChecklistTemplate = (): SubcontrataDocItem[] => {
-  checklistTemplateCache = DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item }));
+  checklistTemplateCache = normalizeSubcontrataChecklist(DEFAULT_SUBCONTRATA_CHECKLIST);
   void saveSubcontratasPreferences({ checklistTemplate: checklistTemplateCache }).catch(error =>
     console.warn('Error restableciendo plantilla de subcontratas en Supabase:', error)
   );
@@ -272,7 +297,9 @@ export const hydrateStoredSubcontratasPreferences = async (): Promise<void> => {
   let effective = remote;
 
   if (Array.isArray(effective.checklistTemplate) && effective.checklistTemplate.length) {
-    checklistTemplateCache = effective.checklistTemplate.map((item: any) => ({ ...item, estado: item.estado || 'pendiente' }));
+    checklistTemplateCache = normalizeSubcontrataChecklist(
+      effective.checklistTemplate.map((item: any) => ({ ...item, estado: item.estado || 'pendiente' }))
+    );
   }
   reporteTecnicoConfigCache = {
     ...DEFAULT_REPORTE_TECNICO_CONFIG,
@@ -383,11 +410,11 @@ export const syncSubcontrataChecklistWithTemplate = (
   template: SubcontrataDocItem[]
 ): SubcontrataDocItem[] => {
   const currentMap = new Map<string, SubcontrataDocItem>();
-  currentChecklist.forEach(item => {
+  normalizeSubcontrataChecklist(currentChecklist).forEach(item => {
     currentMap.set(item.id, item);
   });
 
-  return template.map(templateItem => {
+  return normalizeSubcontrataChecklist(template).map(templateItem => {
     const existing = currentMap.get(templateItem.id);
     if (existing) {
       return {
@@ -403,7 +430,7 @@ export const syncSubcontrataChecklistWithTemplate = (
     // New item added from template
     return {
       ...templateItem,
-      estado: templateItem.categoria === 'maquinaria' && !templateItem.obligatorio ? 'no_aplica' : 'pendiente'
+      estado: !templateItem.obligatorio ? 'no_aplica' : 'pendiente'
     };
   });
 };
@@ -426,10 +453,11 @@ export const createNewSubcontratista = (
     actividadGremio: data?.actividadGremio || 'Instalaciones y Albañilería',
     fechaInicioPrevista: data?.fechaInicioPrevista || '',
     supervisorResponsable: supervisorResponsable || data?.supervisorResponsable || '',
-    recursoPreventivo: data?.recursoPreventivo || '',
+    // Legacy field retained only for backward-compatible reads; the legal resource belongs to the contractor/obra.
+    recursoPreventivo: '',
     numeroTrabajadoresPrevistos: data?.numeroTrabajadoresPrevistos || 1,
     estadoExpediente: 'pendiente',
-    checklist: data?.checklist ? data.checklist.map(item => ({ ...item })) : DEFAULT_SUBCONTRATA_CHECKLIST.map(item => ({ ...item })),
+    checklist: normalizeSubcontrataChecklist(data?.checklist || DEFAULT_SUBCONTRATA_CHECKLIST),
     fechaRegistro: now,
     fechaActualizacion: now,
     notas: data?.notas || ''
@@ -437,8 +465,9 @@ export const createNewSubcontratista = (
 };
 
 export const getSubcontrataCompliance = (sub: Subcontratista) => {
-  const activeItems = sub.checklist.filter(i => i.estado !== 'no_aplica');
-  const mandatoryItems = sub.checklist.filter(i => i.obligatorio && i.estado !== 'no_aplica');
+  const normalizedChecklist = normalizeSubcontrataChecklist(sub.checklist);
+  const activeItems = normalizedChecklist.filter(i => i.estado !== 'no_aplica');
+  const mandatoryItems = normalizedChecklist.filter(i => i.obligatorio && i.estado !== 'no_aplica');
   
   const entregados = activeItems.filter(i => i.estado === 'entregado').length;
   const pendientes = activeItems.filter(i => i.estado === 'pendiente').length;
@@ -475,8 +504,9 @@ export const generateRequerimientoText = (
   supervisorNombre: string
 ): string => {
   const compliance = getSubcontrataCompliance(sub);
-  const faltantes = sub.checklist.filter(i => i.estado === 'pendiente');
-  const caducadosOIncompletos = sub.checklist.filter(i => i.estado === 'caducado' || i.estado === 'incompleto');
+  const normalizedChecklist = normalizeSubcontrataChecklist(sub.checklist);
+  const faltantes = normalizedChecklist.filter(i => i.estado === 'pendiente');
+  const caducadosOIncompletos = normalizedChecklist.filter(i => i.estado === 'caducado' || i.estado === 'incompleto');
   
   const fechaHoy = new Date().toLocaleDateString('es-ES', { 
     day: '2-digit', 
@@ -560,7 +590,7 @@ export const generateSubcontrataReportPDF = async (
   const effectiveCoordinador = (options?.coordinadorNombre ?? defaultCfg.coordinadorNombre ?? '').trim();
   const effectiveEmpresa = (options?.empresaCoordinacion ?? defaultCfg.empresaCoordinacion ?? '').trim();
   const effectiveSupervisorFirma = (options?.supervisorNombre ?? defaultCfg.supervisorNombre ?? '').trim();
-  const effectiveRecursoNombre = options?.recursoPreventivoObra?.trim() || sub.recursoPreventivo?.trim() || obraRecurso?.recursoPreventivoNombre || '';
+  const effectiveRecursoNombre = options?.recursoPreventivoObra?.trim() || obraRecurso?.recursoPreventivoNombre || '';
   const effectiveRecursoCategoria = options?.recursoPreventivoCategoria?.trim() || obraRecurso?.recursoPreventivoCategoria || 'Encargado de Obra';
 
   const config = getStoredPdfConfig();
@@ -749,7 +779,7 @@ export const generateSubcontrataReportPDF = async (
   );
 
   // Table with Checklist
-  const tableData = sub.checklist.map((item, index) => {
+  const tableData = normalizeSubcontrataChecklist(sub.checklist).map((item, index) => {
     let estadoLabel = 'Pendiente';
     if (item.estado === 'entregado') estadoLabel = 'ENTREGADO (OK)';
     else if (item.estado === 'caducado') estadoLabel = 'CADUCADO';
