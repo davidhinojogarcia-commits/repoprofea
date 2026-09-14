@@ -16,6 +16,7 @@ import {
   generateObraConsolidatedReportPDF,
   DEFAULT_SUBCONTRATA_CHECKLIST,
   DEFAULT_REPORTE_TECNICO_CONFIG,
+  normalizeSubcontrataChecklist,
   syncSubcontrataChecklistWithTemplate
 } from '../src/lib/subcontratasDefaults';
 import { formatDate } from '../src/lib/exportUtils';
@@ -81,7 +82,10 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   useEffect(() => {
     const unsubscribe = subscribeToDocuments<Subcontratista>('subcontratas', items => {
       suppressSubPersistenceRef.current = true;
-      setSubcontratistasState(items);
+      setSubcontratistasState(items.map(item => ({
+        ...item,
+        checklist: normalizeSubcontrataChecklist(item.checklist)
+      })));
       hydratedSubcontratasRef.current = true;
       queueMicrotask(() => { suppressSubPersistenceRef.current = false; });
     }, { includeShared: true }, error => {
@@ -128,7 +132,9 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     loadSubcontrataSettings().then(settings => {
       if (cancelled) return;
       if (settings.reporteConfig) setReporteConfig({ ...DEFAULT_REPORTE_TECNICO_CONFIG, ...settings.reporteConfig });
-      if (Array.isArray(settings.checklistTemplate) && settings.checklistTemplate.length > 0) setChecklistTemplate(settings.checklistTemplate);
+      if (Array.isArray(settings.checklistTemplate) && settings.checklistTemplate.length > 0) {
+        setChecklistTemplate(normalizeSubcontrataChecklist(settings.checklistTemplate));
+      }
       if (settings.obrasRecursos) setObrasRecursos(settings.obrasRecursos);
     }).catch(error => {
       console.error('Error cargando configuración de subcontratas desde Supabase:', error);
@@ -149,7 +155,6 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     actividadGremio: 'Albañilería y Revestimientos',
     fechaInicioPrevista: '',
     supervisorResponsable: supervisoresDisponibles[0] || '',
-    recursoPreventivo: '',
     numeroTrabajadoresPrevistos: 2,
     notas: ''
   });
@@ -294,7 +299,6 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       actividadGremio: 'Albañilería y Revestimientos',
       fechaInicioPrevista: '',
       supervisorResponsable: supervisoresDisponibles[0] || '',
-      recursoPreventivo: '',
       numeroTrabajadoresPrevistos: 2,
       notas: ''
     });
@@ -1150,9 +1154,9 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 dark:text-slate-500 block">Recurso Preventivo:</span>
+                    <span className="text-slate-400 dark:text-slate-500 block">Recurso preventivo de la obra:</span>
                     <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {activeSubcontrata.recursoPreventivo || 'Pendiente designación'}
+                      {obrasRecursos[activeSubcontrata.obra]?.recursoPreventivoNombre || 'Pendiente en la configuración de la obra'}
                     </span>
                   </div>
                   <div>
@@ -1224,7 +1228,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                     if (s.id !== activeSubcontrata.id) return s;
                     return {
                       ...s,
-                      checklist: updatedChecklist,
+                      checklist: normalizeSubcontrataChecklist(updatedChecklist),
                       estadoExpediente: newEstadoExpediente,
                       fechaActualizacion: new Date().toISOString()
                     };
@@ -1635,11 +1639,11 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
                 <div>
                   <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Persona de Contacto
+                    Encargado / interlocutor de la subcontrata (opcional)
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej: Juan Pérez"
+                    placeholder="Ej.: Juan Pérez, encargado de los trabajos"
                     value={newForm.personaContacto}
                     onChange={e => setNewForm({ ...newForm, personaContacto: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
@@ -2373,7 +2377,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </div>
                 )}
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  El Recurso Preventivo forma parte de la documentación CAE, pero no se incluye como firmante del Reporte Técnico.
+                  El recurso preventivo pertenece al contratista y se gestiona por obra. El encargado o interlocutor de la subcontrata es un dato de coordinación opcional, no un documento obligatorio.
                 </p>
               </div>
             </div>
