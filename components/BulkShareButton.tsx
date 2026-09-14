@@ -13,7 +13,7 @@ const chunks=<T,>(items:T[],size:number)=>Array.from({length:Math.ceil(items.len
 
 export const BulkShareButton:React.FC<Props>=({resourceType,resourceIds,label='Compartir seleccionados',className=''})=>{
  const [open,setOpen]=useState(false),[users,setUsers]=useState<Profile[]>([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[selectedUsers,setSelectedUsers]=useState<string[]>([]),[access,setAccess]=useState<Access>('read');
- useEffect(()=>{if(!open)return;setLoading(true);setError('');setSearch('');setSelectedUsers([]);setAccess('read');listShareableUsers().then(rows=>setUsers(rows||[]))).catch((e:any)=>{const m=e?.message||'No se pudieron cargar los usuarios.';setError(m);showAppToast(m,'error');}).finally(()=>setLoading(false));},[open]);
+ useEffect(()=>{if(!open)return;setLoading(true);setError('');setSearch('');setSelectedUsers([]);setAccess('read');listShareableUsers().then(rows=>setUsers(rows||[])).catch((e:any)=>{const m=e?.message||'No se pudieron cargar los usuarios.';setError(m);showAppToast(m,'error');}).finally(()=>setLoading(false));},[open]);
  const filteredUsers=useMemo(()=>{const t=search.trim().toLowerCase();return users.filter(u=>!t||`${u.nombre||''} ${u.apellidos||''} ${u.email||''}`.toLowerCase().includes(t));},[users,search]);
  const allVisibleSelected=filteredUsers.length>0&&filteredUsers.every(u=>selectedUsers.includes(u.id));
  const toggleUser=(userId:string)=>setSelectedUsers(prev=>prev.includes(userId)?prev.filter(id=>id!==userId):[...prev,userId]);
