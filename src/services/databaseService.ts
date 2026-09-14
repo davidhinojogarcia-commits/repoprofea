@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { syncMedicalAppointmentFromWorker } from './medicalAppointmentAutoSync';
 
 export type DatabaseRecord = Record<string, any> & { id?: string | number; ownerId?: string };
 type ListOptions = { includeShared?: boolean; allForAdmin?: boolean; limitCount?: number };
@@ -159,6 +160,11 @@ export async function createDocument<T extends DatabaseRecord>(collectionName: s
       ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
       : { id: String(id), ...serialized };
   await supabase.query(table, { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body });
+  if (table === 'trabajadores') {
+    void syncMedicalAppointmentFromWorker(data, id, user.id).catch(error => {
+      console.error('Error sincronizando cita médica automática:', error);
+    });
+  }
   if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), data);
 }
 
@@ -171,6 +177,11 @@ export async function updateDocument<T extends DatabaseRecord>(collectionName: s
   const body: any = await serialize(table, merged);
   if (isLegacyNumericTable(table) || table === 'trabajadores') body.updated_by = user.id;
   await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body });
+  if (table === 'trabajadores') {
+    void syncMedicalAppointmentFromWorker(merged, id, user.id).catch(error => {
+      console.error('Error actualizando cita médica automática:', error);
+    });
+  }
   if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), merged);
 }
 
