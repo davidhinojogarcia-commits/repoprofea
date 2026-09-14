@@ -168,7 +168,7 @@ export const ShareRecordButton: React.FC<Props> = ({
     }
   };
 
-  if (!canManageShare) return null;
+  if (!canManageShare && !isAdmin) return null;
 
   const modal = open && typeof document !== 'undefined' ? createPortal(
     <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={() => setOpen(false)}>
