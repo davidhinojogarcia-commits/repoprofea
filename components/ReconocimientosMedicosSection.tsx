@@ -14,6 +14,8 @@ interface Props {
 
 interface ReviewItem extends MedicalRecordImportItem { id: string; selected: boolean; }
 
+type ConfirmationStatus = 'pendiente' | 'confirmada' | 'no_puede_asistir';
+
 const patchPerson = (person: Person, item: MedicalRecordImportItem): Person => {
   const limited = item.resultado === 'Apto con Limitación';
   const limitations = limited ? (item.limitaciones || '') : '';
@@ -74,7 +76,19 @@ const buildAppointmentMessage = (person: Person, reminder: boolean): string => {
       ];
   if (observations) lines.push(`Observaciones: ${observations}`);
   if (!reminder) lines.push('Por favor, acude siguiendo las instrucciones facilitadas por tu empresa.');
+  lines.push('', 'IMPORTANTE: Confirma la cita respondiendo a este WhatsApp con CONFIRMO. Si no puedes asistir, responde NO PUEDO ASISTIR.');
   return lines.join('\n');
+};
+
+const getConfirmationStatus = (person: Person): ConfirmationStatus => {
+  const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();
+  return raw === 'confirmada' || raw === 'no_puede_asistir' ? raw : 'pendiente';
+};
+
+const confirmationBadge = (status: ConfirmationStatus) => {
+  if (status === 'confirmada') return { label: 'Confirmada', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' };
+  if (status === 'no_puede_asistir') return { label: 'No puede asistir', cls: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300' };
+  return { label: 'Pendiente de confirmación', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' };
 };
 
 export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdatePeople, onToast }) => {
@@ -115,6 +129,24 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
     const text = buildAppointmentMessage(person, reminder);
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const setConfirmation = async (person: Person, status: ConfirmationStatus) => {
+    const now = new Date().toISOString();
+    const updated = {
+      ...person,
+      confirmacionCitaEstado: status,
+      confirmacionCitaFecha: now,
+    } as Person & Record<string, any>;
+    try {
+      await updateDocument('trabajadores', person.id, updated as any);
+      onUpdatePeople(people.map(p => p.id === person.id ? updated : p));
+      const label = status === 'confirmada' ? 'confirmada' : status === 'no_puede_asistir' ? 'marcada como no puede asistir' : 'puesta como pendiente';
+      onToast(`Cita de ${person.apellidosNombre} ${label}.`, 'success');
+    } catch (error) {
+      console.error('[medical-confirmation] update', error);
+      onToast('No se pudo guardar el estado de confirmación de la cita.', 'error');
+    }
   };
 
   const persist = async (items: MedicalRecordImportItem[]) => {
@@ -227,8 +259,8 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400"><MessageCircle className="w-5 h-5"/><span className="text-xs font-black uppercase tracking-[0.14em]">WhatsApp gratuito</span></div>
-          <h2 className="font-black text-lg mt-1">Avisos de citas médicas</h2>
-          <p className="text-xs text-slate-500 mt-1">Abre WhatsApp con el mensaje ya preparado. No usa API, Twilio ni tiene coste por mensaje; solo tendrás que pulsar Enviar en WhatsApp.</p>
+          <h2 className="font-black text-lg mt-1">Avisos y confirmación de citas médicas</h2>
+          <p className="text-xs text-slate-500 mt-1">El mensaje pide al trabajador que responda CONFIRMO o NO PUEDO ASISTIR. Cuando recibas la respuesta, registra aquí su estado. Sigue sin usar API ni tener coste por mensaje.</p>
         </div>
         <div className="text-xs font-black px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">{upcomingAppointments.length} cita(s) próximas</div>
       </div>
@@ -237,16 +269,30 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
         {upcomingAppointments.map(person => {
           const reminderToday = isTomorrow(person.citaDia);
           const phoneOk = normalizeWhatsAppPhone(person.telefono || '').length >= 10;
-          return <div key={`wa_${person.id}`} className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
-            <div className="min-w-0">
-              <div className="font-black text-sm truncate">{person.apellidosNombre}</div>
-              <div className="text-xs text-slate-500 mt-1">{formatAppointmentDate(person.citaDia)} · {person.citaHora} h · {person.sitioReconocimiento}</div>
-              <div className="text-xs text-slate-500 mt-1">{person.obra || 'Sin obra'} · {person.telefono || 'Sin teléfono'}</div>
-              {person.observaciones && <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">Observaciones: {person.observaciones}</div>}
+          const status = getConfirmationStatus(person);
+          const badge = confirmationBadge(status);
+          return <div key={`wa_${person.id}`} className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-start gap-3 justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-black text-sm truncate">{person.apellidosNombre}</div>
+                  <span className={`text-[10px] font-black px-2 py-1 rounded-full ${badge.cls}`}>{badge.label}</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">{formatAppointmentDate(person.citaDia)} · {person.citaHora} h · {person.sitioReconocimiento}</div>
+                <div className="text-xs text-slate-500 mt-1">{person.obra || 'Sin obra'} · {person.telefono || 'Sin teléfono'}</div>
+                {person.observaciones && <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">Observaciones: {person.observaciones}</div>}
+                {(person as any).confirmacionCitaFecha && <div className="text-[10px] text-slate-400 mt-1">Última actualización de confirmación: {new Date((person as any).confirmacionCitaFecha).toLocaleString('es-ES')}</div>}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, false)} className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-black transition-colors"><MessageCircle className="w-4 h-4"/> {status === 'pendiente' ? 'Enviar cita' : 'Reenviar cita'}</button>
+                <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, true)} className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-colors ${reminderToday ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4"/> {reminderToday ? 'Recordatorio hoy' : 'Enviar recordatorio'}</button>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-              <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, false)} className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-black transition-colors"><MessageCircle className="w-4 h-4"/> Enviar cita</button>
-              <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, true)} className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-colors ${reminderToday ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4"/> {reminderToday ? 'Recordatorio hoy' : 'Enviar recordatorio'}</button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 sm:mr-auto">Registrar respuesta recibida</span>
+              <button type="button" onClick={() => void setConfirmation(person, 'confirmada')} className={`px-3 py-2 rounded-xl text-xs font-black transition-colors ${status === 'confirmada' ? 'bg-emerald-600 text-white' : 'border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'}`}>✓ Confirmada</button>
+              <button type="button" onClick={() => void setConfirmation(person, 'no_puede_asistir')} className={`px-3 py-2 rounded-xl text-xs font-black transition-colors ${status === 'no_puede_asistir' ? 'bg-red-600 text-white' : 'border border-red-300 dark:border-red-900 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30'}`}>No puede asistir</button>
+              {status !== 'pendiente' && <button type="button" onClick={() => void setConfirmation(person, 'pendiente')} className="px-3 py-2 rounded-xl text-xs font-black border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">Volver a pendiente</button>}
             </div>
           </div>;
         })}
