@@ -337,6 +337,24 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     handleUpdateChecklistItem(subId, itemId, { estado: newStatus });
   };
 
+  const handleLibroSubcontratacionEstado = (subId: string, value: 'registrado' | 'no_registrado') => {
+    setSubcontratistas(prev => prev.map(sub => {
+      if (sub.id !== subId) return sub;
+      const updatedChecklist = sub.checklist.map(item => item.id === 'libro_subcontratacion'
+        ? {
+            ...item,
+            estado: value === 'registrado' ? 'entregado' as const : 'pendiente' as const,
+            observaciones: value === 'registrado'
+              ? 'Libro de Subcontratación: REGISTRADO.'
+              : 'Libro de Subcontratación: NO REGISTRADO. Debe subsanarse antes del acceso.'
+          }
+        : item);
+      const next = { ...sub, libroSubcontratacionEstado: value, checklist: updatedChecklist };
+      const compliance = getSubcontrataCompliance(next);
+      return { ...next, estadoExpediente: compliance.estadoSugerido, fechaActualizacion: new Date().toISOString() };
+    }));
+  };
+
   // Delete subcontractor
   const handleDeleteSubcontrata = (subId: string, nombre: string) => {
     if (!window.confirm(`¿Está seguro de eliminar el registro de la subcontrata "${nombre}"?`)) return;
@@ -1389,6 +1407,19 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
                             {/* Status Selector Buttons */}
                             <div className="flex items-center gap-1.5 shrink-0">
+                              {item.id === 'libro_subcontratacion' ? (
+                                <select
+                                  value={activeSubcontrata.libroSubcontratacionEstado || ''}
+                                  onChange={e => handleLibroSubcontratacionEstado(activeSubcontrata.id, e.target.value as 'registrado' | 'no_registrado')}
+                                  className="ui-input h-9 min-w-[180px] text-xs font-bold"
+                                  aria-label="Estado de registro del Libro de Subcontratación"
+                                >
+                                  <option value="" disabled>Seleccione el estado</option>
+                                  <option value="registrado">Registrado</option>
+                                  <option value="no_registrado">No registrado</option>
+                                </select>
+                              ) : (
+                                <>
                               <button
                                 type="button"
                                 onClick={() => handleToggleStatus(activeSubcontrata.id, item.id, 'entregado')}
@@ -1443,6 +1474,8 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                               >
                                 N/A
                               </button>
+                                </>
+                              )}
                             </div>
                           </div>
 
