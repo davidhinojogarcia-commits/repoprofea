@@ -197,41 +197,104 @@ const drawWorkBlock = (
   return y + 25;
 };
 
-const drawInstructionsAndSignature = (
+const drawPageCertification = (
   doc: jsPDF,
   context: WorksiteDocumentContext,
-  startY: number,
 ) => {
   const width = doc.internal.pageSize.getWidth();
-  let y = Math.min(startY + 5, 155);
-
-  doc.setFillColor(240, 247, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(10, y, width - 20, 22, 2, 2, 'FD');
+  const y = 179;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.2);
+  doc.setFontSize(7);
   doc.setTextColor(...BLUE);
-  doc.text('INSTRUCCIONES', 14, y + 5);
+  doc.text('Firma del encargado / recurso preventivo', 10, y);
+  doc.setDrawColor(170, 190, 210);
+  doc.rect(10, y + 2, 72, 15);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.2);
   doc.setTextColor(30, 41, 59);
-  doc.text('1. Se anotará diariamente, para cada trabajador, la hora de entrada (E) y la hora de salida (S).', 14, y + 10);
-  doc.text('2. Las horas totales del periodo se reflejarán en la columna HT.', 14, y + 13.7);
-  doc.text('3. Las celdas marcadas con “—” corresponden a días fuera del periodo contratado de ese trabajador.', 14, y + 17.4);
-  doc.text('4. El registro se conservará durante cuatro años y permanecerá a disposición de las personas y autoridades legalmente previstas.', 14, y + 21.1);
+  doc.text(`Nombre: ${context.recursoPreventivo || '-'}`, 86, y + 6);
+  doc.text('Registro diario conforme al art. 34.9 del Estatuto de los Trabajadores (RDL 2/2015, redacción RDL 8/2019).', 86, y + 11);
+  doc.text('Conservar durante cuatro años. Las celdas “—” indican días fuera del contrato.', 86, y + 15);
+  doc.setDrawColor(203, 213, 225);
+  doc.line(86, y + 17, width - 10, y + 17);
+};
 
-  y += 27;
+const drawWorkerAttendanceBlock = (
+  doc: jsPDF,
+  worker: Person,
+  workerNumber: number,
+  x: number,
+  y: number,
+  blockWidth: number,
+  days: number[],
+  year: number,
+  month: number,
+) => {
+  doc.setFillColor(229, 239, 248);
+  doc.setDrawColor(160, 188, 214);
+  doc.roundedRect(x, y, blockWidth, 10, 1.5, 1.5, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.2);
-  doc.setTextColor(...BLUE);
-  doc.text('Firma del encargado (recurso preventivo)', 14, y);
-  doc.setDrawColor(170, 190, 210);
-  doc.rect(14, y + 2, 82, 18);
+  doc.setFontSize(6.8);
+  doc.setTextColor(15, 42, 75);
+  const workerName = `${workerNumber}. ${safe(worker.apellidosNombre) || 'Trabajador sin identificar'}`;
+  doc.text(workerName, x + 3, y + 4, { maxWidth: blockWidth - 6 });
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(30, 41, 59);
-  doc.text(`Nombre: ${context.recursoPreventivo || ''}`, 102, y + 7);
-  doc.text('Cargo: Encargado / recurso preventivo', 102, y + 13);
-  doc.text(`Fecha: ${fmtDate(context.fecha)}`, 102, y + 19);
+  doc.setFontSize(5.8);
+  doc.text(`DNI/NIE: ${safe(worker.dni) || '-'} · Puesto: ${safe(worker.categoria) || '-'}`, x + 3, y + 8);
+
+  const body = days.map(day => {
+    const active = workerActiveOnDay(worker, year, month, day);
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return active
+      ? [String(day), fmtDate(date), '', '', '', '', '']
+      : [String(day), fmtDate(date), '—', '—', '—', '—', 'Fuera de contrato'];
+  });
+
+  autoTable(doc, {
+    startY: y + 11,
+    head: [['Día', 'Fecha', 'Entrada', 'Salida', 'HT', 'Firma diaria', 'Incidencias']],
+    body,
+    margin: { left: x, right: doc.internal.pageSize.getWidth() - x - blockWidth },
+    tableWidth: blockWidth,
+    theme: 'grid',
+    styles: {
+      font: 'helvetica',
+      fontSize: 5.2,
+      cellPadding: 0.7,
+      minCellHeight: 5.5,
+      valign: 'middle',
+      textColor: [30, 41, 59],
+      lineColor: [160, 188, 214],
+      lineWidth: 0.16,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: BLUE,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 5.1,
+      halign: 'center',
+      minCellHeight: 6.2,
+    },
+    alternateRowStyles: { fillColor: [250, 252, 254] },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },
+      1: { cellWidth: 16, halign: 'center' },
+      2: { cellWidth: 12, halign: 'center' },
+      3: { cellWidth: 12, halign: 'center' },
+      4: { cellWidth: 9, halign: 'center' },
+      5: { cellWidth: 88 },
+      6: { cellWidth: blockWidth - 145 },
+    },
+    didParseCell: data => {
+      if (data.section !== 'body') return;
+      const row = body[data.row.index];
+      if (row?.[2] === '—') {
+        data.cell.styles.fillColor = [232, 236, 241];
+        data.cell.styles.textColor = [115, 125, 136];
+      }
+    },
+  });
 };
 
 export const generateFortnightAttendancePdf = (
@@ -245,97 +308,37 @@ export const generateFortnightAttendancePdf = (
   const actualRange = rangeLabel(year, month, range.startDay, range.endDay);
   const activeWorkers = range.activeWorkers.length ? range.activeWorkers : workers;
   const days = range.days;
-  const { config, width } = drawHeader(doc, context, fortnight, actualRange);
-  const startY = drawWorkBlock(doc, width, context, actualRange);
+  const workersPerPage = 1;
+  const totalPages = Math.max(1, Math.ceil(activeWorkers.length / workersPerPage));
+  let config = getStoredPdfConfig();
 
-  const firstHeader: any[] = [
-    { content: 'Nº', rowSpan: 2, styles: { valign: 'middle' } },
-    { content: 'Nombre y apellidos', rowSpan: 2, styles: { valign: 'middle' } },
-    { content: 'DNI/NIE', rowSpan: 2, styles: { valign: 'middle' } },
-    { content: 'Puesto de trabajo', rowSpan: 2, styles: { valign: 'middle' } },
-    ...days.map(day => ({ content: `Día ${day}`, colSpan: 2, styles: { halign: 'center' } })),
-    { content: 'HT', rowSpan: 2, styles: { valign: 'middle' } },
-    { content: 'Firma trabajador', rowSpan: 2, styles: { valign: 'middle' } },
-  ];
-  const secondHeader: any[] = days.flatMap(() => ['E', 'S']);
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+    if (pageIndex > 0) doc.addPage();
+    const header = drawHeader(doc, context, fortnight, actualRange);
+    config = header.config;
+    const startY = drawWorkBlock(doc, header.width, context, actualRange);
+    const gap = 0;
+    const blockWidth = header.width - 20;
 
-  const body = activeWorkers.map((worker, index) => [
-    String(index + 1),
-    safe(worker.apellidosNombre),
-    safe(worker.dni),
-    safe(worker.categoria),
-    ...days.flatMap(day => workerActiveOnDay(worker, year, month, day) ? ['', ''] : ['—', '—']),
-    '',
-    '',
-  ]);
+    for (let slot = 0; slot < workersPerPage; slot += 1) {
+      const workerIndex = pageIndex * workersPerPage + slot;
+      const worker = activeWorkers[workerIndex];
+      if (!worker) continue;
+      const x = 10 + slot * (blockWidth + gap);
+      drawWorkerAttendanceBlock(doc, worker, workerIndex + 1, x, startY, blockWidth, days, year, month);
+    }
 
-  const columnStyles: Record<number, any> = {
-    0: { cellWidth: 7, halign: 'center' },
-    1: { cellWidth: 32 },
-    2: { cellWidth: 18 },
-    3: { cellWidth: 25 },
-  };
-  const fixedWidth = 7 + 32 + 18 + 25 + 9 + 24;
-  const availableForHours = width - 20 - fixedWidth;
-  const hourCellWidth = Math.max(4.5, Math.min(8.5, availableForHours / Math.max(1, days.length * 2)));
-  let columnIndex = 4;
-  for (let index = 0; index < days.length * 2; index += 1) {
-    columnStyles[columnIndex++] = { cellWidth: hourCellWidth, halign: 'center' };
+    drawPageCertification(doc, context);
   }
-  columnStyles[columnIndex++] = { cellWidth: 9, halign: 'center' };
-  columnStyles[columnIndex] = { cellWidth: 24 };
-
-  autoTable(doc, {
-    startY,
-    head: [firstHeader, secondHeader],
-    body,
-    margin: { left: 10, right: 10, bottom: 52 },
-    theme: 'grid',
-    styles: {
-      font: 'helvetica',
-      fontSize: 5.6,
-      cellPadding: 1,
-      minCellHeight: 7.8,
-      valign: 'middle',
-      textColor: [30, 41, 59],
-      lineColor: [160, 188, 214],
-      lineWidth: 0.18,
-      overflow: 'linebreak',
-    },
-    headStyles: {
-      fillColor: [229, 239, 248],
-      textColor: [15, 42, 75],
-      fontStyle: 'bold',
-      fontSize: 4.8,
-      cellPadding: 0.7,
-      halign: 'center',
-      valign: 'middle',
-    },
-    alternateRowStyles: { fillColor: [250, 252, 254] },
-    columnStyles,
-    didParseCell: data => {
-      if (data.section !== 'body') return;
-      const hourStart = 4;
-      const hourEnd = hourStart + days.length * 2;
-      if (data.column.index >= hourStart && data.column.index < hourEnd && data.cell.raw === '—') {
-        data.cell.styles.fillColor = [232, 236, 241];
-        data.cell.styles.textColor = [125, 135, 145];
-        data.cell.styles.fontStyle = 'bold';
-      }
-    },
-  });
-
-  const endY = (doc as any).lastAutoTable?.finalY || startY + 70;
-  drawInstructionsAndSignature(doc, context, endY);
 
   applyPdfFooters(doc, {
     ...config,
-    footerText: 'Diputación de Cádiz · Documento interno de control de jornada · Referencia: art. 34.9 del Estatuto de los Trabajadores',
+    footerText: 'Diputación de Cádiz · Registro diario de jornada · Art. 34.9 RDL 2/2015 (redacción RDL 8/2019) · Conservación: 4 años',
   });
 
   const label = fortnight === 1 ? '1_QUINCENA' : '2_QUINCENA';
   return {
     doc,
-    filename: `CONTROL_HORARIO_${label}_${range.startDay}_AL_${range.endDay}_${slug(context.obra)}_${slug(monthLabel(context.fecha))}.pdf`,
+    filename: `CONTROL_HORARIO_INDIVIDUAL_FIRMA_DIARIA_${label}_${range.startDay}_AL_${range.endDay}_${slug(context.obra)}_${slug(monthLabel(context.fecha))}.pdf`,
   };
 };
