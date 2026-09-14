@@ -57,9 +57,43 @@ function inferNameParts(raw: string) {
   return { apellidos: tokens.slice(0, 2).join(' '), nombre: tokens.slice(2).join(' ') };
 }
 
+const MONTH_PATTERN = MONTHS.join('|');
+
 function detectMonth(text: string): string {
   const norm = normalizeSaeText(text);
-  return MONTHS.find(m => norm.includes(m)) || '';
+  if (!norm) return '';
+
+  const contextualPatterns = [
+    new RegExp(`\\b[12](?:A|ª|º)?\\s*QUINCENA\\s+(?:DE\\s+)?(${MONTH_PATTERN})\\b`, 'i'),
+    new RegExp(`\\b(?:MES|PERIODO|NECESIDAD(?:ES)?(?:\\s+DE\\s+CONTRATACION)?|OFERTA)\\s*[:\\-]?\\s*(${MONTH_PATTERN})\\b`, 'i'),
+    new RegExp(`\\bPFEA\\b[^\\n]{0,80}\\b(${MONTH_PATTERN})\\b`, 'i'),
+  ];
+  for (const pattern of contextualPatterns) {
+    const match = norm.match(pattern);
+    if (match?.[1]) return match[1].toUpperCase();
+  }
+
+  let best = { month: '', score: -1, index: Number.MAX_SAFE_INTEGER };
+  for (const month of MONTHS) {
+    const monthRegex = new RegExp(`\\b${month}\\b`, 'gi');
+    let match: RegExpExecArray | null;
+    while ((match = monthRegex.exec(norm))) {
+      const nearby = norm.slice(
+        Math.max(0, match.index - 90),
+        Math.min(norm.length, match.index + month.length + 90),
+      );
+      let score = 0;
+      if (/QUINCENA/.test(nearby)) score += 8;
+      if (/\bMES\b|PERIODO/.test(nearby)) score += 6;
+      if (/NECESIDAD|CONTRATACION|OFERTA/.test(nearby)) score += 4;
+      if (/PFEA|SAE/.test(nearby)) score += 2;
+      if (/FECHA\s+(?:DE\s+)?(?:EMISION|FIRMA|REGISTRO)/.test(nearby)) score -= 5;
+      if (score > best.score || (score === best.score && match.index < best.index)) {
+        best = { month, score, index: match.index };
+      }
+    }
+  }
+  return best.month;
 }
 
 function detectYear(text: string): number | null {
@@ -67,16 +101,33 @@ function detectYear(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+function canonicalWorkCode(value: string): string {
+  const norm = normalizeSaeText(value);
+  const digits = norm.match(/\b(\d{5})\b/)?.[1] || '';
+  const compactValue = norm.replace(/[.\s_\-/:]+/g, '');
+  const type = compactValue.includes('GR') ? 'GR' : compactValue.includes('EE') ? 'EE' : '';
+  return digits && type ? `${digits} ${type}` : '';
+}
+
 function detectWork(text: string) {
   const norm = normalizeSaeText(text);
-  const explicitCode = norm.match(/\b(\d{5})\s*(G\.?\s*R\.?|E\.?\s*E\.?)\b/i);
-  const normalizedCode = explicitCode
-    ? `${explicitCode[1]} ${explicitCode[2].replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`
-    : '';
-  const obraMatch = norm.match(/\bOBRA\s+([0-9A-Z.-]+(?:\s+[A-Z.]{1,5})?)/i);
-  const codigoObra = normalizedCode || obraMatch?.[1]?.trim() || '';
-  const explicit = text.match(/(?:OBRA|PROYECTO)\s*[:\-]?\s*([^\n\r]{3,80})/i);
-  return { codigoObra, obra: explicit?.[1]?.trim() || codigoObra };
+  const variants = [
+    norm.match(/\b(\d{5})\s*[-–/:]?\s*(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/i)?.[0] || '',
+    norm.match(/\b(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*(\d{5})\b/i)?.[0] || '',
+    norm.match(/(?:CODIGO|COD\.?|EXPEDIENTE)\s*(?:DE\s+)?(?:OBRA)?\s*[:#\-]?\s*([^\n]{0,35})/i)?.[1] || '',
+  ];
+  const codigoObra = variants.map(canonicalWorkCode).find(Boolean) || '';
+
+  const explicit = text.match(
+    /(?:OBRA|PROYECTO|DENOMINACI[ÓO]N\s+(?:DE\s+LA\s+)?OBRA)\s*[:\-]?\s*([^\n\r]{3,120})/i,
+  );
+  const obra = (explicit?.[1] || '')
+    .replace(/\b(?:G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*\d{5}\b/ig, ' ')
+    .replace(/\b\d{5}\s*[-–/:]?\s*(?:G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/ig, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[-–:;,.\s]+|[-–:;,.\s]+$/g, '')
+    .trim();
+  return { codigoObra, obra: obra || codigoObra };
 }
 
 const compact = (value: string) => String(value || '').replace(/\s+/g, ' ').trim();
@@ -114,6 +165,8 @@ function extractStructuredProfeaNeeds(text: string): SaeNeedUnitDraft[] {
   const flat = text
     .replace(/\[P[ÁA]GINA\s+\d+\]/gi, ' ')
     .replace(/\r/g, '\n')
+    .replace(/\b(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*(\d{5})\b/gi, (_m, type, code) => `${code} ${String(type).replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`)
+    .replace(/\b(\d{5})\s*[-–/:]?\s*(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/gi, (_m, code, type) => `${code} ${String(type).replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`)
     .replace(/[\t ]+/g, ' ')
     .replace(/\n+/g, ' ')
     .replace(/\s+/g, ' ')
