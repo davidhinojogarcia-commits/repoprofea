@@ -163,7 +163,7 @@ async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRe
       await supabase.query('subcontrata_documentos', {
         method: 'DELETE',
         prefer: 'return=minimal',
-        query: `id=eq.${encodeURIComponent(String(item.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
+        query: `id=eq.${encodeURIComponent(String(row.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
       });
     }
   }
