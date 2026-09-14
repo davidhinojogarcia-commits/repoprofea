@@ -5,6 +5,7 @@ import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { analyzeMedicalDocumentText } from '../src/lib/medicalDocumentAnalyzer';
 import { updateDocument } from '../src/services/databaseService';
 import { persistMedicalRecognition } from '../src/services/medicalRecognitionService';
+import { shareMedicalAppointmentByWhatsApp } from '../src/lib/shareMedicalAppointment';
 
 interface Props {
   people: Person[];
@@ -52,34 +53,6 @@ const isTomorrow = (value: string): boolean => {
   return value === key;
 };
 
-const buildAppointmentMessage = (person: Person, reminder: boolean): string => {
-  const name = person.apellidosNombre || 'trabajador/a';
-  const date = formatAppointmentDate(person.citaDia);
-  const time = person.citaHora || '-';
-  const site = person.sitioReconocimiento || '-';
-  const obra = person.obra || '-';
-  const observations = String(person.observaciones || '').trim();
-  const lines = reminder
-    ? [
-        'RECORDATORIO DE RECONOCIMIENTO MÉDICO - PROFEA',
-        `Hola ${name}.`,
-        `Te recordamos que mañana tienes tu reconocimiento médico a las ${time} h.`,
-        `Lugar: ${site}`,
-        `Obra: ${obra}`,
-      ]
-    : [
-        'CITA PARA RECONOCIMIENTO MÉDICO - PROFEA',
-        `Hola ${name}.`,
-        `Tienes programado tu reconocimiento médico el ${date} a las ${time} h.`,
-        `Lugar: ${site}`,
-        `Obra: ${obra}`,
-      ];
-  if (observations) lines.push(`Observaciones: ${observations}`);
-  if (!reminder) lines.push('Por favor, acude siguiendo las instrucciones facilitadas por tu empresa.');
-  lines.push('', 'IMPORTANTE: Confirma la cita respondiendo a este WhatsApp con CONFIRMO. Si no puedes asistir, responde NO PUEDO ASISTIR.');
-  return lines.join('\n');
-};
-
 const getConfirmationStatus = (person: Person): ConfirmationStatus => {
   const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();
   return raw === 'confirmada' || raw === 'no_puede_asistir' ? raw : 'pendiente';
@@ -120,15 +93,23 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
       .sort((a, b) => `${a.citaDia} ${a.citaHora}`.localeCompare(`${b.citaDia} ${b.citaHora}`));
   }, [people]);
 
-  const openWhatsApp = (person: Person, reminder: boolean) => {
+  const openWhatsApp = async (person: Person, reminder: boolean) => {
     const phone = normalizeWhatsAppPhone(person.telefono || '');
     if (phone.length < 10) {
       onToast(`El trabajador ${person.apellidosNombre} no tiene un teléfono válido para WhatsApp.`, 'error');
       return;
     }
-    const text = buildAppointmentMessage(person, reminder);
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    try {
+      const result = await shareMedicalAppointmentByWhatsApp(person, reminder);
+      if (result === 'shared') {
+        onToast(`Citación PDF preparada para compartir con ${person.apellidosNombre}.`, 'success');
+      } else if (result === 'opened') {
+        onToast('El PDF se ha descargado y WhatsApp se ha abierto con el mensaje preparado.', 'success');
+      }
+    } catch (error: any) {
+      console.error('[medical-whatsapp-share]', error);
+      onToast(error?.message || 'No se pudo preparar el PDF y el mensaje de WhatsApp.', 'error');
+    }
   };
 
   const setConfirmation = async (person: Person, status: ConfirmationStatus) => {
@@ -260,7 +241,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
         <div>
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400"><MessageCircle className="w-5 h-5"/><span className="text-xs font-black uppercase tracking-[0.14em]">WhatsApp gratuito</span></div>
           <h2 className="font-black text-lg mt-1">Avisos y confirmación de citas médicas</h2>
-          <p className="text-xs text-slate-500 mt-1">El mensaje pide al trabajador que responda CONFIRMO o NO PUEDO ASISTIR. Cuando recibas la respuesta, registra aquí su estado. Sigue sin usar API ni tener coste por mensaje.</p>
+          <p className="text-xs text-slate-500 mt-1">El botón prepara el mismo PDF de citación que genera Exportar citas, con los datos del trabajador y todas sus instrucciones, y lo comparte junto al mensaje. No usa Twilio ni API de pago.</p>
         </div>
         <div className="text-xs font-black px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">{upcomingAppointments.length} cita(s) próximas</div>
       </div>
@@ -284,8 +265,8 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({ people, onUpdat
                 {(person as any).confirmacionCitaFecha && <div className="text-[10px] text-slate-400 mt-1">Última actualización de confirmación: {new Date((person as any).confirmacionCitaFecha).toLocaleString('es-ES')}</div>}
               </div>
               <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, false)} className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-black transition-colors"><MessageCircle className="w-4 h-4"/> {status === 'pendiente' ? 'Enviar cita' : 'Reenviar cita'}</button>
-                <button type="button" disabled={!phoneOk} onClick={() => openWhatsApp(person, true)} className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-colors ${reminderToday ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4"/> {reminderToday ? 'Recordatorio hoy' : 'Enviar recordatorio'}</button>
+                <button type="button" disabled={!phoneOk} onClick={() => void openWhatsApp(person, false)} className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-black transition-colors"><MessageCircle className="w-4 h-4"/> {status === 'pendiente' ? 'Enviar cita' : 'Reenviar cita'}</button>
+                <button type="button" disabled={!phoneOk} onClick={() => void openWhatsApp(person, true)} className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-colors ${reminderToday ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4"/> {reminderToday ? 'Recordatorio hoy' : 'Enviar recordatorio'}</button>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
