@@ -439,6 +439,35 @@ begin
 end;
 $$;
 
+create or replace function public.inherit_worker_identity_shares()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_dni text:=upper(regexp_replace(coalesce(new.dni,''),'[[:space:]-]','','g'));
+begin
+  if v_dni='' then return new; end if;
+  insert into public.data_permissions(resource_type,resource_id,owner_id,user_id,can_read,can_update,can_delete,created_by)
+  select distinct 'trabajadores',new.id::text,new.owner_id,dp.user_id,dp.can_read,dp.can_update,false,new.owner_id
+  from public.data_permissions dp
+  join public.trabajadores previous_worker
+    on dp.resource_type='trabajadores'
+   and dp.resource_id=previous_worker.id::text
+  where previous_worker.owner_id=new.owner_id
+    and previous_worker.id<>new.id
+    and upper(regexp_replace(coalesce(previous_worker.dni,''),'[[:space:]-]','','g'))=v_dni
+  on conflict do nothing;
+  return new;
+end;
+$;
+
+drop trigger if exists trg_inherit_worker_identity_shares on public.trabajadores;
+create trigger trg_inherit_worker_identity_shares
+after insert on public.trabajadores
+for each row execute function public.inherit_worker_identity_shares();
+
 revoke all on function public.list_shareable_profiles() from public;
 revoke all on function public.get_worker_shares(bigint) from public;
 revoke all on function public.set_worker_share(bigint,uuid,boolean) from public;
