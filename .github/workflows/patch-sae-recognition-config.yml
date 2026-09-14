@@ -1,4 +1,4 @@
-name: Patch SAE recognition and works config
+name: Patch GestionProfea targeted fixes
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Apply SAE fixes
+      - name: Apply targeted fixes
         run: python3 .github/scripts/patch_sae_recognition.py
       - name: Verify build
         run: npm ci && npm run build
@@ -24,7 +24,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add components/Configuracion.tsx components/SaeSection.tsx src/lib/saeDocumentParser.ts
+          git add components/ReconocimientosMedicosSection.tsx components/MedicalAppointmentConfirmationPortal.tsx src/lib/shareMedicalAppointment.ts src/lib/medicalAppointmentConfirmation.ts api/confirm-medical-appointment.ts index.tsx .env.example
           git diff --cached --quiet && exit 0
-          git commit -m "fix: harden SAE recognition and restore works settings"
+          git commit -m "feat: automate medical appointment confirmations"
           git push origin main
