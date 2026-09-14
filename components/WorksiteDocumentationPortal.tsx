@@ -158,7 +158,10 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [isOpen]);
 
   const workNames = useMemo<string[]>(() => {
-    return Array.from(new Set(configuredWorks.map(work => workIdentity(work) || safe(work)).filter(Boolean)))
+    const names = configuredWorks
+      .map(work => workIdentity(work) || safe(work))
+      .filter((work): work is string => Boolean(work));
+    return Array.from(new Set<string>(names))
       .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   }, [configuredWorks]);
 
