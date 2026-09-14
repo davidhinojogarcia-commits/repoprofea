@@ -1,6 +1,7 @@
 name: Patch SAE recognition and works config
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/patch-sae-recognition-config.yml'
@@ -16,158 +17,139 @@ jobs:
         with:
           ref: main
       - name: Apply targeted fixes
-        shell: python
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              if old not in text:
-                  raise SystemExit(f'Expected block not found in {path}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          config = Path('components/Configuracion.tsx')
+          text = config.read_text(encoding='utf-8')
+          old = "  const tabs = [\n    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },"
+          new = "  const tabs = [\n    { id: 'obras', label: 'Obras', icon: Building2, list: savedObras, setter: setSavedObras },\n    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },"
+          if old not in text:
+              raise SystemExit('Configuracion tabs target not found')
+          config.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          # 1) Make Obras visible again in Configuración. The full CRUD UI already exists
-          # in this component but the tab was accidentally omitted from the tab registry.
-          replace_once(
-              'components/Configuracion.tsx',
-              "  const tabs = [\n    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },",
-              "  const tabs = [\n    { id: 'obras', label: 'Obras', icon: Building2, list: savedObras, setter: setSavedObras },\n    { id: 'lugares', label: 'Lugares Formación', icon: GraduationCap, list: savedLugares, setter: setSavedLugares },"
-          )
-
-          # 2) Harden month and work-code recognition in SAE documents.
           parser = Path('src/lib/saeDocumentParser.ts')
           text = parser.read_text(encoding='utf-8')
-          old = '''function detectMonth(text: string): string {
-  const norm = normalizeSaeText(text);
-  return MONTHS.find(m => norm.includes(m)) || '';
-}
+          old = r'''function detectMonth(text: string): string {
+            const norm = normalizeSaeText(text);
+            return MONTHS.find(m => norm.includes(m)) || '';
+          }
 
-function detectYear(text: string): number | null {
-  const m = text.match(/\\b(20\\d{2})\\b/);
-  return m ? Number(m[1]) : null;
-}
+          function detectYear(text: string): number | null {
+            const m = text.match(/\b(20\d{2})\b/);
+            return m ? Number(m[1]) : null;
+          }
 
-function detectWork(text: string) {
-  const norm = normalizeSaeText(text);
-  const explicitCode = norm.match(/\\b(\\d{5})\\s*(G\\.?\\s*R\\.?|E\\.?\\s*E\\.?)\\b/i);
-  const normalizedCode = explicitCode
-    ? `${explicitCode[1]} ${explicitCode[2].replace(/\\./g, '').replace(/\\s+/g, '').toUpperCase()}`
-    : '';
-  const obraMatch = norm.match(/\\bOBRA\\s+([0-9A-Z.-]+(?:\\s+[A-Z.]{1,5})?)/i);
-  const codigoObra = normalizedCode || obraMatch?.[1]?.trim() || '';
-  const explicit = text.match(/(?:OBRA|PROYECTO)\\s*[:\\-]?\\s*([^\\n\\r]{3,80})/i);
-  return { codigoObra, obra: explicit?.[1]?.trim() || codigoObra };
-}
-'''
-          new = '''const MONTH_PATTERN = MONTHS.join('|');
+          function detectWork(text: string) {
+            const norm = normalizeSaeText(text);
+            const explicitCode = norm.match(/\b(\d{5})\s*(G\.?\s*R\.?|E\.?\s*E\.?)\b/i);
+            const normalizedCode = explicitCode
+              ? `${explicitCode[1]} ${explicitCode[2].replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`
+              : '';
+            const obraMatch = norm.match(/\bOBRA\s+([0-9A-Z.-]+(?:\s+[A-Z.]{1,5})?)/i);
+            const codigoObra = normalizedCode || obraMatch?.[1]?.trim() || '';
+            const explicit = text.match(/(?:OBRA|PROYECTO)\s*[:\-]?\s*([^\n\r]{3,80})/i);
+            return { codigoObra, obra: explicit?.[1]?.trim() || codigoObra };
+          }
+          '''
+          new = r'''const MONTH_PATTERN = MONTHS.join('|');
 
-function detectMonth(text: string): string {
-  const norm = normalizeSaeText(text);
-  if (!norm) return '';
+          function detectMonth(text: string): string {
+            const norm = normalizeSaeText(text);
+            if (!norm) return '';
+            const contextualPatterns = [
+              new RegExp(`\\b[12](?:A|ª|º)?\\s*QUINCENA\\s+(?:DE\\s+)?(${MONTH_PATTERN})\\b`, 'i'),
+              new RegExp(`\\b(?:MES|PERIODO|NECESIDAD(?:ES)?(?:\\s+DE\\s+CONTRATACION)?|OFERTA)\\s*[:\\-]?\\s*(${MONTH_PATTERN})\\b`, 'i'),
+              new RegExp(`\\bPFEA\\b[^\\n]{0,80}\\b(${MONTH_PATTERN})\\b`, 'i'),
+            ];
+            for (const pattern of contextualPatterns) {
+              const match = norm.match(pattern);
+              if (match?.[1]) return match[1].toUpperCase();
+            }
+            let best = { month: '', score: -1, index: Number.MAX_SAFE_INTEGER };
+            for (const month of MONTHS) {
+              const re = new RegExp(`\\b${month}\\b`, 'gi');
+              let match: RegExpExecArray | null;
+              while ((match = re.exec(norm))) {
+                const nearby = norm.slice(Math.max(0, match.index - 90), Math.min(norm.length, match.index + month.length + 90));
+                let score = 0;
+                if (/QUINCENA/.test(nearby)) score += 8;
+                if (/\bMES\b|PERIODO/.test(nearby)) score += 6;
+                if (/NECESIDAD|CONTRATACION|OFERTA/.test(nearby)) score += 4;
+                if (/PFEA|SAE/.test(nearby)) score += 2;
+                if (/FECHA\s+(?:DE\s+)?(?:EMISION|FIRMA|REGISTRO)/.test(nearby)) score -= 5;
+                if (score > best.score || (score === best.score && match.index < best.index)) best = { month, score, index: match.index };
+              }
+            }
+            return best.month;
+          }
 
-  // Prefer months that appear in SAE business context instead of the first month
-  // mentioned anywhere in the document (dates, signatures, footers, etc.).
-  const contextualPatterns = [
-    new RegExp(`\\b[12](?:A|ª|º)?\\s*QUINCENA\\s+(?:DE\\s+)?(${MONTH_PATTERN})\\b`, 'i'),
-    new RegExp(`\\b(?:MES|PERIODO|NECESIDAD(?:ES)?(?:\\s+DE\\s+CONTRATACION)?|OFERTA)\\s*[:\\-]?\\s*(${MONTH_PATTERN})\\b`, 'i'),
-    new RegExp(`\\bPFEA\\b[^\\n]{0,80}\\b(${MONTH_PATTERN})\\b`, 'i'),
-  ];
-  for (const pattern of contextualPatterns) {
-    const match = norm.match(pattern);
-    if (match?.[1]) return match[1].toUpperCase();
-  }
+          function detectYear(text: string): number | null {
+            const m = text.match(/\b(20\d{2})\b/);
+            return m ? Number(m[1]) : null;
+          }
 
-  // Score every occurrence by nearby SAE context. This avoids confusing a date in a
-  // footer/header with the actual month requested for the need/report.
-  let best = { month: '', score: -1, index: Number.MAX_SAFE_INTEGER };
-  for (const month of MONTHS) {
-    const re = new RegExp(`\\b${month}\\b`, 'gi');
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(norm))) {
-      const from = Math.max(0, match.index - 90);
-      const to = Math.min(norm.length, match.index + month.length + 90);
-      const nearby = norm.slice(from, to);
-      let score = 0;
-      if (/QUINCENA/.test(nearby)) score += 8;
-      if (/\\bMES\\b|PERIODO/.test(nearby)) score += 6;
-      if (/NECESIDAD|CONTRATACION|OFERTA/.test(nearby)) score += 4;
-      if (/PFEA|SAE/.test(nearby)) score += 2;
-      if (/FECHA\\s+(?:DE\\s+)?(?:EMISION|FIRMA|REGISTRO)/.test(nearby)) score -= 5;
-      if (score > best.score || (score == best.score && match.index < best.index)) {
-        best = { month, score, index: match.index };
-      }
-    }
-  }
-  return best.month;
-}
+          function canonicalWorkCode(value: string): string {
+            const norm = normalizeSaeText(value);
+            const digits = norm.match(/\b(\d{5})\b/)?.[1] || '';
+            const compact = norm.replace(/[.\s_\-/:]+/g, '');
+            const type = compact.includes('GR') ? 'GR' : compact.includes('EE') ? 'EE' : '';
+            return digits && type ? `${digits} ${type}` : '';
+          }
 
-function detectYear(text: string): number | null {
-  const m = text.match(/\\b(20\\d{2})\\b/);
-  return m ? Number(m[1]) : null;
-}
-
-function canonicalWorkCode(value: string): string {
-  const norm = normalizeSaeText(value);
-  const digits = norm.match(/\\b(\\d{5})\\b/)?.[1] || '';
-  const compactType = norm.replace(/[.\\s_\\-/:]+/g, '');
-  const type = compactType.includes('GR') ? 'GR' : compactType.includes('EE') ? 'EE' : '';
-  return digits && type ? `${digits} ${type}` : '';
-}
-
-function detectWork(text: string) {
-  const norm = normalizeSaeText(text);
-  const variants = [
-    norm.match(/\\b(\\d{5})\\s*[-–/:]?\\s*(G\\s*\\.?\\s*R\\.?|E\\s*\\.?\\s*E\\.?)\\b/i)?.[0] || '',
-    norm.match(/\\b(G\\s*\\.?\\s*R\\.?|E\\s*\\.?\\s*E\\.?)\\s*[-–/:]?\\s*(\\d{5})\\b/i)?.[0] || '',
-    norm.match(/(?:CODIGO|COD\\.?|EXPEDIENTE)\\s*(?:DE\\s+)?(?:OBRA)?\\s*[:#\\-]?\\s*([^\\n]{0,35})/i)?.[1] || '',
-  ];
-  const codigoObra = variants.map(canonicalWorkCode).find(Boolean) || '';
-
-  // The descriptive name is informative only. Do not require the SAE technician to
-  // reproduce the local work name literally; the canonical code is the stable key.
-  const explicit = text.match(/(?:OBRA|PROYECTO|DENOMINACI[ÓO]N\\s+(?:DE\\s+LA\\s+)?OBRA)\\s*[:\\-]?\\s*([^\\n\\r]{3,120})/i);
-  const obra = (explicit?.[1] || '')
-    .replace(/\\b(?:G\\s*\\.?\\s*R\\.?|E\\s*\\.?\\s*E\\.?)\\s*[-–/:]?\\s*\\d{5}\\b/ig, ' ')
-    .replace(/\\b\\d{5}\\s*[-–/:]?\\s*(?:G\\s*\\.?\\s*R\\.?|E\\s*\\.?\\s*E\\.?)\\b/ig, ' ')
-    .replace(/\\s+/g, ' ').replace(/^[-–:;,.\\s]+|[-–:;,.\\s]+$/g, '').trim();
-  return { codigoObra, obra: obra || codigoObra };
-}
-'''
+          function detectWork(text: string) {
+            const norm = normalizeSaeText(text);
+            const variants = [
+              norm.match(/\b(\d{5})\s*[-–/:]?\s*(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/i)?.[0] || '',
+              norm.match(/\b(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*(\d{5})\b/i)?.[0] || '',
+              norm.match(/(?:CODIGO|COD\.?|EXPEDIENTE)\s*(?:DE\s+)?(?:OBRA)?\s*[:#\-]?\s*([^\n]{0,35})/i)?.[1] || '',
+            ];
+            const codigoObra = variants.map(canonicalWorkCode).find(Boolean) || '';
+            const explicit = text.match(/(?:OBRA|PROYECTO|DENOMINACI[ÓO]N\s+(?:DE\s+LA\s+)?OBRA)\s*[:\-]?\s*([^\n\r]{3,120})/i);
+            const obra = (explicit?.[1] || '')
+              .replace(/\b(?:G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*\d{5}\b/ig, ' ')
+              .replace(/\b\d{5}\s*[-–/:]?\s*(?:G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/ig, ' ')
+              .replace(/\s+/g, ' ').replace(/^[-–:;,\.\s]+|[-–:;,\.\s]+$/g, '').trim();
+            return { codigoObra, obra: obra || codigoObra };
+          }
+          '''
+          old = old.replace('          ', '')
+          new = new.replace('          ', '')
           if old not in text:
-              raise SystemExit('SAE parser target block not found')
+              raise SystemExit('SAE parser target not found')
           text = text.replace(old, new, 1)
 
-          # Normalize GR/EE before splitting structured need blocks, accepting prefix/suffix and dots.
-          old_flat = '''  const flat = text
-    .replace(/\\[P[ÁA]GINA\\s+\\d+\\]/gi, ' ')
-    .replace(/\\r/g, '\\n')
-    .replace(/[\\t ]+/g, ' ')
-    .replace(/\\n+/g, ' ')
-    .replace(/\\s+/g, ' ')
-    .trim();'''
-          new_flat = '''  const flat = text
-    .replace(/\\[P[ÁA]GINA\\s+\\d+\\]/gi, ' ')
-    .replace(/\\r/g, '\\n')
-    .replace(/\\b(G\\s*\\.?\\s*R\\.?|E\\s*\\.?\\s*E\\.?)\\s*[-–/:]?\\s*(\\d{5})\\b/gi, (_m, type, code) => `${code} ${String(type).replace(/\\./g, '').replace(/\\s+/g, '').toUpperCase()}`)
-    .replace(/\\b(\\d{5})\\s*[-–/:]?\\s*(G\\s*\\.?\\s*R\\.?|E\\s*\\.?\\s*E\\.?)\\b/gi, (_m, code, type) => `${code} ${String(type).replace(/\\./g, '').replace(/\\s+/g, '').toUpperCase()}`)
-    .replace(/[\\t ]+/g, ' ')
-    .replace(/\\n+/g, ' ')
-    .replace(/\\s+/g, ' ')
-    .trim();'''
+          old_flat = r'''  const flat = text
+            .replace(/\[P[ÁA]GINA\s+\d+\]/gi, ' ')
+            .replace(/\r/g, '\n')
+            .replace(/[\t ]+/g, ' ')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();'''.replace('          ', '')
+          new_flat = r'''  const flat = text
+            .replace(/\[P[ÁA]GINA\s+\d+\]/gi, ' ')
+            .replace(/\r/g, '\n')
+            .replace(/\b(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\s*[-–/:]?\s*(\d{5})\b/gi, (_m, type, code) => `${code} ${String(type).replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`)
+            .replace(/\b(\d{5})\s*[-–/:]?\s*(G\s*\.?\s*R\.?|E\s*\.?\s*E\.?)\b/gi, (_m, code, type) => `${code} ${String(type).replace(/\./g, '').replace(/\s+/g, '').toUpperCase()}`)
+            .replace(/[\t ]+/g, ' ')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();'''.replace('          ', '')
           if old_flat not in text:
-              raise SystemExit('SAE structured flat block not found')
-          text = text.replace(old_flat, new_flat, 1)
-          parser.write_text(text, encoding='utf-8')
+              raise SystemExit('SAE flat normalization target not found')
+          parser.write_text(text.replace(old_flat, new_flat, 1), encoding='utf-8')
 
-          # 3) Compare report vs selected need using canonical work code rather than literal order.
           sae = Path('components/SaeSection.tsx')
           text = sae.read_text(encoding='utf-8')
-          old_cmp = "const nw=(v:string)=>norm(v).replace(/[.\\s-]+/g,'');if(nw(selectedNeed.codigoObra)&&nw(parsed.codigoObra)&&nw(selectedNeed.codigoObra)!==nw(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);"
-          new_cmp = "const workKey=(v:string)=>{const s=norm(v).replace(/[.\\s_\\-/:]+/g,'');const code=s.match(/(\\d{5})/)?.[1]||'';const type=s.includes('gr')?'gr':s.includes('ee')?'ee':'';return code&&type?`${code}${type}`:s;};if(workKey(selectedNeed.codigoObra)&&workKey(parsed.codigoObra)&&workKey(selectedNeed.codigoObra)!==workKey(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);"
-          if old_cmp not in text:
-              raise SystemExit('SAE report comparison block not found')
-          sae.write_text(text.replace(old_cmp, new_cmp, 1), encoding='utf-8')
+          old = "const nw=(v:string)=>norm(v).replace(/[.\\s-]+/g,'');if(nw(selectedNeed.codigoObra)&&nw(parsed.codigoObra)&&nw(selectedNeed.codigoObra)!==nw(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);"
+          new = "const workKey=(v:string)=>{const s=norm(v).replace(/[.\\s_\\-/:]+/g,'');const code=s.match(/(\\d{5})/)?.[1]||'';const type=s.includes('gr')?'gr':s.includes('ee')?'ee':'';return code&&type?`${code}${type}`:s;};if(workKey(selectedNeed.codigoObra)&&workKey(parsed.codigoObra)&&workKey(selectedNeed.codigoObra)!==workKey(parsed.codigoObra))throw new Error(`El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`);"
+          if old not in text:
+              raise SystemExit('SAE report comparison target not found')
+          sae.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Verify build
+        run: npm ci && npm run build
       - name: Commit fixes
         run: |
           git config user.name "github-actions[bot]"
