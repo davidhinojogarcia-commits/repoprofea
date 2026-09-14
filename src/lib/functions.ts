@@ -35,6 +35,11 @@ export const updateManagedPermissions=updateManagedUserPermissions;
 export const resetManagedUserPassword=(payload:any)=>call<{ok:boolean;email:string}>('reset_password',payload);
 export const sendManagedPasswordReset=resetManagedUserPassword;
 
+export const listShareableProfiles=async()=>{
+  const rows=await supabase.rpc('list_shareable_profiles');
+  return Array.isArray(rows)?rows:[];
+};
+
 export const setDataPermission=async(payload:any)=>{
   await supabase.query('data_permissions',{
     method:'POST',
