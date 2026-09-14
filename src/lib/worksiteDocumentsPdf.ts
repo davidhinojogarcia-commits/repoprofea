@@ -92,6 +92,24 @@ const drawWorksiteBlock = (doc: jsPDF, w: number, context: WorksiteDocumentConte
   return y + 23;
 };
 
+const drawResponsibleSignatureBand = (doc: jsPDF, context: WorksiteDocumentContext) => {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const y = pageHeight - 35;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(10, y - 2, 277, 22, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.1);
+  doc.setTextColor(...BLUE);
+  doc.text('Firma del encargado / responsable de la obra', 14, y + 1);
+  doc.setDrawColor(170, 190, 210);
+  doc.rect(14, y + 3, 82, 14);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.8);
+  doc.setTextColor(30, 41, 59);
+  doc.text(`Nombre: ${context.recursoPreventivo || ''}`, 102, y + 8);
+  doc.text(`Fecha: ${fmtDate(context.fecha)}`, 102, y + 14);
+};
+
 const finish = (doc: jsPDF, config: ReturnType<typeof getStoredPdfConfig>, filename: string) => {
   applyPdfFooters(doc, { ...config, footerText: 'Diputación de Cádiz · Documento interno de prevención de riesgos laborales' });
   return { doc, filename };
@@ -148,21 +166,13 @@ export const generateEpiDeliveryPdf = (workers: Person[], context: WorksiteDocum
       'Firma del trabajador'
     ]],
     body,
-    margin: { left: 10, right: 10, bottom: 28 },
+    margin: { left: 10, right: 10, bottom: 43 },
     theme: 'grid',
     styles: { font: 'helvetica', fontSize: 6.1, cellPadding: 1.5, valign: 'middle', textColor: [30, 41, 59], lineColor: [180, 197, 214], lineWidth: 0.18, overflow: 'linebreak' },
     headStyles: { fillColor: [229, 239, 248], textColor: [15, 42, 75], fontStyle: 'bold', fontSize: 5.7, halign: 'center', valign: 'middle' },
     alternateRowStyles: { fillColor: [250, 252, 254] },
     columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 31 }, 2: { cellWidth: 25 }, 3: { cellWidth: 20 }, 11: { cellWidth: 27 } },
-    didDrawPage: data => {
-      const py = Math.min((data.cursor?.y || 160) + 5, 180);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.2); doc.setTextColor(...BLUE);
-      doc.text('Firma del encargado (recurso preventivo)', 14, py);
-      doc.setDrawColor(170, 190, 210); doc.rect(14, py + 2, 80, 16);
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59); doc.setFontSize(7);
-      doc.text(`Nombre: ${context.recursoPreventivo || ''}`, 100, py + 7);
-      doc.text(`Fecha: ${fmtDate(context.fecha)}`, 100, py + 13);
-    }
+    didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
 
   return finish(doc, config, `ENTREGA_EPIS_${slug(context.obra)}_${slug(context.periodoLabel)}.pdf`);
@@ -174,21 +184,29 @@ export const generateTrainingInformationPdf = (workers: Person[], context: Works
     'Modelo de registro conforme a la Ley 31/1995, artículos 18 y 19',
     context,
   );
-  let y = drawWorksiteBlock(doc, w, context);
+  const y = drawWorksiteBlock(doc, w, context);
   const action = safe(context.accionFormativa) || 'Información y formación preventiva del puesto de trabajo y de la obra';
   const duration = safe(context.duracionFormacion) || '-';
   autoTable(doc, {
     startY: y,
     head: [['Nº', 'Nombre y apellidos', 'DNI/NIE', 'Puesto de trabajo', 'Acción formativa / información recibida', 'Fecha', 'Duración', 'Firma trabajador']],
     body: workers.map((p, i) => [String(i + 1), safe(p.apellidosNombre), safe(p.dni), safe(p.categoria), action, fmtDate(context.fecha), duration, '']),
-    margin: { left: 14, right: 14, bottom: 54 }, theme: 'grid',
+    margin: { left: 14, right: 14, bottom: 43 },
+    theme: 'grid',
     styles: { font: 'helvetica', fontSize: 7.1, cellPadding: 2, valign: 'middle', textColor: [30, 41, 59], lineColor: [185, 201, 216], lineWidth: 0.18 },
     headStyles: { fillColor: [229, 239, 248], textColor: [15, 42, 75], fontStyle: 'bold', halign: 'center' },
     alternateRowStyles: { fillColor: [250, 252, 254] },
     columnStyles: { 0: { cellWidth: 9, halign: 'center' }, 1: { cellWidth: 48 }, 2: { cellWidth: 24 }, 3: { cellWidth: 38 }, 4: { cellWidth: 70 }, 5: { cellWidth: 24 }, 6: { cellWidth: 20 }, 7: { cellWidth: 30 } },
+    didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
+
   const endY = (doc as any).lastAutoTable?.finalY || y + 60;
-  let by = Math.min(endY + 6, 145);
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let by = endY + 5;
+  if (by + 27 > pageHeight - 39) {
+    doc.addPage('a4', 'landscape');
+    by = drawWorksiteBlock(doc, w, context, 42);
+  }
   doc.setFillColor(...LIGHT); doc.setDrawColor(203, 213, 225); doc.roundedRect(14, by, w - 28, 24, 2, 2, 'FD');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.4); doc.setTextColor(...BLUE); doc.text('CONTENIDO ORIENTATIVO', 18, by + 5);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6.7); doc.setTextColor(30, 41, 59);
@@ -196,10 +214,8 @@ export const generateTrainingInformationPdf = (workers: Person[], context: Works
   doc.text('4. Uso correcto de EPIs.   5. Actuación en emergencias y primeros auxilios básicos.', 18, by + 15);
   doc.setFont('helvetica', 'bold'); doc.text('Declaración general:', 18, by + 20);
   doc.setFont('helvetica', 'normal'); doc.text('Los trabajadores relacionados declaran haber recibido la formación e información indicadas y comprender su contenido.', 48, by + 20);
-  by += 30;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.2); doc.setTextColor(...BLUE); doc.text('Firma del encargado (recurso preventivo)', 14, by);
-  doc.setDrawColor(170, 190, 210); doc.rect(14, by + 2, 85, 18);
-  doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59); doc.text(`Nombre: ${context.recursoPreventivo || ''}`, 105, by + 8); doc.text(`Fecha: ${fmtDate(context.fecha)}`, 105, by + 15);
+  drawResponsibleSignatureBand(doc, context);
+
   return finish(doc, config, `FORMACION_INFORMACION_${slug(context.obra)}_${slug(context.periodoLabel)}.pdf`);
 };
 
@@ -209,7 +225,7 @@ export const generateMachineryAuthorizationPdf = (workers: Person[], context: Wo
     'Modelo de registro conforme a la Ley 31/1995 y al Real Decreto 1215/1997',
     context,
   );
-  let y = drawWorksiteBlock(doc, w, context);
+  const y = drawWorksiteBlock(doc, w, context);
   autoTable(doc, {
     startY: y,
     head: [['Nº', 'Nombre y apellidos', 'DNI/NIE', 'Puesto de trabajo', 'Maquinaria / equipos autorizados\n(indicar todos los equipos que procedan)', 'Formación específica', 'Aptitud médica compatible', 'Fecha autorización', 'Vigencia / revisión', 'Firma trabajador']],
@@ -219,23 +235,29 @@ export const generateMachineryAuthorizationPdf = (workers: Person[], context: Wo
       const compatible = apt.estado === 'Apto' || apt.estado === 'Apto con limitaciones' ? apt.estado : apt.estado;
       return [String(i + 1), safe(p.apellidosNombre), safe(p.dni), safe(p.categoria), machinery, safe(p.formacion) === 'Sí' ? 'Sí' : 'Pendiente', compatible, fmtDate(context.fecha), safe(p.periodoFin) ? fmtDate(p.periodoFin) : '-', ''];
     }),
-    margin: { left: 12, right: 12, bottom: 48 }, theme: 'grid',
+    margin: { left: 12, right: 12, bottom: 43 },
+    theme: 'grid',
     styles: { font: 'helvetica', fontSize: 6.6, cellPadding: 1.7, valign: 'middle', textColor: [30, 41, 59], lineColor: [185, 201, 216], lineWidth: 0.18, overflow: 'linebreak' },
     headStyles: { fillColor: [229, 239, 248], textColor: [15, 42, 75], fontStyle: 'bold', fontSize: 6, halign: 'center' },
     alternateRowStyles: { fillColor: [250, 252, 254] },
     columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 39 }, 2: { cellWidth: 22 }, 3: { cellWidth: 31 }, 4: { cellWidth: 55 }, 5: { cellWidth: 25 }, 6: { cellWidth: 29 }, 7: { cellWidth: 24 }, 8: { cellWidth: 25 }, 9: { cellWidth: 29 } },
+    didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
+
   const endY = (doc as any).lastAutoTable?.finalY || y + 60;
-  let by = Math.min(endY + 6, 148);
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let by = endY + 5;
+  if (by + 25 > pageHeight - 39) {
+    doc.addPage('a4', 'landscape');
+    by = drawWorksiteBlock(doc, w, context, 42);
+  }
   doc.setFillColor(...LIGHT); doc.setDrawColor(203, 213, 225); doc.roundedRect(14, by, w - 28, 22, 2, 2, 'FD');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.3); doc.setTextColor(...BLUE); doc.text('CONDICIONES GENERALES', 18, by + 5);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6); doc.setTextColor(30, 41, 59);
   doc.text('1. La autorización se limita a trabajadores con formación/capacitación adecuada para los equipos indicados.', 18, by + 10);
   doc.text('2. El uso se realizará según las instrucciones del fabricante y de la empresa, respetando las medidas preventivas y dispositivos de seguridad.', 18, by + 14);
   doc.text('3. El trabajador comunicará cualquier avería, anomalía o situación de riesgo y utilizará los EPIs requeridos.', 18, by + 18);
-  by += 28;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.2); doc.setTextColor(...BLUE); doc.text('Firma del encargado (recurso preventivo)', 14, by);
-  doc.setDrawColor(170, 190, 210); doc.rect(14, by + 2, 85, 18);
-  doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59); doc.text(`Nombre: ${context.recursoPreventivo || ''}`, 105, by + 8); doc.text(`Fecha: ${fmtDate(context.fecha)}`, 105, by + 15);
+  drawResponsibleSignatureBand(doc, context);
+
   return finish(doc, config, `AUTORIZACION_MAQUINARIA_${slug(context.obra)}_${slug(context.periodoLabel)}.pdf`);
 };
