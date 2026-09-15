@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files, Wrench } from 'lucide-react';
 import { useAuthShell } from './AuthGate';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'inventario' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -58,6 +58,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
+      ],
+    },
+    {
+      label: 'Logística',
+      items: [
+        { id: 'inventario', label: 'Herramientas y maquinaria', icon: Wrench },
       ],
     },
     {

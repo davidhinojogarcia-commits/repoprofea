@@ -64,6 +64,7 @@ const GestionCitas = lazy(() => import('./components/GestionCitas').then(module 
 const CalendarioIntegrado = lazy(() => import('./components/CalendarioIntegrado').then(module => ({ default: module.CalendarioIntegrado })));
 const SubcontratasSection = lazy(() => import('./components/SubcontratasSection').then(module => ({ default: module.SubcontratasSection })));
 const SaeSection = lazy(() => import('./components/SaeSection').then(module => ({ default: module.SaeSection })));
+const InventorySection = lazy(() => import('./components/InventorySection').then(module => ({ default: module.InventorySection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 
 const ViewLoadingFallback = () => (
@@ -129,6 +130,9 @@ function App() {
   });
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('inventoryItem')) setActiveView('inventario');
+  }, []);
   const [people, setPeopleRaw] = useState<Person[]>([]);
 
   const setPeople = useCallback((action: React.SetStateAction<Person[]>) => {
@@ -2058,6 +2062,12 @@ function App() {
                 onExportStatsSummaryPDF={handleExportStatsPDF}
               />
             </div>
+          )}
+
+          {activeView === 'inventario' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <InventorySection savedObras={savedObras} />
+            </Suspense>
           )}
 
           {activeView === 'configuracion' && (
