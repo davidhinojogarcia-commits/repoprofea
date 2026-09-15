@@ -31,6 +31,7 @@ import ExcelJS from 'exceljs';
 import { getBase64Image, OFFICIAL_LOGO_BASE64 } from '../src/lib/exportUtils';
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { detectAdministrativeDataFromText, formatIban, formatSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
+import { RemoteScannerPairing } from './RemoteScannerPairing';
 
 interface CapturedPage {
   id: string;
@@ -197,6 +198,22 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRemoteCapture = React.useCallback((imageData: string, fileName: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const page: CapturedPage = {
+        id: `remote-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        base64: imageData,
+        name: fileName || `Captura_movil_${Date.now()}.jpg`,
+        size: Math.round((imageData.length * 3) / 4),
+        width: img.width || 1200,
+        height: img.height || 1600,
+      };
+      setPages(prev => [...prev, page]);
+    };
+    img.src = imageData;
+  }, []);
 
   if (!isOpen) return null;
 
@@ -840,7 +857,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">Escáner de Documentos</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Multipage con cámara del dispositivo y compresión optimizada</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Escáner móvil vinculado por QR y cámara de este dispositivo</p>
             </div>
           </div>
           <button 
@@ -1004,6 +1021,8 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             </div>
           ) : (
             <>
+              <RemoteScannerPairing onCapture={handleRemoteCapture} onToast={onToast} />
+
               {/* Continuous Capture Mode Switch Card */}
               <div className="p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
