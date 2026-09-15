@@ -1,25 +1,28 @@
 {
+  "id": "/",
   "name": "Gestión PROFEA · Diputación de Cádiz",
-  "short_name": "PROFEA Cádiz",
+  "short_name": "PROFEA",
   "description": "Gestión de contratación, documentación, CAE y seguimiento PROFEA de la Diputación Provincial de Cádiz.",
   "lang": "es",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#f5f8fa",
   "theme_color": "#00548e",
   "orientation": "any",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/favicon.png",
-      "sizes": "any",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo-diputacion-profea.png",
+      "src": "/logo-diputacion-profea.svg",
       "sizes": "any",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     }
   ]

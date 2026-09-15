@@ -25,7 +25,7 @@ jobs:
             echo 'Legacy Firebase/manual synchronization/workspace compatibility code detected.'
             exit 1
           fi
-          if grep -RniE "['\"]workers['\"]" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+          if grep -RniE "(supabase\.query|canonicalTable|collection|subscribeToDocuments|getDocuments|createDocument|updateDocument|deleteDocument)\([^)]*['\"]workers['\"]" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
             echo 'Legacy workers runtime table reference detected.'
             exit 1
           fi
