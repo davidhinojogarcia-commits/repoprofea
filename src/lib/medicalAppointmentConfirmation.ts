@@ -50,9 +50,10 @@ export const prepareMedicalAppointmentConfirmation = async (person: Person): Pro
 
   await updateDocument('trabajadores', person.id, updatedPerson as any);
 
-  // Compact aliases keep WhatsApp messages readable. The confirmation portal still
-  // accepts the previous query parameters so links already sent remain valid.
-  const base = `${window.location.origin}/?c=${encodeURIComponent(token)}`;
+  // Keep the existing public portal marker so the compact link opens directly
+  // without authentication. Short aliases reduce the visible WhatsApp URL while
+  // the portal still accepts the previous token/respuesta parameters.
+  const base = `${window.location.origin}/?confirmacion_reconocimiento=1&c=${encodeURIComponent(token)}`;
   return {
     updatedPerson,
     links: {
