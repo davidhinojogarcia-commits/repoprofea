@@ -6,6 +6,7 @@ const DNI_LETTERS = 'TRWAGMYFPDXBNJZSQVHLCKET';
 export type FastAdministrativeOcrResult = {
   text: string;
   dni: string;
+  birthDate: string;
   nuss: string;
   iban: string;
   pagesProcessed: number;
@@ -47,6 +48,32 @@ const detectIdentityDocument = (rawText: string): string => {
   return Array.from(candidates)[0] || '';
 };
 
+const toIsoBirthDate = (day: string, month: string, year: string): string => {
+  const d = Number(day);
+  const m = Number(month);
+  const y = Number(year);
+  if (!Number.isInteger(d) || !Number.isInteger(m) || !Number.isInteger(y)) return '';
+  if (y < 1900 || y > new Date().getFullYear()) return '';
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return '';
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
+const detectBirthDate = (rawText: string): string => {
+  const text = String(rawText || '').toUpperCase();
+  const patterns = [
+    /(?:FECHA\s+DE\s+NACIMIENTO|F\.\s*NACIMIENTO|F\.\s*NAC\.?|NACIMIENTO|NAC\.?)[^0-9]{0,25}(\d{1,2})[\s.\/-](\d{1,2})[\s.\/-](\d{4})/g,
+    /(?:DATE\s+OF\s+BIRTH|BIRTH)[^0-9]{0,25}(\d{1,2})[\s.\/-](\d{1,2})[\s.\/-](\d{4})/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const iso = toIsoBirthDate(match[1], match[2], match[3]);
+      if (iso) return iso;
+    }
+  }
+  return '';
+};
+
 const normalizedWords = (value: string) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -73,11 +100,10 @@ export async function recognizeAdministrativePagesFast(
   const texts: string[] = [];
   let pagesProcessed = 0;
   let dni = '';
+  let birthDate = '';
   let nuss = '';
   let iban = '';
 
-  // Reutilizamos UN solo worker para todas las páginas. Crear/terminar Tesseract por
-  // cada foto era el principal coste fijo del flujo anterior.
   onProgress?.('Preparando OCR rápido…');
   const worker = await createWorker('spa');
   try {
@@ -93,12 +119,13 @@ export async function recognizeAdministrativePagesFast(
       if (!nuss && administrative.nuss) nuss = administrative.nuss;
       if (!iban && administrative.iban) iban = administrative.iban;
       if (!dni) dni = detectIdentityDocument(combined);
+      if (!birthDate) birthDate = detectBirthDate(combined);
       for (const warning of administrative.warnings) {
         if (!warnings.includes(warning)) warnings.push(warning);
       }
 
-      // En cuanto están los tres datos objetivo no procesamos fotos adicionales.
-      if (dni && nuss && iban) break;
+      // En cuanto están todos los datos de autocompletado objetivo, evitamos OCR innecesario.
+      if (dni && birthDate && nuss && iban) break;
     }
   } finally {
     await worker.terminate();
@@ -107,6 +134,7 @@ export async function recognizeAdministrativePagesFast(
   return {
     text: texts.join('\n\n'),
     dni,
+    birthDate,
     nuss,
     iban,
     pagesProcessed,
