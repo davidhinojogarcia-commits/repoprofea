@@ -881,6 +881,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                     </button>
                   </div>
                 )}
+                <div className="mt-5 rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div><p className="text-sm font-bold text-slate-800 dark:text-slate-100">Instalación de PROFEA</p><p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Instala PROFEA como aplicación o acceso directo con el icono oficial de Diputación de Cádiz. El sistema detectará tu dispositivo y navegador.</p></div>
+                  <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('profea:open-install'))} className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-bold text-sky-700 dark:text-sky-300 shadow-sm hover:bg-sky-50 dark:hover:bg-sky-900/30 transition-colors"><Download className="w-4 h-4"/>Instalar PROFEA</button>
+                </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
                   Respalde toda la base de datos local de trabajadores activos,
                   el histórico completo de la papelera y la configuración.
