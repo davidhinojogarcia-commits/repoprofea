@@ -36,9 +36,10 @@ export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = f
   lines.push('', 'Se adjunta la citación oficial con todos los datos e instrucciones para el reconocimiento médico.');
   if (confirmationLinks) {
     lines.push('', 'CONFIRMACIÓN DE ASISTENCIA');
-    lines.push(`✅ Confirmar asistencia: ${confirmationLinks.confirm}`);
+    lines.push('Al confirmar mi asistencia, declaro haber recibido y leído la documentación adjunta, así como las instrucciones e indicaciones facilitadas para el proceso de contratación, quedando informado de su contenido.');
+    lines.push('', `✅ Confirmar asistencia: ${confirmationLinks.confirm}`);
     lines.push(`❌ No puedo asistir: ${confirmationLinks.decline}`);
-    lines.push('La respuesta quedará registrada automáticamente en GestionProfea.');
+    lines.push('', 'La respuesta quedará registrada automáticamente en GestionProfea.');
   } else {
     lines.push('Por favor, confirma respondiendo CONFIRMO. Si no puedes asistir, responde NO PUEDO ASISTIR.');
   }
