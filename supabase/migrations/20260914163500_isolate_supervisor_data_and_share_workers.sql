@@ -5,6 +5,7 @@
 create or replace function private.has_explicit_resource_permission(
   p_resource_type text,
   p_resource_id text,
+  p_owner_id uuid,
   p_action text
 )
 returns boolean
@@ -20,6 +21,7 @@ as $$
     where dp.resource_type = p_resource_type
       and dp.resource_id = p_resource_id
       and dp.user_id = (select auth.uid())
+      and dp.owner_id = p_owner_id
       and p.active = true
       and case p_action
         when 'read' then dp.can_read
@@ -47,17 +49,17 @@ as $$
   select private.has_module_permission(p_module, p_action)
     and (
       p_owner_id = (select auth.uid())
-      or private.has_explicit_resource_permission(p_resource_type, p_resource_id, p_action)
+      or private.has_explicit_resource_permission(p_resource_type, p_resource_id, p_owner_id, p_action)
       or (
         p_trabajador_id is not null
-        and private.has_explicit_resource_permission('trabajadores', p_trabajador_id::text, p_action)
+        and private.has_explicit_resource_permission('trabajadores', p_trabajador_id::text, p_owner_id, p_action)
       )
     );
 $$;
 
-revoke all on function private.has_explicit_resource_permission(text,text,text) from public;
+revoke all on function private.has_explicit_resource_permission(text,text,uuid,text) from public;
 revoke all on function private.can_access_isolated_business_row(text,text,text,uuid,bigint,text) from public;
-grant execute on function private.has_explicit_resource_permission(text,text,text) to authenticated;
+grant execute on function private.has_explicit_resource_permission(text,text,uuid,text) to authenticated;
 grant execute on function private.can_access_isolated_business_row(text,text,text,uuid,bigint,text) to authenticated;
 
 drop policy if exists trabajadores_select on public.trabajadores;
@@ -67,7 +69,7 @@ using (
   private.has_module_permission('trabajadores','read')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'read')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'read')
   )
 );
 
@@ -88,7 +90,7 @@ using (
   private.has_module_permission('trabajadores','update')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'update')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'update')
   )
 )
 with check (
@@ -96,7 +98,7 @@ with check (
   and updated_by = (select auth.uid())
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'update')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'update')
   )
 );
 
@@ -107,7 +109,7 @@ using (
   private.has_module_permission('trabajadores','delete')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'delete')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'delete')
   )
 );
 
@@ -118,7 +120,7 @@ using (
   private.has_module_permission('trabajadores','read')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'read')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'read')
   )
 );
 drop policy if exists trash_insert on public.trash;
@@ -137,7 +139,7 @@ using (
   private.has_module_permission('trabajadores','update')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'update')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'update')
   )
 )
 with check (
@@ -145,7 +147,7 @@ with check (
   and updated_by = (select auth.uid())
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'update')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'update')
   )
 );
 drop policy if exists trash_delete on public.trash;
@@ -155,7 +157,7 @@ using (
   private.has_module_permission('trabajadores','delete')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('trabajadores', id::text, 'delete')
+    or private.has_explicit_resource_permission('trabajadores', id::text, owner_id, 'delete')
   )
 );
 
@@ -166,7 +168,7 @@ using (
   private.has_module_permission('obras','read')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('obra', id::text, 'read')
+    or private.has_explicit_resource_permission('obra', id::text, owner_id, 'read')
   )
 );
 
@@ -187,7 +189,7 @@ using (
   private.has_module_permission('obras','update')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('obra', id::text, 'update')
+    or private.has_explicit_resource_permission('obra', id::text, owner_id, 'update')
   )
 )
 with check (
@@ -195,7 +197,7 @@ with check (
   and updated_by = (select auth.uid())
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('obra', id::text, 'update')
+    or private.has_explicit_resource_permission('obra', id::text, owner_id, 'update')
   )
 );
 
@@ -206,7 +208,7 @@ using (
   private.has_module_permission('obras','delete')
   and (
     owner_id = (select auth.uid())
-    or private.has_explicit_resource_permission('obra', id::text, 'delete')
+    or private.has_explicit_resource_permission('obra', id::text, owner_id, 'delete')
   )
 );
 
@@ -444,7 +446,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_dni text:=upper(regexp_replace(coalesce(new.dni,''),'[[:space:]-]','','g'));
 begin
@@ -461,7 +463,7 @@ begin
   on conflict do nothing;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists trg_inherit_worker_identity_shares on public.trabajadores;
 create trigger trg_inherit_worker_identity_shares
@@ -472,6 +474,7 @@ revoke all on function public.list_shareable_profiles() from public;
 revoke all on function public.get_worker_shares(bigint) from public;
 revoke all on function public.set_worker_share(bigint,uuid,boolean) from public;
 revoke all on function public.remove_worker_share(bigint,uuid) from public;
+revoke all on function public.inherit_worker_identity_shares() from public;
 grant execute on function public.list_shareable_profiles() to authenticated;
 grant execute on function public.get_worker_shares(bigint) to authenticated;
 grant execute on function public.set_worker_share(bigint,uuid,boolean) to authenticated;
