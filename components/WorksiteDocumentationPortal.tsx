@@ -155,8 +155,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     [workers, selectedWork],
   );
 
-  const periods = useMemo(
-    () => Array.from(new Set(selectedWorkWorkers.map(periodLabelFor))).sort((a, b) => a.localeCompare(b, 'es', { numeric: true })),
+  const periods = useMemo<string[]>(
+    () => Array.from(new Set<string>(selectedWorkWorkers.map(periodLabelFor))).sort((a, b) => a.localeCompare(b, 'es', { numeric: true })),
     [selectedWorkWorkers],
   );
 
