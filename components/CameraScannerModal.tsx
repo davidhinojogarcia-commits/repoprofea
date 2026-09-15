@@ -86,8 +86,32 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [isCameraLoading, setIsCameraLoading] = useState(false);
+  const [isMobileCameraDevice, setIsMobileCameraDevice] = useState(false);
+  const [hasLocalCamera, setHasLocalCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+
+    const mobileByUa = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const touchDevice = (navigator.maxTouchPoints || 0) > 0;
+    const mobileLike = mobileByUa || (coarsePointer && touchDevice);
+    const mediaSupported = Boolean(navigator.mediaDevices?.getUserMedia);
+
+    setIsMobileCameraDevice(mobileLike);
+    setHasLocalCamera(mediaSupported);
+
+    if (mediaSupported && navigator.mediaDevices?.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices()
+        .then(devices => {
+          const hasVideoInput = devices.some(device => device.kind === 'videoinput');
+          setHasLocalCamera(hasVideoInput || mediaSupported);
+        })
+        .catch(() => setHasLocalCamera(mediaSupported));
+    }
+  }, []);
 
   // Clean up on unmount or when modal closes
   React.useEffect(() => {
@@ -152,6 +176,16 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   const toggleFacingMode = () => {
     const nextMode = facingMode === 'environment' ? 'user' : 'environment';
     startLiveCamera(nextMode);
+  };
+
+
+  const openThisDeviceCamera = async () => {
+    if (!hasLocalCamera || !navigator.mediaDevices?.getUserMedia) {
+      fileInputRef.current?.click();
+      onToast('Abriendo la cámara nativa disponible en este dispositivo.', 'success');
+      return;
+    }
+    await startLiveCamera('environment');
   };
 
   const captureFrame = () => {
@@ -1035,6 +1069,25 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             </div>
           ) : (
             <>
+              {isMobileCameraDevice && (
+                <div className="p-4 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/20">
+                  <button
+                    type="button"
+                    onClick={openThisDeviceCamera}
+                    disabled={isCameraLoading}
+                    className="w-full flex items-center justify-center gap-3 px-5 py-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait text-white shadow-sm transition-colors"
+                  >
+                    {isCameraLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
+                    <div className="text-left">
+                      <div className="text-sm font-extrabold">Usar cámara de este dispositivo</div>
+                      <div className="text-[11px] text-emerald-50">
+                        {hasLocalCamera ? 'Cámara detectada · se abrirá preferentemente la cámara trasera' : 'Se intentará abrir la cámara nativa del móvil o tablet'}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              )}
+
               <RemoteScannerPairing onCapture={handleRemoteCapture} onToast={onToast} />
 
               {/* Continuous Capture Mode Switch Card */}
