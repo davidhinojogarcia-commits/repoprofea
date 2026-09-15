@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { jsPDF } from 'jspdf';
+import { applyPlugin } from 'jspdf-autotable';
 import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
@@ -15,6 +17,46 @@ import './subcontratas-mobile.css';
 import './institutional-polish.css';
 import './dark-mode-hardening.css';
 import './medical-citations-contrast.css';
+
+// Norma común para todas las tablas PDF de GestionProfea.
+// Evita cabeceras cortadas a mitad de palabra y desarrolla abreviaturas heredadas.
+applyPlugin(jsPDF);
+(jsPDF as any).autoTableSetDefaults?.({
+  didParseCell: (data: any) => {
+    if (data?.section !== 'head' || !data?.cell) return;
+
+    const original = Array.isArray(data.cell.text)
+      ? data.cell.text.join(' ').trim()
+      : String(data.cell.text || '').trim();
+
+    const normalized = original.toUpperCase().replace(/\s+/g, ' ');
+    const replacements: Record<string, string> = {
+      'CONF.': 'CONFIRMACIÓN',
+      'CONF': 'CONFIRMACIÓN',
+      'TRABAJADOR / DNI / NAC.': 'TRABAJADOR / DNI / NACIMIENTO',
+      'TRABAJADOR/DNI/NAC.': 'TRABAJADOR / DNI / NACIMIENTO',
+      'SITIO RECONOCIMIENTO': 'SITIO RECONOCIMIENTO MÉDICO',
+    };
+
+    const completeText = replacements[normalized] || original;
+    data.cell.text = [completeText];
+
+    const words = completeText.split(/\s+/).filter(Boolean);
+    const longestWord = words.reduce((max: number, word: string) => Math.max(max, word.length), 0);
+
+    data.cell.styles.overflow = 'linebreak';
+    data.cell.styles.halign = 'center';
+    data.cell.styles.valign = 'middle';
+    data.cell.styles.fontStyle = 'bold';
+    data.cell.styles.cellPadding = 1.15;
+    data.cell.styles.minCellHeight = Math.max(Number(data.cell.styles.minCellHeight || 0), 9);
+
+    // Tipografía adaptativa: prioriza que ninguna palabra quede partida o recortada.
+    if (completeText.length >= 30 || longestWord >= 16) data.cell.styles.fontSize = 5.6;
+    else if (completeText.length >= 20 || longestWord >= 12) data.cell.styles.fontSize = 6.0;
+    else data.cell.styles.fontSize = 6.5;
+  },
+});
 
 // Puente temporal para props históricas de Google Drive que aún quedan en App.tsx.
 // La autenticación de la aplicación sigue siendo exclusivamente Supabase (email/password).
