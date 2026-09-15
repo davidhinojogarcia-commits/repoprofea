@@ -2063,6 +2063,7 @@ function App() {
           {activeView === 'configuracion' && (
             <Suspense fallback={<ViewLoadingFallback />}>
             <Configuracion 
+              onImportWorkers={handleImportExcel}
               savedObras={savedObras}
               setSavedObras={setSavedObras}
               savedLugares={savedLugares}

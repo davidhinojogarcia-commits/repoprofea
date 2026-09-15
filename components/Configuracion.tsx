@@ -92,6 +92,7 @@ interface ConfiguracionProps {
   setToast?: React.Dispatch<
     React.SetStateAction<{ message: string; type: "success" | "error" } | null>
   >;
+  onImportWorkers?: (file: File) => void;
 }
 
 export const Configuracion: React.FC<ConfiguracionProps> = ({
@@ -116,6 +117,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   autoThemeByTime,
   setAutoThemeByTime,
   setToast,
+  onImportWorkers,
 }) => {
   const [activeTab, setActiveTab] = useState<
     | "obras"
@@ -184,6 +186,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   // State for parsed backup verification
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workerImportInputRef = useRef<HTMLInputElement>(null);
 
   // Build a complete backup from Supabase, the application's source of truth.
   // UI state is deliberately not used for business records so a stale render can never
@@ -851,6 +854,33 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   <Database className="w-6 h-6 text-brand-primary animate-pulse" />
                   Copia de Seguridad Completa
                 </h2>
+                {onImportWorkers && (
+                  <div className="mt-5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Importación de trabajadores</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Importa un listado de trabajadores desde Excel, CSV, JSON o PDF.</p>
+                    </div>
+                    <input
+                      ref={workerImportInputRef}
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx,.xls,.csv,.json,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) onImportWorkers(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => workerImportInputRef.current?.click()}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-bold text-blue-700 dark:text-blue-300 shadow-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      Importación de trabajadores
+                    </button>
+                  </div>
+                )}
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
                   Respalde toda la base de datos local de trabajadores activos,
                   el histórico completo de la papelera y la configuración.
