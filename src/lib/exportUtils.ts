@@ -582,6 +582,13 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
 };
 
 const getMedicalAppointmentConfirmationStatus = (person: Person): 'confirmada' | 'no_puede_asistir' | 'pendiente' => {
+  const { estado } = getAptitudMedicaInfo(person);
+  const recognitionCompleted = estado === 'Apto' || estado === 'No Apto' || estado === 'Apto con limitaciones';
+
+  // La confirmación de asistencia solo tiene sentido mientras el reconocimiento
+  // está pendiente. Una vez realizado, el informe debe priorizar la aptitud médica.
+  if (recognitionCompleted) return 'pendiente';
+
   const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();
   if (raw === 'confirmada' || raw === 'no_puede_asistir') return raw;
   return 'pendiente';
