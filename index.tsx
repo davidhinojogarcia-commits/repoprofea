@@ -6,6 +6,7 @@ import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
+import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import './src/styles/design-system.css';
@@ -72,6 +73,7 @@ if ('serviceWorker' in navigator) {
 
 const initialSearchParams = new URLSearchParams(window.location.search);
 const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
+const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 // Se captura antes de que AuthGate pueda normalizar la URL tras iniciar sesión.
 // Así, un QR abierto en un dispositivo sin sesión conserva el trabajador solicitado.
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
@@ -81,6 +83,8 @@ ReactDOM.createRoot(rootElement).render(
     <RootErrorBoundary>
       {isMedicalConfirmation ? (
         <MedicalAppointmentConfirmationPortal />
+      ) : remoteScannerToken ? (
+        <RemoteScannerPortal token={remoteScannerToken} />
       ) : (
         <AuthGate>
           {workerQrDni ? (
