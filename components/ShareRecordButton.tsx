@@ -29,18 +29,6 @@ const resourceLabel = (resourceType: string) => ({
   obra: 'obra',
 }[resourceType] || 'registro');
 
-let adminStatusPromise: Promise<boolean> | null = null;
-const getAdminStatus = () => adminStatusPromise || (adminStatusPromise = (async () => {
-  try {
-    const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return false;
-    const rows = await supabase.query('profiles', { query: `select=role,active&id=eq.${encodeURIComponent(user.id)}&limit=1` });
-    return rows?.[0]?.active === true && rows?.[0]?.role === 'admin';
-  } catch {
-    return false;
-  }
-})());
-
 export const ShareRecordButton: React.FC<Props> = ({
   resourceType,
   resourceId,
@@ -50,7 +38,6 @@ export const ShareRecordButton: React.FC<Props> = ({
   className = '',
   onClick,
 }) => {
-  const [isAdmin, setIsAdmin] = useState(false);
   const [canManageShare, setCanManageShare] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -65,7 +52,7 @@ export const ShareRecordButton: React.FC<Props> = ({
     let active = true;
     const resolveAccess = async () => {
       try {
-        const [admin, authResult] = await Promise.all([getAdminStatus(), supabase.auth.getUser()]);
+        const authResult = await supabase.auth.getUser();
         const currentUserId = authResult.data.user?.id || '';
         let resolvedOwnerId = providedOwnerId || '';
 
@@ -77,9 +64,8 @@ export const ShareRecordButton: React.FC<Props> = ({
         }
 
         if (!active) return;
-        setIsAdmin(admin);
         setOwnerId(resolvedOwnerId);
-        setCanManageShare(Boolean(admin || (currentUserId && resolvedOwnerId === currentUserId)));
+        setCanManageShare(Boolean(currentUserId && resolvedOwnerId === currentUserId));
       } catch {
         if (active) setCanManageShare(false);
       }
@@ -168,7 +154,7 @@ export const ShareRecordButton: React.FC<Props> = ({
     }
   };
 
-  if (!canManageShare && !isAdmin) return null;
+  if (!canManageShare) return null;
 
   const modal = open && typeof document !== 'undefined' ? createPortal(
     <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={() => setOpen(false)}>
