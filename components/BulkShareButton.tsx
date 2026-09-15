@@ -22,7 +22,6 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [access, setAccess] = useState<Access>('read');
   const [currentUserId, setCurrentUserId] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -39,10 +38,6 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
         const userId = authResult.data.user?.id || '';
         setUsers(profiles || []);
         setCurrentUserId(userId);
-        if (userId) {
-          const ownProfile = await supabase.query('profiles', { query: `select=role,active&id=eq.${encodeURIComponent(userId)}&limit=1` });
-          if (active) setIsAdmin(ownProfile?.[0]?.active === true && ownProfile?.[0]?.role === 'admin');
-        }
       })
       .catch((e: any) => {
         const message = e?.message || 'No se pudieron cargar los usuarios.';
@@ -97,7 +92,7 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
       const invalid = owners.filter(item => !item.ownerId);
       if (invalid.length) throw new Error(`No se pudo identificar el propietario de ${invalid.length} registro(s) seleccionado(s).`);
 
-      const shareable = isAdmin ? owners : owners.filter(item => item.ownerId === currentUserId);
+      const shareable = owners.filter(item => item.ownerId === currentUserId);
       const skipped = owners.length - shareable.length;
       if (shareable.length === 0) throw new Error('Los registros seleccionados no son tuyos. Solo el propietario puede compartirlos.');
 
