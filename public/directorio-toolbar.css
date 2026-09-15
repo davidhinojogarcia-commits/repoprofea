@@ -19,8 +19,8 @@ html.dark #directorio-section .directorio-primary-actions::before {
   color: rgb(148 163 184);
 }
 
-/* El segundo botón directo era Gmail. Se retira solo de esta fila del Directorio. */
-#directorio-section .directorio-primary-actions > button:nth-of-type(2) {
+/* Gmail es el primer botón directo de esta fila. Se oculta y se mantienen PDF + Excel. */
+#directorio-section .directorio-primary-actions > button:nth-of-type(1) {
   display: none !important;
 }
 
