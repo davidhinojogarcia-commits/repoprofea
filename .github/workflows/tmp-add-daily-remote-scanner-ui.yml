@@ -1,0 +1,52 @@
+name: Temporary daily remote scanner UI patch
+
+on:
+  push:
+    branches:
+      - work/resumen-renombres-pendientes
+    paths:
+      - '.github/workflows/tmp-add-daily-remote-scanner-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch CameraScannerModal
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('components/CameraScannerModal.tsx')
+          s = p.read_text()
+          imp = "import { detectAdministrativeDataFromText, formatIban, formatSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';\n"
+          extra = imp + "import { RemoteScannerPairing } from './RemoteScannerPairing';\n"
+          if "RemoteScannerPairing" not in s:
+              s = s.replace(imp, extra)
+          marker = "  const galleryInputRef = useRef<HTMLInputElement>(null);\n\n  if (!isOpen) return null;"
+          handler = """  const galleryInputRef = useRef<HTMLInputElement>(null);\n\n  const handleRemoteCapture = React.useCallback((imageData: string, fileName: string) => {\n    const img = new Image();\n    img.onload = () => {\n      const page: CapturedPage = {\n        id: `remote-${Date.now()}-${Math.random().toString(36).slice(2)}`,\n        base64: imageData,\n        name: fileName || `Captura_movil_${Date.now()}.jpg`,\n        size: Math.round((imageData.length * 3) / 4),\n        width: img.width || 1200,\n        height: img.height || 1600,\n      };\n      setPages(prev => [...prev, page]);\n    };\n    img.src = imageData;\n  }, []);\n\n  if (!isOpen) return null;"""
+          if marker not in s:
+              raise SystemExit('refs marker not found')
+          s = s.replace(marker, handler)
+          ui_marker = "              {/* Continuous Capture Mode Switch Card */}"
+          ui = """              <RemoteScannerPairing onCapture={handleRemoteCapture} onToast={onToast} />\n\n              {/* Continuous Capture Mode Switch Card */}"""
+          if ui_marker not in s:
+              raise SystemExit('UI marker not found')
+          s = s.replace(ui_marker, ui, 1)
+          s = s.replace('Multipage con cámara del dispositivo y compresión optimizada', 'Escáner móvil vinculado por QR y cámara de este dispositivo')
+          p.write_text(s)
+          PY
+      - name: Validate TypeScript and build
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit source changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/CameraScannerModal.tsx
+          git commit -m 'feat: connect scanner modal to daily mobile camera'
+          git push
