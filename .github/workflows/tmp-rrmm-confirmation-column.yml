@@ -1,0 +1,94 @@
+name: Temporary RRMM confirmation column patch
+
+on:
+  push:
+    branches:
+      - feat/rrmm-confirmation-column
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/rrmm-confirmation-column
+          fetch-depth: 0
+      - name: Patch recognition exports
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/lib/exportUtils.ts')
+          text = path.read_text(encoding='utf-8')
+
+          marker = "export const prepareRRMMExcelData = async (dataToExport: Person[]) => {"
+          helper = """const getMedicalAppointmentConfirmationStatus = (person: Person): 'confirmada' | 'no_puede_asistir' | 'pendiente' => {\n  const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();\n  if (raw === 'confirmada' || raw === 'no_puede_asistir') return raw;\n  return 'pendiente';\n};\n\nconst getMedicalAppointmentConfirmationExcelMark = (person: Person): string => {\n  const status = getMedicalAppointmentConfirmationStatus(person);\n  if (status === 'confirmada') return '✓';\n  if (status === 'no_puede_asistir') return '✕';\n  return '';\n};\n\n"""
+          if marker not in text:
+              raise SystemExit('RRMM Excel marker not found')
+          if 'getMedicalAppointmentConfirmationStatus' not in text:
+              text = text.replace(marker, helper + marker, 1)
+
+          text = text.replace("worksheet.mergeCells('A4:L4');", "worksheet.mergeCells('A4:M4');", 1)
+
+          old_cols = """    { header: 'DÍA CITA', key: 'dia', width: 15 },\n    { header: 'HORA', key: 'hora', width: 10 },\n    { header: 'SITIO RECONOCIMIENTO', key: 'sitio', width: 30 },\n    { header: 'APTITUD RECONOCIMIENTO MÉDICO', key: 'resultado', width: 26 },"""
+          new_cols = """    { header: 'DÍA CITA', key: 'dia', width: 15 },\n    { header: 'HORA', key: 'hora', width: 10 },\n    { header: 'CONF.', key: 'confirmacion', width: 7 },\n    { header: 'SITIO RECONOCIMIENTO', key: 'sitio', width: 30 },\n    { header: 'APTITUD RECONOCIMIENTO MÉDICO', key: 'resultado', width: 26 },"""
+          if old_cols not in text:
+              raise SystemExit('RRMM Excel columns block not found')
+          text = text.replace(old_cols, new_cols, 1)
+
+          old_row = """      formatDate(p.citaDia),\n      p.citaHora,\n      p.sitioReconocimiento,\n      aptitudLabel,"""
+          new_row = """      formatDate(p.citaDia),\n      p.citaHora,\n      getMedicalAppointmentConfirmationExcelMark(p),\n      p.sitioReconocimiento,\n      aptitudLabel,"""
+          if old_row not in text:
+              raise SystemExit('RRMM Excel row block not found')
+          text = text.replace(old_row, new_row, 1)
+
+          old_fmt = """      if (colNumber === 11) {\n        if (cell.text.includes('NO APTO') || cell.text.includes('PENDIENTE')) {"""
+          new_fmt = """      if (colNumber === 10) {\n        cell.alignment = { vertical: 'middle', horizontal: 'center' };\n        if (cell.text === '✓') {\n          cell.font = { ...cell.font, color: { argb: '008020' }, bold: true, size: 14 };\n        } else if (cell.text === '✕') {\n          cell.font = { ...cell.font, color: { argb: 'AA0000' }, bold: true, size: 14 };\n        }\n      }\n      if (colNumber === 12) {\n        if (cell.text.includes('NO APTO') || cell.text.includes('PENDIENTE')) {"""
+          if old_fmt not in text:
+              raise SystemExit('RRMM Excel formatting block not found')
+          text = text.replace(old_fmt, new_fmt, 1)
+
+          text = text.replace("worksheet.mergeCells(`A${copyrightRow.number}:L${copyrightRow.number}`);", "worksheet.mergeCells(`A${copyrightRow.number}:M${copyrightRow.number}`);", 1)
+
+          old_pdf_cols = '  const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];'
+          new_pdf_cols = '  const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "CONF.", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];'
+          if old_pdf_cols not in text:
+              raise SystemExit('RRMM PDF columns block not found')
+          text = text.replace(old_pdf_cols, new_pdf_cols, 1)
+
+          old_pdf_row = """      p.telefono,\n      `${formatDate(p.citaDia)}\\n${p.citaHora}`,\n      p.sitioReconocimiento,\n      aptitudCell\n    ];"""
+          new_pdf_row = """      p.telefono,\n      `${formatDate(p.citaDia)}\\n${p.citaHora}`,\n      { content: '', attendanceStatus: getMedicalAppointmentConfirmationStatus(p) } as any,\n      p.sitioReconocimiento,\n      aptitudCell\n    ];"""
+          if old_pdf_row not in text:
+              raise SystemExit('RRMM PDF row block not found')
+          text = text.replace(old_pdf_row, new_pdf_row, 1)
+
+          old_widths = """      0: { cellWidth: 18 },\n      1: { cellWidth: 30 },\n      2: { cellWidth: 22 },\n      3: { cellWidth: 46 },\n      4: { cellWidth: 22 },\n      5: { cellWidth: 24 },\n      6: { cellWidth: 42 },\n      7: { cellWidth: 65 }"""
+          new_widths = """      0: { cellWidth: 18 },\n      1: { cellWidth: 28 },\n      2: { cellWidth: 20 },\n      3: { cellWidth: 43 },\n      4: { cellWidth: 20 },\n      5: { cellWidth: 24 },\n      6: { cellWidth: 10, halign: 'center' as const },\n      7: { cellWidth: 40 },\n      8: { cellWidth: 66 }"""
+          if old_widths not in text:
+              raise SystemExit('RRMM PDF widths block not found')
+          text = text.replace(old_widths, new_widths, 1)
+
+          old_parse = """    didParseCell: (data) => {\n      if (data.section === 'body' && data.column.index === 7) {\n        const text = data.cell.text.join(' ');"""
+          new_parse = """    didParseCell: (data) => {\n      if (data.section === 'body' && data.column.index === 6) {\n        data.cell.styles.halign = 'center';\n        data.cell.styles.valign = 'middle';\n      }\n      if (data.section === 'body' && data.column.index === 8) {\n        const text = data.cell.text.join(' ');"""
+          if old_parse not in text:
+              raise SystemExit('RRMM PDF parse block not found')
+          text = text.replace(old_parse, new_parse, 1)
+
+          old_alt = """    },\n    alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }\n  });\n\n  applyPdfFooters(doc, config);\n\n  const filename = generateExportFilename('PROFEA_RRMM', dataToExport, 'pdf');"""
+          new_alt = """    },\n    didDrawCell: (data) => {\n      if (data.section !== 'body' || data.column.index !== 6) return;\n      const status = String((data.cell.raw as any)?.attendanceStatus || 'pendiente');\n      if (status === 'pendiente') return;\n\n      const cx = data.cell.x + data.cell.width / 2;\n      const cy = data.cell.y + data.cell.height / 2;\n      doc.setLineWidth(0.8);\n\n      if (status === 'confirmada') {\n        doc.setDrawColor(0, 128, 32);\n        doc.line(cx - 2.4, cy, cx - 0.6, cy + 1.8);\n        doc.line(cx - 0.6, cy + 1.8, cx + 2.8, cy - 2.1);\n      } else if (status === 'no_puede_asistir') {\n        doc.setDrawColor(170, 0, 0);\n        doc.line(cx - 2.2, cy - 2.2, cx + 2.2, cy + 2.2);\n        doc.line(cx + 2.2, cy - 2.2, cx - 2.2, cy + 2.2);\n      }\n    },\n    alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }\n  });\n\n  applyPdfFooters(doc, config);\n\n  const filename = generateExportFilename('PROFEA_RRMM', dataToExport, 'pdf');"""
+          if old_alt not in text:
+              raise SystemExit('RRMM PDF table ending block not found')
+          text = text.replace(old_alt, new_alt, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm .github/workflows/tmp-rrmm-confirmation-column.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: show medical attendance confirmation in RRMM exports"
+          git push origin HEAD:feat/rrmm-confirmation-column
