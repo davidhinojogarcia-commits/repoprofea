@@ -3,6 +3,9 @@ import { CheckCircle2, HeartPulse, Loader2, XCircle } from 'lucide-react';
 
 type ResponseStatus = 'confirmada' | 'no_puede_asistir';
 
+const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co').replace(/\/$/, '');
+const CONFIRMATION_ENDPOINT = `${SUPABASE_URL}/functions/v1/confirm-medical-appointment`;
+
 export const MedicalAppointmentConfirmationPortal: React.FC = () => {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const token = params.get('token') || '';
@@ -19,7 +22,7 @@ export const MedicalAppointmentConfirmationPortal: React.FC = () => {
     }
     setBusy(true);
     try {
-      const response = await fetch('/api/confirm-medical-appointment', {
+      const response = await fetch(CONFIRMATION_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, status }),
