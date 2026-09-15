@@ -15,8 +15,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply patch
-        run: python .github/scripts/patch_worker_admin_data.py
+      - name: Refine NSS duplicate handling
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('components/RegistrationForm.tsx')
+          s = p.read_text()
+          old = "    const duplicateNuss = nussCheck?.valid && (people || []).some(p => normalizeSpanishSocialSecurityNumber(p.numeroSeguridadSocial) === nussCheck.normalized);\n    if (duplicateNuss) {\n      alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro registro. Revisa el trabajador antes de continuar.');"
+          new = "    const currentDniForNuss = formData.dni.replace(/[\\s-]/g, '').toUpperCase();\n    const conflictingNuss = nussCheck?.valid && (people || []).some(p =>\n      normalizeSpanishSocialSecurityNumber(p.numeroSeguridadSocial) === nussCheck.normalized &&\n      p.dni.replace(/[\\s-]/g, '').toUpperCase() !== currentDniForNuss\n    );\n    if (conflictingNuss) {\n      alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador con un DNI/NIE distinto. Revisa los datos antes de continuar.');"
+          if old not in s:
+              raise SystemExit('registration duplicate NSS anchor missing')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('components/EditPersonModal.tsx')
+          s = p.read_text()
+          old = "      const duplicate = allPeople.some(p => p.id !== formData.id && p.numeroSeguridadSocial && validateSpanishSocialSecurityNumber(p.numeroSeguridadSocial).normalized === check.normalized);\n      if (duplicate) { alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador.'); return; }"
+          new = "      const currentDniForNuss = formData.dni.replace(/[\\s-]/g, '').toUpperCase();\n      const conflictingNuss = allPeople.some(p =>\n        p.id !== formData.id &&\n        p.numeroSeguridadSocial &&\n        validateSpanishSocialSecurityNumber(p.numeroSeguridadSocial).normalized === check.normalized &&\n        p.dni.replace(/[\\s-]/g, '').toUpperCase() !== currentDniForNuss\n      );\n      if (conflictingNuss) { alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador con un DNI/NIE distinto.'); return; }"
+          if old not in s:
+              raise SystemExit('edit duplicate NSS anchor missing')
+          p.write_text(s.replace(old, new, 1))
+          PY
       - name: Validate
         run: |
           npm ci
@@ -26,6 +46,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add types.ts src/lib/personalDataValidators.ts src/services/databaseService.ts components/RegistrationForm.tsx components/EditPersonModal.tsx components/CameraScannerModal.tsx supabase/migrations/20260915170500_add_worker_nuss_iban.sql
-          git commit -m 'feat: add validated NSS and IBAN with scanner OCR'
+          git add components/RegistrationForm.tsx components/EditPersonModal.tsx
+          git commit -m 'fix: allow repeated contracts with same NSS and DNI'
           git push
