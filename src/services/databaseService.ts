@@ -1,63 +1,109 @@
-import { supabase } from '../lib/supabase';
-import { syncMedicalAppointmentFromWorker } from './medicalAppointmentAutoSync';
+import { supabase } from "../lib/supabase";
+import { syncMedicalAppointmentFromWorker } from "./medicalAppointmentAutoSync";
 
-export type DatabaseRecord = Record<string, any> & { id?: string | number; ownerId?: string };
-type ListOptions = { includeShared?: boolean; allForAdmin?: boolean; limitCount?: number };
+export type DatabaseRecord = Record<string, any> & {
+  id?: string | number;
+  ownerId?: string;
+};
+type ListOptions = {
+  includeShared?: boolean;
+  allForAdmin?: boolean;
+  limitCount?: number;
+};
 
 const TABLE_BY_COLLECTION: Record<string, string> = {
-  appointments: 'citas', citas: 'citas',
-  subcontractors: 'subcontratas', subcontratas: 'subcontratas',
-  medicalExams: 'reconocimientos', reconocimientos: 'reconocimientos',
-  contracts: 'contrataciones', contratacion: 'contrataciones', contrataciones: 'contrataciones',
-  works: 'obras', obras: 'obras',
-  workers: 'trabajadores', trabajadores: 'trabajadores',
+  appointments: "citas",
+  citas: "citas",
+  subcontractors: "subcontratas",
+  subcontratas: "subcontratas",
+  medicalExams: "reconocimientos",
+  reconocimientos: "reconocimientos",
+  contracts: "contrataciones",
+  contratacion: "contrataciones",
+  contrataciones: "contrataciones",
+  works: "obras",
+  obras: "obras",
+  workers: "trabajadores",
+  trabajadores: "trabajadores",
 };
 
 const canonicalTable = (name: string) => TABLE_BY_COLLECTION[name] || name;
-const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value, (_k, v) => v === undefined ? null : v));
-const dateOrNull = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
-const timeOrNull = (value: unknown) => typeof value === 'string' && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 8) : null;
-const isLegacyNumericTable = (table: string) => table === 'trash';
-const normalizeDni = (value: unknown) => String(value || '').replace(/[\s-]/g, '').trim().toUpperCase();
+const clean = <T>(value: T): T =>
+  JSON.parse(JSON.stringify(value, (_k, v) => (v === undefined ? null : v)));
+const dateOrNull = (value: unknown) =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)
+    ? value.slice(0, 10)
+    : null;
+const timeOrNull = (value: unknown) =>
+  typeof value === "string" && /^\d{2}:\d{2}/.test(value)
+    ? value.slice(0, 8)
+    : null;
+const isLegacyNumericTable = (table: string) => table === "trash";
+const normalizeDni = (value: unknown) =>
+  String(value || "")
+    .replace(/[\s-]/g, "")
+    .trim()
+    .toUpperCase();
 
 const resolveContractYear = (value: DatabaseRecord) => {
-  const start = String(value.periodoInicio || value.periodo_inicio || '').trim();
+  const start = String(
+    value.periodoInicio || value.periodo_inicio || "",
+  ).trim();
   const startYear = start.match(/^(\d{4})-/)?.[1];
   if (startYear) return Number(startYear);
-  const fortnight = String(value.quincena || '').trim();
+  const fortnight = String(value.quincena || "").trim();
   const fortnightYear = fortnight.match(/(?:^|\s)(20\d{2})(?:$|\s)/)?.[1];
   if (fortnightYear) return Number(fortnightYear);
-  const registered = String(value.fechaRegistro || value.fecha_registro || '').trim();
+  const registered = String(
+    value.fechaRegistro || value.fecha_registro || "",
+  ).trim();
   const registeredYear = registered.match(/^(\d{4})-/)?.[1];
   return registeredYear ? Number(registeredYear) : new Date().getFullYear();
 };
 
 async function requireUser() {
   const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Debes iniciar sesión para realizar esta operación.');
+  if (!data.user)
+    throw new Error("Debes iniciar sesión para realizar esta operación.");
   return data.user;
 }
 
 async function resolveObraId(obra: unknown): Promise<string | null> {
-  if (!obra || typeof obra !== 'string') return null;
+  if (!obra || typeof obra !== "string") return null;
   const name = obra.trim();
-  const rows = await supabase.query('obras', { query: `select=id&nombre=eq.${encodeURIComponent(name)}&limit=1` });
+  const rows = await supabase.query("obras", {
+    query: `select=id&nombre=eq.${encodeURIComponent(name)}&limit=1`,
+  });
   return rows?.[0]?.id || null;
 }
 
-async function enrichWorkerAnnualHiring(data: DatabaseRecord, ownerId: string): Promise<DatabaseRecord> {
+async function enrichWorkerAnnualHiring(
+  data: DatabaseRecord,
+  ownerId: string,
+): Promise<DatabaseRecord> {
   const dni = normalizeDni(data.dni);
   const annuality = resolveContractYear(data);
   if (!dni) {
-    return { ...data, anualidadContratacion: annuality, numeroContratacionAnual: 1, contratacionesEnAnualidad: 1, esRepetidorAnual: false };
+    return {
+      ...data,
+      anualidadContratacion: annuality,
+      numeroContratacionAnual: 1,
+      contratacionesEnAnualidad: 1,
+      esRepetidorAnual: false,
+    };
   }
 
-  const rows = await supabase.query('trabajadores', {
+  const rows = await supabase.query("trabajadores", {
     query: `select=id,dni,periodo_inicio,quincena,fecha_registro,data&owner_id=eq.${encodeURIComponent(ownerId)}`,
   });
   const sameWorkerSameYear = (rows || []).filter((row: any) => {
     if (normalizeDni(row.dni || row.data?.dni) !== dni) return false;
-    const hydrated = { ...(row.data || {}), periodoInicio: row.periodo_inicio || row.data?.periodoInicio, quincena: row.quincena || row.data?.quincena, fechaRegistro: row.fecha_registro || row.data?.fechaRegistro };
+    const hydrated = {
+      ...(row.data || {}),
+      periodoInicio: row.periodo_inicio || row.data?.periodoInicio,
+      quincena: row.quincena || row.data?.quincena,
+      fechaRegistro: row.fecha_registro || row.data?.fechaRegistro,
+    };
     return resolveContractYear(hydrated) === annuality;
   });
   const hireNumber = sameWorkerSameYear.length + 1;
@@ -73,61 +119,140 @@ async function enrichWorkerAnnualHiring(data: DatabaseRecord, ownerId: string): 
 async function serialize(table: string, value: DatabaseRecord) {
   const data = clean(value);
   if (isLegacyNumericTable(table)) return { data };
-  if (table === 'trabajadores') return {
-    obra_id: value.obraId || value.obra_id || await resolveObraId(value.obra),
-    supervisor_responsable: value.supervisorResponsable || '', num_oferta: value.numOferta || '', obra: value.obra || '',
-    categoria: value.categoria || '', quincena: value.quincena || '', apellidos_nombre: value.apellidosNombre || '', dni: value.dni || '',
-    fecha_nacimiento: value.fechaNacimiento || '', periodo_inicio: value.periodoInicio || '', periodo_fin: value.periodoFin || '',
-    telefono: value.telefono || '', calzado: value.calzado || '', formacion: value.formacion || '', lugar_formacion: value.lugarFormacion || null,
-    cita_dia: value.citaDia || '', cita_hora: value.citaHora || '', sitio_reconocimiento: value.sitioReconocimiento || '',
-    documentacion_completa: value.documentacionCompleta || '', observaciones: value.observaciones || null, fecha_registro: value.fechaRegistro || '',
-    necesita_reconocimiento: value.necesitaReconocimiento || null, aptitud_medica: value.aptitudMedica || null,
-    limitaciones_aptitud: value.limitacionesAptitud || null, reconocimiento_estado: value.reconocimientoEstado || null,
-    reconocimiento_fecha: value.reconocimientoFecha || null, reconocimiento_validez: value.reconocimientoValidez || null,
-    reconocimiento_limitaciones: value.reconocimientoLimitaciones || null, reconocimiento_observaciones: value.reconocimientoObservaciones || null, data
-  };
-  if (table === 'obras') return {
-    codigo: value.codigo || value.code || '',
-    nombre: value.nombre || value.name || value.obra || '',
-    municipio: value.municipio || '',
-    descripcion: value.descripcion || value.description || '',
-  };
-  const obraId = value.obraId || value.obra_id || await resolveObraId(value.obra);
-  if (table === 'citas') return {
-    obra_id: obraId, trabajador_id: value.trabajadorId ?? value.trabajador_id ?? null,
-    cita_dia: dateOrNull(value.citaDia), cita_hora: timeOrNull(value.citaHora),
-    sitio_reconocimiento: value.sitioReconocimiento || '', num_oferta: value.numOferta || '',
-    quincena: value.quincena || '', supervisor_responsable: value.supervisorResponsable || '',
-    telefono_supervisor: value.telefonoSupervisor || '', dia_comienzo: dateOrNull(value.diaComienzo),
-    dia_fin_contrato: dateOrNull(value.diaFinContrato), dia_contratacion: dateOrNull(value.diaContratacion), data
-  };
-  if (table === 'subcontratas') return {
-    obra_id: obraId, nombre_empresa: value.nombreEmpresa || '', cif: value.cif || '', municipio: value.municipio || '',
-    persona_contacto: value.personaContacto || '', telefono: value.telefono || '', email: value.email || '',
-    actividad_gremio: value.actividadGremio || '', fecha_inicio_prevista: dateOrNull(value.fechaInicioPrevista),
-    supervisor_responsable: value.supervisorResponsable || '', recurso_preventivo: value.recursoPreventivo || '',
-    numero_trabajadores_previstos: Number.isFinite(Number(value.numeroTrabajadoresPrevistos)) ? Number(value.numeroTrabajadoresPrevistos) : null,
-    estado_expediente: value.estadoExpediente || 'pendiente', notas: value.notas || '', data
-  };
-  if (table === 'reconocimientos') return {
-    obra_id: obraId, trabajador_id: value.matchedPersonId ?? value.trabajadorId ?? value.trabajador_id ?? null,
-    dni: value.dni || '', apellidos_nombre: value.apellidosNombre || '', resultado: value.resultado || value.reconocimientoEstado || 'Pendiente',
-    limitaciones: value.limitaciones || value.reconocimientoLimitaciones || '', fecha_reconocimiento: dateOrNull(value.fechaReconocimiento || value.reconocimientoFecha),
-    validez: dateOrNull(value.validez || value.reconocimientoValidez) || '', centro_medico: value.centroMedico || value.sitioReconocimiento || '',
-    observaciones: value.observaciones || value.reconocimientoObservaciones || '', data
-  };
-  if (table === 'contrataciones') return {
-    obra_id: obraId, trabajador_id: value.trabajadorId ?? value.trabajador_id ?? value.idTrabajador ?? null,
-    num_oferta: value.numOferta || '', categoria: value.categoria || '', periodo_inicio: dateOrNull(value.periodoInicio),
-    periodo_fin: dateOrNull(value.periodoFin), quincena: value.quincena || '', estado: value.estado || '',
-    observaciones: value.observaciones || '', data
-  };
+  if (table === "trabajadores")
+    return {
+      obra_id:
+        value.obraId || value.obra_id || (await resolveObraId(value.obra)),
+      supervisor_responsable: value.supervisorResponsable || "",
+      num_oferta: value.numOferta || "",
+      obra: value.obra || "",
+      categoria: value.categoria || "",
+      quincena: value.quincena || "",
+      apellidos_nombre: value.apellidosNombre || "",
+      dni: value.dni || "",
+      fecha_nacimiento: value.fechaNacimiento || "",
+      periodo_inicio: value.periodoInicio || "",
+      periodo_fin: value.periodoFin || "",
+      telefono: value.telefono || "",
+      calzado: value.calzado || "",
+      formacion: value.formacion || "",
+      lugar_formacion: value.lugarFormacion || null,
+      cita_dia: value.citaDia || "",
+      cita_hora: value.citaHora || "",
+      sitio_reconocimiento: value.sitioReconocimiento || "",
+      documentacion_completa: value.documentacionCompleta || "",
+      observaciones: value.observaciones || null,
+      fecha_registro: value.fechaRegistro || "",
+      necesita_reconocimiento: value.necesitaReconocimiento || null,
+      aptitud_medica: value.aptitudMedica || null,
+      limitaciones_aptitud: value.limitacionesAptitud || null,
+      reconocimiento_estado: value.reconocimientoEstado || null,
+      reconocimiento_fecha: value.reconocimientoFecha || null,
+      reconocimiento_validez: value.reconocimientoValidez || null,
+      reconocimiento_limitaciones: value.reconocimientoLimitaciones || null,
+      reconocimiento_observaciones: value.reconocimientoObservaciones || null,
+      data,
+    };
+  if (table === "obras")
+    return {
+      codigo: value.codigo || value.code || "",
+      nombre: value.nombre || value.name || value.obra || "",
+      municipio: value.municipio || "",
+      descripcion: value.descripcion || value.description || "",
+      empresa: value.empresa || "",
+      cif: value.cif || "",
+      recurso_preventivo:
+        value.recursoPreventivo || value.recurso_preventivo || "",
+      recurso_preventivo_categoria:
+        value.recursoPreventivoCategoria ||
+        value.recurso_preventivo_categoria ||
+        "",
+    };
+  const obraId =
+    value.obraId || value.obra_id || (await resolveObraId(value.obra));
+  if (table === "citas")
+    return {
+      obra_id: obraId,
+      trabajador_id: value.trabajadorId ?? value.trabajador_id ?? null,
+      cita_dia: dateOrNull(value.citaDia),
+      cita_hora: timeOrNull(value.citaHora),
+      sitio_reconocimiento: value.sitioReconocimiento || "",
+      num_oferta: value.numOferta || "",
+      quincena: value.quincena || "",
+      supervisor_responsable: value.supervisorResponsable || "",
+      telefono_supervisor: value.telefonoSupervisor || "",
+      dia_comienzo: dateOrNull(value.diaComienzo),
+      dia_fin_contrato: dateOrNull(value.diaFinContrato),
+      dia_contratacion: dateOrNull(value.diaContratacion),
+      data,
+    };
+  if (table === "subcontratas")
+    return {
+      obra_id: obraId,
+      nombre_empresa: value.nombreEmpresa || "",
+      cif: value.cif || "",
+      municipio: value.municipio || "",
+      persona_contacto: value.personaContacto || "",
+      telefono: value.telefono || "",
+      email: value.email || "",
+      actividad_gremio: value.actividadGremio || "",
+      fecha_inicio_prevista: dateOrNull(value.fechaInicioPrevista),
+      supervisor_responsable: value.supervisorResponsable || "",
+      recurso_preventivo: value.recursoPreventivo || "",
+      numero_trabajadores_previstos: Number.isFinite(
+        Number(value.numeroTrabajadoresPrevistos),
+      )
+        ? Number(value.numeroTrabajadoresPrevistos)
+        : null,
+      estado_expediente: value.estadoExpediente || "pendiente",
+      notas: value.notas || "",
+      data,
+    };
+  if (table === "reconocimientos")
+    return {
+      obra_id: obraId,
+      trabajador_id:
+        value.matchedPersonId ??
+        value.trabajadorId ??
+        value.trabajador_id ??
+        null,
+      dni: value.dni || "",
+      apellidos_nombre: value.apellidosNombre || "",
+      resultado: value.resultado || value.reconocimientoEstado || "Pendiente",
+      limitaciones:
+        value.limitaciones || value.reconocimientoLimitaciones || "",
+      fecha_reconocimiento: dateOrNull(
+        value.fechaReconocimiento || value.reconocimientoFecha,
+      ),
+      validez: dateOrNull(value.validez || value.reconocimientoValidez) || "",
+      centro_medico: value.centroMedico || value.sitioReconocimiento || "",
+      observaciones:
+        value.observaciones || value.reconocimientoObservaciones || "",
+      data,
+    };
+  if (table === "contrataciones")
+    return {
+      obra_id: obraId,
+      trabajador_id:
+        value.trabajadorId ?? value.trabajador_id ?? value.idTrabajador ?? null,
+      num_oferta: value.numOferta || "",
+      categoria: value.categoria || "",
+      periodo_inicio: dateOrNull(value.periodoInicio),
+      periodo_fin: dateOrNull(value.periodoFin),
+      quincena: value.quincena || "",
+      estado: value.estado || "",
+      observaciones: value.observaciones || "",
+      data,
+    };
   return { data };
 }
 
-async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRecord) {
+async function syncSubcontrataChecklist(
+  subcontrataId: string,
+  value: DatabaseRecord,
+) {
   const checklist = Array.isArray(value.checklist) ? value.checklist : [];
-  const existing = await supabase.query('subcontrata_documentos', {
+  const existing = await supabase.query("subcontrata_documentos", {
     query: `select=id&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
   });
   const nextIds = new Set<string>();
@@ -137,22 +262,22 @@ async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRe
     const sourceId = String(item.id || `item_${index + 1}`);
     const itemId = `${subcontrataId}:${sourceId}`;
     nextIds.add(itemId);
-    await supabase.query('subcontrata_documentos', {
-      method: 'POST',
-      prefer: 'resolution=merge-duplicates,return=minimal',
+    await supabase.query("subcontrata_documentos", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
       body: {
         id: itemId,
         subcontrata_id: subcontrataId,
-        categoria: item.categoria || 'empresa',
-        nombre: item.nombre || '',
-        descripcion: item.descripcion || '',
-        normativa: item.normativa || '',
+        categoria: item.categoria || "empresa",
+        nombre: item.nombre || "",
+        descripcion: item.descripcion || "",
+        normativa: item.normativa || "",
         obligatorio: item.obligatorio !== false,
-        estado: item.estado || 'pendiente',
+        estado: item.estado || "pendiente",
         fecha_entrega: dateOrNull(item.fechaEntrega),
         fecha_caducidad: dateOrNull(item.fechaCaducidad),
-        observaciones: item.observaciones || '',
-        documento_nombre: item.documentoNombre || '',
+        observaciones: item.observaciones || "",
+        documento_nombre: item.documentoNombre || "",
         data: clean(item),
       },
     });
@@ -160,9 +285,9 @@ async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRe
 
   for (const row of existing || []) {
     if (!nextIds.has(String(row.id))) {
-      await supabase.query('subcontrata_documentos', {
-        method: 'DELETE',
-        prefer: 'return=minimal',
+      await supabase.query("subcontrata_documentos", {
+        method: "DELETE",
+        prefer: "return=minimal",
         query: `id=eq.${encodeURIComponent(String(row.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
       });
     }
@@ -170,81 +295,163 @@ async function syncSubcontrataChecklist(subcontrataId: string, value: DatabaseRe
 }
 
 function hydrate(row: any, table: string): any {
-  if (table === 'obras') return {
+  if (table === "obras")
+    return {
+      id: row.id,
+      codigo: row.codigo,
+      nombre: row.nombre,
+      municipio: row.municipio,
+      descripcion: row.descripcion,
+      empresa: row.empresa,
+      cif: row.cif,
+      recursoPreventivo: row.recurso_preventivo,
+      recursoPreventivoCategoria: row.recurso_preventivo_categoria,
+      ownerId: row.owner_id,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedBy: row.updated_by,
+      updatedAt: row.updated_at,
+    };
+  return {
+    ...(row.data || {}),
     id: row.id,
-    codigo: row.codigo,
-    nombre: row.nombre,
-    municipio: row.municipio,
-    descripcion: row.descripcion,
     ownerId: row.owner_id,
+    obraId: row.obra_id,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
   };
-  return {
-    ...(row.data || {}), id: row.id, ownerId: row.owner_id, obraId: row.obra_id,
-    createdBy: row.created_by, createdAt: row.created_at, updatedBy: row.updated_by, updatedAt: row.updated_at,
-  };
 }
 
-export async function createDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, data: T) {
+export async function createDocument<T extends DatabaseRecord>(
+  collectionName: string,
+  id: string | number,
+  data: T,
+) {
   const user = await requireUser();
   const table = canonicalTable(collectionName);
-  const effectiveData = table === 'trabajadores' ? await enrichWorkerAnnualHiring(data, user.id) : data;
+  const effectiveData =
+    table === "trabajadores"
+      ? await enrichWorkerAnnualHiring(data, user.id)
+      : data;
   const serialized = await serialize(table, effectiveData);
-  const body = table === 'trabajadores'
-    ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
-    : isLegacyNumericTable(table)
-      ? { owner_id: user.id, id: Number(id), ...serialized, created_by: user.id, updated_by: user.id }
-      : { id: String(id), ...serialized };
-  await supabase.query(table, { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body });
-  if (table === 'trabajadores') {
-    void syncMedicalAppointmentFromWorker(effectiveData, id, user.id).catch(error => {
-      console.error('Error sincronizando cita médica automática:', error);
-    });
+  const body =
+    table === "trabajadores"
+      ? {
+          owner_id: user.id,
+          id: Number(id),
+          ...serialized,
+          created_by: user.id,
+          updated_by: user.id,
+        }
+      : table === "obras"
+        ? {
+            owner_id: user.id,
+            id: String(id),
+            ...serialized,
+            created_by: user.id,
+            updated_by: user.id,
+          }
+      : isLegacyNumericTable(table)
+        ? {
+            owner_id: user.id,
+            id: Number(id),
+            ...serialized,
+            created_by: user.id,
+            updated_by: user.id,
+          }
+        : { id: String(id), ...serialized };
+  await supabase.query(table, {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body,
+  });
+  if (table === "trabajadores") {
+    void syncMedicalAppointmentFromWorker(effectiveData, id, user.id).catch(
+      (error) => {
+        console.error("Error sincronizando cita médica automática:", error);
+      },
+    );
   }
-  if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), effectiveData);
+  if (table === "subcontratas")
+    await syncSubcontrataChecklist(String(id), effectiveData);
 }
 
-export async function updateDocument<T extends DatabaseRecord>(collectionName: string, id: string | number, patch: Partial<T>) {
+export async function updateDocument<T extends DatabaseRecord>(
+  collectionName: string,
+  id: string | number,
+  patch: Partial<T>,
+) {
   const user = await requireUser();
   const table = canonicalTable(collectionName);
   const current = await getDocument<T>(collectionName, id);
-  if (!current) throw new Error('El registro ya no existe o no tienes permiso para verlo.');
+  if (!current)
+    throw new Error("El registro ya no existe o no tienes permiso para verlo.");
   const merged = { ...current, ...patch, id } as DatabaseRecord;
   const body: any = await serialize(table, merged);
-  if (isLegacyNumericTable(table) || table === 'trabajadores') body.updated_by = user.id;
-  await supabase.query(table, { method: 'PATCH', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}`, body });
-  if (table === 'trabajadores') {
-    void syncMedicalAppointmentFromWorker(merged, id, user.id).catch(error => {
-      console.error('Error actualizando cita médica automática:', error);
-    });
+  if (isLegacyNumericTable(table) || table === "trabajadores" || table === "obras")
+    body.updated_by = user.id;
+  await supabase.query(table, {
+    method: "PATCH",
+    prefer: "return=minimal",
+    query: `id=eq.${encodeURIComponent(String(id))}`,
+    body,
+  });
+  if (table === "trabajadores") {
+    void syncMedicalAppointmentFromWorker(merged, id, user.id).catch(
+      (error) => {
+        console.error("Error actualizando cita médica automática:", error);
+      },
+    );
   }
-  if (table === 'subcontratas') await syncSubcontrataChecklist(String(id), merged);
+  if (table === "subcontratas")
+    await syncSubcontrataChecklist(String(id), merged);
 }
 
-export async function deleteDocument(collectionName: string, id: string | number) {
+export async function deleteDocument(
+  collectionName: string,
+  id: string | number,
+) {
   await requireUser();
-  await supabase.query(canonicalTable(collectionName), { method: 'DELETE', prefer: 'return=minimal', query: `id=eq.${encodeURIComponent(String(id))}` });
+  await supabase.query(canonicalTable(collectionName), {
+    method: "DELETE",
+    prefer: "return=minimal",
+    query: `id=eq.${encodeURIComponent(String(id))}`,
+  });
 }
 
-export async function getDocument<T = DatabaseRecord>(collectionName: string, id: string | number): Promise<T | null> {
+export async function getDocument<T = DatabaseRecord>(
+  collectionName: string,
+  id: string | number,
+): Promise<T | null> {
   await requireUser();
   const table = canonicalTable(collectionName);
-  const rows = await supabase.query(table, { query: `select=*&id=eq.${encodeURIComponent(String(id))}&limit=1` });
-  return rows?.[0] ? hydrate(rows[0], table) as T : null;
+  const rows = await supabase.query(table, {
+    query: `select=*&id=eq.${encodeURIComponent(String(id))}&limit=1`,
+  });
+  return rows?.[0] ? (hydrate(rows[0], table) as T) : null;
 }
 
-export async function getDocuments<T = DatabaseRecord>(collectionName: string, options: ListOptions = {}): Promise<T[]> {
+export async function getDocuments<T = DatabaseRecord>(
+  collectionName: string,
+  options: ListOptions = {},
+): Promise<T[]> {
   await requireUser();
   const table = canonicalTable(collectionName);
-  const limit = options.limitCount ? `&limit=${options.limitCount}` : '';
-  const rows = await supabase.query(table, { query: `select=*&order=updated_at.desc${limit}` });
+  const limit = options.limitCount ? `&limit=${options.limitCount}` : "";
+  const rows = await supabase.query(table, {
+    query: `select=*&order=updated_at.desc${limit}`,
+  });
   return (rows || []).map((row: any) => hydrate(row, table) as T);
 }
 
-export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string, onUpdate: (items: T[]) => void, options: ListOptions = {}, onError?: (error: Error) => void) {
+export function subscribeToDocuments<T = DatabaseRecord>(
+  collectionName: string,
+  onUpdate: (items: T[]) => void,
+  options: ListOptions = {},
+  onError?: (error: Error) => void,
+) {
   let active = true;
   let refreshTimer: number | null = null;
   let retryTimer: number | null = null;
@@ -262,10 +469,13 @@ export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string,
       consecutiveReadFailures += 1;
       if (consecutiveReadFailures < 3) {
         if (retryTimer !== null) window.clearTimeout(retryTimer);
-        retryTimer = window.setTimeout(() => {
-          retryTimer = null;
-          void run();
-        }, consecutiveReadFailures === 1 ? 500 : 1500);
+        retryTimer = window.setTimeout(
+          () => {
+            retryTimer = null;
+            void run();
+          },
+          consecutiveReadFailures === 1 ? 500 : 1500,
+        );
         return;
       }
       onError?.(error instanceof Error ? error : new Error(String(error)));
@@ -289,23 +499,27 @@ export function subscribeToDocuments<T = DatabaseRecord>(collectionName: string,
   void run();
   const channel = supabase
     .channel(`profea:${table}:${Math.random().toString(36).slice(2)}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table },
+      scheduleRefresh,
+    )
     .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
+      if (status === "SUBSCRIBED") {
         consecutiveReadFailures = 0;
         scheduleRefresh();
       }
     });
 
-  window.addEventListener('online', handleResume);
-  document.addEventListener('visibilitychange', handleResume);
+  window.addEventListener("online", handleResume);
+  document.addEventListener("visibilitychange", handleResume);
 
   return () => {
     active = false;
     if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     if (retryTimer !== null) window.clearTimeout(retryTimer);
-    window.removeEventListener('online', handleResume);
-    document.removeEventListener('visibilitychange', handleResume);
+    window.removeEventListener("online", handleResume);
+    document.removeEventListener("visibilitychange", handleResume);
     void supabase.removeChannel(channel);
   };
 }
