@@ -581,6 +581,19 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
   return { doc, filename };
 };
 
+const getMedicalAppointmentConfirmationStatus = (person: Person): 'confirmada' | 'no_puede_asistir' | 'pendiente' => {
+  const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();
+  if (raw === 'confirmada' || raw === 'no_puede_asistir') return raw;
+  return 'pendiente';
+};
+
+const getMedicalAppointmentConfirmationExcelMark = (person: Person): string => {
+  const status = getMedicalAppointmentConfirmationStatus(person);
+  if (status === 'confirmada') return '✓';
+  if (status === 'no_puede_asistir') return '✕';
+  return '';
+};
+
 export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Reconocimientos Médicos', {
@@ -611,7 +624,7 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
   supervisorCell.font = { name: 'Arial', bold: true, size: 10, color: { argb: BLUE_COLOR_HEX } };
   supervisorCell.alignment = { horizontal: 'right' };
 
-  worksheet.mergeCells('A4:L4');
+  worksheet.mergeCells('A4:M4');
   const mainTitle = worksheet.getCell('A4');
   mainTitle.value = `RELACIÓN DE RECONOCIMIENTOS MÉDICOS`;
   mainTitle.font = { name: 'Arial', bold: true, size: 16, color: { argb: BLUE_COLOR_HEX } };
@@ -627,6 +640,7 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
     { header: 'TELÉFONO', key: 'tel', width: 15 },
     { header: 'DÍA CITA', key: 'dia', width: 15 },
     { header: 'HORA', key: 'hora', width: 10 },
+    { header: 'CONF.', key: 'confirmacion', width: 7 },
     { header: 'SITIO RECONOCIMIENTO', key: 'sitio', width: 30 },
     { header: 'APTITUD RECONOCIMIENTO MÉDICO', key: 'resultado', width: 26 },
     { header: 'LIMITACIONES / VALIDEZ', key: 'limitaciones', width: 35 },
@@ -672,6 +686,7 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
       p.telefono,
       formatDate(p.citaDia),
       p.citaHora,
+      getMedicalAppointmentConfirmationExcelMark(p),
       p.sitioReconocimiento,
       aptitudLabel,
       limitacionesLabel
@@ -683,7 +698,15 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = { top: { style: 'thin', color: { argb: 'EEEEEE' } }, left: { style: 'thin', color: { argb: 'EEEEEE' } }, bottom: { style: 'thin', color: { argb: 'EEEEEE' } }, right: { style: 'thin', color: { argb: 'EEEEEE' } } };
       if (index % 2 !== 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BLUE_HEX } };
-      if (colNumber === 11) {
+      if (colNumber === 10) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (cell.text === '✓') {
+          cell.font = { ...cell.font, color: { argb: '008020' }, bold: true, size: 14 };
+        } else if (cell.text === '✕') {
+          cell.font = { ...cell.font, color: { argb: 'AA0000' }, bold: true, size: 14 };
+        }
+      }
+      if (colNumber === 12) {
         if (cell.text.includes('NO APTO') || cell.text.includes('PENDIENTE')) {
           cell.font = { ...cell.font, color: { argb: 'AA0000' }, bold: true };
         } else if (cell.text.includes('LIMITACIÓN')) {
@@ -697,7 +720,7 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
 
   // Footer Copyright row
   const copyrightRow = worksheet.addRow([]);
-  worksheet.mergeCells(`A${copyrightRow.number}:L${copyrightRow.number}`);
+  worksheet.mergeCells(`A${copyrightRow.number}:M${copyrightRow.number}`);
   const copyrightCell = worksheet.getCell(`A${copyrightRow.number}`);
   copyrightCell.value = `Diputación Provincial de Cádiz | Gestión de Fondos PROFEA`;
   copyrightCell.font = { name: 'Arial', italic: true, size: 8, color: { argb: '777777' } };
@@ -738,7 +761,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   doc.setLineWidth(0.5);
   doc.line(14, 28, 283, 28);
 
-  const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];
+  const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "CONF.", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];
   const tableRows = dataToExport.map(p => {
     const { estado, limitaciones, validez } = getAptitudMedicaInfo(p);
     let aptitudCell = 'PENDIENTE';
@@ -759,6 +782,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
       `${p.apellidosNombre}\n${p.dni}\nNac: ${formatDate(p.fechaNacimiento)}`,
       p.telefono,
       `${formatDate(p.citaDia)}\n${p.citaHora}`,
+      { content: '', attendanceStatus: getMedicalAppointmentConfirmationStatus(p) } as any,
       p.sitioReconocimiento,
       aptitudCell
     ];
@@ -773,16 +797,21 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
     columnStyles: {
       0: { cellWidth: 18 },
-      1: { cellWidth: 30 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 46 },
-      4: { cellWidth: 22 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 20 },
+      3: { cellWidth: 43 },
+      4: { cellWidth: 20 },
       5: { cellWidth: 24 },
-      6: { cellWidth: 42 },
-      7: { cellWidth: 65 }
+      6: { cellWidth: 10, halign: 'center' as const },
+      7: { cellWidth: 40 },
+      8: { cellWidth: 66 }
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 7) {
+      if (data.section === 'body' && data.column.index === 6) {
+        data.cell.styles.halign = 'center';
+        data.cell.styles.valign = 'middle';
+      }
+      if (data.section === 'body' && data.column.index === 8) {
         const text = data.cell.text.join(' ');
         if (text.includes('NO APTO') || text.includes('PENDIENTE')) {
           data.cell.styles.textColor = [180, 0, 0];
@@ -794,6 +823,25 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
           data.cell.styles.textColor = [0, 120, 50];
           data.cell.styles.fontStyle = 'bold';
         }
+      }
+    },
+    didDrawCell: (data) => {
+      if (data.section !== 'body' || data.column.index !== 6) return;
+      const status = String((data.cell.raw as any)?.attendanceStatus || 'pendiente');
+      if (status === 'pendiente') return;
+
+      const cx = data.cell.x + data.cell.width / 2;
+      const cy = data.cell.y + data.cell.height / 2;
+      doc.setLineWidth(0.8);
+
+      if (status === 'confirmada') {
+        doc.setDrawColor(0, 128, 32);
+        doc.line(cx - 2.4, cy, cx - 0.6, cy + 1.8);
+        doc.line(cx - 0.6, cy + 1.8, cx + 2.8, cy - 2.1);
+      } else if (status === 'no_puede_asistir') {
+        doc.setDrawColor(170, 0, 0);
+        doc.line(cx - 2.2, cy - 2.2, cx + 2.2, cy + 2.2);
+        doc.line(cx + 2.2, cy - 2.2, cx - 2.2, cy + 2.2);
       }
     },
     alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
