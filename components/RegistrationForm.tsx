@@ -80,6 +80,23 @@ const isValidDNI = (dni: string): boolean => {
   return analyzeDNI(dni).status === 'valid';
 };
 
+const normalizeIdentityWords = (value: string) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toUpperCase()
+  .replace(/[^A-Z0-9Ñ]+/g, ' ')
+  .split(/\s+/)
+  .filter(word => word.length >= 3);
+
+const documentLikelyMatchesPerson = (personName: string, documentText: string): boolean => {
+  const nameWords = Array.from(new Set(normalizeIdentityWords(personName)));
+  if (!nameWords.length || !documentText) return true;
+  const docWords = new Set(normalizeIdentityWords(documentText));
+  const matches = nameWords.filter(word => docWords.has(word)).length;
+  const minimum = nameWords.length <= 2 ? nameWords.length : Math.max(2, Math.ceil(nameWords.length * 0.6));
+  return matches >= minimum;
+};
+
 const isValidPhone = (phone: string): boolean => {
   const cleanPhone = phone.replace(/\s/g, '');
   return /^[6789]\d{8}$/.test(cleanPhone);
@@ -155,10 +172,26 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
   useEffect(() => {
     const handleAdministrativeScan = (event: Event) => {
-      const detail = (event as CustomEvent<{ nuss?: string; iban?: string }>).detail || {};
-      if (!detail.nuss && !detail.iban) return;
+      const detail = (event as CustomEvent<{ dni?: string; birthDate?: string; nuss?: string; iban?: string; documentText?: string }>).detail || {};
+      if (!detail.dni && !detail.birthDate && !detail.nuss && !detail.iban) return;
       setFormData(prev => {
         const next = { ...prev };
+        const detectedDni = (detail.dni || '').replace(/[\s-]/g, '').toUpperCase();
+        const currentDni = (prev.dni || '').replace(/[\s-]/g, '').toUpperCase();
+        const nameMatches = documentLikelyMatchesPerson(prev.apellidosNombre, detail.documentText || '');
+        const dniMatchesExisting = !!detectedDni && !!currentDni && detectedDni === currentDni;
+
+        if (prev.apellidosNombre && detail.documentText && !nameMatches && !dniMatchesExisting) {
+          const continueAnyway = window.confirm(`No se ha podido verificar que el documento pertenezca a ${prev.apellidosNombre}. ¿Quieres incorporar igualmente los datos detectados?`);
+          if (!continueAnyway) return prev;
+        }
+
+        if (detectedDni && isValidDNI(detectedDni)) {
+          if (!currentDni || currentDni === detectedDni || window.confirm(`Este registro ya tiene el DNI/NIE ${currentDni}. ¿Sustituirlo por ${detectedDni}?`)) next.dni = detectedDni;
+        }
+        if (detail.birthDate) {
+          if (!prev.fechaNacimiento || prev.fechaNacimiento === detail.birthDate || window.confirm(`Este registro ya tiene una fecha de nacimiento. ¿Sustituirla por ${detail.birthDate.split('-').reverse().join('/')}?`)) next.fechaNacimiento = detail.birthDate;
+        }
         if (detail.nuss) {
           const detected = normalizeSpanishSocialSecurityNumber(detail.nuss);
           if (!prev.numeroSeguridadSocial || normalizeSpanishSocialSecurityNumber(prev.numeroSeguridadSocial) === detected || window.confirm('Este registro ya tiene un Nº de Seguridad Social. ¿Sustituirlo por el detectado?')) next.numeroSeguridadSocial = detected;

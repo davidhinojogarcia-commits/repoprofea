@@ -30,6 +30,7 @@ import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
 import { getBase64Image, OFFICIAL_LOGO_BASE64 } from '../src/lib/exportUtils';
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
+import { recognizeAdministrativePagesFast } from '../src/lib/fastAdministrativeOcr';
 import { detectAdministrativeDataFromText, formatIban, formatSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
 import { RemoteScannerPairing } from './RemoteScannerPairing';
 
@@ -414,34 +415,47 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
   const handleRecognizeAdministrativeData = async () => {
     if (!pages.length) {
-      onToast('Captura primero el documento que contiene Seguridad Social o IBAN.', 'error');
+      onToast('Captura primero el documento que contiene DNI/NIE, fecha de nacimiento, Seguridad Social o IBAN.', 'error');
       return;
     }
     setIsRecognizingAdministrative(true);
     try {
-      const texts: string[] = [];
-      for (let index = 0; index < pages.length; index += 1) {
-        const file = await dataUrlToFile(pages[index].base64, pages[index].name);
-        const extracted = await extractClientDocumentText(file, (message) => setRecognitionStep(`${message} · ${index + 1}/${pages.length}`));
-        if (extracted.text) texts.push(extracted.text);
-      }
-      const detected = detectAdministrativeDataFromText(texts.join('\n\n'));
-      if (!detected.nuss && !detected.iban) {
-        onToast('No se ha detectado un Nº de Seguridad Social o IBAN válido. Repite la foto o introdúcelo manualmente.', 'error');
+      const detected = await recognizeAdministrativePagesFast(
+        pages.map(page => ({ base64: page.base64, name: page.name })),
+        (message) => setRecognitionStep(message),
+      );
+
+      if (!detected.dni && !detected.birthDate && !detected.nuss && !detected.iban) {
+        onToast('No se han detectado datos administrativos válidos. Repite la foto o introdúcelos manualmente.', 'error');
         return;
       }
+
+      const elapsed = Math.max(0.1, detected.elapsedMs / 1000).toFixed(1);
       const lines = [
+        detected.dni ? `DNI/NIE: ${detected.dni}` : 'DNI/NIE: no detectado',
+        detected.birthDate ? `Fecha de nacimiento: ${detected.birthDate.split('-').reverse().join('/')}` : 'Fecha de nacimiento: no detectada',
         detected.nuss ? `Nº Seguridad Social: ${formatSpanishSocialSecurityNumber(detected.nuss)}` : 'Nº Seguridad Social: no detectado',
         detected.iban ? `IBAN: ${formatIban(detected.iban)}` : 'IBAN: no detectado',
+        `OCR: ${detected.pagesProcessed} página(s) · ${elapsed} s`,
         ...detected.warnings,
       ];
-      if (!window.confirm(`DATOS ADMINISTRATIVOS DETECTADOS\n\n${lines.join('\n')}\n\n¿Incorporar estos datos al trabajador que estás registrando?`)) return;
-      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', { detail: { nuss: detected.nuss, iban: detected.iban } }));
-      onToast('Datos administrativos validados e incorporados al registro en curso.', 'success');
+
+      if (!window.confirm(`DATOS DETECTADOS\n\n${lines.join('\n')}\n\n¿Incorporar estos datos al trabajador que estás registrando?`)) return;
+
+      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
+        detail: {
+          dni: detected.dni,
+          birthDate: detected.birthDate,
+          nuss: detected.nuss,
+          iban: detected.iban,
+          documentText: detected.text,
+        },
+      }));
+      onToast(`Datos reconocidos en ${elapsed} s e incorporados al registro en curso.`, 'success');
       handleClose();
     } catch (error: any) {
-      console.error('OCR administrativo:', error?.message || error);
-      onToast('No se han podido reconocer los datos administrativos. Puedes repetir el escaneo o introducirlos manualmente.', 'error');
+      console.error('OCR administrativo rápido:', error?.message || error);
+      onToast('No se han podido reconocer los datos. Puedes repetir el escaneo o introducirlos manualmente.', 'error');
     } finally {
       setIsRecognizingAdministrative(false);
       setRecognitionStep('');
