@@ -4,6 +4,12 @@
 alter table public.inventory_parks
   add column if not exists coordinator_email text null;
 
+-- El nombre y la zona dejan de ser únicos globalmente: dos supervisores pueden usar
+-- el mismo nombre/zona sin mezclar inventarios. La unicidad queda limitada al propietario.
+drop index if exists public.inventory_parks_name_zone_unique;
+create unique index if not exists inventory_parks_owner_name_zone_unique
+  on public.inventory_parks (created_by, lower(nombre), lower(zona));
+
 alter table public.inventory_maintenance
   add column if not exists mechanic_name text null,
   add column if not exists signed_document_paths jsonb not null default '[]'::jsonb;
