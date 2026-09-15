@@ -15,14 +15,14 @@
   "icons": [
     {
       "src": "/favicon.png",
-      "sizes": "any",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo-diputacion-profea.png",
+      "src": "/logo-diputacion-profea.svg",
       "sizes": "any",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     }
   ]
