@@ -89,15 +89,23 @@ const setupDoc = (
   doc.setFillColor(...BLUE);
   doc.rect(0, 19, w, 18, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11.5);
+  let titleFontSize = 11.5;
+  doc.setFontSize(titleFontSize);
+  const titleText = title.toUpperCase();
+  const titleMaxWidth = w - 28;
+  while (titleFontSize > 8.2 && doc.getTextWidth(titleText) > titleMaxWidth) {
+    titleFontSize -= 0.4;
+    doc.setFontSize(titleFontSize);
+  }
   doc.setTextColor(255, 255, 255);
-  doc.text(title.toUpperCase(), 14, 26.3);
+  doc.text(titleText, 14, 26.3, { maxWidth: titleMaxWidth });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.2);
   doc.setTextColor(225, 239, 249);
-  doc.text(subtitle, 14, 31.4);
+  doc.text(subtitle, 14, 31.4, { maxWidth: Math.max(90, w * 0.52) });
   doc.text(`${context.obra} · ${context.periodoLabel}`, w - 14, 31.4, {
     align: "right",
+    maxWidth: Math.max(95, w * 0.38),
   });
 
   return { doc, config, w };
@@ -262,7 +270,8 @@ export const generateEpiDeliveryPdf = (
       ],
     ],
     body,
-    margin: { left: 10, right: 10, bottom: 43 },
+    margin: { left: 14, right: 14, bottom: 43 },
+    tableWidth: w - 28,
     theme: "grid",
     styles: {
       font: "helvetica",
@@ -284,11 +293,18 @@ export const generateEpiDeliveryPdf = (
     },
     alternateRowStyles: { fillColor: [250, 252, 254] },
     columnStyles: {
-      0: { cellWidth: 8, halign: "center" },
+      0: { cellWidth: 7, halign: "center" },
       1: { cellWidth: 31 },
-      2: { cellWidth: 25 },
-      3: { cellWidth: 20 },
-      11: { cellWidth: 27 },
+      2: { cellWidth: 24 },
+      3: { cellWidth: 19 },
+      4: { cellWidth: 18, halign: "center" },
+      5: { cellWidth: 22, halign: "center" },
+      6: { cellWidth: 18, halign: "center" },
+      7: { cellWidth: 18, halign: "center" },
+      8: { cellWidth: 19, halign: "center" },
+      9: { cellWidth: 22, halign: "center" },
+      10: { cellWidth: 20, halign: "center" },
+      11: { cellWidth: 31 },
     },
     didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
@@ -339,6 +355,7 @@ export const generateTrainingInformationPdf = (
       "",
     ]),
     margin: { left: 14, right: 14, bottom: 43 },
+    tableWidth: w - 28,
     theme: "grid",
     styles: {
       font: "helvetica",
@@ -459,7 +476,8 @@ export const generateMachineryAuthorizationPdf = (
         "",
       ];
     }),
-    margin: { left: 12, right: 12, bottom: 43 },
+    margin: { left: 14, right: 14, bottom: 43 },
+    tableWidth: w - 28,
     theme: "grid",
     styles: {
       font: "helvetica",
@@ -480,16 +498,16 @@ export const generateMachineryAuthorizationPdf = (
     },
     alternateRowStyles: { fillColor: [250, 252, 254] },
     columnStyles: {
-      0: { cellWidth: 8, halign: "center" },
-      1: { cellWidth: 39 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 31 },
-      4: { cellWidth: 55 },
-      5: { cellWidth: 25 },
-      6: { cellWidth: 29 },
-      7: { cellWidth: 24 },
-      8: { cellWidth: 25 },
-      9: { cellWidth: 29 },
+      0: { cellWidth: 7, halign: "center" },
+      1: { cellWidth: 35 },
+      2: { cellWidth: 20 },
+      3: { cellWidth: 28 },
+      4: { cellWidth: 50 },
+      5: { cellWidth: 22 },
+      6: { cellWidth: 25 },
+      7: { cellWidth: 22 },
+      8: { cellWidth: 23 },
+      9: { cellWidth: 27 },
     },
     didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
