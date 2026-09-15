@@ -29,6 +29,9 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
 import { getBase64Image, OFFICIAL_LOGO_BASE64 } from '../src/lib/exportUtils';
+import { extractClientDocumentText } from '../src/lib/clientDocumentText';
+import { detectAdministrativeDataFromText, formatIban, formatSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
+import { RemoteScannerPairing } from './RemoteScannerPairing';
 
 interface CapturedPage {
   id: string;
@@ -75,6 +78,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   // States for AI Worker Recognition & Relation Sheet
   const [recognizedWorkers, setRecognizedWorkers] = useState<WorkerRelation[]>([]);
   const [isRecognizing, setIsRecognizing] = useState(false);
+  const [isRecognizingAdministrative, setIsRecognizingAdministrative] = useState(false);
   const [showRelationView, setShowRelationView] = useState(false);
   const [recognitionStep, setRecognitionStep] = useState<string>('');
 
@@ -194,6 +198,22 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRemoteCapture = React.useCallback((imageData: string, fileName: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const page: CapturedPage = {
+        id: `remote-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        base64: imageData,
+        name: fileName || `Captura_movil_${Date.now()}.jpg`,
+        size: Math.round((imageData.length * 3) / 4),
+        width: img.width || 1200,
+        height: img.height || 1600,
+      };
+      setPages(prev => [...prev, page]);
+    };
+    img.src = imageData;
+  }, []);
 
   if (!isOpen) return null;
 
@@ -383,6 +403,48 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     } finally {
       setIsRecognizing(false);
       setRecognitionStep("");
+    }
+  };
+
+  const dataUrlToFile = async (dataUrl: string, name: string): Promise<File> => {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    return new File([blob], name || 'documento.jpg', { type: blob.type || 'image/jpeg' });
+  };
+
+  const handleRecognizeAdministrativeData = async () => {
+    if (!pages.length) {
+      onToast('Captura primero el documento que contiene Seguridad Social o IBAN.', 'error');
+      return;
+    }
+    setIsRecognizingAdministrative(true);
+    try {
+      const texts: string[] = [];
+      for (let index = 0; index < pages.length; index += 1) {
+        const file = await dataUrlToFile(pages[index].base64, pages[index].name);
+        const extracted = await extractClientDocumentText(file, (message) => setRecognitionStep(`${message} · ${index + 1}/${pages.length}`));
+        if (extracted.text) texts.push(extracted.text);
+      }
+      const detected = detectAdministrativeDataFromText(texts.join('\n\n'));
+      if (!detected.nuss && !detected.iban) {
+        onToast('No se ha detectado un Nº de Seguridad Social o IBAN válido. Repite la foto o introdúcelo manualmente.', 'error');
+        return;
+      }
+      const lines = [
+        detected.nuss ? `Nº Seguridad Social: ${formatSpanishSocialSecurityNumber(detected.nuss)}` : 'Nº Seguridad Social: no detectado',
+        detected.iban ? `IBAN: ${formatIban(detected.iban)}` : 'IBAN: no detectado',
+        ...detected.warnings,
+      ];
+      if (!window.confirm(`DATOS ADMINISTRATIVOS DETECTADOS\n\n${lines.join('\n')}\n\n¿Incorporar estos datos al trabajador que estás registrando?`)) return;
+      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', { detail: { nuss: detected.nuss, iban: detected.iban } }));
+      onToast('Datos administrativos validados e incorporados al registro en curso.', 'success');
+      handleClose();
+    } catch (error: any) {
+      console.error('OCR administrativo:', error?.message || error);
+      onToast('No se han podido reconocer los datos administrativos. Puedes repetir el escaneo o introducirlos manualmente.', 'error');
+    } finally {
+      setIsRecognizingAdministrative(false);
+      setRecognitionStep('');
     }
   };
 
@@ -795,7 +857,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">Escáner de Documentos</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Multipage con cámara del dispositivo y compresión optimizada</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Escáner móvil vinculado por QR y cámara de este dispositivo</p>
             </div>
           </div>
           <button 
@@ -959,6 +1021,8 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             </div>
           ) : (
             <>
+              <RemoteScannerPairing onCapture={handleRemoteCapture} onToast={onToast} />
+
               {/* Continuous Capture Mode Switch Card */}
               <div className="p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1271,6 +1335,18 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
               {/* Compile buttons */}
               <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto shrink-0">
+                {pages.length > 0 && (
+                  <button
+                    onClick={handleRecognizeAdministrativeData}
+                    disabled={isRecognizingAdministrative || isRecognizing}
+                    className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50"
+                    title="Reconocer Nº de Seguridad Social e IBAN con OCR local"
+                  >
+                    {isRecognizingAdministrative ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cpu className="w-4 h-4" />}
+                    Seguridad Social / IBAN
+                  </button>
+                )}
+
                 {pages.length > 0 && (
                   <button
                     onClick={handleRecognizeWorkers}

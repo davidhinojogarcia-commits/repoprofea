@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files, Wrench } from 'lucide-react';
 import { useAuthShell } from './AuthGate';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'inventario' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -56,8 +56,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Prevención y CAE',
       items: [
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
-        { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
+        { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
+      ],
+    },
+    {
+      label: 'Logística',
+      items: [
+        { id: 'inventario', label: 'Herramientas y maquinaria', icon: Wrench },
       ],
     },
     {
@@ -167,12 +173,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <Camera className="w-5 h-5 group-hover:scale-115 transition-transform" />
             <span className={`font-bold text-xs tracking-wider uppercase whitespace-nowrap transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
-              Escanear Cámara
+              Escáner
             </span>
 
             {isCollapsed && !isMobileOpen && (
               <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-[10px] font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-md">
-                Escanear Cámara
+                Escáner
               </div>
             )}
           </button>

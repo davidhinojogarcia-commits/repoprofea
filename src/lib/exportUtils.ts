@@ -211,6 +211,26 @@ const LIGHT_BLUE_RGB: [number, number, number] = [240, 247, 255];
 const INSTITUTION_NAME = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ';
 const INSTITUTION_SERVICE = 'GESTIÓN DE FONDOS PROFEA';
 const INSTITUTION_FOOTER = 'Diputación Provincial de Cádiz · Gestión de Fondos PROFEA';
+const COPYRIGHT_OWNER = 'David Hinojo García';
+const COPYRIGHT_PRODUCT = 'GestionProfea';
+const getCopyrightText = () => `© ${new Date().getFullYear()} ${COPYRIGHT_OWNER} · ${COPYRIGHT_PRODUCT} · Todos los derechos reservados`;
+
+export const applyPdfCopyrightStamp = (doc: jsPDF) => {
+  const marker = '__gestionProfeaCopyrightStamped';
+  if ((doc as any)[marker]) return;
+  const totalPages = (doc as any).internal.getNumberOfPages ? (doc as any).internal.getNumberOfPages() : 1;
+  for (let page = 1; page <= totalPages; page++) {
+    doc.setPage(page);
+    const pageSize = doc.internal.pageSize;
+    const pageHeight = pageSize.height || pageSize.getHeight();
+    const pageWidth = pageSize.width || pageSize.getWidth();
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.4);
+    doc.setTextColor(125, 135, 145);
+    doc.text(getCopyrightText(), pageWidth / 2, pageHeight - 2.8, { align: 'center' });
+  }
+  (doc as any)[marker] = true;
+};
 
 
 /**
@@ -336,7 +356,7 @@ const applyInstitutionalExcelStandard = (workbook: ExcelJS.Workbook, worksheet: 
   workbook.company = 'Diputación Provincial de Cádiz';
   workbook.subject = 'Gestión de Fondos PROFEA';
   workbook.category = 'Informe institucional';
-  workbook.description = 'Documento generado por el Sistema de Gestión de Fondos PROFEA';
+  workbook.description = `Documento generado por el Sistema de Gestión de Fondos PROFEA. ${getCopyrightText()}`;
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -356,7 +376,7 @@ const applyInstitutionalExcelStandard = (workbook: ExcelJS.Workbook, worksheet: 
   };
 
   const header = `&L&9${INSTITUTION_NAME}&C&B&9${INSTITUTION_SERVICE}`;
-  const footer = `&L&8${INSTITUTION_FOOTER}&R&8Página &P de &N`;
+  const footer = `&L&8${INSTITUTION_FOOTER}&C&7${getCopyrightText()}&R&8Página &P de &N`;
   worksheet.headerFooter = {
     ...worksheet.headerFooter,
     oddHeader: header,
@@ -1499,6 +1519,7 @@ export const downloadExcel = (buffer: ExcelJS.Buffer, filename: string) => {
 };
 
 export const downloadPDF = (doc: jsPDF, filename: string) => {
+  applyPdfCopyrightStamp(doc);
   doc.save(filename);
 };
 

@@ -455,12 +455,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         </p>
 
         <div className="mt-6 flex flex-wrap gap-3 justify-center items-center">
-          <button 
-            onClick={handleImportClick} 
-            className="flex items-center justify-center bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl transition-all text-sm font-bold shadow-md hover:shadow-lg cursor-pointer"
-          >
-             <Upload className="w-5 h-5 mr-2" /> Importación de trabajadores
-          </button>
           {(onUndo || onRedo) && (
             <div className="flex items-center gap-2">
               {onUndo && (
@@ -629,16 +623,13 @@ export const PersonList: React.FC<PersonListProps> = ({
                    )}
                  </div>
                )}
-               <button onClick={handleImportClick} className="directorio-import-button flex-1 md:flex-none flex items-center justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-300 px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border border-blue-200 dark:border-blue-800/80 cursor-pointer">
-                  <Upload className="w-4 h-4 mr-2" /> Importación de trabajadores
-               </button>
                <button onClick={() => onEmail(peopleToExport)} className={`flex-1 md:flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 ring-2 ring-indigo-500/20 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'}`}>
                   <Mail className="w-4 h-4 mr-2 text-[#00548E] dark:text-blue-400" /> Gmail{isSelectionActive ? ` (${peopleToExport.length})` : ''}
                </button>
-               <button onClick={() => onExportPDF(peopleToExport)} className={`flex-1 md:flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300 ring-2 ring-red-500/20 dark:bg-red-950/60 dark:text-red-200 dark:border-red-700' : 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80'}`}>
+               <button onClick={() => onExportPDF(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300 ring-2 ring-red-500/20 dark:bg-red-950/60 dark:text-red-200 dark:border-red-700' : 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80'}`}>
                   <FileText className="w-4 h-4 mr-2" /> PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
                </button>
-               <button onClick={() => onExport(peopleToExport)} className={`flex-1 md:flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border-emerald-300 ring-2 ring-emerald-500/20 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80'}`}>
+               <button onClick={() => onExport(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border-emerald-300 ring-2 ring-emerald-500/20 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80'}`}>
                   <Download className="w-4 h-4 mr-2" /> Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
                </button>
           </div>
@@ -646,29 +637,29 @@ export const PersonList: React.FC<PersonListProps> = ({
                <div className="flex flex-col gap-2 w-full sm:w-auto">
                  <div className="directorio-export-row flex items-center justify-end gap-2">
                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Reconocimientos Médicos:</span>
-                   <button onClick={() => onExportRRMMPDF(peopleToExport)} className="flex-1 md:flex-none flex items-center justify-center bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 dark:border-orange-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF Reconocimientos{isSelectionActive ? ` (${peopleToExport.length})` : ''}
+                   <button onClick={() => onExportRRMMPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 dark:border-orange-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
+                      <FileText className="w-3 h-3 mr-1.5" /> PDF
                    </button>
-                   <button onClick={() => onExportRRMMExcel(peopleToExport)} className="flex-1 md:flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel Reconocimientos{isSelectionActive ? ` (${peopleToExport.length})` : ''}
+                   <button onClick={() => onExportRRMMExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
+                      <Download className="w-3 h-3 mr-1.5" /> Excel
                    </button>
                  </div>
                  <div className="directorio-export-row flex items-center justify-end gap-2">
                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Resumen Calzado:</span>
-                   <button onClick={() => onExportCalzadoPDF(peopleToExport)} className="flex-1 md:flex-none flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> Calzado PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
+                   <button onClick={() => onExportCalzadoPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
+                      <FileText className="w-3 h-3 mr-1.5" /> PDF
                    </button>
-                   <button onClick={() => onExportCalzadoExcel(peopleToExport)} className="flex-1 md:flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Calzado Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
+                   <button onClick={() => onExportCalzadoExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
+                      <Download className="w-3 h-3 mr-1.5" /> Excel
                    </button>
                  </div>
                  <div className="directorio-export-row flex items-center justify-end gap-2">
                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Formación PRL 20h:</span>
-                   <button onClick={() => onExportPRLPDF(peopleToExport)} className="flex-1 md:flex-none flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PRL PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
+                   <button onClick={() => onExportPRLPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
+                      <FileText className="w-3 h-3 mr-1.5" /> PDF
                    </button>
-                   <button onClick={() => onExportPRLExcel(peopleToExport)} className="flex-1 md:flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> PRL Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
+                   <button onClick={() => onExportPRLExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
+                      <Download className="w-3 h-3 mr-1.5" /> Excel
                    </button>
                  </div>
                </div>

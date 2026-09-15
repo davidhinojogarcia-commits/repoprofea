@@ -211,7 +211,7 @@ export const Stats: React.FC<StatsProps> = ({
                 className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
                 title="Exportar documento PDF formateado con el resumen de estadísticas actual para entrega administrativa"
               >
-                <FileText className="w-4 h-4" /> Exportar Resumen PDF
+                <FileText className="w-4 h-4" /> Resumen estadístico formaciones
               </button>
             )}
 
@@ -222,11 +222,11 @@ export const Stats: React.FC<StatsProps> = ({
                 onClick={onOpenReportModal}
                 className={`${BUTTON_PRIMARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
               >
-                <FileText className="w-4 h-4" /> Generar Informe Periódico
+                <FileText className="w-4 h-4" /> Análisis mano de obra
               </button>
             )}
 
-            {/* Botón de Exportar Resumen de Obra */}
+            {/* Botón de Relación nominal de trabajadores por obra */}
             {onExportObraSummary && (
               <button
                 type="button"
@@ -234,7 +234,7 @@ export const Stats: React.FC<StatsProps> = ({
                 className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
                 title="Exportar dossier a pie de obra del personal asignado"
               >
-                <Building2 className="w-4 h-4" /> Exportar Resumen de Obra
+                <Building2 className="w-4 h-4" /> Relación nominal de trabajadores por obra
               </button>
             )}
 

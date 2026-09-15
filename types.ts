@@ -11,6 +11,8 @@ export interface Person {
   periodoInicio: string;
   periodoFin: string;
   telefono: string;
+  numeroSeguridadSocial?: string;
+  iban?: string;
   calzado: string;
   formacion: string;
   lugarFormacion?: string;

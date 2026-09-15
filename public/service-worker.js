@@ -1,14 +1,8 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-static-v2';
-const STATIC_ASSETS = [
-  '/favicon.png',
-  '/logo.png',
-  '/logo-diputacion-profea.png',
-  '/logo-diputacion-profea.svg',
-  '/logo-diputacion-profea-dark.svg'
-];
+const CACHE_NAME = 'profea-static-v3';
+const STATIC_ASSETS = ['/manifest.webmanifest','/favicon.ico','/icons/favicon-16x16.png','/icons/favicon-32x32.png','/icons/apple-touch-icon.png','/icons/icon-192.png','/icons/icon-512.png','/icons/icon-maskable-192.png','/icons/icon-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
 
 // 1. INSTALACIÓN: Guardar en caché recursos estáticos básicos
 self.addEventListener('install', (event) => {
