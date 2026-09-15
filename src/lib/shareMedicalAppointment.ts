@@ -1,6 +1,42 @@
 import type { Person } from '../../types';
 import { generateMedicalTicketsPDF } from './exportUtils';
 
+let reservedWhatsAppWindow: Window | null = null;
+
+export const reserveMedicalAppointmentWhatsAppWindow = (): boolean => {
+  try {
+    if (reservedWhatsAppWindow && !reservedWhatsAppWindow.closed) {
+      reservedWhatsAppWindow.close();
+    }
+    // Must run synchronously from the user's tap. Safari/iOS may block a window
+    // opened later after awaits, which was causing the PDF to open but not WhatsApp.
+    reservedWhatsAppWindow = window.open('about:blank', '_blank');
+    if (reservedWhatsAppWindow) reservedWhatsAppWindow.opener = null;
+    return Boolean(reservedWhatsAppWindow);
+  } catch {
+    reservedWhatsAppWindow = null;
+    return false;
+  }
+};
+
+export const cancelReservedMedicalAppointmentWhatsAppWindow = () => {
+  try {
+    if (reservedWhatsAppWindow && !reservedWhatsAppWindow.closed) {
+      reservedWhatsAppWindow.close();
+    }
+  } catch {
+    // Ignore browser-specific close errors.
+  } finally {
+    reservedWhatsAppWindow = null;
+  }
+};
+
+const consumeReservedWhatsAppWindow = (): Window | null => {
+  const target = reservedWhatsAppWindow;
+  reservedWhatsAppWindow = null;
+  return target && !target.closed ? target : null;
+};
+
 const normalizePhone = (value: string): string => {
   let digits = String(value || '').replace(/\D/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
@@ -109,26 +145,48 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
 
 export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder = false, confirmationLinks?: MedicalConfirmationLinks): Promise<'shared' | 'opened' | 'cancelled'> => {
   const phone = normalizePhone(person.telefono || '');
-  if (phone.length < 10) throw new Error('El trabajador no tiene un teléfono válido para WhatsApp.');
+  if (phone.length < 10) {
+    cancelReservedMedicalAppointmentWhatsAppWindow();
+    throw new Error('El trabajador no tiene un teléfono válido para WhatsApp.');
+  }
 
   const text = buildMedicalAppointmentWhatsAppText(person, reminder, confirmationLinks);
-  // Open the destination immediately from the user's click. This preserves the worker
-  // phone in WhatsApp Web/app and avoids popup blockers after asynchronous PDF work.
-  const whatsappWindow = window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-  if (whatsappWindow) whatsappWindow.opener = null;
+  const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  const whatsappWindow = consumeReservedWhatsAppWindow();
+
+  // Navigate the window reserved by the original tap before generating/downloading
+  // the PDF. This reliably launches WhatsApp on Safari/iOS instead of losing the
+  // navigation after async database and PDF work.
+  if (whatsappWindow) {
+    try {
+      whatsappWindow.location.replace(whatsappUrl);
+    } catch {
+      try {
+        whatsappWindow.location.href = whatsappUrl;
+      } catch {
+        // Fall through; the same-tab fallback below will be used if needed.
+      }
+    }
+  }
+
+  // If the browser blocked the reserved window, prioritize opening WhatsApp rather
+  // than leaving the user trapped in a PDF preview. The normal iOS/Safari path uses
+  // the reserved window and still downloads the PDF below.
+  if (!whatsappWindow) {
+    window.location.href = whatsappUrl;
+    return 'opened';
+  }
 
   const pdfFile = await createMedicalAppointmentPdfFile(person);
   const url = URL.createObjectURL(pdfFile);
   const link = document.createElement('a');
   link.href = url;
   link.download = pdfFile.name;
+  link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  window.setTimeout(() => URL.revokeObjectURL(url), 3000);
 
-  if (!whatsappWindow) {
-    window.location.href = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-  }
   return 'opened';
 };
