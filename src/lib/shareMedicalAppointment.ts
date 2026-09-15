@@ -111,22 +111,12 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
   if (phone.length < 10) throw new Error('El trabajador no tiene un teléfono válido para WhatsApp.');
 
   const text = buildMedicalAppointmentWhatsAppText(person, reminder, confirmationLinks);
+  // Open the destination immediately from the user's click. This preserves the worker
+  // phone in WhatsApp Web/app and avoids popup blockers after asynchronous PDF work.
+  const whatsappWindow = window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+  if (whatsappWindow) whatsappWindow.opener = null;
+
   const pdfFile = await createMedicalAppointmentPdfFile(person);
-
-  if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
-    try {
-      await navigator.share({
-        title: reminder ? 'Recordatorio de reconocimiento médico' : 'Citación para reconocimiento médico',
-        text,
-        files: [pdfFile],
-      });
-      return 'shared';
-    } catch (error: any) {
-      if (error?.name === 'AbortError') return 'cancelled';
-      console.warn('No se pudo compartir directamente el PDF; se usará WhatsApp con texto.', error);
-    }
-  }
-
   const url = URL.createObjectURL(pdfFile);
   const link = document.createElement('a');
   link.href = url;
@@ -136,6 +126,8 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
   document.body.removeChild(link);
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 
-  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  if (!whatsappWindow) {
+    window.location.href = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  }
   return 'opened';
 };
