@@ -23,7 +23,7 @@ export async function persistMedicalRecognition(person: Person): Promise<void> {
 
   const recognitionId = `${data.user.id}:${person.id}`;
   const workerRows = await supabase.query('trabajadores', {
-    query: `select=obra_id& id=eq.${encodeURIComponent(String(person.id))}&limit=1`.replace('& ', '&'),
+    query: `select=obra_id&id=eq.${encodeURIComponent(String(person.id))}&limit=1`,
   });
   const obraId = (person as any).obraId || workerRows?.[0]?.obra_id || null;
   const payload = {
