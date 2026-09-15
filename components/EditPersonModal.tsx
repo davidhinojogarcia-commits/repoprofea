@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatIban, formatSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
 
 interface EditPersonModalProps {
   person: Person | null;
@@ -144,6 +145,14 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       setFormData(prev => prev ? ({ ...prev, [name]: filteredValue }) : null);
       return;
     }
+    if (name === 'numeroSeguridadSocial') {
+      setFormData(prev => prev ? ({ ...prev, numeroSeguridadSocial: value.replace(/[^0-9\s\/-]/g, '') }) : null);
+      return;
+    }
+    if (name === 'iban') {
+      setFormData(prev => prev ? ({ ...prev, iban: value.toUpperCase().replace(/[^A-Z0-9\s]/g, '') }) : null);
+      return;
+    }
     if (name === 'reconocimientoEstado' && value === 'No Apto') {
       setFormData(prev => prev ? ({ ...prev, [name]: value, documentacionCompleta: 'No' }) : null);
       return;
@@ -159,6 +168,18 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     if (formData.dni && !isValidDNI(formData.dni)) {
       alert('⚠️ El DNI/NIE introducido no es válido.');
       return;
+    }
+    if (formData.numeroSeguridadSocial) {
+      const check = validateSpanishSocialSecurityNumber(formData.numeroSeguridadSocial);
+      if (!check.valid) { alert(`⚠️ Número de la Seguridad Social no válido. ${check.error || ''}`); return; }
+      formData.numeroSeguridadSocial = check.normalized;
+      const duplicate = allPeople.some(p => p.id !== formData.id && p.numeroSeguridadSocial && validateSpanishSocialSecurityNumber(p.numeroSeguridadSocial).normalized === check.normalized);
+      if (duplicate) { alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador.'); return; }
+    }
+    if (formData.iban) {
+      const check = validateIban(formData.iban);
+      if (!check.valid) { alert(`⚠️ IBAN no válido. ${check.error || ''}`); return; }
+      formData.iban = check.normalized;
     }
     // Un DNI repetido representa una nueva contratación del mismo trabajador.
     // No se bloquea el guardado; el historial y contador anual se gestionan por registro.

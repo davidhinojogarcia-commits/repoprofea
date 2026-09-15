@@ -134,6 +134,8 @@ async function serialize(table: string, value: DatabaseRecord) {
       periodo_inicio: value.periodoInicio || "",
       periodo_fin: value.periodoFin || "",
       telefono: value.telefono || "",
+      numero_seguridad_social: value.numeroSeguridadSocial || null,
+      iban: value.iban || null,
       calzado: value.calzado || "",
       formacion: value.formacion || "",
       lugar_formacion: value.lugarFormacion || null,
