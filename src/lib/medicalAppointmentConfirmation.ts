@@ -31,7 +31,9 @@ export const prepareMedicalAppointmentConfirmation = async (person: Person): Pro
 }> => {
   if (!person.citaDia || !person.citaHora) throw new Error('La cita debe tener fecha y hora antes de generar la confirmación.');
 
-  const random = new Uint8Array(32);
+  // 24 bytes = 192 bits of entropy and a 32-character base64url token.
+  // This keeps the worker links materially shorter without weakening their security.
+  const random = new Uint8Array(24);
   crypto.getRandomValues(random);
   const token = bytesToBase64Url(random);
   const tokenHash = await sha256Hex(token);
@@ -48,12 +50,14 @@ export const prepareMedicalAppointmentConfirmation = async (person: Person): Pro
 
   await updateDocument('trabajadores', person.id, updatedPerson as any);
 
-  const base = `${window.location.origin}/?confirmacion_reconocimiento=1&token=${encodeURIComponent(token)}`;
+  // Compact aliases keep WhatsApp messages readable. The confirmation portal still
+  // accepts the previous query parameters so links already sent remain valid.
+  const base = `${window.location.origin}/?c=${encodeURIComponent(token)}`;
   return {
     updatedPerson,
     links: {
-      confirm: `${base}&respuesta=confirmada`,
-      decline: `${base}&respuesta=no_puede_asistir`,
+      confirm: `${base}&r=si`,
+      decline: `${base}&r=no`,
     },
   };
 };
