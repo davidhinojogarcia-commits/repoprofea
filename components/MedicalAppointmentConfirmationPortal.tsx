@@ -8,8 +8,13 @@ const CONFIRMATION_ENDPOINT = `${SUPABASE_URL}/functions/v1/confirm-medical-appo
 
 export const MedicalAppointmentConfirmationPortal: React.FC = () => {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const token = params.get('token') || '';
-  const requested = params.get('respuesta') === 'no_puede_asistir' ? 'no_puede_asistir' : 'confirmada';
+  const token = params.get('token') || params.get('c') || '';
+  const legacyResponse = params.get('respuesta');
+  const compactResponse = params.get('r');
+  const requested: ResponseStatus =
+    legacyResponse === 'no_puede_asistir' || compactResponse === 'no'
+      ? 'no_puede_asistir'
+      : 'confirmada';
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<'idle' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
@@ -52,6 +57,11 @@ export const MedicalAppointmentConfirmationPortal: React.FC = () => {
         <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
           {isConfirm ? 'Confirma que asistirás a la cita indicada en el mensaje recibido.' : 'Indica que no puedes asistir a la cita indicada en el mensaje recibido.'}
         </p>
+        {isConfirm && (
+          <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Al confirmar tu asistencia, declaras haber recibido y leído la documentación adjunta, así como las instrucciones e indicaciones facilitadas para el proceso de contratación, quedando informado de su contenido.
+          </p>
+        )}
         <button type="button" disabled={busy} onClick={() => void submit(requested)} className={`mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold text-white disabled:opacity-60 ${isConfirm ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
           {busy ? <Loader2 className="w-5 h-5 animate-spin"/> : isConfirm ? <CheckCircle2 className="w-5 h-5"/> : <XCircle className="w-5 h-5"/>}
           {isConfirm ? 'Confirmar asistencia' : 'No puedo asistir'}
