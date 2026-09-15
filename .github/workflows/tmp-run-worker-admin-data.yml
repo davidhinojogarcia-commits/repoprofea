@@ -2,7 +2,8 @@ name: Temporary run worker admin data patch
 
 on:
   push:
-    branches: [work/resumen-renombres-pendientes]
+    branches:
+      - work/resumen-renombres-pendientes
     paths:
       - '.github/workflows/tmp-run-worker-admin-data.yml'
 
