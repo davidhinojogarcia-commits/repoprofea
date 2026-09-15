@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 
-# Camera scanner: use the fast batch OCR and include DNI in the same pass.
+# Camera scanner: use the fast batch OCR and include DNI + birth date in the same pass.
 p = Path('components/CameraScannerModal.tsx')
 text = p.read_text(encoding='utf-8')
 import_old = "import { extractClientDocumentText } from '../src/lib/clientDocumentText';\n"
@@ -12,9 +12,9 @@ if "fastAdministrativeOcr" not in text:
     text = text.replace(import_old, import_new, 1)
 
 pattern = re.compile(r"  const handleRecognizeAdministrativeData = async \(\) => \{.*?\n  \};\n\n  const handleWorkerFieldChange", re.S)
-replacement = '''  const handleRecognizeAdministrativeData = async () => {
+replacement = r'''  const handleRecognizeAdministrativeData = async () => {
     if (!pages.length) {
-      onToast('Captura primero el documento que contiene DNI/NIE, Seguridad Social o IBAN.', 'error');
+      onToast('Captura primero el documento que contiene DNI/NIE, fecha de nacimiento, Seguridad Social o IBAN.', 'error');
       return;
     }
     setIsRecognizingAdministrative(true);
@@ -24,25 +24,27 @@ replacement = '''  const handleRecognizeAdministrativeData = async () => {
         (message) => setRecognitionStep(message),
       );
 
-      if (!detected.dni && !detected.nuss && !detected.iban) {
-        onToast('No se han detectado DNI/NIE, Nº de Seguridad Social o IBAN válidos. Repite la foto o introdúcelos manualmente.', 'error');
+      if (!detected.dni && !detected.birthDate && !detected.nuss && !detected.iban) {
+        onToast('No se han detectado datos administrativos válidos. Repite la foto o introdúcelos manualmente.', 'error');
         return;
       }
 
       const elapsed = Math.max(0.1, detected.elapsedMs / 1000).toFixed(1);
       const lines = [
         detected.dni ? `DNI/NIE: ${detected.dni}` : 'DNI/NIE: no detectado',
+        detected.birthDate ? `Fecha de nacimiento: ${detected.birthDate.split('-').reverse().join('/')}` : 'Fecha de nacimiento: no detectada',
         detected.nuss ? `Nº Seguridad Social: ${formatSpanishSocialSecurityNumber(detected.nuss)}` : 'Nº Seguridad Social: no detectado',
         detected.iban ? `IBAN: ${formatIban(detected.iban)}` : 'IBAN: no detectado',
         `OCR: ${detected.pagesProcessed} página(s) · ${elapsed} s`,
         ...detected.warnings,
       ];
 
-      if (!window.confirm(`DATOS DETECTADOS\n\n${lines.join('\\n')}\n\n¿Incorporar estos datos al trabajador que estás registrando?`)) return;
+      if (!window.confirm(`DATOS DETECTADOS\n\n${lines.join('\n')}\n\n¿Incorporar estos datos al trabajador que estás registrando?`)) return;
 
       window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
         detail: {
           dni: detected.dni,
+          birthDate: detected.birthDate,
           nuss: detected.nuss,
           iban: detected.iban,
           documentText: detected.text,
@@ -60,21 +62,22 @@ replacement = '''  const handleRecognizeAdministrativeData = async () => {
   };
 
   const handleWorkerFieldChange'''
-text2, n = pattern.subn(replacement, text, count=1)
+text2, n = pattern.subn(lambda _m: replacement, text, count=1)
 if n != 1:
     raise SystemExit(f'CameraScannerModal function replacement count={n}')
 p.write_text(text2, encoding='utf-8')
 
-# Registration form: fill DNI too and cross-check the SAE/person name against OCR text.
+# Registration form: fill DNI, birth date, NUSS and IBAN; cross-check SAE/person name.
 p = Path('components/RegistrationForm.tsx')
 text = p.read_text(encoding='utf-8')
 anchor = "const isValidDNI = (dni: string): boolean => {\n  return analyzeDNI(dni).status === 'valid';\n};\n"
-helper = anchor + '''\nconst normalizeIdentityWords = (value: string) => String(value || '')
+helper = anchor + r'''
+const normalizeIdentityWords = (value: string) => String(value || '')
   .normalize('NFD')
-  .replace(/[\\u0300-\\u036f]/g, '')
+  .replace(/[\u0300-\u036f]/g, '')
   .toUpperCase()
   .replace(/[^A-Z0-9Ñ]+/g, ' ')
-  .split(/\\s+/)
+  .split(/\s+/)
   .filter(word => word.length >= 3);
 
 const documentLikelyMatchesPerson = (personName: string, documentText: string): boolean => {
@@ -107,13 +110,13 @@ old = '''    const handleAdministrativeScan = (event: Event) => {
         return next;
       });
     };'''
-new = '''    const handleAdministrativeScan = (event: Event) => {
-      const detail = (event as CustomEvent<{ dni?: string; nuss?: string; iban?: string; documentText?: string }>).detail || {};
-      if (!detail.dni && !detail.nuss && !detail.iban) return;
+new = r'''    const handleAdministrativeScan = (event: Event) => {
+      const detail = (event as CustomEvent<{ dni?: string; birthDate?: string; nuss?: string; iban?: string; documentText?: string }>).detail || {};
+      if (!detail.dni && !detail.birthDate && !detail.nuss && !detail.iban) return;
       setFormData(prev => {
         const next = { ...prev };
-        const detectedDni = (detail.dni || '').replace(/[\\s-]/g, '').toUpperCase();
-        const currentDni = (prev.dni || '').replace(/[\\s-]/g, '').toUpperCase();
+        const detectedDni = (detail.dni || '').replace(/[\s-]/g, '').toUpperCase();
+        const currentDni = (prev.dni || '').replace(/[\s-]/g, '').toUpperCase();
         const nameMatches = documentLikelyMatchesPerson(prev.apellidosNombre, detail.documentText || '');
         const dniMatchesExisting = !!detectedDni && !!currentDni && detectedDni === currentDni;
 
@@ -124,6 +127,9 @@ new = '''    const handleAdministrativeScan = (event: Event) => {
 
         if (detectedDni && isValidDNI(detectedDni)) {
           if (!currentDni || currentDni === detectedDni || window.confirm(`Este registro ya tiene el DNI/NIE ${currentDni}. ¿Sustituirlo por ${detectedDni}?`)) next.dni = detectedDni;
+        }
+        if (detail.birthDate) {
+          if (!prev.fechaNacimiento || prev.fechaNacimiento === detail.birthDate || window.confirm(`Este registro ya tiene una fecha de nacimiento. ¿Sustituirla por ${detail.birthDate.split('-').reverse().join('/')}?`)) next.fechaNacimiento = detail.birthDate;
         }
         if (detail.nuss) {
           const detected = normalizeSpanishSocialSecurityNumber(detail.nuss);
