@@ -56,8 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Prevención y CAE',
       items: [
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
-        { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
+        { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
       ],
     },
     {
