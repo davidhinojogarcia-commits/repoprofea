@@ -234,7 +234,7 @@ export const Stats: React.FC<StatsProps> = ({
                 className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
                 title="Exportar dossier a pie de obra del personal asignado"
               >
-                <Building2 className="w-4 h-4" /> Exportar Resumen de Obra
+                <Building2 className="w-4 h-4" /> Relación nominal de trabajadores por obra
               </button>
             )}
 
