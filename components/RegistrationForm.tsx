@@ -328,9 +328,13 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       document.getElementById('nuss-input')?.focus();
       return;
     }
-    const duplicateNuss = nussCheck?.valid && (people || []).some(p => normalizeSpanishSocialSecurityNumber(p.numeroSeguridadSocial) === nussCheck.normalized);
-    if (duplicateNuss) {
-      alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro registro. Revisa el trabajador antes de continuar.');
+    const currentDniForNuss = formData.dni.replace(/[\s-]/g, '').toUpperCase();
+    const conflictingNuss = nussCheck?.valid && (people || []).some(p =>
+      normalizeSpanishSocialSecurityNumber(p.numeroSeguridadSocial) === nussCheck.normalized &&
+      p.dni.replace(/[\s-]/g, '').toUpperCase() !== currentDniForNuss
+    );
+    if (conflictingNuss) {
+      alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador con un DNI/NIE distinto. Revisa los datos antes de continuar.');
       document.getElementById('nuss-input')?.focus();
       return;
     }

@@ -173,8 +173,14 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       const check = validateSpanishSocialSecurityNumber(formData.numeroSeguridadSocial);
       if (!check.valid) { alert(`⚠️ Número de la Seguridad Social no válido. ${check.error || ''}`); return; }
       formData.numeroSeguridadSocial = check.normalized;
-      const duplicate = allPeople.some(p => p.id !== formData.id && p.numeroSeguridadSocial && validateSpanishSocialSecurityNumber(p.numeroSeguridadSocial).normalized === check.normalized);
-      if (duplicate) { alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador.'); return; }
+      const currentDniForNuss = formData.dni.replace(/[\s-]/g, '').toUpperCase();
+      const conflictingNuss = allPeople.some(p =>
+        p.id !== formData.id &&
+        p.numeroSeguridadSocial &&
+        validateSpanishSocialSecurityNumber(p.numeroSeguridadSocial).normalized === check.normalized &&
+        p.dni.replace(/[\s-]/g, '').toUpperCase() !== currentDniForNuss
+      );
+      if (conflictingNuss) { alert('⚠️ Este Número de la Seguridad Social ya está asociado a otro trabajador con un DNI/NIE distinto.'); return; }
     }
     if (formData.iban) {
       const check = validateIban(formData.iban);
