@@ -1,0 +1,40 @@
+name: Temporary predeploy CAE validation
+
+on:
+  push:
+    branches:
+      - predeploy-cae-final
+    paths:
+      - '.github/workflows/tmp-predeploy-cae.yml'
+      - '.github/scripts/patch_predeploy_cae.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: predeploy-cae-final
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply final CAE patch
+        run: python3 .github/scripts/patch_predeploy_cae.py
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript validation
+        run: npm run lint
+      - name: Build application
+        run: npm run build
+      - name: Commit validated CAE changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/SubcontratasSection.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: finalize CAE book status and legacy normalization"
+          git push origin HEAD:predeploy-cae-final
