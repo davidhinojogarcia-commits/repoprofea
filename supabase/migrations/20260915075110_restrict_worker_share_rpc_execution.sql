@@ -1,0 +1,12 @@
+revoke all on function public.get_worker_shares(bigint) from public;
+revoke all on function public.get_worker_shares(bigint) from anon;
+revoke all on function public.set_worker_share(bigint,uuid,boolean) from public;
+revoke all on function public.set_worker_share(bigint,uuid,boolean) from anon;
+revoke all on function public.remove_worker_share(bigint,uuid) from public;
+revoke all on function public.remove_worker_share(bigint,uuid) from anon;
+revoke all on function public.inherit_worker_identity_shares() from public;
+revoke all on function public.inherit_worker_identity_shares() from anon;
+revoke all on function public.inherit_worker_identity_shares() from authenticated;
+grant execute on function public.get_worker_shares(bigint) to authenticated;
+grant execute on function public.set_worker_share(bigint,uuid,boolean) to authenticated;
+grant execute on function public.remove_worker_share(bigint,uuid) to authenticated;
