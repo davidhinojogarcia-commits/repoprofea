@@ -1,0 +1,35 @@
+name: Temporary RRMM pending-only confirmation patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-rrmm-confirmation-pending-only.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch RRMM confirmation visibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/exportUtils.ts')
+          s = p.read_text()
+          old = """const getMedicalAppointmentConfirmationStatus = (person: Person): 'confirmada' | 'no_puede_asistir' | 'pendiente' => {\n  const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();\n  if (raw === 'confirmada' || raw === 'no_puede_asistir') return raw;\n  return 'pendiente';\n};"""
+          new = """const getMedicalAppointmentConfirmationStatus = (person: Person): 'confirmada' | 'no_puede_asistir' | 'pendiente' => {\n  const { estado } = getAptitudMedicaInfo(person);\n  const recognitionCompleted = estado === 'Apto' || estado === 'No Apto' || estado === 'Apto con limitaciones';\n\n  // La confirmación de asistencia solo tiene sentido mientras el reconocimiento\n  // está pendiente. Una vez realizado, el informe debe priorizar la aptitud médica.\n  if (recognitionCompleted) return 'pendiente';\n\n  const raw = String((person as any).confirmacionCitaEstado || '').trim().toLowerCase();\n  if (raw === 'confirmada' || raw === 'no_puede_asistir') return raw;\n  return 'pendiente';\n};"""
+          if old not in s:
+              raise SystemExit('Expected helper block not found; aborting')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/exportUtils.ts
+          git commit -m 'fix: show attendance confirmation only for pending medical exams'
+          git push
