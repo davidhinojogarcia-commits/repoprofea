@@ -1,0 +1,43 @@
+name: Temporary rename scanner button
+
+on:
+  push:
+    branches:
+      - work/resumen-renombres-pendientes
+    paths:
+      - '.github/workflows/tmp-rename-scanner-button.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rename scanner button
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('components/Sidebar.tsx')
+          s = p.read_text()
+          old = 'Escanear Cámara'
+          count = s.count(old)
+          if count < 1:
+              raise SystemExit('Scanner label not found')
+          s = s.replace(old, 'Escáner')
+          p.write_text(s)
+          print(f'Renamed {count} scanner label occurrence(s)')
+          PY
+      - name: Validate build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit change
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/Sidebar.tsx
+          git commit -m 'ui: rename scanner button to Escáner'
+          git push
