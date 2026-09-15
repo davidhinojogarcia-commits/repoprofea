@@ -1,0 +1,108 @@
+name: Temporary copyright and PDF margin fixes
+
+on:
+  push:
+    branches: [work/resumen-renombres-pendientes]
+    paths:
+      - '.github/workflows/tmp-copyright-and-pdf-margins.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply copyright and report layout fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Global visible copyright for PDF/XLSX exports.
+          p = Path('src/lib/exportUtils.ts')
+          s = p.read_text()
+          old = "const INSTITUTION_FOOTER = 'Diputación Provincial de Cádiz · Gestión de Fondos PROFEA';\n"
+          new = old + "const COPYRIGHT_OWNER = 'David Hinojo García';\nconst COPYRIGHT_PRODUCT = 'GestionProfea';\nconst getCopyrightText = () => `© ${new Date().getFullYear()} ${COPYRIGHT_OWNER} · ${COPYRIGHT_PRODUCT} · Todos los derechos reservados`;\n\nexport const applyPdfCopyrightStamp = (doc: jsPDF) => {\n  const marker = '__gestionProfeaCopyrightStamped';\n  if ((doc as any)[marker]) return;\n  const totalPages = (doc as any).internal.getNumberOfPages ? (doc as any).internal.getNumberOfPages() : 1;\n  for (let page = 1; page <= totalPages; page++) {\n    doc.setPage(page);\n    const pageSize = doc.internal.pageSize;\n    const pageHeight = pageSize.height || pageSize.getHeight();\n    const pageWidth = pageSize.width || pageSize.getWidth();\n    doc.setFont('helvetica', 'normal');\n    doc.setFontSize(5.4);\n    doc.setTextColor(125, 135, 145);\n    doc.text(getCopyrightText(), pageWidth / 2, pageHeight - 2.8, { align: 'center' });\n  }\n  (doc as any)[marker] = true;\n};\n"
+          if old not in s:
+              raise SystemExit('institution footer anchor not found')
+          s = s.replace(old, new, 1)
+
+          # Excel print footer and metadata: make copyright visible on every printed/exported sheet using the common standard.
+          s = s.replace(
+              "  workbook.description = 'Documento generado por el Sistema de Gestión de Fondos PROFEA';",
+              "  workbook.description = `Documento generado por el Sistema de Gestión de Fondos PROFEA. ${getCopyrightText()}`;",
+              1,
+          )
+          s = s.replace(
+              "  const footer = `&L&8${INSTITUTION_FOOTER}&R&8Página &P de &N`;",
+              "  const footer = `&L&8${INSTITUTION_FOOTER}&C&7${getCopyrightText()}&R&8Página &P de &N`;",
+              1,
+          )
+
+          # Catch-all: any PDF exported through the app's central downloader is stamped, regardless of its generator.
+          s = s.replace(
+              "export const downloadPDF = (doc: jsPDF, filename: string) => {\n  doc.save(filename);\n};",
+              "export const downloadPDF = (doc: jsPDF, filename: string) => {\n  applyPdfCopyrightStamp(doc);\n  doc.save(filename);\n};",
+              1,
+          )
+          p.write_text(s)
+
+          # Correct the three worksite reports: header/title always stays inside margins and tables fit within printable width.
+          p = Path('src/lib/worksiteDocumentsPdf.ts')
+          s = p.read_text()
+
+          # Dynamic title sizing prevents long headings (especially machinery authorization) from running outside the page.
+          old = '''  doc.setFont("helvetica", "bold");\n  doc.setFontSize(11.5);\n  doc.setTextColor(255, 255, 255);\n  doc.text(title.toUpperCase(), 14, 26.3);'''
+          new = '''  doc.setFont("helvetica", "bold");\n  let titleFontSize = 11.5;\n  doc.setFontSize(titleFontSize);\n  const titleText = title.toUpperCase();\n  const titleMaxWidth = w - 28;\n  while (titleFontSize > 8.2 && doc.getTextWidth(titleText) > titleMaxWidth) {\n    titleFontSize -= 0.4;\n    doc.setFontSize(titleFontSize);\n  }\n  doc.setTextColor(255, 255, 255);\n  doc.text(titleText, 14, 26.3, { maxWidth: titleMaxWidth });'''
+          if old not in s:
+              raise SystemExit('setup title anchor missing')
+          s = s.replace(old, new, 1)
+
+          # Keep subtitle and work/period metadata in separate bounded zones to avoid collisions.
+          s = s.replace(
+              '  doc.text(subtitle, 14, 31.4);\n  doc.text(`${context.obra} · ${context.periodoLabel}`, w - 14, 31.4, {\n    align: "right",\n  });',
+              '  doc.text(subtitle, 14, 31.4, { maxWidth: Math.max(90, w * 0.52) });\n  doc.text(`${context.obra} · ${context.periodoLabel}`, w - 14, 31.4, {\n    align: "right",\n    maxWidth: Math.max(95, w * 0.38),\n  });',
+              1,
+          )
+
+          # EPI: fixed printable width and explicit compact columns so header cells cannot overflow the page.
+          s = s.replace('    margin: { left: 10, right: 10, bottom: 43 },', '    margin: { left: 14, right: 14, bottom: 43 },\n    tableWidth: w - 28,', 1)
+          s = s.replace(
+              '''    columnStyles: {\n      0: { cellWidth: 8, halign: "center" },\n      1: { cellWidth: 31 },\n      2: { cellWidth: 25 },\n      3: { cellWidth: 20 },\n      11: { cellWidth: 27 },\n    },''',
+              '''    columnStyles: {\n      0: { cellWidth: 7, halign: "center" },\n      1: { cellWidth: 31 },\n      2: { cellWidth: 24 },\n      3: { cellWidth: 19 },\n      4: { cellWidth: 18, halign: "center" },\n      5: { cellWidth: 22, halign: "center" },\n      6: { cellWidth: 18, halign: "center" },\n      7: { cellWidth: 18, halign: "center" },\n      8: { cellWidth: 19, halign: "center" },\n      9: { cellWidth: 22, halign: "center" },\n      10: { cellWidth: 20, halign: "center" },\n      11: { cellWidth: 31 },\n    },''',
+              1,
+          )
+
+          # Training: preserve the current proportions but explicitly constrain table to printable width.
+          needle = '    margin: { left: 14, right: 14, bottom: 43 },\n    theme: "grid",'
+          s = s.replace(needle, '    margin: { left: 14, right: 14, bottom: 43 },\n    tableWidth: w - 28,\n    theme: "grid",', 1)
+
+          # Machinery table was 287 mm wide inside a 273 mm printable area. Rebalance to 269 mm max.
+          s = s.replace('    margin: { left: 12, right: 12, bottom: 43 },', '    margin: { left: 14, right: 14, bottom: 43 },\n    tableWidth: w - 28,', 1)
+          old_cols = '''    columnStyles: {\n      0: { cellWidth: 8, halign: "center" },\n      1: { cellWidth: 39 },\n      2: { cellWidth: 22 },\n      3: { cellWidth: 31 },\n      4: { cellWidth: 55 },\n      5: { cellWidth: 25 },\n      6: { cellWidth: 29 },\n      7: { cellWidth: 24 },\n      8: { cellWidth: 25 },\n      9: { cellWidth: 29 },\n    },'''
+          new_cols = '''    columnStyles: {\n      0: { cellWidth: 7, halign: "center" },\n      1: { cellWidth: 35 },\n      2: { cellWidth: 20 },\n      3: { cellWidth: 28 },\n      4: { cellWidth: 50 },\n      5: { cellWidth: 22 },\n      6: { cellWidth: 25 },\n      7: { cellWidth: 22 },\n      8: { cellWidth: 23 },\n      9: { cellWidth: 27 },\n    },'''
+          if old_cols not in s:
+              raise SystemExit('machinery columns anchor missing')
+          s = s.replace(old_cols, new_cols, 1)
+          p.write_text(s)
+          PY
+
+      - name: Validate requested changes
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          grep -q 'applyPdfCopyrightStamp(doc)' src/lib/exportUtils.ts
+          grep -q 'Todos los derechos reservados' src/lib/exportUtils.ts
+          grep -q 'tableWidth: w - 28' src/lib/worksiteDocumentsPdf.ts
+          grep -q 'titleMaxWidth = w - 28' src/lib/worksiteDocumentsPdf.ts
+
+      - name: Commit changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/exportUtils.ts src/lib/worksiteDocumentsPdf.ts
+          git commit -m 'fix: add copyright stamp and align worksite PDF headers'
+          git push
