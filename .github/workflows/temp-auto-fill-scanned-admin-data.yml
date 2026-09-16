@@ -1,0 +1,53 @@
+name: Temp auto fill scanned admin data
+
+on:
+  push:
+    branches: ['fix/worksite-pdf-text-alignment-20260916']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/worksite-pdf-text-alignment-20260916
+          fetch-depth: 0
+      - name: Make scanned admin data auto-fill current worker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('components/CameraScannerModal.tsx')
+          text = p.read_text()
+          old = '''      if (!window.confirm(`DATOS DETECTADOS\\
+\\
+${lines.join('\\
+')}\\
+\\
+¿Incorporar estos datos al trabajador que estás registrando?`)) return;
+
+      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {'''
+          new = '''      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {'''
+          if old not in text:
+              raise SystemExit('Confirmation block not found')
+          text = text.replace(old, new, 1)
+          p.write_text(text)
+          PY
+      - name: Verify scanner integration
+        run: |
+          grep -q "profea:administrative-data-recognized" components/CameraScannerModal.tsx
+          ! grep -q "¿Incorporar estos datos al trabajador que estás registrando?" components/CameraScannerModal.tsx
+          grep -q "detail.nuss" components/RegistrationForm.tsx
+          grep -q "detail.iban" components/RegistrationForm.tsx
+          npm install --no-audit --no-fund
+          npm run lint
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/CameraScannerModal.tsx
+          git commit -m "feat: autocompletar NUSS e IBAN desde documentos escaneados"
+          git push origin HEAD:fix/worksite-pdf-text-alignment-20260916
