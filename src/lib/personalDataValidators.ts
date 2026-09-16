@@ -81,10 +81,35 @@ export const validateIban = (value: unknown): ValidationResult => {
 
 const correctOcrNumericPart = (value: string) => value
   .toUpperCase()
-  .replace(/[OQ]/g, '0')
-  .replace(/[IL]/g, '1')
+  .replace(/[OQD]/g, '0')
+  .replace(/[IL|]/g, '1')
+  .replace(/Z/g, '2')
   .replace(/S/g, '5')
+  .replace(/G/g, '6')
   .replace(/B/g, '8');
+
+const addCandidateIfValidNuss = (candidates: Set<string>, raw: string) => {
+  const direct = normalizeSpanishSocialSecurityNumber(raw);
+  if (validateSpanishSocialSecurityNumber(direct).valid) {
+    candidates.add(direct);
+    return;
+  }
+  const corrected = normalizeSpanishSocialSecurityNumber(correctOcrNumericPart(raw));
+  if (validateSpanishSocialSecurityNumber(corrected).valid) candidates.add(corrected);
+};
+
+const addCandidateIfValidIban = (candidates: Set<string>, raw: string) => {
+  const compact = normalizeIban(raw);
+  if (validateIban(compact).valid) {
+    candidates.add(compact);
+    return;
+  }
+  const withoutNoise = compact.replace(/^E[58]/, 'ES').replace(/^3S/, 'ES');
+  if (withoutNoise.startsWith('ES') && withoutNoise.length === 24) {
+    const corrected = `ES${correctOcrNumericPart(withoutNoise.slice(2))}`;
+    if (validateIban(corrected).valid) candidates.add(corrected);
+  }
+};
 
 export type AdministrativeDataDetection = {
   nuss: string;
@@ -99,29 +124,24 @@ export const detectAdministrativeDataFromText = (rawText: string): Administrativ
   const warnings: string[] = [];
   const nussCandidates = new Set<string>();
   const ibanCandidates = new Set<string>();
+
   const nussRegexes = [
-    /(?:NUSS|NAF|SEGURIDAD\s+SOCIAL|AFILIACI[ÓO]N)[^0-9]{0,30}(\d{2}[\s\/-]*\d{8}[\s\/-]*\d{2})/g,
-    /\b(\d{2}[\s\/-]+\d{8}[\s\/-]+\d{2})\b/g,
-    /\b(\d{12})\b/g,
+    /(?:NUSS|N[ÚU]M(?:ERO)?\.?\s*(?:DE\s*)?(?:AFILIACI[ÓO]N|SEGURIDAD\s+SOCIAL)|NAF|SEGURIDAD\s+SOCIAL|AFILIACI[ÓO]N)[^A-Z0-9]{0,35}([0-9OQDIL|ZSBG][0-9OQDIL|ZSBG\s.\/-]{9,20})/g,
+    /\b([0-9OQDIL|ZSBG]{2}[\s.\/-]+[0-9OQDIL|ZSBG]{7,8}[\s.\/-]+[0-9OQDIL|ZSBG]{2})\b/g,
+    /\b([0-9OQDIL|ZSBG]{12})\b/g,
   ];
   for (const regex of nussRegexes) {
-    for (const match of text.matchAll(regex)) {
-      const candidate = normalizeSpanishSocialSecurityNumber(match[1]);
-      if (validateSpanishSocialSecurityNumber(candidate).valid) nussCandidates.add(candidate);
-    }
+    for (const match of text.matchAll(regex)) addCandidateIfValidNuss(nussCandidates, match[1]);
   }
-  const ibanRaw = text.match(/ES(?:[\s-]*[A-Z0-9]){22}/g) || [];
-  for (const raw of ibanRaw) {
-    const compact = normalizeIban(raw);
-    if (validateIban(compact).valid) {
-      ibanCandidates.add(compact);
-      continue;
-    }
-    if (compact.startsWith('ES') && compact.length === 24) {
-      const corrected = `ES${correctOcrNumericPart(compact.slice(2))}`;
-      if (validateIban(corrected).valid) ibanCandidates.add(corrected);
-    }
+
+  const ibanRegexes = [
+    /(?:IBAN|CUENTA\s+BANCARIA|CUENTA\s+CORRIENTE)[^A-Z0-9]{0,30}((?:ES|E[58]|3S)(?:[\s.-]*[A-Z0-9]){22})/g,
+    /\b((?:ES|E[58]|3S)(?:[\s.-]*[A-Z0-9]){22})\b/g,
+  ];
+  for (const regex of ibanRegexes) {
+    for (const match of text.matchAll(regex)) addCandidateIfValidIban(ibanCandidates, match[1]);
   }
+
   if (nussCandidates.size > 1) warnings.push('Se han detectado varios NUSS válidos; revisar el documento.');
   if (ibanCandidates.size > 1) warnings.push('Se han detectado varios IBAN válidos; revisar el documento.');
   const nuss = Array.from(nussCandidates)[0] || '';
