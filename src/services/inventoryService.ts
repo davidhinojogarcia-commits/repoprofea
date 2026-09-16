@@ -1,9 +1,23 @@
 import { supabase } from '../lib/supabase';
 import { loadInventoryZona6Seed } from '../data/inventoryZona6Seed';
 
-export const INVENTORY_DEFAULT_PARK_NAME = 'Nave logística Antonio Ramos';
-export const INVENTORY_DEFAULT_ZONE = 'Zona 6';
+export const INVENTORY_DEFAULT_PARK_NAME = 'Parque / nave logística';
+export const INVENTORY_DEFAULT_ZONE = 'Zona 1';
 export const INVENTORY_BASE_LOCATION = `${INVENTORY_DEFAULT_PARK_NAME} (${INVENTORY_DEFAULT_ZONE})`;
+export const INVENTORY_ZONES = Array.from({ length: 9 }, (_, i) => `Zona ${i + 1}`);
+
+export const MACHINE_DOCUMENT_TYPES = [
+  'Marcado CE / placa identificativa',
+  'Declaración CE de conformidad',
+  'Manual de instrucciones',
+  'Revisión / comprobación periódica',
+  'Certificado de mantenimiento',
+  'ITV / inspección reglamentaria',
+  'Seguro / póliza',
+  'Ficha técnica',
+  'Autorización de uso',
+  'Otro documento',
+] as const;
 
 export type InventoryItem = {
   id: string;
@@ -56,10 +70,28 @@ export type InventoryMaintenance = {
   fecha: string;
   proximaRevision?: string | null;
   proveedor?: string | null;
+  mechanicName?: string | null;
   coste?: number | null;
   observaciones?: string | null;
+  signedDocumentPaths: string[];
+  signedDocumentUrls?: { path: string; url: string }[];
   createdBy?: string | null;
   createdAt: string;
+};
+
+export type InventoryDocument = {
+  id: string;
+  parkId: string;
+  itemId: string;
+  documentType: string;
+  title: string;
+  filePath: string;
+  fileName: string;
+  issueDate?: string | null;
+  expiryDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  downloadUrl?: string;
 };
 
 export type InventoryPark = {
@@ -67,8 +99,22 @@ export type InventoryPark = {
   nombre: string;
   zona: string;
   descripcion?: string | null;
+  coordinatorEmail?: string | null;
   createdBy?: string | null;
+  isOwned?: boolean;
 };
+
+const parkBaseLocation = (park: Pick<InventoryPark, 'nombre' | 'zona'>) => `${park.nombre} (${park.zona})`;
+
+const mapPark = (row: any, userId?: string): InventoryPark => ({
+  id: row.id,
+  nombre: row.nombre || INVENTORY_DEFAULT_PARK_NAME,
+  zona: row.zona || INVENTORY_DEFAULT_ZONE,
+  descripcion: row.descripcion,
+  coordinatorEmail: row.coordinator_email,
+  createdBy: row.created_by,
+  isOwned: userId ? row.created_by === userId : undefined,
+});
 
 const mapItem = (row: any): InventoryItem => ({
   id: row.id,
@@ -120,9 +166,25 @@ const mapMaintenance = (row: any): InventoryMaintenance => ({
   fecha: row.fecha || '',
   proximaRevision: row.proxima_revision,
   proveedor: row.proveedor,
+  mechanicName: row.mechanic_name,
   coste: row.coste == null ? null : Number(row.coste),
   observaciones: row.observaciones,
+  signedDocumentPaths: Array.isArray(row.signed_document_paths) ? row.signed_document_paths : [],
   createdBy: row.created_by,
+  createdAt: row.created_at,
+});
+
+const mapDocument = (row: any): InventoryDocument => ({
+  id: row.id,
+  parkId: row.park_id,
+  itemId: row.item_id,
+  documentType: row.document_type || 'Otro documento',
+  title: row.title || row.file_name || 'Documento',
+  filePath: row.file_path,
+  fileName: row.file_name || 'documento',
+  issueDate: row.issue_date,
+  expiryDate: row.expiry_date,
+  notes: row.notes,
   createdAt: row.created_at,
 });
 
@@ -132,44 +194,58 @@ async function currentUserId() {
   return data.user.id;
 }
 
+export async function listInventoryParks(): Promise<InventoryPark[]> {
+  const userId = await currentUserId();
+  const rows = await supabase.query('inventory_parks', {
+    query: 'select=id,nombre,zona,descripcion,coordinator_email,created_by&active=eq.true&order=zona.asc,nombre.asc',
+  });
+  return (rows || []).map((row: any) => mapPark(row, userId));
+}
+
 export async function ensureInventoryReady(): Promise<InventoryPark> {
   const userId = await currentUserId();
-  const visible = await supabase.query('inventory_parks', {
-    query: 'select=id,nombre,zona,descripcion,created_by&active=eq.true&order=created_at.asc&limit=10',
-  });
-  if (Array.isArray(visible) && visible.length) {
-    const row = visible.find((p: any) => p.nombre === INVENTORY_DEFAULT_PARK_NAME && p.zona === INVENTORY_DEFAULT_ZONE) || visible[0];
-    const park = { id: row.id, nombre: row.nombre, zona: row.zona, descripcion: row.descripcion, createdBy: row.created_by };
-    await seedInventoryIfEmpty(park.id);
-    return park;
+  const visible = await listInventoryParks();
+  const own = visible.find(p => p.createdBy === userId);
+  if (own) {
+    if (own.nombre === 'Nave logística Antonio Ramos' && own.zona === 'Zona 6') await seedInventoryIfEmpty(own.id);
+    return own;
   }
 
-  try {
-    const created = await supabase.query('inventory_parks', {
-      method: 'POST',
-      prefer: 'return=representation',
-      body: {
-        nombre: INVENTORY_DEFAULT_PARK_NAME,
-        zona: INVENTORY_DEFAULT_ZONE,
-        descripcion: 'Parque compartido de herramientas y maquinaria de la Zona 6.',
-        created_by: userId,
-        active: true,
-      },
-    });
-    const row = created?.[0];
-    if (!row?.id) throw new Error('No se pudo crear el parque de inventario.');
-    await supabase.query('inventory_park_members', {
-      method: 'POST',
-      body: { park_id: row.id, user_id: userId, role: 'responsable', active: true },
-    });
-    await seedInventoryIfEmpty(row.id);
-    return { id: row.id, nombre: row.nombre, zona: row.zona, descripcion: row.descripcion, createdBy: row.created_by };
-  } catch (error: any) {
-    if (error?.code === '23505' || String(error?.message || '').toLowerCase().includes('duplicate')) {
-      throw new Error('El parque compartido ya existe, pero todavía no está compartido con tu usuario. Pide al otro supervisor que te añada desde Herramientas y maquinaria.');
-    }
-    throw error;
-  }
+  const created = await supabase.query('inventory_parks', {
+    method: 'POST',
+    prefer: 'return=representation',
+    body: {
+      nombre: INVENTORY_DEFAULT_PARK_NAME,
+      zona: INVENTORY_DEFAULT_ZONE,
+      descripcion: 'Parque de herramientas y maquinaria del supervisor.',
+      created_by: userId,
+      active: true,
+    },
+  });
+  const row = created?.[0];
+  if (!row?.id) throw new Error('No se pudo crear el parque de inventario.');
+  await supabase.query('inventory_park_members', {
+    method: 'POST',
+    body: { park_id: row.id, user_id: userId, role: 'responsable', active: true, created_by: userId },
+  });
+  return mapPark(row, userId);
+}
+
+export async function updateInventoryPark(parkId: string, data: { nombre: string; zona: string; coordinatorEmail?: string | null }) {
+  const userId = await currentUserId();
+  const rows = await supabase.query('inventory_parks', {
+    method: 'PATCH',
+    query: `id=eq.${encodeURIComponent(parkId)}&select=id,nombre,zona,descripcion,coordinator_email,created_by`,
+    prefer: 'return=representation',
+    body: {
+      nombre: data.nombre.trim() || INVENTORY_DEFAULT_PARK_NAME,
+      zona: data.zona || INVENTORY_DEFAULT_ZONE,
+      coordinator_email: data.coordinatorEmail?.trim().toLowerCase() || null,
+      updated_at: new Date().toISOString(),
+    },
+  });
+  const park = mapPark(rows?.[0], userId);
+  return park;
 }
 
 export async function seedInventoryIfEmpty(parkId: string) {
@@ -177,8 +253,14 @@ export async function seedInventoryIfEmpty(parkId: string) {
     query: `select=id&park_id=eq.${encodeURIComponent(parkId)}&limit=1`,
   });
   if (Array.isArray(countRows) && countRows.length) return;
+  const parkRows = await supabase.query('inventory_parks', {
+    query: `select=nombre,zona& id=eq.${encodeURIComponent(parkId)}&limit=1`,
+  });
+  const park = parkRows?.[0];
+  if (!park || park.nombre !== 'Nave logística Antonio Ramos' || park.zona !== 'Zona 6') return;
   const userId = await currentUserId();
   const seed = await loadInventoryZona6Seed();
+  const baseLocation = `${park.nombre} (${park.zona})`;
   const chunkSize = 40;
   for (let i = 0; i < seed.length; i += chunkSize) {
     const chunk = seed.slice(i, i + chunkSize).map(item => ({
@@ -193,7 +275,7 @@ export async function seedInventoryIfEmpty(parkId: string) {
       cantidad: item.cantidad || 1,
       tipo_gestion: item.tipoGestion,
       estado: item.estado || 'Disponible',
-      ubicacion_actual: item.ubicacionActual || INVENTORY_BASE_LOCATION,
+      ubicacion_actual: item.ubicacionActual || baseLocation,
       detalles: item.detalles || {},
       observaciones: 'Importado del inventario PROFEA Zona 6 (2025).',
       activo: true,
@@ -211,7 +293,7 @@ export async function listInventoryItems(parkId: string): Promise<InventoryItem[
   return (rows || []).map(mapItem);
 }
 
-export async function saveInventoryItem(parkId: string, item: Partial<InventoryItem> & { nombre: string; categoria: string }) {
+export async function saveInventoryItem(parkId: string, item: Partial<InventoryItem> & { nombre: string; categoria: string }, baseLocation?: string) {
   const userId = await currentUserId();
   const payload = {
     park_id: parkId,
@@ -225,7 +307,7 @@ export async function saveInventoryItem(parkId: string, item: Partial<InventoryI
     cantidad: Number(item.cantidad || 1),
     tipo_gestion: item.tipoGestion || 'individual',
     estado: item.estado || 'Disponible',
-    ubicacion_actual: item.ubicacionActual || INVENTORY_BASE_LOCATION,
+    ubicacion_actual: item.ubicacionActual || baseLocation || INVENTORY_BASE_LOCATION,
     obra_actual_id: item.obraActualId || null,
     responsable_actual: item.responsableActual || null,
     detalles: item.detalles || {},
@@ -235,17 +317,12 @@ export async function saveInventoryItem(parkId: string, item: Partial<InventoryI
   };
   if (item.id) {
     const rows = await supabase.query('inventory_items', {
-      method: 'PATCH',
-      query: `id=eq.${encodeURIComponent(item.id)}&select=*`,
-      prefer: 'return=representation',
-      body: payload,
+      method: 'PATCH', query: `id=eq.${encodeURIComponent(item.id)}&select=*`, prefer: 'return=representation', body: payload,
     });
     return mapItem(rows?.[0]);
   }
   const rows = await supabase.query('inventory_items', {
-    method: 'POST',
-    prefer: 'return=representation',
-    body: { ...payload, created_by: userId },
+    method: 'POST', prefer: 'return=representation', body: { ...payload, created_by: userId },
   });
   return mapItem(rows?.[0]);
 }
@@ -253,9 +330,7 @@ export async function saveInventoryItem(parkId: string, item: Partial<InventoryI
 export async function softDeleteInventoryItem(itemId: string) {
   const userId = await currentUserId();
   await supabase.query('inventory_items', {
-    method: 'PATCH',
-    query: `id=eq.${encodeURIComponent(itemId)}`,
-    body: { activo: false, estado: 'Baja', updated_by: userId },
+    method: 'PATCH', query: `id=eq.${encodeURIComponent(itemId)}`, body: { activo: false, estado: 'Baja', updated_by: userId },
   });
 }
 
@@ -281,10 +356,7 @@ export async function uploadInventoryPhotos(parkId: string, itemId: string, file
   for (const file of files.slice(0, 4)) {
     const ext = (file.name.split('.').pop() || 'jpg').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const path = `${parkId}/${itemId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage.from('inventory-photos').upload(path, file, {
-      cacheControl: '3600',
-      upsert: false,
-    });
+    const { error } = await supabase.storage.from('inventory-photos').upload(path, file, { cacheControl: '3600', upsert: false });
     if (error) throw error;
     paths.push(path);
   }
@@ -292,17 +364,10 @@ export async function uploadInventoryPhotos(parkId: string, itemId: string, file
 }
 
 export async function registerInventoryMovement(input: {
-  itemId: string;
-  tipo: string;
-  destino: string;
-  estadoNuevo: string;
-  obraId?: string | null;
-  observaciones?: string;
-  latitud?: number | null;
-  longitud?: number | null;
-  fotoPaths?: string[];
+  itemId: string; tipo: string; destino: string; estadoNuevo: string; obraId?: string | null; observaciones?: string;
+  latitud?: number | null; longitud?: number | null; fotoPaths?: string[];
 }) {
-  const result = await supabase.rpc('inventory_register_movement', {
+  return supabase.rpc('inventory_register_movement', {
     p_item_id: input.itemId,
     p_tipo: input.tipo,
     p_destino: input.destino,
@@ -313,21 +378,41 @@ export async function registerInventoryMovement(input: {
     p_longitud: input.longitud ?? null,
     p_foto_paths: input.fotoPaths || [],
   });
-  return result;
+}
+
+async function signDocumentPath(path: string, expiresIn = 3600) {
+  const { data, error } = await supabase.storage.from('inventory-documents').createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data?.signedUrl || '';
+}
+
+export async function uploadInventoryDocuments(parkId: string, itemId: string, files: File[], folder = 'documents'): Promise<string[]> {
+  const paths: string[] = [];
+  for (const file of files.slice(0, 8)) {
+    const ext = (file.name.split('.').pop() || 'pdf').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const path = `${parkId}/${itemId}/${folder}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from('inventory-documents').upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw error;
+    paths.push(path);
+  }
+  return paths;
 }
 
 export async function listInventoryMaintenance(parkId: string): Promise<InventoryMaintenance[]> {
   const rows = await supabase.query('inventory_maintenance', {
     query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=fecha.desc,created_at.desc&limit=2000`,
   });
-  return (rows || []).map(mapMaintenance);
+  const result = (rows || []).map(mapMaintenance);
+  for (const record of result) {
+    record.signedDocumentUrls = (await Promise.all(record.signedDocumentPaths.map(async path => ({ path, url: await signDocumentPath(path) })))).filter(x => x.url);
+  }
+  return result;
 }
 
-export async function addInventoryMaintenance(parkId: string, itemId: string, data: Omit<InventoryMaintenance, 'id' | 'parkId' | 'itemId' | 'createdAt'>) {
+export async function addInventoryMaintenance(parkId: string, itemId: string, data: Omit<InventoryMaintenance, 'id' | 'parkId' | 'itemId' | 'createdAt' | 'signedDocumentUrls'>) {
   const userId = await currentUserId();
   const rows = await supabase.query('inventory_maintenance', {
-    method: 'POST',
-    prefer: 'return=representation',
+    method: 'POST', prefer: 'return=representation',
     body: {
       park_id: parkId,
       item_id: itemId,
@@ -335,17 +420,62 @@ export async function addInventoryMaintenance(parkId: string, itemId: string, da
       fecha: data.fecha,
       proxima_revision: data.proximaRevision || null,
       proveedor: data.proveedor || null,
+      mechanic_name: data.mechanicName || null,
       coste: data.coste ?? null,
       observaciones: data.observaciones || null,
+      signed_document_paths: data.signedDocumentPaths || [],
       created_by: userId,
     },
   });
   return mapMaintenance(rows?.[0]);
 }
 
-export async function shareInventoryParkByEmail(parkId: string, email: string) {
-  return supabase.rpc('inventory_add_member_by_email', {
-    p_park_id: parkId,
-    p_email: email.trim().toLowerCase(),
+export async function listInventoryDocuments(parkId: string, itemId?: string): Promise<InventoryDocument[]> {
+  const filter = itemId ? `&item_id=eq.${encodeURIComponent(itemId)}` : '';
+  const rows = await supabase.query('inventory_documents', {
+    query: `select=*&park_id=eq.${encodeURIComponent(parkId)}${filter}&order=created_at.desc`,
   });
+  const docs = (rows || []).map(mapDocument);
+  for (const doc of docs) doc.downloadUrl = await signDocumentPath(doc.filePath);
+  return docs;
 }
+
+export async function addInventoryDocument(input: {
+  parkId: string; itemId: string; documentType: string; title: string; file: File;
+  issueDate?: string | null; expiryDate?: string | null; notes?: string | null;
+}) {
+  const userId = await currentUserId();
+  const [filePath] = await uploadInventoryDocuments(input.parkId, input.itemId, [input.file], 'machine-docs');
+  const rows = await supabase.query('inventory_documents', {
+    method: 'POST', prefer: 'return=representation',
+    body: {
+      park_id: input.parkId,
+      item_id: input.itemId,
+      document_type: input.documentType,
+      title: input.title || input.file.name,
+      file_path: filePath,
+      file_name: input.file.name,
+      issue_date: input.issueDate || null,
+      expiry_date: input.expiryDate || null,
+      notes: input.notes || null,
+      created_by: userId,
+    },
+  });
+  return mapDocument(rows?.[0]);
+}
+
+export async function deleteInventoryDocument(doc: InventoryDocument) {
+  await supabase.query('inventory_documents', { method: 'DELETE', query: `id=eq.${encodeURIComponent(doc.id)}` });
+  await supabase.storage.from('inventory-documents').remove([doc.filePath]);
+}
+
+export async function createInventoryDocumentMailLinks(docs: InventoryDocument[], minutes = 60) {
+  const expiresIn = Math.max(5, minutes) * 60;
+  return Promise.all(docs.map(async doc => ({ ...doc, downloadUrl: await signDocumentPath(doc.filePath, expiresIn) })));
+}
+
+export async function shareInventoryParkByEmail(parkId: string, email: string) {
+  return supabase.rpc('inventory_add_member_by_email', { p_park_id: parkId, p_email: email.trim().toLowerCase() });
+}
+
+export { parkBaseLocation };
