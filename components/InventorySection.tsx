@@ -141,7 +141,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const baseLocation = park ? parkBaseLocation(park) : '';
   const activeItems = useMemo(() => items.filter(i => i.activo), [items]);
   const quickItem = activeItems.find(i => i.id === quickItemId) || activeItems[0] || null;
-  const categories = useMemo(() => Array.from(new Set(activeItems.map(i => i.categoria).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [activeItems]);
+  const categories = useMemo<string[]>(() => Array.from(new Set<string>(activeItems.map(i => String(i.categoria || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [activeItems]);
   const filtered = useMemo(() => activeItems.filter(i => {
     const q = search.trim().toLowerCase();
     const hay = [i.codigo, i.nombre, i.categoria, i.marca, i.modelo, i.numeroSerie, i.matricula, i.ubicacionActual].filter(Boolean).join(' ').toLowerCase();
