@@ -105,7 +105,6 @@
           box-sizing: border-box !important;
         }
 
-        /* Ocultar elementos no imprimibles de la interfaz interactiva */
         aside,
         nav,
         footer,
@@ -119,7 +118,6 @@
           display: none !important;
         }
 
-        /* Restablecer fondo y colores base */
         html, body {
           background: #ffffff !important;
           color: #000000 !important;
@@ -138,7 +136,6 @@
           padding: 0 !important;
         }
 
-        /* Desactivar temas oscuros en impresión */
         html.dark body,
         html.dark div, 
         html.dark span, 
@@ -154,14 +151,12 @@
           background-color: transparent !important;
         }
 
-        /* Eliminar sombras pesadas y gradientes */
         div, main, section, article {
           box-shadow: none !important;
           text-shadow: none !important;
           background-image: none !important;
         }
 
-        /* Cabecera oficial de impresión con logo de la Diputación */
         .print-only-header {
           display: flex !important;
           flex-direction: row !important;
@@ -183,14 +178,13 @@
           display: block !important;
         }
 
-        /* Refinamiento y alineación estricta de bordes en tablas */
         table {
           width: 100% !important;
           border-collapse: collapse !important;
           border-spacing: 0 !important;
           margin-top: 6px !important;
           margin-bottom: 8px !important;
-          border: 1.5px solid #475569 !important; /* Bordes exteriores definidos y oscuros */
+          border: 1.5px solid #475569 !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
         }
@@ -234,7 +228,6 @@
           background-color: #f8fafc !important;
         }
 
-        /* Adaptación de contenedor principal para evitar saltos indeseados */
         .relative.z-10.flex-1,
         .max-w-\[1600px\] {
           width: 100% !important;
@@ -244,7 +237,6 @@
           overflow: visible !important;
         }
 
-        /* Evitar saltos de página a mitad de tarjeta o bloque */
         .group.bg-white, .card, fieldset {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
@@ -256,7 +248,6 @@
           color: #000000 !important;
         }
 
-        /* Expandir listas y contenedores con scroll vertical para encajar en 1 página */
         .overflow-y-auto, 
         .overflow-x-auto,
         .custom-scrollbar,
@@ -269,7 +260,6 @@
           padding-right: 0 !important;
         }
 
-        /* Ajustes para ventanas modales e informes impresos */
         .fixed.inset-0.z-50,
         .fixed.inset-0.z-\[110\] {
           position: relative !important;
@@ -300,7 +290,6 @@
           overflow: visible !important;
         }
 
-        /* Reducción compacta de rellenos en impresión para asegurar ajuste en 1 página */
         .p-6, .p-8, .p-4, .sm\:p-6, .md\:p-8 {
           padding: 6px !important;
         }
@@ -329,9 +318,11 @@
 </script>
 <link rel="stylesheet" href="/index.css">
 <link rel="stylesheet" href="/directorio-toolbar.css">
+<link rel="stylesheet" href="/inventory-mobile.css">
 </head>
   <body>
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
+  <script type="module" src="/inventory-mobile-field.js"></script>
 </body>
 </html>
