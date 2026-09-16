@@ -15,6 +15,13 @@
     .toLowerCase()
     .trim();
 
+  const escapeHtml = value => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
   const isInventoryView = () => {
     if (!window.matchMedia(MOBILE_QUERY).matches) return false;
     const text = document.body?.innerText || '';
@@ -179,7 +186,7 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'inventory-mobile-search-result';
-      button.innerHTML = `<span class="inventory-mobile-search-result-icon" aria-hidden="true">↗</span><span>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+      button.innerHTML = `<span class="inventory-mobile-search-result-icon" aria-hidden="true">↗</span><span>${escapeHtml(text)}</span>`;
       button.addEventListener('click', () => chooseOption(select, option, input, results));
       results.appendChild(button);
     });
