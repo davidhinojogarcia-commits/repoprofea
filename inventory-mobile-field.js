@@ -22,24 +22,9 @@
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-  const isInventoryView = () => {
-    if (!window.matchMedia(MOBILE_QUERY).matches) return false;
-    const text = document.body?.innerText || '';
-    return text.includes('Herramientas y maquinaria');
-  };
-
-  const stopCamera = () => {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = 0;
-    if (stream) stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  };
-
-  const closeScanner = () => {
-    stopCamera();
-    document.getElementById(SCANNER_ID)?.remove();
-    busy = false;
-  };
+  const isInventoryView = () => window.matchMedia(MOBILE_QUERY).matches && (document.body?.innerText || '').includes('Herramientas y maquinaria');
+  const stopCamera = () => { if (rafId) cancelAnimationFrame(rafId); rafId = 0; if (stream) stream.getTracks().forEach(track => track.stop()); stream = null; };
+  const closeScanner = () => { stopCamera(); document.getElementById(SCANNER_ID)?.remove(); busy = false; };
 
   const goToInventoryItem = raw => {
     let itemId = '';
@@ -89,9 +74,7 @@
           }
         }
       }
-    } catch (error) {
-      console.debug('QR scan frame skipped', error);
-    }
+    } catch (error) { console.debug('QR scan frame skipped', error); }
     status.textContent = 'Apunta al código QR del equipo';
     rafId = requestAnimationFrame(() => void scanLoop(video, canvas, status, nativeDetector));
   };
@@ -102,25 +85,11 @@
     const overlay = document.createElement('div');
     overlay.id = SCANNER_ID;
     overlay.className = 'inventory-mobile-qr-overlay';
-    overlay.innerHTML = `
-      <div class="inventory-mobile-qr-sheet" role="dialog" aria-modal="true" aria-label="Escanear QR de equipo">
-        <div class="inventory-mobile-qr-head">
-          <div><strong>Escanear equipo</strong><span>Opción secundaria para equipos que ya tengan QR</span></div>
-          <button type="button" class="inventory-mobile-qr-close" aria-label="Cerrar">×</button>
-        </div>
-        <div class="inventory-mobile-qr-camera">
-          <video playsinline muted autoplay></video>
-          <div class="inventory-mobile-qr-frame"></div>
-          <canvas hidden></canvas>
-        </div>
-        <div class="inventory-mobile-qr-status">Preparando cámara…</div>
-        <button type="button" class="inventory-mobile-qr-cancel">Cancelar</button>
-      </div>`;
+    overlay.innerHTML = `<div class="inventory-mobile-qr-sheet" role="dialog" aria-modal="true" aria-label="Escanear QR de equipo"><div class="inventory-mobile-qr-head"><div><strong>Escanear equipo</strong><span>Opción secundaria para equipos que ya tengan QR</span></div><button type="button" class="inventory-mobile-qr-close" aria-label="Cerrar">×</button></div><div class="inventory-mobile-qr-camera"><video playsinline muted autoplay></video><div class="inventory-mobile-qr-frame"></div><canvas hidden></canvas></div><div class="inventory-mobile-qr-status">Preparando cámara…</div><button type="button" class="inventory-mobile-qr-cancel">Cancelar</button></div>`;
     document.body.appendChild(overlay);
     overlay.querySelector('.inventory-mobile-qr-close')?.addEventListener('click', closeScanner);
     overlay.querySelector('.inventory-mobile-qr-cancel')?.addEventListener('click', closeScanner);
     overlay.addEventListener('click', event => { if (event.target === overlay) closeScanner(); });
-
     const video = overlay.querySelector('video');
     const canvas = overlay.querySelector('canvas');
     const status = overlay.querySelector('.inventory-mobile-qr-status');
@@ -128,10 +97,7 @@
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Este dispositivo no permite acceso directo a la cámara.');
       status.textContent = 'Solicitando permiso para la cámara…';
       const nativeDetector = await loadDecoder();
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
       video.srcObject = stream;
       await video.play();
       status.textContent = 'Apunta al código QR del equipo';
@@ -156,32 +122,15 @@
   const renderResults = (select, input, results) => {
     const query = normalize(input.value);
     const options = Array.from(select.options || []).filter(option => option.value && !option.disabled);
-    if (!query) {
-      results.innerHTML = '';
-      results.hidden = true;
-      return;
-    }
-
-    const matched = options
-      .map(option => ({ option, text: option.textContent?.trim() || '', key: normalize(option.textContent) }))
+    if (!query) { results.innerHTML = ''; results.hidden = true; return; }
+    const matched = options.map(option => ({ option, text: option.textContent?.trim() || '', key: normalize(option.textContent) }))
       .filter(item => item.key.includes(query))
-      .sort((a, b) => {
-        const aStarts = a.key.startsWith(query) ? 0 : 1;
-        const bStarts = b.key.startsWith(query) ? 0 : 1;
-        return aStarts - bStarts || a.text.localeCompare(b.text, 'es');
-      })
+      .sort((a, b) => (a.key.startsWith(query) ? 0 : 1) - (b.key.startsWith(query) ? 0 : 1) || a.text.localeCompare(b.text, 'es'))
       .slice(0, 8);
-
     results.innerHTML = '';
     if (!matched.length) {
-      const empty = document.createElement('div');
-      empty.className = 'inventory-mobile-search-empty';
-      empty.textContent = 'No se ha encontrado ninguna máquina o herramienta';
-      results.appendChild(empty);
-      results.hidden = false;
-      return;
+      const empty = document.createElement('div'); empty.className = 'inventory-mobile-search-empty'; empty.textContent = 'No se ha encontrado ninguna máquina o herramienta'; results.appendChild(empty); results.hidden = false; return;
     }
-
     matched.forEach(({ option, text }) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -196,12 +145,7 @@
   const ensureFinder = () => {
     const existingFinder = document.getElementById(FINDER_ID);
     const existingQr = document.getElementById(TRIGGER_ID);
-    if (!isInventoryView()) {
-      existingFinder?.remove();
-      existingQr?.remove();
-      return;
-    }
-
+    if (!isInventoryView()) { existingFinder?.remove(); existingQr?.remove(); return; }
     const quickCard = document.querySelector('.md\\:hidden.sticky.top-2.z-30');
     const select = quickCard?.querySelector(':scope > select');
     if (!quickCard || !select) return;
@@ -210,45 +154,16 @@
       const finder = document.createElement('div');
       finder.id = FINDER_ID;
       finder.className = 'inventory-mobile-finder';
-      finder.innerHTML = `
-        <label for="inventory-mobile-search"><strong>Buscar máquina o herramienta</strong><small>Escribe nombre, código, matrícula o referencia</small></label>
-        <div class="inventory-mobile-search-wrap">
-          <span class="inventory-mobile-search-icon" aria-hidden="true">⌕</span>
-          <input id="inventory-mobile-search" type="search" inputmode="search" autocomplete="off" placeholder="Ej.: compresor, andamio, Z6-COMP-001…" />
-          <button type="button" class="inventory-mobile-search-clear" aria-label="Borrar búsqueda" hidden>×</button>
-        </div>
-        <div class="inventory-mobile-search-results" hidden></div>
-      `;
+      finder.innerHTML = `<label for="inventory-mobile-search"><strong>Buscar máquina o herramienta</strong><small>Escribe nombre, código, matrícula o referencia</small></label><div class="inventory-mobile-search-wrap"><span class="inventory-mobile-search-icon" aria-hidden="true">⌕</span><input id="inventory-mobile-search" type="search" inputmode="search" autocomplete="off" placeholder="Ej.: compresor, andamio, Z6-COMP-001…" /><button type="button" class="inventory-mobile-search-clear" aria-label="Borrar búsqueda" hidden>×</button></div><div class="inventory-mobile-search-results" hidden></div>`;
       quickCard.prepend(finder);
-
       const input = finder.querySelector('input');
       const results = finder.querySelector('.inventory-mobile-search-results');
       const clear = finder.querySelector('.inventory-mobile-search-clear');
-      input.addEventListener('input', () => {
-        clear.hidden = !input.value;
-        renderResults(select, input, results);
-      });
+      input.addEventListener('input', () => { clear.hidden = !input.value; renderResults(select, input, results); });
       input.addEventListener('focus', () => { if (input.value) renderResults(select, input, results); });
-      input.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-          const first = results.querySelector('.inventory-mobile-search-result');
-          if (first) {
-            event.preventDefault();
-            first.click();
-          }
-        }
-      });
-      clear.addEventListener('click', () => {
-        input.value = '';
-        clear.hidden = true;
-        results.innerHTML = '';
-        results.hidden = true;
-        input.focus();
-      });
-      select.addEventListener('change', () => {
-        const option = select.options[select.selectedIndex];
-        if (option?.value) input.value = option.textContent?.trim() || '';
-      });
+      input.addEventListener('keydown', event => { if (event.key === 'Enter') { const first = results.querySelector('.inventory-mobile-search-result'); if (first) { event.preventDefault(); first.click(); } } });
+      clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; results.innerHTML = ''; results.hidden = true; input.focus(); });
+      select.addEventListener('change', () => { const option = select.options[select.selectedIndex]; if (option?.value) input.value = option.textContent?.trim() || ''; });
     }
 
     if (!existingQr) {
@@ -258,18 +173,11 @@
       button.className = 'inventory-mobile-qr-trigger inventory-mobile-qr-trigger-secondary';
       button.innerHTML = '<span class="inventory-mobile-qr-icon" aria-hidden="true">⌗</span><span><strong>Escanear QR</strong><small>Solo si el equipo ya dispone de código</small></span>';
       button.addEventListener('click', openScanner);
-      const finder = document.getElementById(FINDER_ID);
-      finder?.insertAdjacentElement('afterend', button);
+      document.getElementById(FINDER_ID)?.insertAdjacentElement('afterend', button);
     }
   };
 
-  const observer = new MutationObserver(() => ensureFinder());
-  const start = () => {
-    ensureFinder();
-    observer.observe(document.body, { childList: true, subtree: true });
-    window.matchMedia(MOBILE_QUERY).addEventListener?.('change', ensureFinder);
-    window.addEventListener('popstate', ensureFinder);
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const observer = new MutationObserver(ensureFinder);
+  const start = () => { ensureFinder(); observer.observe(document.body, { childList: true, subtree: true }); window.matchMedia(MOBILE_QUERY).addEventListener?.('change', ensureFinder); window.addEventListener('popstate', ensureFinder); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 })();
