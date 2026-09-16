@@ -91,6 +91,35 @@ export const documentLikelyMatchesPerson = (personName: string, documentText: st
   return matches >= minimum;
 };
 
+const prepareImageForOcr = (base64: string): Promise<string> => new Promise((resolve) => {
+  const img = new Image();
+  img.onload = () => {
+    const maxWidth = 1800;
+    const scale = img.width > maxWidth ? maxWidth / img.width : Math.min(1.5, 1800 / Math.max(1, img.width));
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return resolve(base64);
+    ctx.drawImage(img, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      const contrasted = gray < 150 ? Math.max(0, gray - 35) : Math.min(255, gray + 25);
+      data[i] = contrasted;
+      data[i + 1] = contrasted;
+      data[i + 2] = contrasted;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    resolve(canvas.toDataURL('image/png'));
+  };
+  img.onerror = () => resolve(base64);
+  img.src = base64;
+});
+
 export async function recognizeAdministrativePagesFast(
   pages: Array<{ base64: string; name?: string }>,
   onProgress?: (message: string) => void,
@@ -107,9 +136,15 @@ export async function recognizeAdministrativePagesFast(
   onProgress?.('Preparando OCR rápido…');
   const worker = await createWorker('spa');
   try {
+    await worker.setParameters({
+      preserve_interword_spaces: '1',
+      tessedit_pageseg_mode: '6',
+    } as any);
+
     for (let index = 0; index < pages.length; index += 1) {
-      onProgress?.(`Leyendo página ${index + 1}/${pages.length}…`);
-      const result = await worker.recognize(pages[index].base64);
+      onProgress?.(`Mejorando imagen y leyendo página ${index + 1}/${pages.length}…`);
+      const prepared = await prepareImageForOcr(pages[index].base64);
+      const result = await worker.recognize(prepared);
       pagesProcessed += 1;
       const text = String(result?.data?.text || '').trim();
       if (text) texts.push(text);
@@ -124,12 +159,14 @@ export async function recognizeAdministrativePagesFast(
         if (!warnings.includes(warning)) warnings.push(warning);
       }
 
-      // En cuanto están todos los datos de autocompletado objetivo, evitamos OCR innecesario.
       if (dni && birthDate && nuss && iban) break;
     }
   } finally {
     await worker.terminate();
   }
+
+  if (!nuss) warnings.push('No se pudo validar automáticamente el Nº de Seguridad Social. Revisa que el número completo sea visible y nítido.');
+  if (!iban) warnings.push('No se pudo validar automáticamente el IBAN. Revisa que aparezca completo, incluido ES y sus 22 dígitos.');
 
   return {
     text: texts.join('\n\n'),
