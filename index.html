@@ -26,17 +26,303 @@
     <script>
       tailwind.config = {
         darkMode: 'class',
-        theme: { extend: { colors: { brand: { primary: '#00548E', secondary: '#004477', dark: '#003366' } } } }
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                primary: '#00548E', // Azul Diputación
+                secondary: '#004477',
+                dark: '#003366',
+              }
+            }
+          }
+        }
       }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/index.css">
-    <link rel="stylesheet" href="/directorio-toolbar.css">
-    <link rel="stylesheet" href="/inventory-mobile.css">
-  </head>
+    <style>
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #f0f7ff;
+        color: #0f172a;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      html.dark body {
+        background-color: #0b1329;
+        color: #f1f5f9;
+      }
+      /* Estilo para la barra de desplazamiento */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f0f7ff;
+        border-radius: 10px;
+      }
+      html.dark .custom-scrollbar::-webkit-scrollbar-track {
+        background: #0b1329;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #00548E;
+        border-radius: 10px;
+      }
+      html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #1e3a8a;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #004477;
+      }
+      html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #2563eb;
+      }
+      
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .animate-in {
+        animation-duration: 350ms;
+        animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+        animation-fill-mode: both;
+      }
+      .fade-in {
+        animation-name: fade-in;
+      }
+      
+      /* Estilos optimizados para impresión en papel o PDF directamente desde el navegador */
+      @page {
+        size: A4 portrait;
+        margin: 8mm 10mm 8mm 10mm;
+      }
+
+      @media print {
+        *, *::before, *::after {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          box-sizing: border-box !important;
+        }
+
+        aside,
+        nav,
+        footer,
+        button,
+        input[type="checkbox"],
+        input[type="file"],
+        .no-print,
+        .fixed.bottom-6,
+        header button,
+        .app-navigation-panel {
+          display: none !important;
+        }
+
+        html, body {
+          background: #ffffff !important;
+          color: #000000 !important;
+          font-size: 9.5pt !important;
+          line-height: 1.25 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+        }
+
+        #root {
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        html.dark body,
+        html.dark div, 
+        html.dark span, 
+        html.dark p, 
+        html.dark a,
+        html.dark h1, 
+        html.dark h2, 
+        html.dark h3, 
+        html.dark h4, 
+        html.dark h5, 
+        html.dark h6 {
+          color: #000000 !important;
+          background-color: transparent !important;
+        }
+
+        div, main, section, article {
+          box-shadow: none !important;
+          text-shadow: none !important;
+          background-image: none !important;
+        }
+
+        .print-only-header {
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          width: 100% !important;
+          padding-bottom: 6px !important;
+          margin-bottom: 10px !important;
+          border-bottom: 2px solid #00548E !important;
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+        }
+
+        .print-only-header img, .print-logo {
+          height: 42px !important;
+          width: auto !important;
+          max-width: 180px !important;
+          object-fit: contain !important;
+          display: block !important;
+        }
+
+        table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          border-spacing: 0 !important;
+          margin-top: 6px !important;
+          margin-bottom: 8px !important;
+          border: 1.5px solid #475569 !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        thead {
+          display: table-header-group !important;
+          background-color: #f1f5f9 !important;
+        }
+
+        tbody {
+          display: table-row-group !important;
+        }
+
+        tr {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        th {
+          border: 1px solid #475569 !important;
+          background-color: #e2e8f0 !important;
+          color: #0f172a !important;
+          font-weight: 800 !important;
+          font-size: 8pt !important;
+          padding: 4px 6px !important;
+          text-align: left !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.03em !important;
+        }
+
+        td {
+          border: 1px solid #64748b !important;
+          color: #0f172a !important;
+          padding: 4px 6px !important;
+          font-size: 8pt !important;
+          vertical-align: middle !important;
+          background-color: #ffffff !important;
+        }
+
+        tbody tr:nth-child(even) td {
+          background-color: #f8fafc !important;
+        }
+
+        .relative.z-10.flex-1,
+        .max-w-\[1600px\] {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow: visible !important;
+        }
+
+        .group.bg-white, .card, fieldset {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+          color: #000000 !important;
+        }
+
+        .overflow-y-auto, 
+        .overflow-x-auto,
+        .custom-scrollbar,
+        .max-h-\[800px\],
+        .max-h-\[300px\],
+        .max-h-\[200px\] {
+          overflow: visible !important;
+          max-height: none !important;
+          height: auto !important;
+          padding-right: 0 !important;
+        }
+
+        .fixed.inset-0.z-50,
+        .fixed.inset-0.z-\[110\] {
+          position: relative !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          height: auto !important;
+          background: #ffffff !important;
+          padding: 0 !important;
+          z-index: auto !important;
+          display: block !important;
+          overflow: visible !important;
+        }
+
+        .fixed.inset-0.z-50 > div,
+        .fixed.inset-0.z-\[110\] > div {
+          position: relative !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          height: auto !important;
+          max-height: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          background: #ffffff !important;
+          box-shadow: none !important;
+          transform: none !important;
+          overflow: visible !important;
+        }
+
+        .p-6, .p-8, .p-4, .sm\:p-6, .md\:p-8 {
+          padding: 6px !important;
+        }
+
+        .gap-6, .gap-8, .gap-4 {
+          gap: 6px !important;
+        }
+
+        .mb-6, .mb-8, .mb-4 {
+          margin-bottom: 6px !important;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.1",
+    "exceljs": "https://esm.sh/exceljs@4.4.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+<link rel="stylesheet" href="/directorio-toolbar.css">
+<link rel="stylesheet" href="/inventory-mobile.css">
+</head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-    <script type="module" src="/inventory-mobile-field.js"></script>
-  </body>
+  <script type="module" src="/index.tsx"></script>
+  <script type="module" src="/inventory-mobile-field.js"></script>
+</body>
 </html>
