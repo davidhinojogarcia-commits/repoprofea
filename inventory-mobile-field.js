@@ -181,3 +181,5 @@
   const start = () => { ensureFinder(); observer.observe(document.body, { childList: true, subtree: true }); window.matchMedia(MOBILE_QUERY).addEventListener?.('change', ensureFinder); window.addEventListener('popstate', ensureFinder); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 })();
+
+import('/citation-ui-cleanup.js').catch((error) => console.debug('No se pudo cargar la simplificación de citaciones', error));
