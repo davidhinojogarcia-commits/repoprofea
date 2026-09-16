@@ -244,18 +244,13 @@ export async function updateInventoryPark(parkId: string, data: { nombre: string
       updated_at: new Date().toISOString(),
     },
   });
-  const park = mapPark(rows?.[0], userId);
-  return park;
+  return mapPark(rows?.[0], userId);
 }
 
 export async function seedInventoryIfEmpty(parkId: string) {
-  const countRows = await supabase.query('inventory_items', {
-    query: `select=id&park_id=eq.${encodeURIComponent(parkId)}&limit=1`,
-  });
+  const countRows = await supabase.query('inventory_items', { query: `select=id&park_id=eq.${encodeURIComponent(parkId)}&limit=1` });
   if (Array.isArray(countRows) && countRows.length) return;
-  const parkRows = await supabase.query('inventory_parks', {
-    query: `select=nombre,zona& id=eq.${encodeURIComponent(parkId)}&limit=1`,
-  });
+  const parkRows = await supabase.query('inventory_parks', { query: `select=nombre,zona&id=eq.${encodeURIComponent(parkId)}&limit=1` });
   const park = parkRows?.[0];
   if (!park || park.nombre !== 'Nave logística Antonio Ramos' || park.zona !== 'Zona 6') return;
   const userId = await currentUserId();
@@ -287,9 +282,7 @@ export async function seedInventoryIfEmpty(parkId: string) {
 }
 
 export async function listInventoryItems(parkId: string): Promise<InventoryItem[]> {
-  const rows = await supabase.query('inventory_items', {
-    query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=categoria.asc,nombre.asc,codigo.asc`,
-  });
+  const rows = await supabase.query('inventory_items', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=categoria.asc,nombre.asc,codigo.asc` });
   return (rows || []).map(mapItem);
 }
 
@@ -316,28 +309,20 @@ export async function saveInventoryItem(parkId: string, item: Partial<InventoryI
     updated_by: userId,
   };
   if (item.id) {
-    const rows = await supabase.query('inventory_items', {
-      method: 'PATCH', query: `id=eq.${encodeURIComponent(item.id)}&select=*`, prefer: 'return=representation', body: payload,
-    });
+    const rows = await supabase.query('inventory_items', { method: 'PATCH', query: `id=eq.${encodeURIComponent(item.id)}&select=*`, prefer: 'return=representation', body: payload });
     return mapItem(rows?.[0]);
   }
-  const rows = await supabase.query('inventory_items', {
-    method: 'POST', prefer: 'return=representation', body: { ...payload, created_by: userId },
-  });
+  const rows = await supabase.query('inventory_items', { method: 'POST', prefer: 'return=representation', body: { ...payload, created_by: userId } });
   return mapItem(rows?.[0]);
 }
 
 export async function softDeleteInventoryItem(itemId: string) {
   const userId = await currentUserId();
-  await supabase.query('inventory_items', {
-    method: 'PATCH', query: `id=eq.${encodeURIComponent(itemId)}`, body: { activo: false, estado: 'Baja', updated_by: userId },
-  });
+  await supabase.query('inventory_items', { method: 'PATCH', query: `id=eq.${encodeURIComponent(itemId)}`, body: { activo: false, estado: 'Baja', updated_by: userId } });
 }
 
 export async function listInventoryMovements(parkId: string): Promise<InventoryMovement[]> {
-  const rows = await supabase.query('inventory_movements', {
-    query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=created_at.desc&limit=2000`,
-  });
+  const rows = await supabase.query('inventory_movements', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=created_at.desc&limit=2000` });
   const movements = (rows || []).map(mapMovement);
   for (const movement of movements) {
     if (!movement.fotoPaths.length) continue;
@@ -380,6 +365,32 @@ export async function registerInventoryMovement(input: {
   });
 }
 
+export async function updateInventoryMovement(input: {
+  movementId: string;
+  tipo: string;
+  destino: string;
+  estadoNuevo: string;
+  observaciones?: string;
+  latitud?: number | null;
+  longitud?: number | null;
+  fotoPaths?: string[];
+}) {
+  return supabase.rpc('inventory_update_movement', {
+    p_movement_id: input.movementId,
+    p_tipo: input.tipo,
+    p_destino: input.destino,
+    p_estado_nuevo: input.estadoNuevo,
+    p_observaciones: input.observaciones || '',
+    p_latitud: input.latitud ?? null,
+    p_longitud: input.longitud ?? null,
+    p_foto_paths: input.fotoPaths || [],
+  });
+}
+
+export async function deleteInventoryMovement(movementId: string) {
+  return supabase.rpc('inventory_delete_movement', { p_movement_id: movementId });
+}
+
 async function signDocumentPath(path: string, expiresIn = 3600) {
   const { data, error } = await supabase.storage.from('inventory-documents').createSignedUrl(path, expiresIn);
   if (error) throw error;
@@ -399,9 +410,7 @@ export async function uploadInventoryDocuments(parkId: string, itemId: string, f
 }
 
 export async function listInventoryMaintenance(parkId: string): Promise<InventoryMaintenance[]> {
-  const rows = await supabase.query('inventory_maintenance', {
-    query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=fecha.desc,created_at.desc&limit=2000`,
-  });
+  const rows = await supabase.query('inventory_maintenance', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=fecha.desc,created_at.desc&limit=2000` });
   const result = (rows || []).map(mapMaintenance);
   for (const record of result) {
     record.signedDocumentUrls = (await Promise.all(record.signedDocumentPaths.map(async path => ({ path, url: await signDocumentPath(path) })))).filter(x => x.url);
@@ -432,9 +441,7 @@ export async function addInventoryMaintenance(parkId: string, itemId: string, da
 
 export async function listInventoryDocuments(parkId: string, itemId?: string): Promise<InventoryDocument[]> {
   const filter = itemId ? `&item_id=eq.${encodeURIComponent(itemId)}` : '';
-  const rows = await supabase.query('inventory_documents', {
-    query: `select=*&park_id=eq.${encodeURIComponent(parkId)}${filter}&order=created_at.desc`,
-  });
+  const rows = await supabase.query('inventory_documents', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}${filter}&order=created_at.desc` });
   const docs = (rows || []).map(mapDocument);
   for (const doc of docs) doc.downloadUrl = await signDocumentPath(doc.filePath);
   return docs;
