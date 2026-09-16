@@ -37,6 +37,14 @@ const consumeReservedWhatsAppWindow = (): Window | null => {
   return target && !target.closed ? target : null;
 };
 
+const closeWindow = (target: Window | null) => {
+  try {
+    if (target && !target.closed) target.close();
+  } catch {
+    // Ignore browser-specific close errors.
+  }
+};
+
 const normalizePhone = (value: string): string => {
   let digits = String(value || '').replace(/\D/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
@@ -143,6 +151,18 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
   return new File([blob], filename, { type: 'application/pdf' });
 };
 
+const downloadPdfFile = (pdfFile: File) => {
+  const url = URL.createObjectURL(pdfFile);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = pdfFile.name;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(url), 3000);
+};
+
 export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder = false, confirmationLinks?: MedicalConfirmationLinks): Promise<'shared' | 'opened' | 'cancelled'> => {
   const phone = normalizePhone(person.telefono || '');
   if (phone.length < 10) {
@@ -153,10 +173,36 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
   const text = buildMedicalAppointmentWhatsAppText(person, reminder, confirmationLinks);
   const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
   const whatsappWindow = consumeReservedWhatsAppWindow();
+  let pdfFile: File;
+  try {
+    pdfFile = await createMedicalAppointmentPdfFile(person);
+  } catch (error) {
+    closeWindow(whatsappWindow);
+    throw error;
+  }
 
-  // Navigate the window reserved by the original tap before generating/downloading
-  // the PDF. This reliably launches WhatsApp on Safari/iOS instead of losing the
-  // navigation after async database and PDF work.
+  // Web Share is the only browser API that can send the PDF as a real WhatsApp
+  // attachment. The reserved window remains available as a safe fallback for iOS.
+  if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+    try {
+      await navigator.share({
+        title: reminder ? 'Recordatorio de reconocimiento médico' : 'Citación para reconocimiento médico',
+        text,
+        files: [pdfFile],
+      });
+      closeWindow(whatsappWindow);
+      return 'shared';
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        closeWindow(whatsappWindow);
+        return 'cancelled';
+      }
+      console.warn('No se pudo compartir directamente la citación PDF; se usará la alternativa de WhatsApp.', error);
+    }
+  }
+
+  downloadPdfFile(pdfFile);
+
   if (whatsappWindow) {
     try {
       whatsappWindow.location.replace(whatsappUrl);
@@ -164,29 +210,12 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
       try {
         whatsappWindow.location.href = whatsappUrl;
       } catch {
-        // Fall through; the same-tab fallback below will be used if needed.
+        window.location.href = whatsappUrl;
       }
     }
-  }
-
-  // If the browser blocked the reserved window, prioritize opening WhatsApp rather
-  // than leaving the user trapped in a PDF preview. The normal iOS/Safari path uses
-  // the reserved window and still downloads the PDF below.
-  if (!whatsappWindow) {
+  } else {
     window.location.href = whatsappUrl;
-    return 'opened';
   }
-
-  const pdfFile = await createMedicalAppointmentPdfFile(person);
-  const url = URL.createObjectURL(pdfFile);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = pdfFile.name;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.setTimeout(() => URL.revokeObjectURL(url), 3000);
 
   return 'opened';
 };
