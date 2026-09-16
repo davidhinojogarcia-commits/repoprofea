@@ -13,7 +13,16 @@ export const RemoteScannerPairing: React.FC<RemoteScannerPairingProps> = ({ onCa
   const [pairingUrl, setPairingUrl] = React.useState('');
   const [expiresAt, setExpiresAt] = React.useState('');
   const [status, setStatus] = React.useState<'loading' | 'ready' | 'error'>('loading');
+  const onCaptureRef = React.useRef(onCapture);
+  const onToastRef = React.useRef(onToast);
 
+  React.useEffect(() => {
+    onCaptureRef.current = onCapture;
+    onToastRef.current = onToast;
+  }, [onCapture, onToast]);
+
+  // La conexión no depende de la identidad de callbacks del padre. Así no se vuelve
+  // a suscribir Realtime cada vez que el modal del escáner se renderiza.
   const connect = React.useCallback(async () => {
     setStatus('loading');
     try {
@@ -23,22 +32,36 @@ export const RemoteScannerPairing: React.FC<RemoteScannerPairingProps> = ({ onCa
       setQrDataUrl(await QRCode.toDataURL(session.pairingUrl, { width: 260, margin: 1 }));
       setStatus('ready');
       const unsubscribe = subscribeToRemoteScannerCaptures(session.id, capture => {
-        onCapture(capture.imageData, capture.fileName);
-        onToast('Nueva captura recibida desde el móvil', 'success');
+        onCaptureRef.current(capture.imageData, capture.fileName);
+        onToastRef.current('Nueva captura recibida desde el móvil', 'success');
       });
       return unsubscribe;
     } catch (error: any) {
       console.error('Remote scanner pairing error:', error);
       setStatus('error');
-      onToast(error?.message || 'No se ha podido preparar el escáner móvil.', 'error');
+      onToastRef.current(error?.message || 'No se ha podido preparar el escáner móvil.', 'error');
       return undefined;
     }
-  }, [onCapture, onToast]);
+  }, []);
 
   React.useEffect(() => {
+    let disposed = false;
     let cleanup: undefined | (() => void);
-    void connect().then(fn => { cleanup = fn; });
-    return () => cleanup?.();
+
+    void connect().then(fn => {
+      // StrictMode puede desmontar el primer efecto antes de terminar la creación
+      // asíncrona. En ese caso retiramos el canal inmediatamente.
+      if (disposed) {
+        fn?.();
+      } else {
+        cleanup = fn;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
   }, [connect]);
 
   if (status === 'loading') {
@@ -46,7 +69,7 @@ export const RemoteScannerPairing: React.FC<RemoteScannerPairingProps> = ({ onCa
   }
 
   if (status === 'error') {
-    return <div className="rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 p-5"><p className="text-sm font-bold text-amber-900 dark:text-amber-200">El escáner móvil necesita la migración de base de datos pendiente.</p><button type="button" onClick={() => void connect()} className="mt-3 px-4 py-2 rounded-xl bg-[#00548E] text-white text-xs font-bold">Reintentar</button></div>;
+    return <div className="rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 p-5"><p className="text-sm font-bold text-amber-900 dark:text-amber-200">No se ha podido preparar la vinculación con la cámara móvil.</p><button type="button" onClick={() => void connect()} className="mt-3 px-4 py-2 rounded-xl bg-[#00548E] text-white text-xs font-bold">Reintentar</button></div>;
   }
 
   return (
