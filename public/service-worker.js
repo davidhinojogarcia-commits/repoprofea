@@ -1,8 +1,8 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-static-v3';
-const STATIC_ASSETS = ['/manifest.webmanifest','/favicon.ico','/icons/favicon-16x16.png','/icons/favicon-32x32.png','/icons/apple-touch-icon.png','/icons/icon-192.png','/icons/icon-512.png','/icons/icon-maskable-192.png','/icons/icon-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
+const CACHE_NAME = 'profea-static-v4';
+const STATIC_ASSETS = ['/manifest.webmanifest','/icons/profea-icon-v4-32.png','/icons/profea-icon-v4-180.png','/icons/profea-icon-v4-192.png','/icons/profea-icon-v4-512.png','/icons/profea-icon-v4-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
 
 // 1. INSTALACIÓN: Guardar en caché recursos estáticos básicos
 self.addEventListener('install', (event) => {
@@ -64,8 +64,8 @@ self.addEventListener('push', (event) => {
   let data = {
     title: 'Aviso PROFEA - Diputación de Cádiz',
     body: 'Tienes eventos o citaciones pendientes en el sistema.',
-    icon: '/favicon.png',
-    badge: '/favicon.png',
+    icon: '/icons/profea-icon-v4-192.png',
+    badge: '/icons/profea-icon-v4-192.png',
     url: '/',
     tag: 'profea-notification'
   };
@@ -81,8 +81,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: data.icon || '/favicon.png',
-    badge: data.badge || '/favicon.png',
+    icon: data.icon || '/icons/profea-icon-v4-192.png',
+    badge: data.badge || '/icons/profea-icon-v4-192.png',
     tag: data.tag || 'profea-alert',
     renotify: true,
     vibrate: [100, 50, 100],
@@ -138,8 +138,8 @@ self.addEventListener('message', (event) => {
     const { title, body, icon, tag, url } = event.data;
     self.registration.showNotification(title || 'Aviso PROFEA', {
       body: body || 'Alerta de citación médica o finalización de contrato.',
-      icon: icon || '/favicon.png',
-      badge: '/favicon.png',
+      icon: icon || '/icons/profea-icon-v4-192.png',
+      badge: '/icons/profea-icon-v4-192.png',
       tag: tag || 'profea-local',
       vibrate: [200, 100, 200],
       data: { url: url || '/' }
