@@ -86,6 +86,8 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [isCameraLoading, setIsCameraLoading] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
   const [isMobileCameraDevice, setIsMobileCameraDevice] = useState(false);
   const [hasLocalCamera, setHasLocalCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -123,44 +125,64 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   }, []);
 
   const startLiveCamera = async (mode: 'environment' | 'user' = facingMode) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      fileInputRef.current?.click();
+      onToast('Este navegador no permite vista previa en directo. Se abre la cámara nativa.', 'error');
+      return;
+    }
+
     setIsCameraLoading(true);
+    setIsVideoReady(false);
+    setCameraError('');
     try {
-      // Stop any existing stream first
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
 
-      const constraints = {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: mode },
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         },
         audio: false
-      };
+      });
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = mediaStream;
-      setIsLiveActive(true);
       setFacingMode(mode);
-      
-      // Wait for React to render the video node
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-          videoRef.current.play().catch(e => console.error("Error al iniciar reproducción:", e));
-        }
-      }, 150);
-      
+      setIsLiveActive(true);
     } catch (err) {
-      console.error("Error iniciando cámara web interactiva:", err);
-      // Fallback to standard device capture
+      console.error('Error iniciando cámara web interactiva:', err);
+      setCameraError('No se ha podido mostrar la cámara. Revisa el permiso del navegador.');
       fileInputRef.current?.click();
-      onToast("Iniciando captura con cámara nativa del sistema", "success");
+      onToast('No se pudo abrir la vista previa. Se ha abierto la cámara nativa como alternativa.', 'error');
     } finally {
       setIsCameraLoading(false);
     }
   };
+
+  React.useEffect(() => {
+    if (!isLiveActive || !videoRef.current || !streamRef.current) return;
+
+    const video = videoRef.current;
+    const mediaStream = streamRef.current;
+    video.srcObject = mediaStream;
+
+    const markReady = () => setIsVideoReady(video.videoWidth > 0 && video.videoHeight > 0);
+    video.addEventListener('loadedmetadata', markReady);
+    video.addEventListener('canplay', markReady);
+    video.play().catch(error => {
+      console.error('Error al reproducir la vista previa de cámara:', error);
+      setCameraError('Toca la pantalla y vuelve a abrir la cámara para iniciar la vista previa.');
+    });
+
+    return () => {
+      video.removeEventListener('loadedmetadata', markReady);
+      video.removeEventListener('canplay', markReady);
+      if (video.srcObject === mediaStream) video.srcObject = null;
+    };
+  }, [isLiveActive, facingMode]);
 
   const stopLiveCamera = () => {
     if (streamRef.current) {
@@ -170,6 +192,8 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setIsVideoReady(false);
+    setCameraError('');
     setIsLiveActive(false);
   };
 
@@ -189,8 +213,11 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
   const captureFrame = () => {
-    if (!videoRef.current) return;
-    
+    if (!videoRef.current || !isVideoReady || videoRef.current.readyState < 2) {
+      onToast('Espera a que aparezca la imagen de la cámara antes de hacer la foto.', 'error');
+      return;
+    }
+
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
     const width = video.videoWidth || 1280;
@@ -228,6 +255,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         }, 0);
         return nextPages;
       });
+      if (!isContinuous) stopLiveCamera();
     });
   };
 
@@ -873,7 +901,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print">
+    <div className={`fixed inset-0 z-[110] flex items-center justify-center ${isLiveActive ? 'p-0 sm:p-4' : 'p-4'} bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print`}>
       
       {/* Hidden file inputs */}
       <input 
@@ -895,7 +923,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         id="gallery-capture-input"
       />
  
-      <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className={`relative w-full max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${isLiveActive ? 'h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-3xl' : 'max-h-[90vh] rounded-3xl'}`}>
         
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
@@ -918,7 +946,47 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
  
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
-          {isRecognizing ? (
+          {isLiveActive ? (
+            <section className="mx-auto flex w-full max-w-3xl flex-col gap-4" aria-label="Vista previa de la cámara">
+              <div className="relative min-h-[52dvh] overflow-hidden rounded-2xl bg-black shadow-inner sm:aspect-[4/3] sm:min-h-0">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  onLoadedMetadata={() => setIsVideoReady(Boolean(videoRef.current?.videoWidth))}
+                  className="h-full w-full object-cover"
+                  aria-label="Imagen en directo de la cámara"
+                />
+                <div id="camera-flash-overlay" className="pointer-events-none absolute inset-0 z-20 bg-white opacity-0 transition-opacity duration-150" />
+                <div className="pointer-events-none absolute inset-4 rounded-xl border-2 border-white/55 shadow-[0_0_0_9999px_rgba(0,0,0,0.12)]" />
+                <div className="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">
+                  {isVideoReady ? 'Cámara lista' : 'Preparando cámara…'}
+                </div>
+                {cameraError && (
+                  <div role="alert" className="absolute inset-x-4 bottom-4 rounded-xl bg-red-600/90 p-3 text-center text-sm font-semibold text-white">
+                    {cameraError}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+                <button type="button" onClick={stopLiveCamera} className="justify-self-start rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                  Cancelar
+                </button>
+                <button type="button" onClick={captureFrame} disabled={!isVideoReady} aria-label="Hacer foto" className="grid h-20 w-20 place-items-center rounded-full border-[6px] border-white bg-emerald-600 text-white shadow-xl ring-2 ring-slate-400 transition active:scale-95 disabled:cursor-wait disabled:bg-slate-500 disabled:opacity-70">
+                  {isVideoReady ? <Camera className="h-8 w-8" /> : <Loader2 className="h-8 w-8 animate-spin" />}
+                </button>
+                <button type="button" onClick={toggleFacingMode} disabled={isCameraLoading} className="justify-self-end rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white" aria-label="Cambiar entre cámara trasera y frontal">
+                  <RefreshCw className="mx-auto h-5 w-5" />
+                  <span className="mt-1 block text-[10px]">Cambiar</span>
+                </button>
+              </div>
+              <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                Centra el documento dentro del marco y pulsa el botón verde para hacer la foto.
+              </p>
+            </section>
+          ) : isRecognizing ? (
             <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in duration-200">
               <div className="relative mb-6">
                 <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/40 rounded-full flex items-center justify-center text-[#00548E] dark:text-blue-400">
@@ -1160,7 +1228,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
           )}
 
           {/* Captured Pages List Container */}
-          {!showRelationView && !isRecognizing && (
+          {!isLiveActive && !showRelationView && !isRecognizing && (
             <>
               {pages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl bg-slate-50/20 dark:bg-slate-900/10">
@@ -1320,7 +1388,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         </div>
 
         {/* Modal Footer / Compilation Area */}
-        <div className="px-6 py-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className={`${isLiveActive ? 'hidden' : 'flex'} px-6 py-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex-col sm:flex-row items-center justify-between gap-4`}>
           {showRelationView ? (
             <>
               {/* File Statistics Info */}
@@ -1497,3 +1565,4 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     </div>
   );
 };
+
