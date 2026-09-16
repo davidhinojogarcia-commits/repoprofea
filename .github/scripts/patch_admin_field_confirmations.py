@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Temporary patch helper for branch-only scanner confirmation changes.
 p = Path('components/CameraScannerModal.tsx')
 text = p.read_text()
 old = """      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
