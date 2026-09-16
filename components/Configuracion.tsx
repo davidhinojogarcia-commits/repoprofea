@@ -13,7 +13,6 @@ import {
   Database,
   Download,
   FileJson,
-  Clock,
   CheckCircle,
   LogIn,
   LogOut,
@@ -126,7 +125,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "telefonos"
     | "categorias"
     | "backup"
-    | "jornada"
   >("lugares");
 
   const [newItem, setNewItem] = useState("");
@@ -798,30 +796,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           <button
             onClick={() => {
-              setActiveTab("jornada");
-              setSearchTerm("");
-              setNewItem("");
-              setDeletingItem(null);
-              setSelectedItems([]);
-              setShowBulkConfirm(false);
-            }}
-            className={`
-              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold mb-2
-              ${
-                activeTab === "jornada"
-                  ? "profea-sidebar-item--active text-white"
-                  : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
-              }
-            `}
-          >
-            <Clock
-              className={`w-5 h-5 ${activeTab === "jornada" ? "text-white" : "text-slate-400 dark:text-slate-500"}`}
-            />
-            Jornada Laboral
-          </button>
-
-          <button
-            onClick={() => {
               setActiveTab("backup");
               setSearchTerm("");
               setNewItem("");
@@ -1150,151 +1124,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          ) : activeTab === "jornada" ? (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <Clock className="w-6 h-6 text-brand-primary animate-pulse" />
-                  Jornada Laboral de Reconocimientos Médicos
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                  Defina el rango de horas habitual en el que se deben agendar
-                  los reconocimientos médicos de los trabajadores.
-                </p>
-              </div>
-
-              <div className="p-6 space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Hora de Inicio */}
-                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/10 space-y-3">
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                      Hora de Inicio de Jornada
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <Clock className="w-5 h-5 text-emerald-500 shrink-0" />
-                      <input
-                        type="time"
-                        value={workStartHour}
-                        onChange={(e) => setWorkStartHour(e.target.value)}
-                        className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
-                      />
-                    </div>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-relaxed font-medium">
-                      Hora de inicio predeterminada para el primer turno del día
-                      asignado.
-                    </span>
-                  </div>
-
-                  {/* Hora de Fin */}
-                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/10 space-y-3">
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                      Hora de Fin de Jornada
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <Clock className="w-5 h-5 text-red-500 shrink-0" />
-                      <input
-                        type="time"
-                        value={workEndHour}
-                        onChange={(e) => setWorkEndHour(e.target.value)}
-                        className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
-                      />
-                    </div>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-relaxed font-medium">
-                      Hora límite de salida. Las citas se programarán dentro de
-                      este límite.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 text-xs leading-relaxed flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="block mb-1">
-                      💡 ¿Cómo utiliza la IA esta configuración?
-                    </strong>
-                    Al solicitar a la IA la planificación automática ("Gestionar
-                    Citas" &gt; "Planificación Inteligente"), la IA organizará y
-                    agrupará a los trabajadores partiendo de las{" "}
-                    <strong>{workStartHour}</strong> de la mañana. Distribuirá
-                    las citas secuencialmente y evitará sobrepasar las{" "}
-                    <strong>{workEndHour}</strong> de la tarde.
-                  </div>
-                </div>
-
-                {/* Detección Automática de Tema por Horario */}
-                <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                        Detección Automática de Tema (Light/Dark)
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                        Cambia automáticamente al modo oscuro después de las{" "}
-                        <strong className="font-bold">20:00</strong> y vuelve al
-                        modo claro al amanecer (
-                        <strong className="font-bold">07:00</strong>). Si cambia
-                        el tema manualmente desde la barra superior, el modo
-                        automático se desactivará temporalmente.
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={autoThemeByTime}
-                        onChange={(e) => setAutoThemeByTime(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-primary/20 dark:peer-focus:ring-brand-primary/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-brand-primary"></div>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    <span className="w-2 h-2 rounded-full bg-brand-primary animate-ping"></span>
-                    <span>
-                      Estado actual:{" "}
-                      {autoThemeByTime
-                        ? "🟢 Activado y monitorizando la hora"
-                        : "🔴 Desactivado (Tema estático)"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-6 space-y-3">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                    Simulación de Horarios (Intervalos sugeridos)
-                  </span>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Así se vería una programación secuencial típica de citas
-                    cada 15 minutos con su jornada configurada:
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[0, 15, 30, 45].map((mins) => {
-                      const [hStr, mStr] = workStartHour.split(":");
-                      const h = parseInt(hStr || "8", 10);
-                      const m = parseInt(mStr || "0", 10);
-                      const totalMins = h * 60 + m + mins;
-                      const simH = Math.floor(totalMins / 60) % 24;
-                      const simM = totalMins % 60;
-                      const formattedH = simH.toString().padStart(2, "0");
-                      const formattedM = simM.toString().padStart(2, "0");
-                      return (
-                        <div
-                          key={mins}
-                          className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 text-center"
-                        >
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 block">
-                            TURNO {mins === 0 ? "1" : mins / 15 + 1}
-                          </span>
-                          <span className="text-sm font-extrabold text-slate-700 dark:text-slate-300">
-                            {formattedH}:{formattedM}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
             </div>
           ) : activeTab === "obras" ? (
