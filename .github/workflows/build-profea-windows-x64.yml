@@ -1,0 +1,83 @@
+name: Build PROFEA Windows 11 x64
+
+on:
+  push:
+    branches:
+      - fix/windows-installer-x64
+    paths:
+      - 'windows-installer/**'
+      - '.github/workflows/build-profea-windows-x64.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Create Windows ICO from current PROFEA PWA icon
+        shell: pwsh
+        run: |
+          $pngPath = Join-Path $env:GITHUB_WORKSPACE 'public/icons/profea-icon-v4-192.png'
+          $icoPath = Join-Path $env:GITHUB_WORKSPACE 'windows-installer/profea.ico'
+          if (!(Test-Path $pngPath)) { throw "No se encuentra el icono PWA actual: $pngPath" }
+          $png = [System.IO.File]::ReadAllBytes($pngPath)
+          $fs = [System.IO.File]::Create($icoPath)
+          $bw = New-Object System.IO.BinaryWriter($fs)
+          # ICONDIR: reserved=0, type=1, count=1
+          $bw.Write([UInt16]0)
+          $bw.Write([UInt16]1)
+          $bw.Write([UInt16]1)
+          # ICONDIRENTRY, 192x192 PNG payload
+          $bw.Write([Byte]192)
+          $bw.Write([Byte]192)
+          $bw.Write([Byte]0)
+          $bw.Write([Byte]0)
+          $bw.Write([UInt16]1)
+          $bw.Write([UInt16]32)
+          $bw.Write([UInt32]$png.Length)
+          $bw.Write([UInt32]22)
+          $bw.Write($png)
+          $bw.Flush()
+          $bw.Dispose()
+          $fs.Dispose()
+
+      - name: Publish true Windows x64 executable
+        shell: pwsh
+        run: |
+          dotnet publish windows-installer/PROFEA.Launcher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PlatformTarget=x64 -o windows-installer/publish
+          $source = Join-Path $env:GITHUB_WORKSPACE 'windows-installer/publish/PROFEA.exe'
+          $target = Join-Path $env:GITHUB_WORKSPACE 'windows-installer/publish/PROFEA-Setup-Windows-11-x64.exe'
+          if (!(Test-Path $source)) { throw "No se generó PROFEA.exe" }
+          Copy-Item $source $target -Force
+
+      - name: Verify PE architecture is AMD64
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'windows-installer/publish/PROFEA-Setup-Windows-11-x64.exe'
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne 0x8664) { throw ('Arquitectura PE incorrecta: 0x{0:X4}' -f $machine) }
+          Write-Host 'PE AMD64/x64 verificado correctamente.'
+
+      - name: SHA256
+        shell: pwsh
+        run: |
+          Get-FileHash windows-installer/publish/PROFEA-Setup-Windows-11-x64.exe -Algorithm SHA256 | Format-List
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PROFEA-Setup-Windows-11-x64
+          path: windows-installer/publish/PROFEA-Setup-Windows-11-x64.exe
+          if-no-files-found: error
+          retention-days: 30
