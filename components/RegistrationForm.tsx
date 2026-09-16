@@ -698,12 +698,12 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Nº Seguridad Social</label>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Nº Seguridad Social <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
               <input id="nuss-input" type="text" name="numeroSeguridadSocial" value={formData.numeroSeguridadSocial || ''} onChange={handleChange} placeholder="11/12345678/90" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${nussAnalysis ? (nussAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
               {nussAnalysis && <p className={`text-[11px] font-semibold ${nussAnalysis.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{nussAnalysis.valid ? `✓ Número válido · ${formatSpanishSocialSecurityNumber(nussAnalysis.normalized)}` : `✕ ${nussAnalysis.error}`}</p>}
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">IBAN / Cuenta bancaria</label>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">IBAN / Cuenta bancaria <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
               <input id="iban-input" type="text" name="iban" value={formData.iban || ''} onChange={handleChange} placeholder="ES00 0000 0000 0000 0000 0000" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${ibanAnalysis ? (ibanAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
               {ibanAnalysis && <p className={`text-[11px] font-semibold ${ibanAnalysis.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{ibanAnalysis.valid ? `✓ IBAN válido · ${formatIban(ibanAnalysis.normalized)}` : `✕ ${ibanAnalysis.error}`}</p>}
               <p className="text-[10px] text-slate-400">También puedes capturarlos desde Escáner → Seguridad Social / IBAN.</p>

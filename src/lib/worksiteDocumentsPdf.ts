@@ -117,13 +117,14 @@ const drawWorksiteBlock = (
   context: WorksiteDocumentContext,
   y = 42,
 ) => {
+  const blockHeight = 23;
   doc.setFillColor(247, 250, 252);
   doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(14, y, w - 28, 18, 2, 2, "FD");
+  doc.roundedRect(14, y, w - 28, blockHeight, 2, 2, "FD");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(...BLUE);
-  doc.text("DATOS DE LA EMPRESA / OBRA", 18, y + 5);
+  doc.text("DATOS DE LA EMPRESA / OBRA", 18, y + 5.1);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.4);
   doc.setTextColor(30, 41, 59);
@@ -132,29 +133,29 @@ const drawWorksiteBlock = (
   doc.text(
     `Municipio: ${context.municipio || "Pendiente de completar"}`,
     leftX,
-    y + 10.3,
+    y + 10.2,
     { maxWidth: 126 },
   );
-  doc.text(`Empresa: ${context.empresa || "-"}`, leftX, y + 14.8, {
+  doc.text(`Empresa: ${context.empresa || "-"}`, leftX, y + 14.4, {
     maxWidth: 126,
   });
-  doc.text(`CIF: ${context.cif || "-"}`, rightX, y + 10.3, { maxWidth: 128 });
+  doc.text(`CIF: ${context.cif || "-"}`, rightX, y + 10.2, { maxWidth: 128 });
   doc.text(
     `Obra / Centro de trabajo: ${context.obra || "-"}`,
     rightX,
-    y + 14.8,
+    y + 14.4,
     { maxWidth: 128 },
   );
   doc.text(
     `Encargado (recurso preventivo): ${context.recursoPreventivo || "-"}`,
     leftX,
-    y + 19.3,
+    y + 18.6,
     { maxWidth: 126 },
   );
-  doc.text(`Fecha: ${fmtDate(context.fecha)}`, rightX, y + 19.3, {
+  doc.text(`Fecha: ${fmtDate(context.fecha)}`, rightX, y + 18.6, {
     maxWidth: 128,
   });
-  return y + 27.5;
+  return y + blockHeight + 4.5;
 };
 
 const drawResponsibleSignatureBand = (
