@@ -5,9 +5,9 @@ import { generateSubcontrataReportPDF as generateReportWithPersonnel } from './s
 export * from './subcontratasDefaultsBase';
 
 const INTERLOCUTOR_METADATA = {
-  nombre: 'Encargado / interlocutor de coordinación (cuando proceda)',
-  descripcion: 'Identificación del encargado o interlocutor de la subcontrata para coordinación. La designación propia de recurso preventivo solo se solicitará cuando legal o preventivamente corresponda.',
-  normativa: 'Art. 32 bis Ley 31/1995, RD 171/2004 y DA 4ª Ley 32/2006',
+  nombre: 'Responsable de coordinación de la subcontrata (encargado o interlocutor)',
+  descripcion: 'Identificación de la persona designada por la empresa subcontratista como encargado o interlocutor responsable de la coordinación, comunicación y seguimiento de sus trabajos en la obra. No supone la designación de un recurso preventivo propio, salvo cuando resulte legal o preventivamente exigible.',
+  normativa: 'Art. 24 Ley 31/1995 y RD 171/2004 (CAE). Art. 32 bis Ley 31/1995 cuando proceda recurso preventivo.',
 };
 
 /**
@@ -26,6 +26,13 @@ export const normalizeSubcontrataChecklist = (
     estado: item.estado === 'entregado' ? 'entregado' : 'no_aplica',
   };
 });
+
+/**
+ * Plantilla por defecto expuesta ya corregida para que el configurador CAE y
+ * las nuevas subcontratas no recuperen el texto legado de recurso preventivo.
+ */
+export const DEFAULT_SUBCONTRATA_CHECKLIST: SubcontrataDocItem[] =
+  normalizeSubcontrataChecklist(base.DEFAULT_SUBCONTRATA_CHECKLIST);
 
 export const createNewSubcontratista = (
   ...args: Parameters<typeof base.createNewSubcontratista>
