@@ -1,0 +1,170 @@
+/*
+ * Herramientas y maquinaria — experiencia móvil de campo
+ *
+ * Mantiene intacta la vista de escritorio y refuerza la interfaz móvil
+ * existente en InventorySection: controles táctiles grandes, acciones rápidas
+ * con texto visible y navegación sin palabras comprimidas verticalmente.
+ */
+
+@media (max-width: 767px) {
+  /* Selector rápido del equipo: una tarjeta de trabajo cómoda con una mano. */
+  .md\:hidden.sticky.top-2.z-30 {
+    top: 0.5rem !important;
+    padding: 0.75rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 > select {
+    min-height: 48px;
+    font-size: 16px !important;
+    line-height: 1.25rem;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 > .mt-2.flex.items-center.justify-between.gap-2 {
+    display: block !important;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 > .mt-2.flex.items-center.justify-between.gap-2 > .min-w-0 {
+    margin-bottom: 0.65rem;
+  }
+
+  /* Las cuatro acciones del equipo pasan de iconos pequeños a botones 2x2. */
+  .md\:hidden.sticky.top-2.z-30 .grid.grid-cols-4.gap-1\.5.shrink-0 {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 .grid.grid-cols-4.gap-1\.5.shrink-0 > button {
+    width: 100% !important;
+    height: 52px !important;
+    min-width: 0;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0 0.65rem;
+    border-radius: 0.875rem !important;
+    font-size: 0.75rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 .grid.grid-cols-4.gap-1\.5.shrink-0 > button::after {
+    content: attr(title);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 .grid.grid-cols-4.gap-1\.5.shrink-0 > button > svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 auto;
+  }
+
+  /* KPIs en dos columnas: más legibles y fáciles de consultar en obra. */
+  .md\:hidden.sticky.top-2.z-30 + .grid.grid-cols-4.gap-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .md\:hidden.sticky.top-2.z-30 + .grid.grid-cols-4.gap-2 > div {
+    min-height: 76px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.8rem !important;
+  }
+
+  /* Acciones principales: objetivo táctil mínimo de 52 px. */
+  .md\:hidden.sticky.top-2.z-30 + .grid.grid-cols-4.gap-2 + .grid.grid-cols-2 > button {
+    min-height: 52px;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Configuración del parque: controles cómodos y sin zoom automático en iOS. */
+  details.ui-surface input,
+  details.ui-surface select,
+  details.ui-surface textarea {
+    min-height: 48px;
+    font-size: 16px !important;
+  }
+
+  details.ui-surface form.flex.gap-2.items-end {
+    align-items: stretch !important;
+  }
+
+  details.ui-surface form.flex.gap-2.items-end > button {
+    height: 48px !important;
+    width: 48px;
+    flex: 0 0 48px;
+    align-self: flex-end;
+  }
+
+  /* Menú del módulo: 3 columnas x 2 filas, sin texto vertical ni scroll lateral. */
+  details.ui-surface + .sticky.top-0.z-20 {
+    overflow-x: visible !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+
+  details.ui-surface + .sticky.top-0.z-20 > .flex.gap-2.min-w-max {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    min-width: 0 !important;
+    width: 100%;
+    gap: 0.5rem !important;
+  }
+
+  details.ui-surface + .sticky.top-0.z-20 > .flex.gap-2.min-w-max > button {
+    width: 100%;
+    min-width: 0;
+    min-height: 50px;
+    padding: 0.45rem 0.35rem !important;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem !important;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.05;
+    font-size: 0.68rem !important;
+    border-radius: 0.875rem !important;
+  }
+
+  details.ui-surface + .sticky.top-0.z-20 > .flex.gap-2.min-w-max > button > svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 auto;
+  }
+
+  /* Modales de alta, movimiento, incidencia, mantenimiento y documentos. */
+  .fixed.inset-0.z-\[90\] input,
+  .fixed.inset-0.z-\[90\] select,
+  .fixed.inset-0.z-\[90\] textarea {
+    font-size: 16px !important;
+  }
+
+  .fixed.inset-0.z-\[90\] button {
+    min-height: 44px;
+  }
+
+  /* Tarjetas de resumen: estado y localización sin colisiones en pantallas estrechas. */
+  .ui-surface button .flex.justify-between.gap-2 {
+    align-items: flex-start;
+  }
+
+  .ui-surface button .flex.justify-between.gap-2 > .font-bold {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* En móviles especialmente estrechos evitamos comprimir incluso la navegación 3x2. */
+@media (max-width: 359px) {
+  details.ui-surface + .sticky.top-0.z-20 > .flex.gap-2.min-w-max {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
