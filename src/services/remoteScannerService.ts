@@ -96,8 +96,13 @@ export function subscribeToRemoteScannerCaptures(
   sessionId: string,
   onCapture: (capture: { id: string; imageData: string; fileName: string }) => void,
 ) {
+  // Supabase no permite añadir callbacks postgres_changes después de subscribe().
+  // Un topic único por montaje evita reutilizar accidentalmente un canal ya suscrito.
+  const instanceId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const channel = supabase
-    .channel(`scanner-captures-${sessionId}`)
+    .channel(`scanner-captures-${sessionId}-${instanceId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scanner_captures', filter: `session_id=eq.${sessionId}` }, async (payload: any) => {
       const row = payload.new;
       if (!row?.id || !row?.image_data) return;
@@ -110,5 +115,10 @@ export function subscribeToRemoteScannerCaptures(
     })
     .subscribe();
 
-  return () => { void supabase.removeChannel(channel as any); };
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    void supabase.removeChannel(channel as any);
+  };
 }
