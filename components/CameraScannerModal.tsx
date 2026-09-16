@@ -474,8 +474,6 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         ...detected.warnings,
       ];
 
-      if (!window.confirm(`DATOS DETECTADOS\n\n${lines.join('\n')}\n\n¿Incorporar estos datos al trabajador que estás registrando?`)) return;
-
       window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
         detail: {
           dni: detected.dni,
