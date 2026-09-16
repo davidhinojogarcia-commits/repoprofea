@@ -474,16 +474,49 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         ...detected.warnings,
       ];
 
+      const accepted: { dni?: string; birthDate?: string; nuss?: string; iban?: string; documentText?: string } = {
+        documentText: detected.text,
+      };
+
+      if (detected.dni && window.confirm(`DNI/NIE detectado:
+
+${detected.dni}
+
+¿Incorporar este dato al trabajador en curso?`)) {
+        accepted.dni = detected.dni;
+      }
+      if (detected.birthDate && window.confirm(`Fecha de nacimiento detectada:
+
+${detected.birthDate.split('-').reverse().join('/')}
+
+¿Incorporar este dato al trabajador en curso?`)) {
+        accepted.birthDate = detected.birthDate;
+      }
+      if (detected.nuss && window.confirm(`Nº de Seguridad Social detectado:
+
+${formatSpanishSocialSecurityNumber(detected.nuss)}
+
+¿Incorporar este dato al trabajador en curso?`)) {
+        accepted.nuss = detected.nuss;
+      }
+      if (detected.iban && window.confirm(`IBAN / Cuenta bancaria detectado:
+
+${formatIban(detected.iban)}
+
+¿Incorporar este dato al trabajador en curso?`)) {
+        accepted.iban = detected.iban;
+      }
+
+      const acceptedCount = [accepted.dni, accepted.birthDate, accepted.nuss, accepted.iban].filter(Boolean).length;
+      if (!acceptedCount) {
+        onToast('Datos reconocidos, pero no se ha aceptado incorporar ninguno. Puedes revisar o repetir el escaneo.', 'error');
+        return;
+      }
+
       window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
-        detail: {
-          dni: detected.dni,
-          birthDate: detected.birthDate,
-          nuss: detected.nuss,
-          iban: detected.iban,
-          documentText: detected.text,
-        },
+        detail: accepted,
       }));
-      onToast(`Datos reconocidos en ${elapsed} s e incorporados al registro en curso.`, 'success');
+      onToast(`${acceptedCount} dato(s) aceptado(s) e incorporado(s) al registro en curso.`, 'success');
       handleClose();
     } catch (error: any) {
       console.error('OCR administrativo rápido:', error?.message || error);
