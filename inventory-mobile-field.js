@@ -1,12 +1,19 @@
-/* Herramientas y maquinaria — flujo móvil de campo con escáner QR */
+/* Herramientas y maquinaria — flujo móvil de campo: búsqueda principal + QR secundario */
 (() => {
   const MOBILE_QUERY = '(max-width: 767px)';
   const SCANNER_ID = 'inventory-mobile-qr-scanner';
   const TRIGGER_ID = 'inventory-mobile-qr-trigger';
+  const FINDER_ID = 'inventory-mobile-finder';
   let stream = null;
   let rafId = 0;
   let jsQR = null;
   let busy = false;
+
+  const normalize = value => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
   const isInventoryView = () => {
     if (!window.matchMedia(MOBILE_QUERY).matches) return false;
@@ -91,7 +98,7 @@
     overlay.innerHTML = `
       <div class="inventory-mobile-qr-sheet" role="dialog" aria-modal="true" aria-label="Escanear QR de equipo">
         <div class="inventory-mobile-qr-head">
-          <div><strong>Escanear equipo</strong><span>Lee el QR para abrir directamente su ficha</span></div>
+          <div><strong>Escanear equipo</strong><span>Opción secundaria para equipos que ya tengan QR</span></div>
           <button type="button" class="inventory-mobile-qr-close" aria-label="Cerrar">×</button>
         </div>
         <div class="inventory-mobile-qr-camera">
@@ -130,30 +137,131 @@
     }
   };
 
-  const ensureTrigger = () => {
-    const existing = document.getElementById(TRIGGER_ID);
-    if (!isInventoryView()) {
-      existing?.remove();
-      return;
-    }
-    if (existing) return;
-    const quickCard = document.querySelector('.md\\:hidden.sticky.top-2.z-30');
-    if (!quickCard) return;
-    const button = document.createElement('button');
-    button.id = TRIGGER_ID;
-    button.type = 'button';
-    button.className = 'inventory-mobile-qr-trigger';
-    button.innerHTML = '<span class="inventory-mobile-qr-icon" aria-hidden="true">⌗</span><span><strong>Escanear QR</strong><small>Abrir equipo con la cámara</small></span>';
-    button.addEventListener('click', openScanner);
-    quickCard.prepend(button);
+  const chooseOption = (select, option, input, results) => {
+    select.value = option.value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    input.value = option.textContent?.trim() || '';
+    results.innerHTML = '';
+    results.hidden = true;
+    input.blur();
   };
 
-  const observer = new MutationObserver(() => ensureTrigger());
+  const renderResults = (select, input, results) => {
+    const query = normalize(input.value);
+    const options = Array.from(select.options || []).filter(option => option.value && !option.disabled);
+    if (!query) {
+      results.innerHTML = '';
+      results.hidden = true;
+      return;
+    }
+
+    const matched = options
+      .map(option => ({ option, text: option.textContent?.trim() || '', key: normalize(option.textContent) }))
+      .filter(item => item.key.includes(query))
+      .sort((a, b) => {
+        const aStarts = a.key.startsWith(query) ? 0 : 1;
+        const bStarts = b.key.startsWith(query) ? 0 : 1;
+        return aStarts - bStarts || a.text.localeCompare(b.text, 'es');
+      })
+      .slice(0, 8);
+
+    results.innerHTML = '';
+    if (!matched.length) {
+      const empty = document.createElement('div');
+      empty.className = 'inventory-mobile-search-empty';
+      empty.textContent = 'No se ha encontrado ninguna máquina o herramienta';
+      results.appendChild(empty);
+      results.hidden = false;
+      return;
+    }
+
+    matched.forEach(({ option, text }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'inventory-mobile-search-result';
+      button.innerHTML = `<span class="inventory-mobile-search-result-icon" aria-hidden="true">↗</span><span>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+      button.addEventListener('click', () => chooseOption(select, option, input, results));
+      results.appendChild(button);
+    });
+    results.hidden = false;
+  };
+
+  const ensureFinder = () => {
+    const existingFinder = document.getElementById(FINDER_ID);
+    const existingQr = document.getElementById(TRIGGER_ID);
+    if (!isInventoryView()) {
+      existingFinder?.remove();
+      existingQr?.remove();
+      return;
+    }
+
+    const quickCard = document.querySelector('.md\\:hidden.sticky.top-2.z-30');
+    const select = quickCard?.querySelector(':scope > select');
+    if (!quickCard || !select) return;
+
+    if (!existingFinder) {
+      const finder = document.createElement('div');
+      finder.id = FINDER_ID;
+      finder.className = 'inventory-mobile-finder';
+      finder.innerHTML = `
+        <label for="inventory-mobile-search"><strong>Buscar máquina o herramienta</strong><small>Escribe nombre, código, matrícula o referencia</small></label>
+        <div class="inventory-mobile-search-wrap">
+          <span class="inventory-mobile-search-icon" aria-hidden="true">⌕</span>
+          <input id="inventory-mobile-search" type="search" inputmode="search" autocomplete="off" placeholder="Ej.: compresor, andamio, Z6-COMP-001…" />
+          <button type="button" class="inventory-mobile-search-clear" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="inventory-mobile-search-results" hidden></div>
+      `;
+      quickCard.prepend(finder);
+
+      const input = finder.querySelector('input');
+      const results = finder.querySelector('.inventory-mobile-search-results');
+      const clear = finder.querySelector('.inventory-mobile-search-clear');
+      input.addEventListener('input', () => {
+        clear.hidden = !input.value;
+        renderResults(select, input, results);
+      });
+      input.addEventListener('focus', () => { if (input.value) renderResults(select, input, results); });
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          const first = results.querySelector('.inventory-mobile-search-result');
+          if (first) {
+            event.preventDefault();
+            first.click();
+          }
+        }
+      });
+      clear.addEventListener('click', () => {
+        input.value = '';
+        clear.hidden = true;
+        results.innerHTML = '';
+        results.hidden = true;
+        input.focus();
+      });
+      select.addEventListener('change', () => {
+        const option = select.options[select.selectedIndex];
+        if (option?.value) input.value = option.textContent?.trim() || '';
+      });
+    }
+
+    if (!existingQr) {
+      const button = document.createElement('button');
+      button.id = TRIGGER_ID;
+      button.type = 'button';
+      button.className = 'inventory-mobile-qr-trigger inventory-mobile-qr-trigger-secondary';
+      button.innerHTML = '<span class="inventory-mobile-qr-icon" aria-hidden="true">⌗</span><span><strong>Escanear QR</strong><small>Solo si el equipo ya dispone de código</small></span>';
+      button.addEventListener('click', openScanner);
+      const finder = document.getElementById(FINDER_ID);
+      finder?.insertAdjacentElement('afterend', button);
+    }
+  };
+
+  const observer = new MutationObserver(() => ensureFinder());
   const start = () => {
-    ensureTrigger();
+    ensureFinder();
     observer.observe(document.body, { childList: true, subtree: true });
-    window.matchMedia(MOBILE_QUERY).addEventListener?.('change', ensureTrigger);
-    window.addEventListener('popstate', ensureTrigger);
+    window.matchMedia(MOBILE_QUERY).addEventListener?.('change', ensureFinder);
+    window.addEventListener('popstate', ensureFinder);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
