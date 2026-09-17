@@ -20,6 +20,7 @@ import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
+import { installSidebarSwipe } from './src/lib/sidebarSwipe';
 import './src/lib/worksiteAdditionalDocumentsLegalBodies';
 import './src/styles/design-system.css';
 import './notification-modal-layout.css';
@@ -89,6 +90,7 @@ normalizeLegacyLoginRoute();
 window.addEventListener('popstate', normalizeLegacyLoginRoute);
 installModalRuntime();
 installButtonSounds();
+installSidebarSwipe();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).catch((error) => { console.warn('No se pudo registrar el service worker de PROFEA:', error); });
