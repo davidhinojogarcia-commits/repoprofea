@@ -56,15 +56,33 @@ export interface WorkerRelation {
   duracionContrato: string;
 }
 
+interface ScannerWorkerTarget {
+  id: number;
+  apellidosNombre: string;
+  dni: string;
+  obra: string;
+}
+
+interface AdministrativeDataPayload {
+  dni?: string;
+  birthDate?: string;
+  nuss?: string;
+  iban?: string;
+  documentText?: string;
+}
+
 interface CameraScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onToast: (msg: string, type: 'success' | 'error') => void;
   onAddWorkers?: (workers: any[]) => void;
+  workers: ScannerWorkerTarget[];
+  onApplyAdministrativeData: (workerId: number, data: AdministrativeDataPayload) => Promise<void>;
 }
 
-export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, onClose, onToast, onAddWorkers }) => {
+export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, onClose, onToast, onAddWorkers, workers, onApplyAdministrativeData }) => {
   const [pages, setPages] = useState<CapturedPage[]>([]);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
   const [pdfName, setPdfName] = useState(() => {
     const now = new Date();
     const formattedDate = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -448,6 +466,10 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
   const handleRecognizeAdministrativeData = async () => {
+    if (!selectedWorkerId) {
+      onToast('Selecciona manualmente el trabajador al que quieres asignar los datos.', 'error');
+      return;
+    }
     if (!pages.length) {
       onToast('Captura primero el documento que contiene DNI/NIE, fecha de nacimiento, Seguridad Social o IBAN.', 'error');
       return;
@@ -488,13 +510,18 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         return;
       }
 
-      window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
-        detail: accepted,
-      }));
+      const workerId = Number(selectedWorkerId);
+      const targetWorker = workers.find(worker => worker.id === workerId);
+      if (!targetWorker) {
+        throw new Error('El trabajador seleccionado ya no está disponible.');
+      }
 
-      // Una vez entregados los datos al formulario, liberamos el escáner para la siguiente persona.
+      // Guardar primero en la ficha elegida; solo después se elimina la captura temporal.
+      await onApplyAdministrativeData(workerId, accepted);
+
       setPages([]);
       setPreviewImage(null);
+      setSelectedWorkerId('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (galleryInputRef.current) galleryInputRef.current.value = '';
 
@@ -505,7 +532,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         accepted.iban ? 'IBAN' : '',
       ].filter(Boolean).join(', ');
 
-      onToast(`Datos incorporados: ${detectedLabels}. Escáner listo para la siguiente captura.`, 'success');
+      onToast(`Datos incorporados a ${targetWorker.apellidosNombre}: ${detectedLabels}. Escáner limpio y listo para otra captura.`, 'success');
     } catch (error: any) {
       console.error('OCR administrativo rápido:', error?.message || error);
       onToast('No se han podido reconocer los datos. Puedes repetir el escaneo o introducirlos manualmente.', 'error');
@@ -1109,6 +1136,40 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
               <RemoteScannerPairing onCapture={handleRemoteCapture} onToast={onToast} />
 
+              {/* Manual destination worker: never infer who receives the scanned data */}
+              <div className="p-4 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl">
+                <label className="block text-xs font-extrabold text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-2">
+                  Trabajador destino
+                </label>
+                <select
+                  value={selectedWorkerId}
+                  onChange={(e) => setSelectedWorkerId(e.target.value)}
+                  className="w-full px-3 py-3 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <option value="">Selecciona manualmente un trabajador...</option>
+                  {[...workers]
+                    .sort((a, b) => a.apellidosNombre.localeCompare(b.apellidosNombre, 'es'))
+                    .map(worker => (
+                      <option key={worker.id} value={worker.id}>
+                        {worker.apellidosNombre}{worker.dni ? ` · ${worker.dni}` : ''}{worker.obra ? ` · ${worker.obra}` : ''}
+                      </option>
+                    ))}
+                </select>
+                {selectedWorkerId ? (() => {
+                  const worker = workers.find(item => item.id === Number(selectedWorkerId));
+                  if (!worker) return null;
+                  return (
+                    <div className="mt-2 text-xs text-amber-900 dark:text-amber-200">
+                      <span className="font-bold">Destino:</span> {worker.apellidosNombre}
+                      {worker.dni ? ` · DNI ${worker.dni}` : ''}
+                      {worker.obra ? ` · ${worker.obra}` : ''}
+                    </div>
+                  );
+                })() : (
+                  <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">El botón Extraer datos permanecerá bloqueado hasta elegir un trabajador.</p>
+                )}
+              </div>
+
               {/* Continuous Capture Mode Switch Card */}
               <div className="p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1424,8 +1485,8 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                 {pages.length > 0 && (
                   <button
                     onClick={handleRecognizeAdministrativeData}
-                    disabled={isRecognizingAdministrative || isRecognizing}
-                    className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50"
+                    disabled={!selectedWorkerId || isRecognizingAdministrative || isRecognizing}
+                    className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
                     title="Reconocer DNI/NIE, fecha de nacimiento, Nº de Seguridad Social e IBAN"
                   >
                     {isRecognizingAdministrative ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cpu className="w-4 h-4" />}

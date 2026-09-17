@@ -2268,6 +2268,29 @@ function App() {
             onClose={() => setIsScannerOpen(false)}
             onToast={(msg, type) => setToast({ message: msg, type })}
             onAddWorkers={handleAddMultipleWorkers}
+            workers={people.map(person => ({
+              id: person.id,
+              apellidosNombre: person.apellidosNombre,
+              dni: person.dni,
+              obra: person.obra,
+            }))}
+            onApplyAdministrativeData={async (workerId, data) => {
+              const target = peopleRef.current.find(person => person.id === workerId);
+              if (!target) throw new Error('No se ha encontrado el trabajador seleccionado.');
+
+              const updated: Person = {
+                ...target,
+                ...(data.dni ? { dni: data.dni } : {}),
+                ...(data.birthDate ? { fechaNacimiento: data.birthDate } : {}),
+                ...(data.nuss ? { numeroSeguridadSocial: data.nuss } : {}),
+                ...(data.iban ? { iban: data.iban } : {}),
+                sincronizadoEnNube: true,
+              };
+
+              await updateDocument('trabajadores', updated.id, updated as any);
+              updateAutocompleteLists(updated);
+              setPeople(current => current.map(person => person.id === updated.id ? updated : person));
+            }}
           />
 
           <PdfViewerModal
