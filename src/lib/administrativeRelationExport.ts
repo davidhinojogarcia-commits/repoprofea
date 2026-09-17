@@ -18,7 +18,12 @@ const isRenounced = (p: Person) => {
   const row = p as any;
   return String(row.estadoContratacion || '').toLowerCase() === 'renuncia' || String(row.codigoSaeResultado || '') === '2100';
 };
-const renunciationLabel = (p: Person) => isRenounced(p) ? 'RENUNCIA · SAE 2100' : 'NO';
+const workerAdministrativeLabel = (p: Person) => [
+  p.apellidosNombre || '—',
+  ...(isRenounced(p) ? ['RENUNCIA · SAE 2100'] : []),
+  p.dni || '—',
+  `Nac.: ${formatDate(p.fechaNacimiento)}`,
+].join('\n');
 const aptitudLabel = (p: Person) => {
   const { estado, limitaciones, validez } = getAptitudMedicaInfo(p);
   if (estado === 'Apto con limitaciones') return `APTO C/ LIMITACIONES\n${limitaciones || 'Sin detalle'}\nVálido ${validez}`;
@@ -30,26 +35,39 @@ const aptitudLabel = (p: Person) => {
 const filename = (ext: 'pdf' | 'xlsx') => `PROFEA_RELACION_ADMINISTRATIVA_${MONTH}.${ext}`;
 
 export const prepareAdministrativeRelationPDF = (people: Person[]) => {
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ orientation: 'landscape', format: 'a4', unit: 'mm' });
   const config = getStoredPdfConfig();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const marginX = 14;
+  const usableWidth = pageWidth - (marginX * 2);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 11);
+  doc.text(config.headerLine1.toUpperCase(), marginX, 11);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
   doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 15);
-  renderPdfLogo(doc, 231, 3.5, 52, 10, true, config.customLogo);
+  doc.text(config.headerLine2.toUpperCase(), marginX, 15);
+  renderPdfLogo(doc, pageWidth - 66, 3.5, 52, 10, true, config.customLogo);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.setTextColor(BLUE[0], BLUE[1], BLUE[2]);
-  doc.text('RELACIÓN ADMINISTRATIVA DE TRABAJADORES', 14, 25);
+  doc.text('RELACIÓN ADMINISTRATIVA DE TRABAJADORES', marginX, 25);
   doc.setDrawColor(BLUE[0], BLUE[1], BLUE[2]);
   doc.setLineWidth(0.5);
-  doc.line(14, 28, 283, 28);
+  doc.line(marginX, 28, pageWidth - marginX, 28);
+
+  const hasRenunciations = people.some(isRenounced);
+  let tableStartY = 32;
+  if (hasRenunciations) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.2);
+    doc.setTextColor(153, 27, 27);
+    doc.text('Las filas resaltadas en rojo corresponden a trabajadores con RENUNCIA · SAE 2100.', marginX, 32);
+    tableStartY = 36;
+  }
 
   const head = [[
     'OFERTA / CAT.',
@@ -59,36 +77,35 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
     'APTITUD MÉDICA',
     'Nº SEGURIDAD SOCIAL',
     'CUENTA BANCARIA / IBAN',
-    'RENUNCIA'
   ]];
 
   const body = people.map(p => [
     `${p.numOferta || '—'}\n${p.categoria || '—'}`,
-    `${p.apellidosNombre || '—'}\n${p.dni || '—'}\nNac.: ${formatDate(p.fechaNacimiento)}`,
+    workerAdministrativeLabel(p),
     `Del ${formatDate(p.periodoInicio)}\nAl ${formatDate(p.periodoFin)}`,
     `${p.telefono || '—'}\n${p.obra || '—'}`,
     aptitudLabel(p),
     p.numeroSeguridadSocial ? formatSpanishSocialSecurityNumber(p.numeroSeguridadSocial) : '—',
     p.iban ? formatIban(p.iban) : '—',
-    renunciationLabel(p),
   ]);
 
   autoTable(doc, {
     head,
     body,
-    startY: 31,
+    startY: tableStartY,
     theme: 'grid',
-    styles: { fontSize: 6.4, cellPadding: 1.8, valign: 'middle', overflow: 'linebreak' },
-    headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 6.4 },
+    margin: { left: marginX, right: marginX },
+    tableWidth: usableWidth,
+    styles: { fontSize: 6.15, cellPadding: 1.45, valign: 'middle', overflow: 'linebreak', lineWidth: 0.1 },
+    headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 6.05, cellPadding: 1.4 },
     columnStyles: {
-      0: { cellWidth: 29, halign: 'center' },
+      0: { cellWidth: 27, halign: 'center' },
       1: { cellWidth: 49 },
       2: { cellWidth: 31, halign: 'center' },
-      3: { cellWidth: 37 },
-      4: { cellWidth: 43 },
-      5: { cellWidth: 34 },
-      6: { cellWidth: 44 },
-      7: { cellWidth: 28, halign: 'center' },
+      3: { cellWidth: 36 },
+      4: { cellWidth: 42 },
+      5: { cellWidth: 35 },
+      6: { cellWidth: 49 },
     },
     alternateRowStyles: { fillColor: LIGHT_BLUE },
     didParseCell: data => {
@@ -117,7 +134,14 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
   workbook.company = 'Diputación Provincial de Cádiz';
   workbook.subject = 'Relación administrativa de trabajadores PROFEA';
   const worksheet = workbook.addWorksheet('Relación Administrativa', {
-    pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    pageSetup: {
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: { left: 0.25, right: 0.25, top: 0.45, bottom: 0.45, header: 0.15, footer: 0.2 },
+    },
   });
 
   const logo = await getBase64Image();
@@ -125,27 +149,35 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
     const imageId = workbook.addImage({ base64: logo, extension: 'png' });
     worksheet.addImage(imageId, { tl: { col: 0.2, row: 0.2 }, ext: { width: 195, height: 30 } });
   }
-  worksheet.mergeCells('C1:H1');
+  worksheet.mergeCells('C1:G1');
   const institution = worksheet.getCell('C1');
   institution.value = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ · GESTIÓN DE FONDOS PROFEA';
   institution.font = { name: 'Arial', bold: true, size: 10, color: { argb: BLUE_HEX } };
   institution.alignment = { horizontal: 'right' };
 
-  worksheet.mergeCells('A4:H4');
+  worksheet.mergeCells('A4:G4');
   const title = worksheet.getCell('A4');
   title.value = 'RELACIÓN ADMINISTRATIVA DE TRABAJADORES';
   title.font = { name: 'Arial', bold: true, size: 16, color: { argb: BLUE_HEX } };
   title.alignment = { horizontal: 'center' };
 
+  const hasRenunciations = people.some(isRenounced);
+  if (hasRenunciations) {
+    worksheet.mergeCells('A5:G5');
+    const legend = worksheet.getCell('A5');
+    legend.value = 'Las filas resaltadas en rojo corresponden a trabajadores con RENUNCIA · SAE 2100.';
+    legend.font = { name: 'Arial', bold: true, size: 8, color: { argb: '991B1B' } };
+    legend.alignment = { horizontal: 'left' };
+  }
+
   const headers = [
-    ['OFERTA / CAT.', 20],
-    ['TRABAJADOR / DNI / NACIMIENTO', 42],
-    ['PERIODO CONTRATO', 25],
-    ['CONTACTO', 34],
-    ['APTITUD MÉDICA', 34],
-    ['Nº SEGURIDAD SOCIAL', 23],
-    ['CUENTA BANCARIA / IBAN', 34],
-    ['RENUNCIA', 22],
+    ['OFERTA / CAT.', 18],
+    ['TRABAJADOR / DNI / NACIMIENTO', 38],
+    ['PERIODO CONTRATO', 23],
+    ['CONTACTO', 31],
+    ['APTITUD MÉDICA', 32],
+    ['Nº SEGURIDAD SOCIAL', 22],
+    ['CUENTA BANCARIA / IBAN', 31],
   ] as const;
   const headerRow = worksheet.getRow(6);
   headers.forEach(([label, width], index) => {
@@ -162,15 +194,14 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
   people.forEach((p, index) => {
     const row = worksheet.addRow([
       `${p.numOferta || '—'}\n${p.categoria || '—'}`,
-      `${p.apellidosNombre || '—'}\n${p.dni || '—'}\nNac.: ${formatDate(p.fechaNacimiento)}`,
+      workerAdministrativeLabel(p),
       `Del ${formatDate(p.periodoInicio)} al ${formatDate(p.periodoFin)}`,
       `${p.telefono || '—'}\n${p.obra || '—'}`,
       aptitudLabel(p),
       p.numeroSeguridadSocial ? formatSpanishSocialSecurityNumber(p.numeroSeguridadSocial) : '—',
       p.iban ? formatIban(p.iban) : '—',
-      renunciationLabel(p),
     ]);
-    row.height = 42;
+    row.height = isRenounced(p) ? 52 : 42;
     row.eachCell(cell => {
       cell.font = { name: 'Arial', size: 8 };
       cell.alignment = { vertical: 'middle', wrapText: true };
