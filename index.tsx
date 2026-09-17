@@ -18,6 +18,7 @@ import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
+import './src/lib/worksiteAdditionalDocumentsLegalBodies';
 import './src/styles/design-system.css';
 import './notification-modal-layout.css';
 import './subcontratas-mobile.css';
