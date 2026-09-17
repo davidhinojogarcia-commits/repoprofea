@@ -7,6 +7,7 @@ import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 import { AdditionalWorksiteDocumentsPanel } from './components/AdditionalWorksiteDocumentsPanel';
+import { AnnualHiringPeriodsPanel } from './components/AnnualHiringPeriodsPanel';
 import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
@@ -108,6 +109,7 @@ ReactDOM.createRoot(rootElement).render(
               <App />
               <WorksiteDocumentationPortal />
               <AdditionalWorksiteDocumentsPanel />
+              <AnnualHiringPeriodsPanel />
               <UiWorkflowEnhancements />
               <SaeRenunciationBridge />
               <AppToastHost />
