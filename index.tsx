@@ -6,6 +6,7 @@ import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
+import { AdditionalWorksiteDocumentsPanel } from './components/AdditionalWorksiteDocumentsPanel';
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
@@ -136,6 +137,7 @@ ReactDOM.createRoot(rootElement).render(
             <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
               <App />
               <WorksiteDocumentationPortal />
+              <AdditionalWorksiteDocumentsPanel />
               <SaeRenunciationBridge />
               <AppToastHost />
               <AppInstallPromo />
