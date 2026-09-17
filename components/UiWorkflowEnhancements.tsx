@@ -1,12 +1,24 @@
 import React, { useEffect } from 'react';
+import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[._\-/:]+/g, ' ').replace(/\s+/g, ' ').trim();
+let cachedAnnualPeriods: AnnualHiringPeriodsRecord[] = [];
 
 const dispatchChange = (select: HTMLSelectElement, value: string) => {
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
   setter?.call(select, value);
   select.dispatchEvent(new Event('change', { bubbles: true }));
+};
+const dispatchInputValue = (input: HTMLInputElement, value: string) => {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+const refreshAnnualPeriods = async () => {
+  try { cachedAnnualPeriods = await listAnnualHiringPeriods(); } catch { cachedAnnualPeriods = []; }
 };
 
 const enhanceNextHiringMonth = () => {
@@ -46,58 +58,93 @@ const enhanceWorkerSearch = () => {
     const wrap = document.createElement('div');
     wrap.className = 'mt-1.5 relative';
     const input = document.createElement('input');
-    input.type = 'search';
-    input.autocomplete = 'off';
+    input.type = 'search'; input.autocomplete = 'off';
     input.placeholder = 'Buscar por DNI, nombre, apellidos, categoría…';
     input.className = 'w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm';
     const results = document.createElement('div');
     results.className = 'hidden absolute z-[150] left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
-    wrap.append(input, results);
-    select.insertAdjacentElement('afterend', wrap);
+    wrap.append(input, results); select.insertAdjacentElement('afterend', wrap);
     const options = () => Array.from(select.options).filter((o) => o.value);
     const selected = () => options().find((o) => o.value === select.value);
     const syncInput = () => { if (document.activeElement !== input) input.value = selected()?.textContent?.trim() || ''; };
     syncInput();
     const render = () => {
-      const q = normalize(input.value);
-      results.innerHTML = '';
+      const q = normalize(input.value); results.innerHTML = '';
       const matches = options().filter((o) => !q || normalize(o.textContent || '').includes(q)).slice(0, 30);
       if (!q) { results.classList.add('hidden'); return; }
       matches.forEach((option) => {
-        const button = document.createElement('button');
-        button.type = 'button';
+        const button = document.createElement('button'); button.type = 'button';
         button.className = 'w-full text-left px-3 py-2.5 border-b last:border-b-0 border-slate-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/30 text-sm';
         button.textContent = option.textContent || '';
         button.addEventListener('mousedown', (event) => event.preventDefault());
-        button.addEventListener('click', () => {
-          dispatchChange(select, option.value);
-          input.value = option.textContent?.trim() || '';
-          results.classList.add('hidden');
-        });
+        button.addEventListener('click', () => { dispatchChange(select, option.value); input.value = option.textContent?.trim() || ''; results.classList.add('hidden'); });
         results.appendChild(button);
       });
-      if (!matches.length) {
-        const empty = document.createElement('div');
-        empty.className = 'px-3 py-3 text-sm text-slate-500';
-        empty.textContent = 'No se han encontrado trabajadores con ese criterio.';
-        results.appendChild(empty);
-      }
+      if (!matches.length) { const empty = document.createElement('div'); empty.className = 'px-3 py-3 text-sm text-slate-500'; empty.textContent = 'No se han encontrado trabajadores con ese criterio.'; results.appendChild(empty); }
       results.classList.remove('hidden');
     };
-    input.addEventListener('input', render);
-    input.addEventListener('focus', render);
+    input.addEventListener('input', render); input.addEventListener('focus', render);
     input.addEventListener('blur', () => window.setTimeout(() => { results.classList.add('hidden'); syncInput(); }, 120));
     select.addEventListener('change', syncInput);
   });
 };
 
+const applyAnnualHiringPeriod = () => {
+  const start = document.querySelector<HTMLInputElement>('input[name="periodoInicio"]');
+  const end = document.querySelector<HTMLInputElement>('input[name="periodoFin"]');
+  const obra = document.querySelector<HTMLSelectElement>('select[name="obra"]');
+  if (!start || !end || !obra) return;
+  const form = start.closest('form') || start.parentElement?.parentElement?.parentElement;
+  if (!form) return;
+  const selects = Array.from(form.querySelectorAll<HTMLSelectElement>('select'));
+  const monthSelect = selects.find((s) => MONTHS.every((m) => Array.from(s.options).some((o) => (o.value || o.textContent) === m)));
+  const yearSelect = selects.find((s) => Array.from(s.options).some((o) => /^20\d{2}$/.test(o.value || o.textContent || '')));
+  if (!monthSelect || !yearSelect || !obra.value) return;
+  const month = MONTHS.indexOf(monthSelect.value) + 1;
+  const year = Number(yearSelect.value);
+  if (!month || !year) return;
+  const workNorm = normalize(obra.value);
+  const record = cachedAnnualPeriods.find((r) => r.year === year && (normalize(r.obra) === workNorm || (!!r.codigoObra && workNorm.includes(normalize(r.codigoObra)))));
+  const period = record?.periods.find((p) => p.month === month);
+  if (!period?.startDate || !period?.endDate) return;
+  const previousAutoStart = start.dataset.profeaAnnualAuto || '';
+  const previousAutoEnd = end.dataset.profeaAnnualAuto || '';
+  if (!start.value || start.value === previousAutoStart) {
+    dispatchInputValue(start, period.startDate);
+    start.dataset.profeaAnnualAuto = period.startDate;
+  }
+  if (!end.value || end.value === previousAutoEnd) {
+    dispatchInputValue(end, period.endDate);
+    end.dataset.profeaAnnualAuto = period.endDate;
+  }
+  let hint = form.querySelector<HTMLElement>('[data-profea-annual-period-hint="1"]');
+  if (!hint) {
+    hint = document.createElement('div'); hint.dataset.profeaAnnualPeriodHint = '1';
+    hint.className = 'text-xs text-emerald-700 dark:text-emerald-400 font-semibold mt-1';
+    end.parentElement?.appendChild(hint);
+  }
+  hint.textContent = `Periodo anual aplicado automáticamente: ${period.startDate.split('-').reverse().join('/')} → ${period.endDate.split('-').reverse().join('/')}. Puedes modificarlo manualmente.`;
+};
+
+const enhanceAnnualPeriodAutofill = () => {
+  applyAnnualHiringPeriod();
+  const controls = Array.from(document.querySelectorAll<HTMLElement>('select[name="obra"], input[name="periodoInicio"], input[name="periodoFin"], select'));
+  controls.forEach((el) => {
+    if (el.dataset.profeaAnnualListener === '1') return;
+    el.dataset.profeaAnnualListener = '1';
+    el.addEventListener('change', () => window.setTimeout(applyAnnualHiringPeriod, 0));
+  });
+};
+
 export const UiWorkflowEnhancements: React.FC = () => {
   useEffect(() => {
-    const apply = () => { enhanceNextHiringMonth(); enhanceWorkerSearch(); };
+    void refreshAnnualPeriods().then(() => enhanceAnnualPeriodAutofill());
+    const onPeriods = () => void refreshAnnualPeriods().then(() => enhanceAnnualPeriodAutofill());
+    window.addEventListener('profea:annual-hiring-periods-updated', onPeriods);
+    const apply = () => { enhanceNextHiringMonth(); enhanceWorkerSearch(); enhanceAnnualPeriodAutofill(); };
     apply();
-    const observer = new MutationObserver(apply);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    const observer = new MutationObserver(apply); observer.observe(document.body, { childList: true, subtree: true });
+    return () => { observer.disconnect(); window.removeEventListener('profea:annual-hiring-periods-updated', onPeriods); };
   }, []);
   return null;
 };
