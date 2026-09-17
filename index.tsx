@@ -9,6 +9,7 @@ import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationP
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
+import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import './src/styles/design-system.css';
@@ -135,6 +136,7 @@ ReactDOM.createRoot(rootElement).render(
             <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
               <App />
               <WorksiteDocumentationPortal />
+              <SaeRenunciationBridge />
               <AppToastHost />
               <AppInstallPromo />
             </React.Suspense>
