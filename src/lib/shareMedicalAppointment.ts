@@ -51,6 +51,17 @@ const formatDate = (value: string): string => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value || '-';
 };
 
+const needsPrl20h = (person: Person): boolean => {
+  const value = String(person.formacion || '').trim().toLowerCase();
+  return value === 'no' || value === 'sin formación' || value === 'sin formacion' || value === 'pendiente';
+};
+
+const getPrlSchedule = (person: Person) => ({
+  date: String((person as any).fechaFormacionPrl || '').trim(),
+  time: String((person as any).horaFormacionPrl || '').trim(),
+  place: String(person.lugarFormacion || '').trim(),
+});
+
 export type MedicalConfirmationLinks = { confirm: string; decline: string };
 
 export const buildMedicalAppointmentWhatsAppText = (
@@ -74,6 +85,14 @@ export const buildMedicalAppointmentWhatsAppText = (
         `Lugar: ${person.sitioReconocimiento || '-'}`,
         `Obra: ${person.obra || '-'}`,
       ];
+
+  if (needsPrl20h(person)) {
+    const prl = getPrlSchedule(person);
+    lines.push('', 'FORMACIÓN PRL 20 HORAS - PENDIENTE');
+    lines.push(`Día: ${formatDate(prl.date)}`);
+    lines.push(`Hora: ${prl.time || '-'} h`);
+    lines.push(`Lugar: ${prl.place || '-'}`);
+  }
 
   if (observations) lines.push(`Observaciones: ${observations}`);
   lines.push('', 'Se ha generado tu citación oficial en PDF con los datos e instrucciones del reconocimiento médico.');
@@ -120,9 +139,68 @@ const overlayWorkerIdentity = (doc: any, person: Person) => {
   }
 };
 
+const appendPrlTrainingSchedule = (doc: any, person: Person) => {
+  if (!needsPrl20h(person)) return;
+  const prl = getPrlSchedule(person);
+  doc.addPage('a4', 'portrait');
+  doc.setFillColor(0, 84, 142);
+  doc.rect(0, 0, 210, 26, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('CONVOCATORIA DE FORMACIÓN PRL 20 HORAS', 18, 12);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Documento complementario a la citación de reconocimiento médico · PROFEA', 18, 18);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text((person.apellidosNombre || '-').toUpperCase(), 18, 39);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`DNI/NIE: ${person.dni || '-'}`, 18, 45);
+  doc.text(`Obra: ${person.obra || '-'}`, 18, 51);
+  doc.text(`Categoría: ${person.categoria || '-'}`, 18, 57);
+
+  doc.setFillColor(255, 247, 237);
+  doc.setDrawColor(245, 158, 11);
+  doc.roundedRect(18, 68, 174, 48, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(146, 64, 14);
+  doc.text('FORMACIÓN PREVENTIVA PRL 20H PENDIENTE / NO ACREDITADA', 24, 78);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9);
+  doc.text(`DÍA DE IMPARTICIÓN: ${formatDate(prl.date)}`, 24, 90);
+  doc.text(`HORA: ${prl.time ? `${prl.time} h` : '-'}`, 24, 99);
+  doc.text(`LUGAR: ${prl.place || '-'}`, 24, 108, { maxWidth: 158 });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  const notice = 'El trabajador deberá acudir a la formación preventiva indicada en la fecha, hora y lugar señalados. Esta información procede directamente de los datos registrados en su ficha de contratación en GestionProfea.';
+  doc.text(notice, 18, 130, { maxWidth: 174, align: 'justify' });
+
+  doc.setDrawColor(0, 84, 142);
+  doc.line(18, 274, 192, 274);
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', 18, 280);
+  doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, 192, 280, { align: 'right' });
+};
+
 export const createMedicalAppointmentPdfFile = async (person: Person): Promise<File> => {
   if (!person.citaDia || !person.citaHora || !person.sitioReconocimiento) {
     throw new Error('La cita debe tener fecha, hora y lugar antes de generar el PDF.');
+  }
+
+  if (needsPrl20h(person)) {
+    const prl = getPrlSchedule(person);
+    if (!prl.date || !prl.time || !prl.place) {
+      throw new Error('El trabajador no tiene acreditada la PRL 20h. Antes de generar la citación debes indicar día, hora y lugar de impartición de la formación.');
+    }
   }
 
   const observations = String(person.observaciones || '').trim();
@@ -150,6 +228,7 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
   ], {}, '08:00');
 
   overlayWorkerIdentity(doc, person);
+  appendPrlTrainingSchedule(doc, person);
   const safeName = (person.apellidosNombre || 'trabajador').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_');
   const filename = `CITACION_RECONOCIMIENTO_${safeName}_${formatDate(person.citaDia).replace(/\//g, '-')}.pdf`;
   const blob = doc.output('blob');
