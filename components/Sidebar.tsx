@@ -22,6 +22,13 @@ interface SidebarProps {
   onOpenScanner: () => void;
 }
 
+type SidebarMenuItem = {
+  id: ViewMode;
+  label: string;
+  subtitle?: string;
+  icon: React.ElementType;
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   setActiveView,
@@ -41,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .map(part => part.charAt(0).toUpperCase())
     .join('') || 'U';
 
-  const menuGroups: { label: string; items: { id: ViewMode; label: string; icon: React.ElementType }[] }[] = [
+  const menuGroups: { label: string; items: SidebarMenuItem[] }[] = [
     {
       label: 'Contratación',
       items: [
@@ -57,7 +64,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
-        { id: 'subcontratas', label: 'Subcontratas (CAE)', icon: HardHat },
+        {
+          id: 'subcontratas',
+          label: 'CAE',
+          subtitle: 'Coordinación de Actividades Empresariales',
+          icon: HardHat,
+        },
       ],
     },
     {
@@ -94,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className={`
           fixed lg:sticky top-0 left-0 z-50 h-screen border-r border-slate-200/80 dark:border-slate-800 shadow-sm transition-all duration-300 flex flex-col no-print app-navigation-panel profea-sidebar-shell
           ${isCollapsed ? 'lg:w-20' : 'lg:w-64'}
-          ${isMobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}
+          ${isMobileOpen ? 'translate-x-0 w-[min(88vw,20rem)]' : '-translate-x-full lg:translate-x-0'}
         `}
       >
         <div className="h-20 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
@@ -122,12 +134,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => setIsMobileOpen(false)}
             className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0"
+            aria-label="Cerrar menú"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 py-4 px-3 space-y-2 overflow-y-auto overscroll-contain custom-scrollbar">
           {menuGroups.map((group, groupIndex) => (
             <div key={group.label} className={groupIndex === 0 ? '' : 'pt-4'}>
               <div className={`px-3 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>
@@ -141,12 +154,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       key={item.id}
                       data-profea-view={item.id}
                       onClick={() => handleNavClick(item.id)}
-                      className={`profea-sidebar-item w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative ${isActive ? 'profea-sidebar-item--active text-white' : 'text-slate-700 dark:text-slate-300'}`}
+                      className={`profea-sidebar-item w-full min-h-12 flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative ${isActive ? 'profea-sidebar-item--active text-white' : 'text-slate-700 dark:text-slate-300'}`}
                       title={isCollapsed && !isMobileOpen ? item.label : undefined}
                     >
                       <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`} />
-                      <span className={`font-semibold text-sm whitespace-nowrap transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'} ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
-                        {item.label}
+                      <span className={`min-w-0 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
+                        <span className={`font-semibold text-sm whitespace-nowrap ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
+                          {item.label}
+                        </span>
+                        {item.subtitle && (
+                          <span className={`mt-0.5 text-[10px] leading-[1.2] font-medium max-w-[13rem] ${isActive ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
+                            {item.subtitle}
+                          </span>
+                        )}
                       </span>
 
                       {isCollapsed && !isMobileOpen && (
