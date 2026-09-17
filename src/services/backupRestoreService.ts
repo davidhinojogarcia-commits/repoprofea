@@ -34,7 +34,8 @@ const collectionTable: Record<string, string> = {
   contrataciones: 'contrataciones',
 };
 
-const INVENTORY_TABLES = [
+const RAW_RESTORE_TABLES = [
+  'subcontrata_documentos',
   'inventory_parks',
   'inventory_items',
   'inventory_movements',
@@ -118,16 +119,14 @@ async function restoreWorks(rows: any[]) {
   }
 }
 
-async function restoreRawInventory(payload: ProfeaBackupPayload, ownerId: string) {
+async function restoreRawTables(payload: ProfeaBackupPayload, ownerId: string) {
   const db = payload.database || {};
   let restored = 0;
-  for (const table of INVENTORY_TABLES) {
+  for (const table of RAW_RESTORE_TABLES) {
     const rows = Array.isArray(db[table]) ? db[table] : [];
     for (const original of rows) {
       if (!original || typeof original !== 'object') continue;
       const row: Record<string, any> = { ...original };
-      // La copia conserva todos los datos funcionales; al restaurar se vincula la
-      // propiedad al usuario autenticado para que RLS no deje registros inaccesibles.
       if ('owner_id' in row) row.owner_id = ownerId;
       if ('created_by' in row) row.created_by = ownerId;
       if (table === 'inventory_park_members' && 'user_id' in row) row.user_id = ownerId;
@@ -164,12 +163,8 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
     }
   }
 
-  // Las obras se recrean primero para que los trabajadores y contratos puedan resolver
-  // correctamente sus referencias sin perder nombres, códigos ni responsables.
   await restoreWorks(obras);
 
-  // Trabajadores + papelera se restauran mediante la RPC transaccional. Los objetos se
-  // entregan completos, incluido data/IBAN/NSS/aptitud/renuncias y campos futuros.
   const restored = await supabase.rpc('restore_workers_trash_backup', {
     p_workers: workers,
     p_trash: trash,
@@ -182,7 +177,7 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
     await restoreCollection(collection, rows);
   }
 
-  const inventoryRestored = await restoreRawInventory(payload, ownerId);
+  const rawRowsRestored = await restoreRawTables(payload, ownerId);
   const restoredFullSettings = await restoreCompleteSettings(payload);
 
   const config = payload.config || {};
@@ -225,7 +220,7 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
 
   return {
     restored,
-    inventoryRestored,
+    rawRowsRestored,
     settings,
     normalized: payload,
     version: payload.version || 'legacy',
