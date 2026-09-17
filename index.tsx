@@ -12,6 +12,7 @@ import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
 import { ExportRenunciationEnhancer } from './components/ExportRenunciationEnhancer';
 import { AdministrativeDataAssignmentBridge } from './components/AdministrativeDataAssignmentBridge';
 import { DirectoryAdministrativeExportBridge } from './components/DirectoryAdministrativeExportBridge';
+import { CompleteBackupDownloadBridge } from './components/CompleteBackupDownloadBridge';
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
@@ -118,6 +119,7 @@ ReactDOM.createRoot(rootElement).render(
               <ExportRenunciationEnhancer />
               <AdministrativeDataAssignmentBridge />
               <DirectoryAdministrativeExportBridge />
+              <CompleteBackupDownloadBridge />
               <SaeRenunciationBridge />
               <AppToastHost />
               <AppInstallPromo />
