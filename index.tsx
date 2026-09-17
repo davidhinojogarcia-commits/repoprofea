@@ -9,6 +9,7 @@ import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationP
 import { AdditionalWorksiteDocumentsPanel } from './components/AdditionalWorksiteDocumentsPanel';
 import { AnnualHiringPeriodsPanel } from './components/AnnualHiringPeriodsPanel';
 import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
+import { ExportRenunciationEnhancer } from './components/ExportRenunciationEnhancer';
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
@@ -111,6 +112,7 @@ ReactDOM.createRoot(rootElement).render(
               <AdditionalWorksiteDocumentsPanel />
               <AnnualHiringPeriodsPanel />
               <UiWorkflowEnhancements />
+              <ExportRenunciationEnhancer />
               <SaeRenunciationBridge />
               <AppToastHost />
               <AppInstallPromo />
