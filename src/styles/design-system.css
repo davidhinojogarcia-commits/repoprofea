@@ -233,6 +233,79 @@ body {
   box-shadow: var(--ui-focus) !important;
 }
 
+/* Global modal harmonization for legacy and current modal components. */
+#root div.fixed.inset-0[class*="backdrop-blur"] {
+  background: rgba(7, 17, 29, .58) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(125%);
+  backdrop-filter: blur(12px) saturate(125%);
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] {
+  background: var(--ui-surface) !important;
+  color: var(--ui-text);
+  border-color: var(--ui-border) !important;
+  border-radius: var(--ui-radius-xl) !important;
+  box-shadow: var(--ui-shadow-lg) !important;
+  max-height: min(92dvh, 980px);
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] input:not([type="checkbox"]):not([type="radio"]),
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] select,
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] textarea {
+  border-radius: var(--ui-radius-md) !important;
+  border-color: var(--ui-border) !important;
+  background-color: var(--ui-surface) !important;
+  color: var(--ui-text) !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] input:not([type="checkbox"]):not([type="radio"]):hover,
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] select:hover,
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] textarea:hover {
+  border-color: var(--ui-border-strong) !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] input:not([type="checkbox"]):not([type="radio"]):focus,
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] select:focus,
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] textarea:focus {
+  border-color: var(--ui-brand-500) !important;
+  box-shadow: var(--ui-focus) !important;
+  outline: none !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] button[class*="px-"][class*="py-"] {
+  border-radius: var(--ui-radius-md) !important;
+  transition-duration: var(--ui-motion-base) !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] [class*="border-b"] {
+  border-color: var(--ui-border) !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] [class*="border-t"] {
+  border-color: var(--ui-border) !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] table thead {
+  background: var(--ui-surface-soft) !important;
+}
+
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] table th,
+#root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] table td {
+  border-color: var(--ui-border) !important;
+}
+
+@media (max-width: 640px) {
+  #root div.fixed.inset-0[class*="backdrop-blur"] {
+    padding: .5rem !important;
+    align-items: flex-end !important;
+  }
+
+  #root div.fixed.inset-0[class*="backdrop-blur"] > div[class*="rounded-"][class*="shadow-"] {
+    max-height: 94dvh !important;
+    border-radius: 1.15rem !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;
