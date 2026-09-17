@@ -92,30 +92,41 @@ const enhanceWorkerSearch = () => {
 const applyAnnualHiringPeriod = () => {
   const start = document.querySelector<HTMLInputElement>('input[name="periodoInicio"]');
   const end = document.querySelector<HTMLInputElement>('input[name="periodoFin"]');
-  const obra = document.querySelector<HTMLSelectElement>('select[name="obra"]');
-  if (!start || !end || !obra) return;
+  if (!start || !end) return;
   const form = start.closest('form') || start.parentElement?.parentElement?.parentElement;
   if (!form) return;
   const selects = Array.from(form.querySelectorAll<HTMLSelectElement>('select'));
   const monthSelect = selects.find((s) => MONTHS.every((m) => Array.from(s.options).some((o) => (o.value || o.textContent) === m)));
   const yearSelect = selects.find((s) => Array.from(s.options).some((o) => /^20\d{2}$/.test(o.value || o.textContent || '')));
-  if (!monthSelect || !yearSelect || !obra.value) return;
+  const fortnightSelect = selects.find((s) => {
+    const values = Array.from(s.options).map((o) => `${o.value} ${o.textContent || ''}`.toLowerCase());
+    return values.some((v) => /(^|\s)1ª|1a|primera/.test(v)) && values.some((v) => /(^|\s)2ª|2a|segunda/.test(v));
+  });
+  if (!monthSelect || !yearSelect || !fortnightSelect) return;
+
   const month = MONTHS.indexOf(monthSelect.value) + 1;
   const year = Number(yearSelect.value);
   if (!month || !year) return;
-  const workNorm = normalize(obra.value);
-  const record = cachedAnnualPeriods.find((r) => r.year === year && (normalize(r.obra) === workNorm || (!!r.codigoObra && workNorm.includes(normalize(r.codigoObra)))));
-  const period = record?.periods.find((p) => p.month === month);
-  if (!period?.startDate || !period?.endDate) return;
+  const record = cachedAnnualPeriods.find((r) => r.year === year);
+  const calendarMonth = record?.months.find((m) => m.month === month);
+  if (!calendarMonth) return;
+
+  const fortnightRaw = `${fortnightSelect.value} ${fortnightSelect.selectedOptions?.[0]?.textContent || ''}`.toLowerCase();
+  const isSecond = /2ª|2a|segunda|^2\b/.test(fortnightRaw);
+  const periodLabel = isSecond ? 'Periodo 2' : 'Periodo 1';
+  const autoStart = isSecond ? calendarMonth.period2Start : calendarMonth.period1Start;
+  const autoEnd = isSecond ? calendarMonth.period2End : calendarMonth.period1End;
+  if (!autoStart || !autoEnd) return;
+
   const previousAutoStart = start.dataset.profeaAnnualAuto || '';
   const previousAutoEnd = end.dataset.profeaAnnualAuto || '';
   if (!start.value || start.value === previousAutoStart) {
-    dispatchInputValue(start, period.startDate);
-    start.dataset.profeaAnnualAuto = period.startDate;
+    dispatchInputValue(start, autoStart);
+    start.dataset.profeaAnnualAuto = autoStart;
   }
   if (!end.value || end.value === previousAutoEnd) {
-    dispatchInputValue(end, period.endDate);
-    end.dataset.profeaAnnualAuto = period.endDate;
+    dispatchInputValue(end, autoEnd);
+    end.dataset.profeaAnnualAuto = autoEnd;
   }
   let hint = form.querySelector<HTMLElement>('[data-profea-annual-period-hint="1"]');
   if (!hint) {
@@ -123,12 +134,12 @@ const applyAnnualHiringPeriod = () => {
     hint.className = 'text-xs text-emerald-700 dark:text-emerald-400 font-semibold mt-1';
     end.parentElement?.appendChild(hint);
   }
-  hint.textContent = `Periodo anual aplicado automáticamente: ${period.startDate.split('-').reverse().join('/')} → ${period.endDate.split('-').reverse().join('/')}. Puedes modificarlo manualmente.`;
+  hint.textContent = `${periodLabel} de la anualidad ${year} aplicado a todas las obras: ${autoStart.split('-').reverse().join('/')} → ${autoEnd.split('-').reverse().join('/')}. Puedes modificarlo manualmente.`;
 };
 
 const enhanceAnnualPeriodAutofill = () => {
   applyAnnualHiringPeriod();
-  const controls = Array.from(document.querySelectorAll<HTMLElement>('select[name="obra"], input[name="periodoInicio"], input[name="periodoFin"], select'));
+  const controls = Array.from(document.querySelectorAll<HTMLElement>('input[name="periodoInicio"], input[name="periodoFin"], select'));
   controls.forEach((el) => {
     if (el.dataset.profeaAnnualListener === '1') return;
     el.dataset.profeaAnnualListener = '1';
