@@ -1,34 +1,163 @@
 @import url('/button-effects.css');
 
-/* Directorio: primera fila de acciones de relación de trabajadores. */
+/* Directorio: primera fila integrada con el resto de exportaciones. */
+#directorio-section .directorio-primary-actions {
+  display: grid !important;
+  grid-template-columns: minmax(250px, 250px) 112px 112px !important;
+  align-items: center !important;
+  justify-content: end !important;
+  gap: 8px !important;
+  width: 490px !important;
+  max-width: 100% !important;
+  margin-left: auto !important;
+}
+
 #directorio-section .directorio-primary-actions::before {
-  content: 'RELACIÓN DE TRABAJADORES:';
-  margin-right: auto;
+  content: 'RELACIÓN DE TRABAJADORES PARA ENCARGADOS:';
+  width: 250px;
+  margin: 0 !important;
+  padding: 0 !important;
   align-self: center;
-  padding-right: 0.5rem;
+  justify-self: end;
   font-size: 0.625rem;
-  line-height: 1rem;
+  line-height: 1.15;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  text-align: right;
   color: rgb(100 116 139);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 html.dark #directorio-section .directorio-primary-actions::before {
   color: rgb(148 163 184);
 }
 
-/* Gmail es el primer botón directo de esta fila. Se oculta y se mantienen PDF + Excel. */
+/* Gmail no forma parte de este bloque de exportación. */
 #directorio-section .directorio-primary-actions > button:nth-of-type(1) {
   display: none !important;
 }
 
-@media (max-width: 767px) {
-  #directorio-section .directorio-primary-actions::before {
-    flex: 0 0 100%;
-    width: 100%;
-    margin-right: 0;
-    margin-bottom: 0.125rem;
+/* Deshacer/Rehacer se mantienen fuera de la retícula de exportaciones si aparecen. */
+#directorio-section .directorio-primary-actions > div {
+  display: none !important;
+}
+
+/* Quitar la separación artificial entre la primera fila y el resto. */
+#directorio-section .directorio-export-groups {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* Todas las filas comparten exactamente la misma retícula. */
+#directorio-section .directorio-export-row {
+  display: grid !important;
+  grid-template-columns: minmax(250px, 250px) 112px 112px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 490px !important;
+  max-width: 100% !important;
+}
+
+#directorio-section .directorio-export-row > span {
+  width: 250px !important;
+  margin: 0 !important;
+  justify-content: flex-end !important;
+  text-align: right !important;
+  white-space: normal !important;
+  line-height: 1.15 !important;
+}
+
+/* Dimensiones y tipografía comunes a TODOS los botones de exportación. */
+#directorio-section .directorio-primary-actions > button,
+#directorio-section .directorio-export-row > button {
+  width: 112px !important;
+  min-width: 112px !important;
+  height: 40px !important;
+  padding: 0 14px !important;
+  border-radius: 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .015em !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08) !important;
+  transition: background-color .15s ease, border-color .15s ease, transform .15s ease !important;
+}
+
+#directorio-section .directorio-primary-actions > button:hover,
+#directorio-section .directorio-export-row > button:hover {
+  transform: translateY(-1px);
+}
+
+/* Un solo estilo para todos los PDF. */
+#directorio-section .directorio-primary-actions > button:nth-of-type(2),
+#directorio-section .directorio-export-row > button:nth-of-type(1) {
+  background: rgb(239 246 255) !important;
+  color: rgb(3 105 161) !important;
+  border: 1px solid rgb(186 230 253) !important;
+}
+
+#directorio-section .directorio-primary-actions > button:nth-of-type(2):hover,
+#directorio-section .directorio-export-row > button:nth-of-type(1):hover {
+  background: rgb(224 242 254) !important;
+  border-color: rgb(125 211 252) !important;
+}
+
+/* Un solo estilo para todos los Excel. */
+#directorio-section .directorio-primary-actions > button:nth-of-type(3),
+#directorio-section .directorio-export-row > button:nth-of-type(2) {
+  background: rgb(236 253 245) !important;
+  color: rgb(4 120 87) !important;
+  border: 1px solid rgb(167 243 208) !important;
+}
+
+#directorio-section .directorio-primary-actions > button:nth-of-type(3):hover,
+#directorio-section .directorio-export-row > button:nth-of-type(2):hover {
+  background: rgb(209 250 229) !important;
+  border-color: rgb(110 231 183) !important;
+}
+
+html.dark #directorio-section .directorio-primary-actions > button:nth-of-type(2),
+html.dark #directorio-section .directorio-export-row > button:nth-of-type(1) {
+  background: rgba(7, 89, 133, .32) !important;
+  color: rgb(186 230 253) !important;
+  border-color: rgb(14 116 144) !important;
+}
+
+html.dark #directorio-section .directorio-primary-actions > button:nth-of-type(3),
+html.dark #directorio-section .directorio-export-row > button:nth-of-type(2) {
+  background: rgba(6, 78, 59, .42) !important;
+  color: rgb(167 243 208) !important;
+  border-color: rgb(5 150 105) !important;
+}
+
+@media (max-width: 640px) {
+  #directorio-section .directorio-primary-actions,
+  #directorio-section .directorio-export-row {
+    grid-template-columns: minmax(130px, 1fr) 96px 96px !important;
+    width: 100% !important;
+  }
+
+  #directorio-section .directorio-primary-actions::before,
+  #directorio-section .directorio-export-row > span {
+    width: auto !important;
+    font-size: 9px !important;
+    text-align: left !important;
+    justify-self: start !important;
+    justify-content: flex-start !important;
+  }
+
+  #directorio-section .directorio-primary-actions > button,
+  #directorio-section .directorio-export-row > button {
+    width: 96px !important;
+    min-width: 96px !important;
+    height: 40px !important;
+    padding: 0 8px !important;
   }
 }
