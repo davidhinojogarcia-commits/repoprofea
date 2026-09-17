@@ -50,10 +50,13 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
-      #directorio-section .directorio-export-row{display:grid!important;grid-template-columns:minmax(210px,210px) 112px 112px!important;align-items:center!important;gap:8px!important;width:450px!important;max-width:100%!important}
-      #directorio-section .directorio-export-row>span{width:210px!important;margin-right:0!important;text-align:right!important;justify-content:flex-end!important;white-space:normal!important;line-height:1.15!important}
-      #directorio-section .directorio-export-row>button{width:112px!important;min-width:112px!important;height:36px!important;padding-top:6px!important;padding-bottom:6px!important}
-      @media(max-width:640px){#directorio-section .directorio-export-row{grid-template-columns:minmax(130px,1fr) 96px 96px!important;width:100%!important}#directorio-section .directorio-export-row>span{width:auto!important;font-size:9px!important;text-align:left!important;justify-content:flex-start!important}#directorio-section .directorio-export-row>button{width:96px!important;min-width:96px!important}}
+      #directorio-section .directorio-export-row{display:grid!important;grid-template-columns:minmax(250px,250px) 112px 112px!important;align-items:center!important;gap:8px!important;width:490px!important;max-width:100%!important}
+      #directorio-section .directorio-export-row>span{width:250px!important;margin:0!important;text-align:right!important;justify-content:flex-end!important;white-space:normal!important;line-height:1.15!important}
+      #directorio-section .directorio-export-row>button{width:112px!important;min-width:112px!important;height:40px!important;padding:0 14px!important;border-radius:10px!important;font-size:11px!important;line-height:1!important;font-weight:700!important;text-transform:uppercase!important;letter-spacing:.015em!important;box-shadow:0 1px 2px rgba(15,23,42,.08)!important}
+      #directorio-section .directorio-export-row>button:nth-of-type(1){background:rgb(239 246 255)!important;color:rgb(3 105 161)!important;border:1px solid rgb(186 230 253)!important}
+      #directorio-section .directorio-export-row>button:nth-of-type(2){background:rgb(236 253 245)!important;color:rgb(4 120 87)!important;border:1px solid rgb(167 243 208)!important}
+      #directorio-section .directorio-export-groups{border-top:0!important;padding-top:0!important;margin-top:0!important}
+      @media(max-width:640px){#directorio-section .directorio-export-row{grid-template-columns:minmax(130px,1fr) 96px 96px!important;width:100%!important}#directorio-section .directorio-export-row>span{width:auto!important;font-size:9px!important;text-align:left!important;justify-content:flex-start!important}#directorio-section .directorio-export-row>button{width:96px!important;min-width:96px!important;height:40px!important;padding:0 8px!important}}
     `;
     document.head.appendChild(style);
 
@@ -79,8 +82,9 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       const root = document.getElementById('directorio-section');
       if (root) {
         root.querySelectorAll<HTMLElement>('span,div,label').forEach(node => {
-          if (normalizeLabel(node.textContent || '') === 'RELACION DE TRABAJADORES') {
-            node.textContent = 'RELACIÓN DE TRABAJADORES OBRA:';
+          const label = normalizeLabel(node.textContent || '');
+          if (label === 'RELACION DE TRABAJADORES' || label === 'RELACION DE TRABAJADORES OBRA') {
+            node.textContent = 'RELACIÓN DE TRABAJADORES PARA ENCARGADOS:';
           }
         });
       }
@@ -91,9 +95,9 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       row.dataset.adminRelationRow = '1';
       row.className = 'directorio-export-row flex items-center justify-end gap-2';
       row.innerHTML = `
-        <span class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación administrativa de trabajadores:</span>
-        <button type="button" data-admin-export="pdf" class="w-[112px] flex-none flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-300 dark:border-rose-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">▣&nbsp; PDF</button>
-        <button type="button" data-admin-export="excel" class="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">⇩&nbsp; Excel</button>`;
+        <span class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center">Relación administrativa de trabajadores:</span>
+        <button type="button" data-admin-export="pdf" class="flex-none flex items-center justify-center transition-colors shadow-sm uppercase border">▣&nbsp; PDF</button>
+        <button type="button" data-admin-export="excel" class="flex-none flex items-center justify-center transition-colors shadow-sm uppercase border">⇩&nbsp; Excel</button>`;
       row.querySelector('[data-admin-export="pdf"]')?.addEventListener('click', () => void exportData('pdf'));
       row.querySelector('[data-admin-export="excel"]')?.addEventListener('click', () => void exportData('excel'));
       group.prepend(row);
