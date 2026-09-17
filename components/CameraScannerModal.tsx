@@ -476,48 +476,36 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
       const accepted: { dni?: string; birthDate?: string; nuss?: string; iban?: string; documentText?: string } = {
         documentText: detected.text,
+        ...(detected.dni ? { dni: detected.dni } : {}),
+        ...(detected.birthDate ? { birthDate: detected.birthDate } : {}),
+        ...(detected.nuss ? { nuss: detected.nuss } : {}),
+        ...(detected.iban ? { iban: detected.iban } : {}),
       };
-
-      if (detected.dni && window.confirm(`DNI/NIE detectado:
-
-${detected.dni}
-
-¿Incorporar este dato al trabajador en curso?`)) {
-        accepted.dni = detected.dni;
-      }
-      if (detected.birthDate && window.confirm(`Fecha de nacimiento detectada:
-
-${detected.birthDate.split('-').reverse().join('/')}
-
-¿Incorporar este dato al trabajador en curso?`)) {
-        accepted.birthDate = detected.birthDate;
-      }
-      if (detected.nuss && window.confirm(`Nº de Seguridad Social detectado:
-
-${formatSpanishSocialSecurityNumber(detected.nuss)}
-
-¿Incorporar este dato al trabajador en curso?`)) {
-        accepted.nuss = detected.nuss;
-      }
-      if (detected.iban && window.confirm(`IBAN / Cuenta bancaria detectado:
-
-${formatIban(detected.iban)}
-
-¿Incorporar este dato al trabajador en curso?`)) {
-        accepted.iban = detected.iban;
-      }
 
       const acceptedCount = [accepted.dni, accepted.birthDate, accepted.nuss, accepted.iban].filter(Boolean).length;
       if (!acceptedCount) {
-        onToast('Datos reconocidos, pero no se ha aceptado incorporar ninguno. Puedes revisar o repetir el escaneo.', 'error');
+        onToast('No se han encontrado datos válidos para incorporar. Repite la foto o introdúcelos manualmente.', 'error');
         return;
       }
 
       window.dispatchEvent(new CustomEvent('profea:administrative-data-recognized', {
         detail: accepted,
       }));
-      onToast(`${acceptedCount} dato(s) aceptado(s) e incorporado(s) al registro en curso.`, 'success');
-      handleClose();
+
+      // Una vez entregados los datos al formulario, liberamos el escáner para la siguiente persona.
+      setPages([]);
+      setPreviewImage(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+
+      const detectedLabels = [
+        accepted.dni ? 'DNI/NIE' : '',
+        accepted.birthDate ? 'fecha de nacimiento' : '',
+        accepted.nuss ? 'Seguridad Social' : '',
+        accepted.iban ? 'IBAN' : '',
+      ].filter(Boolean).join(', ');
+
+      onToast(`Datos incorporados: ${detectedLabels}. Escáner listo para la siguiente captura.`, 'success');
     } catch (error: any) {
       console.error('OCR administrativo rápido:', error?.message || error);
       onToast('No se han podido reconocer los datos. Puedes repetir el escaneo o introducirlos manualmente.', 'error');
@@ -1438,24 +1426,13 @@ ${formatIban(detected.iban)}
                     onClick={handleRecognizeAdministrativeData}
                     disabled={isRecognizingAdministrative || isRecognizing}
                     className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50"
-                    title="Reconocer Nº de Seguridad Social e IBAN con OCR local"
+                    title="Reconocer DNI/NIE, fecha de nacimiento, Nº de Seguridad Social e IBAN"
                   >
                     {isRecognizingAdministrative ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cpu className="w-4 h-4" />}
-                    Seguridad Social / IBAN
+                    Extraer datos
                   </button>
                 )}
 
-                {pages.length > 0 && (
-                  <button
-                    onClick={handleRecognizeWorkers}
-                    disabled={isRecognizing}
-                    className="px-4 py-3 bg-gradient-to-r from-blue-600 to-[#00548E] hover:from-blue-700 hover:to-[#003860] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md animate-pulse"
-                    title="Extraer relaciones de trabajadores con IA"
-                  >
-                    <Sparkles className="w-4 h-4 animate-spin-slow" />
-                    Reconocer con IA
-                  </button>
-                )}
 
                 <button
                   onClick={handleClose}
