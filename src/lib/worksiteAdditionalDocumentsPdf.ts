@@ -17,6 +17,13 @@ export type AdditionalWorksiteContext = {
   cif: string;
   fecha: string;
   responsable?: string;
+  supervisor?: string;
+};
+
+export type WorksiteDocumentSignatures = {
+  worker?: string;
+  foreman?: string;
+  supervisor?: string;
 };
 
 type Definition = {
@@ -36,7 +43,7 @@ export const ADDITIONAL_WORKSITE_DOCUMENTS: Record<AdditionalWorksiteDocumentTyp
     legal: 'Referencia: art. 49.1.d) del Real Decreto Legislativo 2/2015, texto refundido de la Ley del Estatuto de los Trabajadores, sin perjuicio del preaviso aplicable por convenio colectivo o costumbre del lugar.',
     body: (w, c) => [
       `La persona trabajadora ${w?.apellidosNombre || '________________________________'}, con DNI/NIE ${w?.dni || '________________'}, comunica de forma libre, expresa e inequívoca su decisión de causar baja voluntaria en la relación laboral que mantiene con ${c?.empresa || '________________________________'}, vinculada a la obra ${c?.obra || '________________________________'}.`,
-      `La fecha de efectos que se hace constar es ____/____/________. La presente comunicación se formula a efectos de dejar constancia escrita de la voluntad de dimisión y de su recepción por la empresa.`,
+      'La fecha de efectos que se hace constar es ____/____/________. La presente comunicación se formula a efectos de dejar constancia escrita de la voluntad de dimisión y de su recepción por la empresa.',
       'La firma de este documento acredita la comunicación de la voluntad de baja; no implica renuncia a derechos salariales, liquidación o cualesquiera otros derechos indisponibles que legalmente correspondan.',
     ],
     signatureWorker: true,
@@ -73,7 +80,7 @@ export const ADDITIONAL_WORKSITE_DOCUMENTS: Record<AdditionalWorksiteDocumentTyp
     short: 'Asistencia FREMAP',
     legal: 'Documento interno de acompañamiento. No sustituye los partes médicos ni los modelos oficiales de accidente de trabajo o baja/alta que deban emitir la mutua, servicio sanitario o sistema oficial correspondiente.',
     body: (w, c) => [
-      `Se remite a ${w?.apellidosNombre || '________________________________'}, DNI/NIE ${w?.dni || '________________'}, trabajador/a de ${c?.empresa || '________________________________'}, adscrito/a a la obra ${c?.obra || '________________________________'}, para valoración/asistencia por FREMAP.` ,
+      `Se remite a ${w?.apellidosNombre || '________________________________'}, DNI/NIE ${w?.dni || '________________'}, trabajador/a de ${c?.empresa || '________________________________'}, adscrito/a a la obra ${c?.obra || '________________________________'}, para valoración/asistencia por FREMAP.`,
       'Fecha y hora del hecho o inicio de síntomas: ____/____/________ ______:______.',
       'Descripción breve de lo ocurrido / síntomas: ____________________________________________________________________________________\n____________________________________________________________________________________________________________________________.',
       'Lugar exacto: _______________________________________________________________________________________________________________.',
@@ -105,7 +112,7 @@ export const ADDITIONAL_WORKSITE_DOCUMENTS: Record<AdditionalWorksiteDocumentTyp
     short: 'Certificado trabajando actualmente',
     legal: 'Certificación administrativa/laboral emitida a solicitud de la persona interesada, con los datos obrantes en GestionPROFEA. Debe ser validada y firmada por órgano o persona competente antes de su uso oficial.',
     body: (w, c) => [
-      `D./D.ª ____________________________________, en calidad de ____________________________________ de ${c?.empresa || 'Diputación Provincial de Cádiz'}, CERTIFICA:`,
+      `D./D.ª ${c?.supervisor || '________________________________'}, en calidad de supervisor/a de ${c?.empresa || 'Diputación Provincial de Cádiz'}, CERTIFICA:`,
       `Que ${w?.apellidosNombre || '________________________________'}, con DNI/NIE ${w?.dni || '________________'}, figura prestando servicios actualmente en la obra ${c?.obra || '________________________________'}, con la categoría/puesto de ${w?.categoria || '________________'}, desde ${w?.periodoInicio || '____/____/________'} y con fecha prevista de finalización ${w?.periodoFin || '____/____/________'}, según los datos disponibles en la aplicación.`,
       'Y para que conste, a petición de la persona interesada y a los efectos oportunos, se expide el presente certificado, sujeto a comprobación y firma por la unidad competente.',
     ],
@@ -116,7 +123,7 @@ export const ADDITIONAL_WORKSITE_DOCUMENTS: Record<AdditionalWorksiteDocumentTyp
     short: 'Certificado de haber trabajado',
     legal: 'Certificación emitida a partir de los datos de contratación disponibles. Para efectos administrativos oficiales deberá ser revisada y firmada por el órgano o unidad competente.',
     body: (w, c) => [
-      `D./D.ª ____________________________________, en calidad de ____________________________________ de ${c?.empresa || 'Diputación Provincial de Cádiz'}, CERTIFICA:`,
+      `D./D.ª ${c?.supervisor || '________________________________'}, en calidad de supervisor/a de ${c?.empresa || 'Diputación Provincial de Cádiz'}, CERTIFICA:`,
       `Que ${w?.apellidosNombre || '________________________________'}, con DNI/NIE ${w?.dni || '________________'}, ha prestado servicios en la obra ${c?.obra || w?.obra || '________________________________'}, con categoría/puesto ${w?.categoria || '________________'}, durante el periodo comprendido entre ${w?.periodoInicio || '____/____/________'} y ${w?.periodoFin || '____/____/________'}, según los registros disponibles.`,
       'Y para que conste a los efectos oportunos, se expide el presente certificado, que deberá ser comprobado y suscrito por la unidad competente para adquirir validez oficial.',
     ],
@@ -128,10 +135,9 @@ const fmt = (value: string) => {
   const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(value || '');
 };
-
 const safeFile = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 
-export function generateAdditionalWorksiteDocument(type: AdditionalWorksiteDocumentType, worker: Person | null, ctx: AdditionalWorksiteContext) {
+export function generateAdditionalWorksiteDocument(type: AdditionalWorksiteDocumentType, worker: Person | null, ctx: AdditionalWorksiteContext, signatures?: WorksiteDocumentSignatures) {
   const def = ADDITIONAL_WORKSITE_DOCUMENTS[type];
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pw = doc.internal.pageSize.getWidth();
@@ -140,79 +146,65 @@ export function generateAdditionalWorksiteDocument(type: AdditionalWorksiteDocum
   const right = pw - 18;
   const width = right - left;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ · PROFEA', left, 16);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text(ctx.empresa || 'Diputación Provincial de Cádiz', left, 21);
-  doc.text(`CIF: ${ctx.cif || '—'}`, right, 16, { align: 'right' });
-  doc.text(`Fecha: ${fmt(ctx.fecha)}`, right, 21, { align: 'right' });
-  doc.setDrawColor(0, 84, 142);
-  doc.setLineWidth(0.7);
-  doc.line(left, 28, right, 28);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ · PROFEA', left, 16);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text(ctx.empresa || 'Diputación Provincial de Cádiz', left, 21);
+  doc.text(`CIF: ${ctx.cif || '—'}`, right, 16, { align: 'right' }); doc.text(`Fecha: ${fmt(ctx.fecha)}`, right, 21, { align: 'right' });
+  doc.setDrawColor(0, 84, 142); doc.setLineWidth(0.7); doc.line(left, 28, right, 28);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  const titleLines = doc.splitTextToSize(def.title, width);
-  doc.text(titleLines, pw / 2, 39, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); const titleLines = doc.splitTextToSize(def.title, width); doc.text(titleLines, pw / 2, 39, { align: 'center' });
   let y = 39 + titleLines.length * 6 + 3;
-
-  doc.setFontSize(8.3);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(90);
-  const legalLines = doc.splitTextToSize(def.legal, width);
-  doc.text(legalLines, left, y);
-  y += legalLines.length * 4 + 5;
-  doc.setTextColor(0);
+  doc.setFontSize(8.3); doc.setFont('helvetica', 'normal'); doc.setTextColor(90); const legalLines = doc.splitTextToSize(def.legal, width); doc.text(legalLines, left, y); y += legalLines.length * 4 + 5; doc.setTextColor(0);
 
   const infoRows: [string, string][] = [
-    ['Obra', ctx.obra || '________________________________'],
-    ['Municipio', ctx.municipio || '________________________________'],
-    ['Trabajador/a', worker?.apellidosNombre || '________________________________'],
-    ['DNI/NIE', worker?.dni || '________________'],
-    ['Categoría/Puesto', worker?.categoria || '________________'],
-    ['Nº oferta', worker?.numOferta || '________________'],
+    ['Obra', ctx.obra || '________________________________'], ['Municipio', ctx.municipio || '________________________________'],
+    ['Trabajador/a', worker?.apellidosNombre || '________________________________'], ['DNI/NIE', worker?.dni || '________________'],
+    ['Categoría/Puesto', worker?.categoria || '________________'], ['Nº oferta', worker?.numOferta || '________________'],
   ];
   doc.setFontSize(8);
   for (let i = 0; i < infoRows.length; i += 2) {
-    const a = infoRows[i]; const b = infoRows[i + 1];
-    doc.setFont('helvetica', 'bold'); doc.text(`${a[0]}:`, left, y); doc.setFont('helvetica', 'normal'); doc.text(a[1], left + 25, y);
+    const a = infoRows[i], b = infoRows[i + 1]; doc.setFont('helvetica', 'bold'); doc.text(`${a[0]}:`, left, y); doc.setFont('helvetica', 'normal'); doc.text(a[1], left + 25, y);
     if (b) { doc.setFont('helvetica', 'bold'); doc.text(`${b[0]}:`, left + width / 2, y); doc.setFont('helvetica', 'normal'); doc.text(b[1], left + width / 2 + 25, y); }
     y += 6;
   }
-  y += 3;
-
-  doc.setFontSize(9.5);
+  y += 3; doc.setFontSize(9.5);
   for (const paragraph of def.body(worker, ctx)) {
-    const lines = doc.splitTextToSize(paragraph, width);
-    doc.text(lines, left, y);
-    y += lines.length * 5 + 4;
-    if (y > ph - 70) { doc.addPage(); y = 22; }
+    const lines = doc.splitTextToSize(paragraph, width); doc.text(lines, left, y); y += lines.length * 5 + 4;
+    if (y > ph - 92) { doc.addPage(); y = 22; }
   }
-
   if (def.note) {
-    doc.setFillColor(245, 247, 250);
-    const noteLines = doc.splitTextToSize(def.note, width - 8);
-    const boxH = noteLines.length * 4 + 8;
-    doc.roundedRect(left, y, width, boxH, 2, 2, 'F');
-    doc.setFontSize(8); doc.setTextColor(80); doc.text(noteLines, left + 4, y + 5);
-    doc.setTextColor(0); y += boxH + 7;
+    doc.setFillColor(245, 247, 250); const noteLines = doc.splitTextToSize(def.note, width - 8); const boxH = noteLines.length * 4 + 8;
+    doc.roundedRect(left, y, width, boxH, 2, 2, 'F'); doc.setFontSize(8); doc.setTextColor(80); doc.text(noteLines, left + 4, y + 5); doc.setTextColor(0); y += boxH + 7;
   }
 
-  y = Math.max(y + 5, ph - 58);
-  if (def.signatureWorker && def.signatureCompany) {
-    doc.setDrawColor(150);
-    doc.line(left, y + 24, left + 70, y + 24);
-    doc.line(right - 70, y + 24, right, y + 24);
-    doc.setFontSize(8); doc.text('Firma de la persona trabajadora', left, y + 29); doc.text('Firma / sello de la empresa', right, y + 29, { align: 'right' });
-  } else if (def.signatureWorker) {
-    doc.setDrawColor(150); doc.line(left, y + 24, left + 80, y + 24); doc.setFontSize(8); doc.text('Firma de la persona trabajadora', left, y + 29);
-  } else if (def.signatureCompany) {
-    doc.setDrawColor(150); doc.line(right - 80, y + 24, right, y + 24); doc.setFontSize(8); doc.text('Firma / sello de la unidad competente', right, y + 29, { align: 'right' });
+  const signers: { label: string; name: string; image?: string }[] = [];
+  if (def.signatureWorker && worker) signers.push({ label: 'Persona trabajadora', name: worker.apellidosNombre || worker.dni || 'Trabajador/a', image: signatures?.worker });
+  if (def.signatureCompany) {
+    signers.push({ label: 'Encargado/a de obra', name: ctx.responsable || 'Sin encargado configurado', image: signatures?.foreman });
+    signers.push({ label: 'Supervisor/a', name: ctx.supervisor || 'Supervisor/a', image: signatures?.supervisor });
   }
 
-  doc.setDrawColor(220); doc.line(left, ph - 17, right, ph - 17); doc.setFontSize(6.8); doc.setTextColor(100); doc.text('Documento generado por GestionPROFEA. Revisar y validar antes de su uso oficial.', left, ph - 12); doc.text('Página 1', right, ph - 12, { align: 'right' });
+  if (signers.length) {
+    const requiredHeight = signers.length > 2 ? 74 : 54;
+    if (y > ph - requiredHeight - 24) { doc.addPage(); y = 24; }
+    y = Math.max(y + 5, signers.length > 2 ? ph - 88 : ph - 68);
+    const cols = signers.length === 1 ? 1 : signers.length === 2 ? 2 : 3;
+    const gap = 6; const cellW = (width - gap * (cols - 1)) / cols;
+    signers.forEach((s, index) => {
+      const x = left + index * (cellW + gap);
+      doc.setDrawColor(190); doc.roundedRect(x, y, cellW, 42, 2, 2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.text(s.label, x + cellW / 2, y + 6, { align: 'center' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.text(doc.splitTextToSize(s.name, cellW - 6), x + cellW / 2, y + 11, { align: 'center' });
+      if (s.image) { try { doc.addImage(s.image, 'PNG', x + 5, y + 17, cellW - 10, 18, undefined, 'FAST'); } catch {} }
+      doc.setDrawColor(150); doc.line(x + 5, y + 36, x + cellW - 5, y + 36);
+      doc.setFontSize(6.5); doc.text('Firma', x + cellW / 2, y + 40, { align: 'center' });
+    });
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p); doc.setDrawColor(220); doc.line(left, ph - 17, right, ph - 17); doc.setFontSize(6.8); doc.setTextColor(100);
+    doc.text('Documento generado por GestionPROFEA. Revisar y validar antes de su uso oficial.', left, ph - 12); doc.text(`Página ${p} de ${pageCount}`, right, ph - 12, { align: 'right' });
+  }
 
   const suffix = worker ? `_${safeFile(worker.apellidosNombre || worker.dni || String(worker.id))}` : '_PLANTILLA';
   return { doc, filename: `${safeFile(def.short)}${suffix}.pdf` };
