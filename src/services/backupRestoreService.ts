@@ -9,7 +9,6 @@ export type RestoreMode = 'replace' | 'merge';
 export interface ProfeaBackupPayload {
   people?: Person[];
   deletedPeople?: DeletedPerson[];
-  // Alias históricos admitidos para que copias antiguas no se interpreten como vacías.
   workers?: Person[];
   trabajadores?: Person[];
   personas?: Person[];
@@ -19,8 +18,13 @@ export interface ProfeaBackupPayload {
   subcontratas?: any[];
   reconocimientos?: any[];
   contrataciones?: any[];
+  obras?: any[];
+  database?: Record<string, any[]>;
+  settings?: Record<string, any>;
   config?: Record<string, any>;
   type?: string;
+  version?: string;
+  schema?: string;
 }
 
 const collectionTable: Record<string, string> = {
@@ -29,6 +33,15 @@ const collectionTable: Record<string, string> = {
   reconocimientos: 'reconocimientos',
   contrataciones: 'contrataciones',
 };
+
+const INVENTORY_TABLES = [
+  'inventory_parks',
+  'inventory_items',
+  'inventory_movements',
+  'inventory_maintenance',
+  'inventory_documents',
+  'inventory_park_members',
+] as const;
 
 async function currentUserId(): Promise<string> {
   const { data } = await supabase.auth.getUser();
@@ -51,14 +64,18 @@ function firstArray<T>(...values: unknown[]): T[] {
 
 export function normalizeBackupPayload(payload: ProfeaBackupPayload): ProfeaBackupPayload {
   const source = payload || {};
+  const db = source.database || {};
   return {
     ...source,
-    people: firstArray<Person>(source.people, source.workers, source.trabajadores, source.personas),
-    deletedPeople: firstArray<DeletedPerson>(source.deletedPeople, source.trash, source.personasEliminadas),
-    citas: firstArray(source.citas),
-    subcontratas: firstArray(source.subcontratas, source.config?.subcontratas),
-    reconocimientos: firstArray(source.reconocimientos),
-    contrataciones: firstArray(source.contrataciones),
+    people: firstArray<Person>(db.trabajadores, source.people, source.workers, source.trabajadores, source.personas),
+    deletedPeople: firstArray<DeletedPerson>(db.trash, source.deletedPeople, source.trash, source.personasEliminadas),
+    citas: firstArray(db.citas, source.citas),
+    subcontratas: firstArray(db.subcontratas, source.subcontratas, source.config?.subcontratas),
+    reconocimientos: firstArray(db.reconocimientos, source.reconocimientos),
+    contrataciones: firstArray(db.contrataciones, source.contrataciones),
+    obras: firstArray(db.obras, source.obras),
+    database: db,
+    settings: source.settings && typeof source.settings === 'object' ? source.settings : {},
     config: source.config && typeof source.config === 'object' ? source.config : {},
   };
 }
@@ -81,8 +98,6 @@ const mergeList = (current: string[], incoming: unknown): string[] => {
 };
 
 async function restoreCollection(collection: 'citas' | 'subcontratas' | 'reconocimientos' | 'contrataciones', rows: any[]) {
-  // Las subcontratas sincronizan además su checklist; se mantienen secuenciales para no
-  // competir por los mismos documentos. El resto se restaura en lotes concurrentes.
   const concurrency = collection === 'subcontratas' ? 1 : 10;
   for (let start = 0; start < rows.length; start += concurrency) {
     const batch = rows.slice(start, start + concurrency);
@@ -95,11 +110,50 @@ async function restoreCollection(collection: 'citas' | 'subcontratas' | 'reconoc
   }
 }
 
+async function restoreWorks(rows: any[]) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] || {};
+    const id = row.id ?? `obra_backup_${Date.now()}_${i}`;
+    await createDocument('obras', id, row);
+  }
+}
+
+async function restoreRawInventory(payload: ProfeaBackupPayload, ownerId: string) {
+  const db = payload.database || {};
+  let restored = 0;
+  for (const table of INVENTORY_TABLES) {
+    const rows = Array.isArray(db[table]) ? db[table] : [];
+    for (const original of rows) {
+      if (!original || typeof original !== 'object') continue;
+      const row: Record<string, any> = { ...original };
+      // La copia conserva todos los datos funcionales; al restaurar se vincula la
+      // propiedad al usuario autenticado para que RLS no deje registros inaccesibles.
+      if ('owner_id' in row) row.owner_id = ownerId;
+      if ('created_by' in row) row.created_by = ownerId;
+      if (table === 'inventory_park_members' && 'user_id' in row) row.user_id = ownerId;
+      await supabase.query(table, {
+        method: 'POST',
+        prefer: 'resolution=merge-duplicates,return=minimal',
+        body: row,
+      });
+      restored += 1;
+    }
+  }
+  return restored;
+}
+
+async function restoreCompleteSettings(payload: ProfeaBackupPayload) {
+  if (!payload.settings || typeof payload.settings !== 'object' || !Object.keys(payload.settings).length) return false;
+  await supabase.rpc('patch_user_settings', { p_patch: payload.settings });
+  return true;
+}
+
 export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, mode: RestoreMode) {
   const payload = normalizeBackupPayload(rawPayload);
   const ownerId = await currentUserId();
   const workers = Array.isArray(payload.people) ? payload.people : [];
   const trash = Array.isArray(payload.deletedPeople) ? payload.deletedPeople : [];
+  const obras = Array.isArray(payload.obras) ? payload.obras : [];
 
   if (mode === 'replace' && workers.length === 0) {
     const existing = await supabase.query('trabajadores', {
@@ -110,7 +164,12 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
     }
   }
 
-  // Trabajadores + papelera se restauran en una única transacción de PostgreSQL.
+  // Las obras se recrean primero para que los trabajadores y contratos puedan resolver
+  // correctamente sus referencias sin perder nombres, códigos ni responsables.
+  await restoreWorks(obras);
+
+  // Trabajadores + papelera se restauran mediante la RPC transaccional. Los objetos se
+  // entregan completos, incluido data/IBAN/NSS/aptitud/renuncias y campos futuros.
   const restored = await supabase.rpc('restore_workers_trash_backup', {
     p_workers: workers,
     p_trash: trash,
@@ -123,26 +182,31 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
     await restoreCollection(collection, rows);
   }
 
+  const inventoryRestored = await restoreRawInventory(payload, ownerId);
+  const restoredFullSettings = await restoreCompleteSettings(payload);
+
   const config = payload.config || {};
   const current = await loadAppBusinessSettings();
-  const settings = mode === 'merge' ? {
-    savedObras: mergeList(current.savedObras, config.obras),
-    savedLugares: mergeList(current.savedLugares, config.lugares),
-    savedSitios: mergeList(current.savedSitios, config.sitios),
-    savedTelefonos: mergeList(current.savedTelefonos, config.telefonos),
-    savedCategorias: mergeList(current.savedCategorias, config.categorias),
-    workStartHour: current.workStartHour,
-    workEndHour: current.workEndHour,
-  } : {
-    savedObras: Array.isArray(config.obras) ? config.obras : [],
-    savedLugares: Array.isArray(config.lugares) ? config.lugares : [],
-    savedSitios: Array.isArray(config.sitios) ? config.sitios : [],
-    savedTelefonos: Array.isArray(config.telefonos) ? config.telefonos : [],
-    savedCategorias: Array.isArray(config.categorias) ? config.categorias : current.savedCategorias,
-    workStartHour: config.workStartHour || '08:00',
-    workEndHour: config.workEndHour || '15:00',
-  };
-  await saveAppBusinessSettings(settings);
+  const settings = restoredFullSettings
+    ? await loadAppBusinessSettings()
+    : mode === 'merge' ? {
+        savedObras: mergeList(current.savedObras, config.obras),
+        savedLugares: mergeList(current.savedLugares, config.lugares),
+        savedSitios: mergeList(current.savedSitios, config.sitios),
+        savedTelefonos: mergeList(current.savedTelefonos, config.telefonos),
+        savedCategorias: mergeList(current.savedCategorias, config.categorias),
+        workStartHour: current.workStartHour,
+        workEndHour: current.workEndHour,
+      } : {
+        savedObras: Array.isArray(config.obras) ? config.obras : [],
+        savedLugares: Array.isArray(config.lugares) ? config.lugares : [],
+        savedSitios: Array.isArray(config.sitios) ? config.sitios : [],
+        savedTelefonos: Array.isArray(config.telefonos) ? config.telefonos : [],
+        savedCategorias: Array.isArray(config.categorias) ? config.categorias : current.savedCategorias,
+        workStartHour: config.workStartHour || '08:00',
+        workEndHour: config.workEndHour || '15:00',
+      };
+  if (!restoredFullSettings) await saveAppBusinessSettings(settings);
 
   const currentSubPrefs = await loadSubcontratasPreferences();
   const prefPatch: Record<string, any> = {};
@@ -156,7 +220,15 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
       ? { ...(currentSubPrefs.obrasRecursosPreventivos || {}), ...config.obrasRecursosPreventivos }
       : config.obrasRecursosPreventivos;
   }
+  if (config.checklistTemplate) prefPatch.checklistTemplate = config.checklistTemplate;
   if (Object.keys(prefPatch).length) await saveSubcontratasPreferences(prefPatch);
 
-  return { restored, settings, normalized: payload };
+  return {
+    restored,
+    inventoryRestored,
+    settings,
+    normalized: payload,
+    version: payload.version || 'legacy',
+    completeFormat: Boolean(payload.database && Object.keys(payload.database).length),
+  };
 }
