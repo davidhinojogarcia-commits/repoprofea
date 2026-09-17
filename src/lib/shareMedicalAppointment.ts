@@ -5,11 +5,7 @@ let reservedWhatsAppWindow: Window | null = null;
 
 export const reserveMedicalAppointmentWhatsAppWindow = (): boolean => {
   try {
-    if (reservedWhatsAppWindow && !reservedWhatsAppWindow.closed) {
-      reservedWhatsAppWindow.close();
-    }
-    // Must run synchronously from the user's tap. Safari/iOS may block a window
-    // opened later after awaits, which was causing the PDF to open but not WhatsApp.
+    if (reservedWhatsAppWindow && !reservedWhatsAppWindow.closed) reservedWhatsAppWindow.close();
     reservedWhatsAppWindow = window.open('about:blank', '_blank');
     if (reservedWhatsAppWindow) reservedWhatsAppWindow.opener = null;
     return Boolean(reservedWhatsAppWindow);
@@ -21,11 +17,9 @@ export const reserveMedicalAppointmentWhatsAppWindow = (): boolean => {
 
 export const cancelReservedMedicalAppointmentWhatsAppWindow = () => {
   try {
-    if (reservedWhatsAppWindow && !reservedWhatsAppWindow.closed) {
-      reservedWhatsAppWindow.close();
-    }
+    if (reservedWhatsAppWindow && !reservedWhatsAppWindow.closed) reservedWhatsAppWindow.close();
   } catch {
-    // Ignore browser-specific close errors.
+    // Ignorar errores específicos del navegador.
   } finally {
     reservedWhatsAppWindow = null;
   }
@@ -41,7 +35,7 @@ const closeWindow = (target: Window | null) => {
   try {
     if (target && !target.closed) target.close();
   } catch {
-    // Ignore browser-specific close errors.
+    // Ignorar errores específicos del navegador.
   }
 };
 
@@ -59,7 +53,11 @@ const formatDate = (value: string): string => {
 
 export type MedicalConfirmationLinks = { confirm: string; decline: string };
 
-export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = false, confirmationLinks?: MedicalConfirmationLinks): string => {
+export const buildMedicalAppointmentWhatsAppText = (
+  person: Person,
+  reminder = false,
+  confirmationLinks?: MedicalConfirmationLinks,
+): string => {
   const observations = String(person.observaciones || '').trim();
   const lines = reminder
     ? [
@@ -76,11 +74,14 @@ export const buildMedicalAppointmentWhatsAppText = (person: Person, reminder = f
         `Lugar: ${person.sitioReconocimiento || '-'}`,
         `Obra: ${person.obra || '-'}`,
       ];
+
   if (observations) lines.push(`Observaciones: ${observations}`);
-  lines.push('', 'Se adjunta la citación oficial con todos los datos e instrucciones para el reconocimiento médico.');
+  lines.push('', 'Se ha generado tu citación oficial en PDF con los datos e instrucciones del reconocimiento médico.');
+  lines.push('Si estás usando WhatsApp Web en un ordenador, adjunta el PDF descargado antes de pulsar Enviar.');
+
   if (confirmationLinks) {
     lines.push('', 'CONFIRMACIÓN DE ASISTENCIA');
-    lines.push('Al confirmar mi asistencia, declaro haber recibido y leído la documentación adjunta, así como las instrucciones e indicaciones facilitadas para el proceso de contratación, quedando informado de su contenido.');
+    lines.push('Al confirmar mi asistencia, declaro haber recibido y leído la documentación y las indicaciones facilitadas para el proceso de contratación.');
     lines.push('', `✅ Confirmar asistencia: ${confirmationLinks.confirm}`);
     lines.push(`❌ No puedo asistir: ${confirmationLinks.decline}`);
     lines.push('', 'La respuesta quedará registrada automáticamente en GestionProfea.');
@@ -120,6 +121,10 @@ const overlayWorkerIdentity = (doc: any, person: Person) => {
 };
 
 export const createMedicalAppointmentPdfFile = async (person: Person): Promise<File> => {
+  if (!person.citaDia || !person.citaHora || !person.sitioReconocimiento) {
+    throw new Error('La cita debe tener fecha, hora y lugar antes de generar el PDF.');
+  }
+
   const observations = String(person.observaciones || '').trim();
   const site = observations
     ? `${person.sitioReconocimiento || '-'}\nOBSERVACIONES / INDICACIONES PARTICULARES: ${observations}`
@@ -163,7 +168,25 @@ const downloadPdfFile = (pdfFile: File) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 3000);
 };
 
-export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder = false, confirmationLinks?: MedicalConfirmationLinks): Promise<'shared' | 'opened' | 'cancelled'> => {
+export const downloadMedicalAppointmentPdf = async (person: Person): Promise<string> => {
+  const file = await createMedicalAppointmentPdfFile(person);
+  downloadPdfFile(file);
+  return file.name;
+};
+
+const canNativeShareFiles = (file: File) => {
+  try {
+    return Boolean(navigator.share && navigator.canShare?.({ files: [file] }));
+  } catch {
+    return false;
+  }
+};
+
+export const shareMedicalAppointmentByWhatsApp = async (
+  person: Person,
+  reminder = false,
+  confirmationLinks?: MedicalConfirmationLinks,
+): Promise<'shared' | 'opened' | 'cancelled'> => {
   const phone = normalizePhone(person.telefono || '');
   if (phone.length < 10) {
     cancelReservedMedicalAppointmentWhatsAppWindow();
@@ -173,6 +196,7 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
   const text = buildMedicalAppointmentWhatsAppText(person, reminder, confirmationLinks);
   const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
   const whatsappWindow = consumeReservedWhatsAppWindow();
+
   let pdfFile: File;
   try {
     pdfFile = await createMedicalAppointmentPdfFile(person);
@@ -181,9 +205,8 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
     throw error;
   }
 
-  // Web Share is the only browser API that can send the PDF as a real WhatsApp
-  // attachment. The reserved window remains available as a safe fallback for iOS.
-  if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+  // En móvil/tablet, Web Share permite pasar el PDF real a WhatsApp como archivo.
+  if (canNativeShareFiles(pdfFile)) {
     try {
       await navigator.share({
         title: reminder ? 'Recordatorio de reconocimiento médico' : 'Citación para reconocimiento médico',
@@ -197,10 +220,12 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
         closeWindow(whatsappWindow);
         return 'cancelled';
       }
-      console.warn('No se pudo compartir directamente la citación PDF; se usará la alternativa de WhatsApp.', error);
+      console.warn('No se pudo compartir directamente la citación PDF; se usará la alternativa de WhatsApp Web.', error);
     }
   }
 
+  // WhatsApp Web no permite a una web externa precargar un archivo local mediante wa.me.
+  // Por ello se descarga el PDF individual y se abre el chat correcto con el texto listo.
   downloadPdfFile(pdfFile);
 
   if (whatsappWindow) {
@@ -214,7 +239,8 @@ export const shareMedicalAppointmentByWhatsApp = async (person: Person, reminder
       }
     }
   } else {
-    window.location.href = whatsappUrl;
+    const opened = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) window.location.href = whatsappUrl;
   }
 
   return 'opened';
