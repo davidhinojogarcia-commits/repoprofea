@@ -136,7 +136,6 @@ jobs:
               text = path.read_text()
               original = text
 
-              # Normalize the first full-screen backdrop in each modal component.
               text, n1 = re.subn(
                   r'className="(fixed inset-0(?![^\"]*profea-modal-backdrop)[^\"]*)"',
                   lambda m: f'className="profea-modal-backdrop {m.group(1)}"',
@@ -145,23 +144,18 @@ jobs:
               )
 
               if n1:
-                  # Normalize the first likely modal card/shell following the backdrop.
                   text, _ = re.subn(
                       r'className="((?![^\"]*profea-modal-shell)[^\"]*(?:bg-white|bg-slate-50|dark:bg-slate-900)[^\"]*(?:rounded-2xl|rounded-3xl)[^\"]*(?:shadow-xl|shadow-2xl)[^\"]*)"',
                       lambda m: f'className="profea-modal-shell {m.group(1)}"',
                       text,
                       count=1,
                   )
-
-                  # First border-bottom block inside the shell is the modal header in the app's modal convention.
                   text, _ = re.subn(
                       r'className="((?![^\"]*profea-modal-header)[^\"]*border-b[^\"]*)"',
                       lambda m: f'className="profea-modal-header {m.group(1)}"',
                       text,
                       count=1,
                   )
-
-                  # Prefer the last border-top block as the footer. Replace only when it looks like an action/footer region.
                   matches = list(re.finditer(r'className="((?![^\"]*profea-modal-footer)[^\"]*border-t[^\"]*(?:flex|grid)[^\"]*)"', text))
                   if matches:
                       m = matches[-1]
@@ -196,3 +190,5 @@ jobs:
           fi
           git commit -m "Homogenize modal interface across PROFEA"
           git push origin HEAD:main
+
+# manual trigger commit: 2026-09-17
