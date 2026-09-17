@@ -38,6 +38,14 @@ const downloadBlob = (blob: Blob, filename: string) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+const normalizeLabel = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .replace(/:$/, '')
+  .trim()
+  .toUpperCase();
+
 export const DirectoryAdministrativeExportBridge: React.FC = () => {
   useEffect(() => {
     const style = document.createElement('style');
@@ -67,7 +75,16 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       }
     };
 
-    const ensureRow = () => {
+    const ensureRowsAndLabels = () => {
+      const root = document.getElementById('directorio-section');
+      if (root) {
+        root.querySelectorAll<HTMLElement>('span,div,label').forEach(node => {
+          if (normalizeLabel(node.textContent || '') === 'RELACION DE TRABAJADORES') {
+            node.textContent = 'RELACIÓN DE TRABAJADORES OBRA:';
+          }
+        });
+      }
+
       const group = document.querySelector<HTMLElement>('#directorio-section .directorio-export-groups .flex.flex-col.gap-2');
       if (!group || group.querySelector('[data-admin-relation-row="1"]')) return;
       const row = document.createElement('div');
@@ -82,8 +99,8 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       group.prepend(row);
     };
 
-    ensureRow();
-    const observer = new MutationObserver(ensureRow);
+    ensureRowsAndLabels();
+    const observer = new MutationObserver(ensureRowsAndLabels);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => { observer.disconnect(); style.remove(); };
   }, []);
