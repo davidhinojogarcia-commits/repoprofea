@@ -1,46 +1,64 @@
 import { supabase } from '../lib/supabase';
 
-export type AnnualHiringPeriod = {
+export type AnnualHiringMonth = {
   month: number;
   monthName: string;
-  startDate: string;
-  endDate: string;
+  period1Start: string;
+  period1End: string;
+  period2Start: string;
+  period2End: string;
   source: 'imported' | 'manual';
   updatedAt: string;
+  warnings?: string[];
 };
 
 export type AnnualHiringPeriodsRecord = {
   id: string;
-  obra: string;
-  codigoObra?: string;
   year: number;
-  periods: AnnualHiringPeriod[];
+  months: AnnualHiringMonth[];
   sourceFileName?: string;
   sourceKind?: string;
   importedAt: string;
 };
 
 const safe = (v: unknown) => String(v ?? '').trim();
+
 const normalizeRecord = (value: any): AnnualHiringPeriodsRecord | null => {
-  const obra = safe(value?.obra);
   const year = Number(value?.year);
-  if (!obra || !Number.isFinite(year)) return null;
-  const periods = Array.isArray(value?.periods)
-    ? value.periods.map((p: any) => ({
-        month: Number(p?.month),
-        monthName: safe(p?.monthName),
-        startDate: safe(p?.startDate),
-        endDate: safe(p?.endDate),
-        source: p?.source === 'manual' ? 'manual' as const : 'imported' as const,
-        updatedAt: safe(p?.updatedAt) || new Date().toISOString(),
-      })).filter((p: AnnualHiringPeriod) => p.month >= 1 && p.month <= 12)
-    : [];
+  if (!Number.isFinite(year)) return null;
+
+  let months: AnnualHiringMonth[] = [];
+  if (Array.isArray(value?.months)) {
+    months = value.months.map((m: any) => ({
+      month: Number(m?.month),
+      monthName: safe(m?.monthName),
+      period1Start: safe(m?.period1Start),
+      period1End: safe(m?.period1End),
+      period2Start: safe(m?.period2Start),
+      period2End: safe(m?.period2End),
+      source: m?.source === 'manual' ? 'manual' as const : 'imported' as const,
+      updatedAt: safe(m?.updatedAt) || new Date().toISOString(),
+      warnings: Array.isArray(m?.warnings) ? m.warnings.map(safe).filter(Boolean) : [],
+    })).filter((m: AnnualHiringMonth) => m.month >= 1 && m.month <= 12);
+  } else if (Array.isArray(value?.periods)) {
+    // Compatibilidad con la primera versión: el periodo único pasa a Periodo 1.
+    months = value.periods.map((p: any) => ({
+      month: Number(p?.month),
+      monthName: safe(p?.monthName),
+      period1Start: safe(p?.startDate),
+      period1End: safe(p?.endDate),
+      period2Start: '',
+      period2End: '',
+      source: p?.source === 'manual' ? 'manual' as const : 'imported' as const,
+      updatedAt: safe(p?.updatedAt) || new Date().toISOString(),
+      warnings: ['Registro importado con el formato anterior. Revise el Periodo 2.'],
+    })).filter((m: AnnualHiringMonth) => m.month >= 1 && m.month <= 12);
+  }
+
   return {
-    id: safe(value?.id) || `${year}-${obra}`,
-    obra,
-    codigoObra: safe(value?.codigoObra),
+    id: safe(value?.id) || `annual-${year}`,
     year,
-    periods,
+    months,
     sourceFileName: safe(value?.sourceFileName),
     sourceKind: safe(value?.sourceKind),
     importedAt: safe(value?.importedAt) || new Date().toISOString(),
@@ -65,9 +83,8 @@ export async function listAnnualHiringPeriods(): Promise<AnnualHiringPeriodsReco
 
 export async function saveAnnualHiringPeriods(record: AnnualHiringPeriodsRecord): Promise<void> {
   const existing = await listAnnualHiringPeriods();
-  const key = `${record.year}|${record.codigoObra || record.obra}`.toLowerCase();
   const next = [
-    ...existing.filter((item) => `${item.year}|${item.codigoObra || item.obra}`.toLowerCase() !== key),
+    ...existing.filter((item) => item.year !== record.year),
     record,
   ];
   await supabase.rpc('patch_user_settings', {
@@ -76,20 +93,20 @@ export async function saveAnnualHiringPeriods(record: AnnualHiringPeriodsRecord)
   window.dispatchEvent(new CustomEvent('profea:annual-hiring-periods-updated', { detail: { record } }));
 }
 
-export async function updateAnnualHiringPeriod(
+export async function updateAnnualHiringMonth(
   recordId: string,
   month: number,
-  patch: Partial<Pick<AnnualHiringPeriod, 'startDate' | 'endDate'>>,
+  patch: Partial<Pick<AnnualHiringMonth, 'period1Start' | 'period1End' | 'period2Start' | 'period2End'>>,
 ): Promise<void> {
   const all = await listAnnualHiringPeriods();
   const target = all.find((r) => r.id === recordId);
-  if (!target) throw new Error('No se ha encontrado el calendario anual de contratación.');
-  target.periods = target.periods.map((p) => p.month === month ? {
-    ...p,
+  if (!target) throw new Error('No se ha encontrado la anualidad de contratación.');
+  target.months = target.months.map((m) => m.month === month ? {
+    ...m,
     ...patch,
     source: 'manual',
     updatedAt: new Date().toISOString(),
-  } : p);
+  } : m);
   target.importedAt = new Date().toISOString();
   await saveAnnualHiringPeriods(target);
 }
