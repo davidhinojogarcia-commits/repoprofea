@@ -1,4 +1,11 @@
-import { supabase } from '../lib/supabase';
+import {
+  getSessionUser,
+  queueOfflineRpc,
+  queueOfflineStorageRemove,
+  queueOfflineStorageUpload,
+  supabase,
+} from '../lib/supabase';
+import { listOfflineOperations } from '../lib/offlineStore';
 import { loadInventoryZona6Seed } from '../data/inventoryZona6Seed';
 
 export const INVENTORY_DEFAULT_PARK_NAME = 'Parque / nave logística';
@@ -218,9 +225,17 @@ const mapDocument = (row: any): InventoryDocument => ({
 });
 
 async function currentUserId() {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Debes iniciar sesión para gestionar el inventario.');
-  return data.user.id;
+  const user = await getSessionUser();
+  if (!user) throw new Error('Debes iniciar sesión para gestionar el inventario.');
+  return user.id;
+}
+
+const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+async function pendingInventoryOperations(parkId: string) {
+  const userId = await currentUserId();
+  const operations = await listOfflineOperations(userId);
+  return operations.filter(operation => operation.kind === 'rpc' && operation.payload?.meta?.parkId === parkId);
 }
 
 const isMissingInventorySharingRpc = (error: any) =>
@@ -316,12 +331,27 @@ export async function seedInventoryIfEmpty(parkId: string) {
 
 export async function listInventoryItems(parkId: string): Promise<InventoryItem[]> {
   const rows = await supabase.query('inventory_items', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=categoria.asc,nombre.asc,codigo.asc` });
-  return (rows || []).map(mapItem);
+  const items = (rows || []).map(mapItem);
+  const userId = await currentUserId();
+  const pending = await pendingInventoryOperations(parkId);
+  for (const operation of pending) {
+    const meta = operation.payload?.meta || {};
+    if (!['inventory_register_movement', 'inventory_update_movement'].includes(operation.payload?.name)) continue;
+    const item = items.find(candidate => candidate.id === meta.itemId);
+    if (!item) continue;
+    if (meta.destino) item.ubicacionActual = meta.destino;
+    if (meta.estadoNuevo) item.estado = meta.estadoNuevo;
+    item.responsableActual = userId;
+    item.updatedAt = new Date(operation.createdAt).toISOString();
+  }
+  return items;
 }
 
 export async function saveInventoryItem(parkId: string, item: Partial<InventoryItem> & { nombre: string; categoria: string }, baseLocation?: string) {
   const userId = await currentUserId();
+  const id = item.id || crypto.randomUUID();
   const payload = {
+    id,
     park_id: parkId,
     codigo: item.codigo || '',
     categoria: item.categoria || 'OTROS',
@@ -343,10 +373,11 @@ export async function saveInventoryItem(parkId: string, item: Partial<InventoryI
   };
   if (item.id) {
     const rows = await supabase.query('inventory_items', { method: 'PATCH', query: `id=eq.${encodeURIComponent(item.id)}&select=*`, prefer: 'return=representation', body: payload });
-    return mapItem(rows?.[0]);
+    return mapItem(rows?.[0] || payload);
   }
-  const rows = await supabase.query('inventory_items', { method: 'POST', prefer: 'return=representation', body: { ...payload, created_by: userId } });
-  return mapItem(rows?.[0]);
+  const body = { ...payload, created_by: userId };
+  const rows = await supabase.query('inventory_items', { method: 'POST', prefer: 'return=representation', body });
+  return mapItem(rows?.[0] || body);
 }
 
 export async function softDeleteInventoryItem(itemId: string) {
@@ -356,7 +387,52 @@ export async function softDeleteInventoryItem(itemId: string) {
 
 export async function listInventoryMovements(parkId: string): Promise<InventoryMovement[]> {
   const rows = await supabase.query('inventory_movements', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=created_at.desc&limit=2000` });
-  const movements = (rows || []).map(mapMovement);
+  let movements = (rows || []).map(mapMovement);
+  const pending = await pendingInventoryOperations(parkId);
+  for (const operation of pending) {
+    const name = operation.payload?.name;
+    const meta = operation.payload?.meta || {};
+    if (name === 'inventory_register_movement') {
+      movements = [
+        {
+          id: meta.movementId || `offline-${operation.id}`,
+          parkId,
+          itemId: meta.itemId,
+          tipo: meta.tipo || '',
+          origen: meta.origen || '',
+          destino: meta.destino || '',
+          obraId: meta.obraId || null,
+          estadoAnterior: meta.estadoAnterior || null,
+          estadoNuevo: meta.estadoNuevo || null,
+          observaciones: meta.observaciones || null,
+          latitud: meta.latitud ?? null,
+          longitud: meta.longitud ?? null,
+          fotoPaths: meta.fotoPaths || [],
+          createdBy: operation.userId,
+          createdByName: meta.createdByName || 'Pendiente de sincronizar',
+          createdAt: new Date(operation.createdAt).toISOString(),
+        },
+        ...movements,
+      ];
+    } else if (name === 'inventory_update_movement') {
+      movements = movements.map(movement =>
+        movement.id === meta.movementId
+          ? {
+              ...movement,
+              tipo: meta.tipo ?? movement.tipo,
+              destino: meta.destino ?? movement.destino,
+              estadoNuevo: meta.estadoNuevo ?? movement.estadoNuevo,
+              observaciones: meta.observaciones ?? movement.observaciones,
+              latitud: meta.latitud ?? movement.latitud,
+              longitud: meta.longitud ?? movement.longitud,
+              fotoPaths: meta.fotoPaths ?? movement.fotoPaths,
+            }
+          : movement,
+      );
+    } else if (name === 'inventory_delete_movement') {
+      movements = movements.filter(movement => movement.id !== meta.movementId);
+    }
+  }
   for (const movement of movements) {
     if (!movement.fotoPaths.length) continue;
     const signed = await Promise.all(movement.fotoPaths.map(async path => {
@@ -374,18 +450,29 @@ export async function uploadInventoryPhotos(parkId: string, itemId: string, file
   for (const file of files.slice(0, 4)) {
     const ext = (file.name.split('.').pop() || 'jpg').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const path = `${parkId}/${itemId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage.from('inventory-photos').upload(path, file, { cacheControl: '3600', upsert: false });
-    if (error) throw error;
+    if (offlineNow()) {
+      await queueOfflineStorageUpload({
+        bucket: 'inventory-photos',
+        path,
+        file,
+        options: { cacheControl: '3600', upsert: false, contentType: file.type || undefined },
+        label: `Foto pendiente · ${itemId}`,
+      });
+    } else {
+      const { error } = await supabase.storage.from('inventory-photos').upload(path, file, { cacheControl: '3600', upsert: false });
+      if (error) throw error;
+    }
     paths.push(path);
   }
   return paths;
 }
 
 export async function registerInventoryMovement(input: {
-  itemId: string; tipo: string; destino: string; estadoNuevo: string; obraId?: string | null; observaciones?: string;
+  itemId: string; parkId?: string; origen?: string; estadoAnterior?: string | null;
+  tipo: string; destino: string; estadoNuevo: string; obraId?: string | null; observaciones?: string;
   latitud?: number | null; longitud?: number | null; fotoPaths?: string[];
 }) {
-  return supabase.rpc('inventory_register_movement', {
+  const body = {
     p_item_id: input.itemId,
     p_tipo: input.tipo,
     p_destino: input.destino,
@@ -395,11 +482,33 @@ export async function registerInventoryMovement(input: {
     p_latitud: input.latitud ?? null,
     p_longitud: input.longitud ?? null,
     p_foto_paths: input.fotoPaths || [],
-  });
+  };
+  if (offlineNow()) {
+    const movementId = crypto.randomUUID();
+    await queueOfflineRpc('inventory_register_movement', body, `Movimiento · ${input.destino}`, {
+      movementId,
+      parkId: input.parkId || '',
+      itemId: input.itemId,
+      tipo: input.tipo,
+      origen: input.origen || '',
+      destino: input.destino,
+      obraId: input.obraId || null,
+      estadoAnterior: input.estadoAnterior || null,
+      estadoNuevo: input.estadoNuevo,
+      observaciones: input.observaciones || '',
+      latitud: input.latitud ?? null,
+      longitud: input.longitud ?? null,
+      fotoPaths: input.fotoPaths || [],
+    });
+    return movementId;
+  }
+  return supabase.rpc('inventory_register_movement', body);
 }
 
 export async function updateInventoryMovement(input: {
   movementId: string;
+  itemId?: string;
+  parkId?: string;
   tipo: string;
   destino: string;
   estadoNuevo: string;
@@ -408,7 +517,7 @@ export async function updateInventoryMovement(input: {
   longitud?: number | null;
   fotoPaths?: string[];
 }) {
-  return supabase.rpc('inventory_update_movement', {
+  const body = {
     p_movement_id: input.movementId,
     p_tipo: input.tipo,
     p_destino: input.destino,
@@ -417,10 +526,35 @@ export async function updateInventoryMovement(input: {
     p_latitud: input.latitud ?? null,
     p_longitud: input.longitud ?? null,
     p_foto_paths: input.fotoPaths || [],
-  });
+  };
+  if (offlineNow()) {
+    await queueOfflineRpc('inventory_update_movement', body, 'Corrección de movimiento', {
+      parkId: input.parkId || '',
+      itemId: input.itemId || '',
+      movementId: input.movementId,
+      tipo: input.tipo,
+      destino: input.destino,
+      estadoNuevo: input.estadoNuevo,
+      observaciones: input.observaciones || '',
+      latitud: input.latitud ?? null,
+      longitud: input.longitud ?? null,
+      fotoPaths: input.fotoPaths || [],
+    });
+    return null;
+  }
+  return supabase.rpc('inventory_update_movement', body);
 }
 
-export async function deleteInventoryMovement(movementId: string) {
+export async function deleteInventoryMovement(movementId: string, meta: { parkId?: string; itemId?: string } = {}) {
+  if (offlineNow()) {
+    await queueOfflineRpc(
+      'inventory_delete_movement',
+      { p_movement_id: movementId },
+      'Eliminar movimiento',
+      { parkId: meta.parkId || '', itemId: meta.itemId || '', movementId },
+    );
+    return null;
+  }
   return supabase.rpc('inventory_delete_movement', { p_movement_id: movementId });
 }
 
@@ -435,8 +569,18 @@ export async function uploadInventoryDocuments(parkId: string, itemId: string, f
   for (const file of files.slice(0, 8)) {
     const ext = (file.name.split('.').pop() || 'pdf').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const path = `${parkId}/${itemId}/${folder}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage.from('inventory-documents').upload(path, file, { cacheControl: '3600', upsert: false });
-    if (error) throw error;
+    if (offlineNow()) {
+      await queueOfflineStorageUpload({
+        bucket: 'inventory-documents',
+        path,
+        file,
+        options: { cacheControl: '3600', upsert: false, contentType: file.type || undefined },
+        label: `Documento pendiente · ${file.name}`,
+      });
+    } else {
+      const { error } = await supabase.storage.from('inventory-documents').upload(path, file, { cacheControl: '3600', upsert: false });
+      if (error) throw error;
+    }
     paths.push(path);
   }
   return paths;
@@ -453,9 +597,9 @@ export async function listInventoryMaintenance(parkId: string): Promise<Inventor
 
 export async function addInventoryMaintenance(parkId: string, itemId: string, data: Omit<InventoryMaintenance, 'id' | 'parkId' | 'itemId' | 'createdAt' | 'signedDocumentUrls'>) {
   const userId = await currentUserId();
-  const rows = await supabase.query('inventory_maintenance', {
-    method: 'POST', prefer: 'return=representation',
-    body: {
+  const id = crypto.randomUUID();
+  const body = {
+      id,
       park_id: parkId,
       item_id: itemId,
       tipo: data.tipo,
@@ -467,9 +611,11 @@ export async function addInventoryMaintenance(parkId: string, itemId: string, da
       observaciones: data.observaciones || null,
       signed_document_paths: data.signedDocumentPaths || [],
       created_by: userId,
-    },
+    };
+  const rows = await supabase.query('inventory_maintenance', {
+    method: 'POST', prefer: 'return=representation', body,
   });
-  return mapMaintenance(rows?.[0]);
+  return mapMaintenance(rows?.[0] || body);
 }
 
 export async function listInventoryDocuments(parkId: string, itemId?: string): Promise<InventoryDocument[]> {
@@ -486,9 +632,9 @@ export async function addInventoryDocument(input: {
 }) {
   const userId = await currentUserId();
   const [filePath] = await uploadInventoryDocuments(input.parkId, input.itemId, [input.file], 'machine-docs');
-  const rows = await supabase.query('inventory_documents', {
-    method: 'POST', prefer: 'return=representation',
-    body: {
+  const id = crypto.randomUUID();
+  const body = {
+      id,
       park_id: input.parkId,
       item_id: input.itemId,
       document_type: input.documentType,
@@ -499,13 +645,19 @@ export async function addInventoryDocument(input: {
       expiry_date: input.expiryDate || null,
       notes: input.notes || null,
       created_by: userId,
-    },
+    };
+  const rows = await supabase.query('inventory_documents', {
+    method: 'POST', prefer: 'return=representation', body,
   });
-  return mapDocument(rows?.[0]);
+  return mapDocument(rows?.[0] || body);
 }
 
 export async function deleteInventoryDocument(doc: InventoryDocument) {
   await supabase.query('inventory_documents', { method: 'DELETE', query: `id=eq.${encodeURIComponent(doc.id)}` });
+  if (offlineNow()) {
+    await queueOfflineStorageRemove('inventory-documents', [doc.filePath]);
+    return;
+  }
   await supabase.storage.from('inventory-documents').remove([doc.filePath]);
 }
 
