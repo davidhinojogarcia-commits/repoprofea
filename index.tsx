@@ -99,6 +99,7 @@ if ('serviceWorker' in navigator) {
 const initialSearchParams = new URLSearchParams(window.location.search);
 const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
+const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
 
 ReactDOM.createRoot(rootElement).render(
@@ -106,12 +107,19 @@ ReactDOM.createRoot(rootElement).render(
     <RootErrorBoundary>
       {isMedicalConfirmation ? (
         <MedicalAppointmentConfirmationPortal />
+      ) : workerQrToken ? (
+        <WorkerQrPortal token={workerQrToken} />
       ) : remoteScannerToken ? (
         <RemoteScannerPortal token={remoteScannerToken} />
       ) : (
         <AuthGate>
           {workerQrDni ? (
-            <WorkerQrPortal dni={workerQrDni} />
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+              <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-7 text-center shadow-xl">
+                <h1 className="text-lg font-black text-slate-900">Código QR antiguo</h1>
+                <p className="mt-2 text-sm text-slate-600">Genera de nuevo la ficha del trabajador para sustituir este QR por el nuevo acceso independiente.</p>
+              </div>
+            </div>
           ) : (
             <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
               <App />
