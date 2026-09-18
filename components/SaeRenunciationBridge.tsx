@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import { AlertTriangle, CheckCircle2, Download, FileSignature, RotateCcw, Send, X } from 'lucide-react';
 import { createDocument, getDocument, updateDocument } from '../src/services/databaseService';
 import { supabase } from '../src/lib/supabase';
+import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader } from '../src/lib/exportUtils';
 
 type CandidateRow = {
   id: string; need_id: string; source_report_id?: string | null; original_full_name?: string | null;
@@ -22,7 +23,6 @@ const fortnightLabel = (v?: number | null) => v === 1 ? '1ª Quincena' : v === 2
 const monthLabel = (v?: number | null) => v && v >= 1 && v <= 12 ? ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][v - 1] : '';
 const safeFilename = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 const whatsappPhone = (v: string) => { const d = String(v || '').replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.startsWith('0034') ? d.slice(2) : d; };
-const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result || '')); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
 const sha256 = async (blob: Blob) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))).map(b => b.toString(16).padStart(2, '0')).join('');
 
 async function makePdf(flow: FlowData, phone: string, signature: string, refused: boolean, observations: string) {
@@ -38,49 +38,15 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   const slate: [number, number, number] = [71, 85, 105];
   const softBorder: [number, number, number] = [203, 213, 225];
 
-  try {
-    const image = await fetch('/logo-pdf.png');
-    if (image.ok) {
-      doc.addImage(await blobToDataUrl(await image.blob()), 'PNG', l, 7, 43, 14, undefined, 'FAST');
-    }
-  } catch {}
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(...blue);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', r, 11.5, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(...slate);
-  doc.text('GESTIÓN DE FONDOS PROFEA · DOCUMENTO INTERNO DE CONTRATACIÓN', r, 16, { align: 'right' });
-
-  doc.setDrawColor(...blue);
-  doc.setLineWidth(0.55);
-  doc.line(l, 24, r, 24);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(...blue);
-  doc.text(
+  renderInstitutionalReportHeader(
+    doc,
     refused
       ? 'ACTA DE CONSTANCIA DE RENUNCIA Y NEGATIVA A FIRMAR'
       : 'DECLARACIÓN DE RENUNCIA A LA CONTRATACIÓN',
-    pw / 2,
-    33,
-    { align: 'center' }
-  );
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(...slate);
-  doc.text(
     refused
-      ? 'Documento interno para dejar constancia de la renuncia comunicada y de la negativa del trabajador a suscribirla.'
-      : 'Documento interno para dejar constancia expresa de la renuncia voluntaria del trabajador.',
-    pw / 2,
-    38.5,
-    { align: 'center', maxWidth: width }
+      ? 'RENUNCIA COMUNICADA · CONSTANCIA DE NEGATIVA A FIRMAR'
+      : 'RENUNCIA VOLUNTARIA · DOCUMENTO INTERNO DE CONTRATACIÓN',
+    { subtitle: 'GESTIÓN DE FONDOS PROFEA · DIPUTACIÓN PROVINCIAL DE CÁDIZ' },
   );
 
   let y = 46;
@@ -248,15 +214,8 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
     doc.text('La incidencia queda registrada por el personal responsable de la gestión PROFEA.', l + 7, y + 21);
   }
 
-  // Pie compacto: el documento de renuncia debe quedar siempre en una única hoja.
-  doc.setDrawColor(203, 213, 225);
-  doc.line(l, ph - 15, r, ph - 15);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', l, ph - 10);
-  doc.text('Documento interno generado y archivado electrónicamente por GestionPROFEA.', l, ph - 6.5);
-  doc.text('Página 1 de 1', r, ph - 8, { align: 'right' });
+  // Pie institucional común; se mantiene la composición en una sola hoja.
+  applyInstitutionalPdfStandard(doc);
 
   return { blob: doc.output('blob'), signedAt: signedAt.toISOString() };
 }
