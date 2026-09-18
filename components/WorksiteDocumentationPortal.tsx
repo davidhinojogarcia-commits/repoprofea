@@ -20,7 +20,7 @@ import {
 import { Person } from "../types";
 import { getDocuments } from "../src/services/databaseService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
-import { supabase } from "../src/lib/supabase";
+import { getSessionUser, supabase } from "../src/lib/supabase";
 import { downloadPDF } from "../src/lib/exportUtils";
 import {
   generateEpiDeliveryPdf,
@@ -364,14 +364,14 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     if (!safe(recursoPreventivo)) return showToast("Indica el encargado/recurso preventivo de la obra.", "error");
     setSaving(true);
     try {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) throw new Error("Sesión no disponible");
+      const user = await getSessionUser();
+      if (!user) throw new Error("Sesión no disponible");
       const row = workRows.find((item) => sameWork(item.nombre, selectedWork));
       const body = {
         empresa: safe(empresa) || DEFAULT_COMPANY,
         cif: safe(cif) || resolveKnownCompanyCif(empresa),
         recurso_preventivo: safe(recursoPreventivo),
-        updated_by: data.user.id,
+        updated_by: user.id,
       };
       if (row) {
         await supabase.query("obras", { method: "PATCH", prefer: "return=minimal", query: `id=eq.${encodeURIComponent(row.id)}`, body });
@@ -385,8 +385,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
             municipio: "",
             descripcion: "",
             ...body,
-            owner_id: data.user.id,
-            created_by: data.user.id,
+            owner_id: user.id,
+            created_by: user.id,
           },
         });
       }
