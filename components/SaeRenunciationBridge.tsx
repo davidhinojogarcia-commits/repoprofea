@@ -30,8 +30,8 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
-  const l = 18;
-  const r = pw - 18;
+  const l = 14;
+  const r = pw - 14;
   const width = r - l;
   const blue: [number, number, number] = [0, 84, 142];
   const lightBlue: [number, number, number] = [239, 247, 251];
@@ -41,33 +41,33 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   try {
     const image = await fetch('/logo-pdf.png');
     if (image.ok) {
-      doc.addImage(await blobToDataUrl(await image.blob()), 'PNG', l, 9, 49, 17, undefined, 'FAST');
+      doc.addImage(await blobToDataUrl(await image.blob()), 'PNG', l, 7, 43, 14, undefined, 'FAST');
     }
   } catch {}
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(...blue);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', r, 14, { align: 'right' });
+  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', r, 11.5, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(...slate);
-  doc.text('GESTIÓN DE FONDOS PROFEA · DOCUMENTO INTERNO DE CONTRATACIÓN', r, 19, { align: 'right' });
+  doc.text('GESTIÓN DE FONDOS PROFEA · DOCUMENTO INTERNO DE CONTRATACIÓN', r, 16, { align: 'right' });
 
   doc.setDrawColor(...blue);
   doc.setLineWidth(0.55);
-  doc.line(l, 30, r, 30);
+  doc.line(l, 24, r, 24);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
+  doc.setFontSize(13);
   doc.setTextColor(...blue);
   doc.text(
     refused
       ? 'ACTA DE CONSTANCIA DE RENUNCIA Y NEGATIVA A FIRMAR'
       : 'DECLARACIÓN DE RENUNCIA A LA CONTRATACIÓN',
     pw / 2,
-    41,
+    33,
     { align: 'center' }
   );
 
@@ -79,62 +79,59 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
       ? 'Documento interno para dejar constancia de la renuncia comunicada y de la negativa del trabajador a suscribirla.'
       : 'Documento interno para dejar constancia expresa de la renuncia voluntaria del trabajador.',
     pw / 2,
-    47,
+    38.5,
     { align: 'center', maxWidth: width }
   );
 
-  let y = 58;
+  let y = 46;
 
-  const startContinuationPage = () => {
-    doc.addPage();
-    y = 24;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...blue);
-    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ · GESTIÓN DE FONDOS PROFEA', l, 13);
-    doc.setDrawColor(...blue);
-    doc.setLineWidth(0.4);
-    doc.line(l, 17, r, 17);
-  };
-
-  const ensureSpace = (required: number) => {
-    if (y + required > ph - 30) startContinuationPage();
-  };
+  // Este modelo se compone deliberadamente en una única hoja A4.
+  // Los bloques se dimensionan de forma compacta y el texto largo se adapta.
+  const ensureSpace = (_required: number) => undefined;
 
   const sectionTitle = (title: string) => {
-    ensureSpace(14);
     doc.setFillColor(...lightBlue);
     doc.setDrawColor(185, 220, 235);
-    doc.roundedRect(l, y, width, 8, 1.5, 1.5, 'FD');
+    doc.roundedRect(l, y, width, 6, 1.2, 1.2, 'FD');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
+    doc.setFontSize(7.4);
     doc.setTextColor(...blue);
-    doc.text(title.toUpperCase(), l + 3, y + 5.3);
-    y += 11;
+    doc.text(title.toUpperCase(), l + 3, y + 4.1);
+    y += 7.5;
   };
 
   const drawFieldRow = (leftLabel: string, leftValue: unknown, rightLabel?: string, rightValue?: unknown) => {
-    const gap = 5;
+    const gap = 4;
     const colW = rightLabel ? (width - gap) / 2 : width;
+    const rowH = 10.5;
 
     const drawCell = (x: number, wCell: number, label: string, value: unknown) => {
       doc.setDrawColor(...softBorder);
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(x, y, wCell, 14, 1.2, 1.2, 'FD');
+      doc.roundedRect(x, y, wCell, rowH, 1, 1, 'FD');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.7);
+      doc.setFontSize(5.7);
       doc.setTextColor(100, 116, 139);
-      doc.text(label.toUpperCase(), x + 3, y + 4.3);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
+      doc.text(label.toUpperCase(), x + 2.5, y + 3.2);
+
+      const raw = String(value || '—').replace(/\s+/g, ' ').trim();
+      let fontSize = 7.6;
+      let lines: string[] = [];
+      do {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(fontSize);
+        lines = doc.splitTextToSize(raw, wCell - 5) as string[];
+        if (lines.length <= 2) break;
+        fontSize -= 0.4;
+      } while (fontSize > 5.6);
+
       doc.setTextColor(15, 23, 42);
-      const lines = doc.splitTextToSize(String(value || '—'), wCell - 6);
-      doc.text(lines.slice(0, 2), x + 3, y + 9);
+      doc.text(lines.slice(0, 2), x + 2.5, y + 6.7, { lineHeightFactor: 0.95 });
     };
 
     drawCell(l, colW, leftLabel, leftValue);
     if (rightLabel) drawCell(l + colW + gap, colW, rightLabel, rightValue);
-    y += 17;
+    y += 12;
   };
 
   sectionTitle('Datos identificativos');
@@ -154,7 +151,7 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   sectionTitle(refused ? 'Constancia de la renuncia y negativa a firmar' : 'Manifestación del trabajador');
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9.4);
+  doc.setFontSize(7.8);
   doc.setTextColor(30, 41, 59);
 
   const statement = refused
@@ -162,8 +159,8 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
     : 'El trabajador arriba identificado manifiesta, de forma libre y voluntaria, su decisión de renunciar a la contratación o incorporación correspondiente a la obra y periodo indicados. Declara haber sido informado del contenido y finalidad de este documento y confirma que su decisión supone no continuar con el proceso de contratación asociado a esta actuación. La presente declaración se incorpora al expediente interno de gestión del programa PROFEA de la Diputación Provincial de Cádiz con la finalidad de dejar constancia documental de la renuncia comunicada.';
 
   const statementLines = doc.splitTextToSize(statement, width);
-  doc.text(statementLines, l, y);
-  y += statementLines.length * 4.6 + 5;
+  doc.text(statementLines, l, y, { lineHeightFactor: 1.05 });
+  y += statementLines.length * 3.1 + 3;
 
   const note = refused
     ? 'La ausencia de firma no impide la conservación de esta constancia interna, que refleja únicamente la incidencia comunicada y la negativa a suscribir el documento.'
@@ -171,81 +168,95 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
 
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(...softBorder);
-  const noteLines = doc.splitTextToSize(note, width - 8);
-  const noteH = Math.max(14, noteLines.length * 4.2 + 8);
-  doc.roundedRect(l, y, width, noteH, 1.5, 1.5, 'FD');
   doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8.2);
+  doc.setFontSize(7);
+  const noteLines = doc.splitTextToSize(note, width - 7);
+  const noteH = Math.max(9.5, noteLines.length * 2.8 + 4.5);
+  doc.roundedRect(l, y, width, noteH, 1.2, 1.2, 'FD');
   doc.setTextColor(...slate);
-  doc.text(noteLines, l + 4, y + 5.5);
-  y += noteH + 5;
+  doc.text(noteLines, l + 3.5, y + 4.2, { lineHeightFactor: 1.02 });
+  y += noteH + 3;
 
   if (observations.trim()) {
-    const observationPreview = doc.splitTextToSize(observations.trim(), width);
-    ensureSpace(Math.min(46, 17 + observationPreview.length * 4.5));
     sectionTitle('Observaciones');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    const rawObservations = observations.trim().replace(/\s+/g, ' ');
+    let obsFont = 7.2;
+    let obsLines: string[] = [];
+    const maxObsHeight = 20;
+    let lineHeight = 2.8;
+
+    while (obsFont >= 5.4) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(obsFont);
+      obsLines = doc.splitTextToSize(rawObservations, width) as string[];
+      lineHeight = obsFont * 0.352778 * 1.02;
+      if (obsLines.length * lineHeight <= maxObsHeight) break;
+      obsFont -= 0.3;
+    }
+
+    const maxLines = Math.max(1, Math.floor(maxObsHeight / lineHeight));
+    if (obsLines.length > maxLines) {
+      obsLines = obsLines.slice(0, maxLines);
+      const last = obsLines.length - 1;
+      obsLines[last] = String(obsLines[last]).replace(/[.…]*$/, '') + '…';
+    }
+
     doc.setTextColor(30, 41, 59);
-    const obsLines = doc.splitTextToSize(observations.trim(), width);
-    doc.text(obsLines, l, y);
-    y += obsLines.length * 4.5 + 6;
+    doc.text(obsLines, l, y, { lineHeightFactor: 1.02 });
+    y += obsLines.length * lineHeight + 3;
   }
 
   const signedAt = new Date();
   const dateText = signedAt.toLocaleDateString('es-ES');
   const timeText = signedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
-  ensureSpace(refused ? 57 : 65);
+  ensureSpace(refused ? 42 : 48);
   sectionTitle('Registro y firma');
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(...slate);
   doc.text(`Fecha de registro: ${dateText}`, l, y);
-  doc.text(`Hora: ${timeText}`, l + 65, y);
-  y += 5;
+  doc.text(`Hora: ${timeText}`, l + 58, y);
+  y += 4;
 
-  const signatureHeight = refused ? 35 : 43;
+  const signatureHeight = refused ? 27 : 31;
   doc.setDrawColor(...softBorder);
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(l, y, width, signatureHeight, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.4);
   doc.setTextColor(51, 65, 85);
-  doc.text(refused ? 'CONSTANCIA DE NEGATIVA A FIRMAR' : 'FIRMA DEL TRABAJADOR/A', l + 4, y + 6.5);
+  doc.text(refused ? 'CONSTANCIA DE NEGATIVA A FIRMAR' : 'FIRMA DEL TRABAJADOR/A', l + 4, y + 5.2);
 
   if (!refused && signature) {
     try {
-      doc.addImage(signature, 'PNG', l + 8, y + 9, 75, 29, undefined, 'FAST');
+      doc.addImage(signature, 'PNG', l + 7, y + 7, 68, 20, undefined, 'FAST');
     } catch {}
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.3);
+    doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('Firma manuscrita incorporada al documento en el momento del registro.', l + 92, y + 23, { maxWidth: width - 98 });
+    doc.text('Firma manuscrita incorporada al documento en el momento del registro.', l + 84, y + 17, { maxWidth: width - 90 });
   } else if (refused) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(8.5);
     doc.setTextColor(153, 27, 27);
-    doc.text('EL TRABAJADOR/A MANIFIESTA SU NEGATIVA A FIRMAR', l + 8, y + 21);
+    doc.text('EL TRABAJADOR/A MANIFIESTA SU NEGATIVA A FIRMAR', l + 7, y + 15.5);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.8);
+    doc.setFontSize(6.8);
     doc.setTextColor(...slate);
-    doc.text('La incidencia queda registrada por el personal responsable de la gestión PROFEA.', l + 8, y + 27);
+    doc.text('La incidencia queda registrada por el personal responsable de la gestión PROFEA.', l + 7, y + 21);
   }
 
-  const totalPages = doc.getNumberOfPages();
-  for (let page = 1; page <= totalPages; page += 1) {
-    doc.setPage(page);
-    doc.setDrawColor(203, 213, 225);
-    doc.line(l, ph - 23, r, ph - 23);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', l, ph - 17);
-    doc.text('Documento interno generado y archivado electrónicamente por GestionPROFEA.', l, ph - 13);
-    doc.text(`Página ${page} de ${totalPages}`, r, ph - 15, { align: 'right' });
-  }
+  // Pie compacto: el documento de renuncia debe quedar siempre en una única hoja.
+  doc.setDrawColor(203, 213, 225);
+  doc.line(l, ph - 15, r, ph - 15);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', l, ph - 10);
+  doc.text('Documento interno generado y archivado electrónicamente por GestionPROFEA.', l, ph - 6.5);
+  doc.text('Página 1 de 1', r, ph - 8, { align: 'right' });
 
   return { blob: doc.output('blob'), signedAt: signedAt.toISOString() };
 }
