@@ -471,7 +471,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     new Promise<CapturedPage>((resolve) => compressImage(base64Str, originalName, resolve));
 
   const handleScannedFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
+    const files = Array.from(event.target.files ?? []) as File[];
     if (!files.length) return;
 
     setIsCameraLoading(true);
@@ -494,7 +494,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             const context = canvas.getContext('2d');
             if (!context) continue;
 
-            await page.render({ canvasContext: context, viewport }).promise;
+            await page.render({ canvas, canvasContext: context, viewport }).promise;
             const imageData = canvas.toDataURL('image/jpeg', 0.92);
             importedPages.push(await compressImageAsync(
               imageData,

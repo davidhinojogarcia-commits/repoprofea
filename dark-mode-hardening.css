@@ -262,6 +262,84 @@ html.dark body {
   background-image: linear-gradient(155deg, rgba(19,38,55,.98), rgba(12,27,41,.96)) !important;
 }
 
+/* CAE dark mode: keep every neutral surface in the same low-luminance family
+ * used by the rest of PROFEA. Status colours remain accents instead of becoming
+ * large pale panels on tablets and high-brightness displays. */
+.dark #subcontratas-section-container {
+  --cae-dark-surface: #0b1723;
+  --cae-dark-surface-raised: #0f1d2a;
+  --cae-dark-surface-soft: #132433;
+  --cae-dark-border: #263b4d;
+}
+
+.dark #subcontratas-section-container .bg-white {
+  background-color: var(--cae-dark-surface-raised) !important;
+}
+
+.dark #subcontratas-section-container .bg-slate-50,
+.dark #subcontratas-section-container [class*='bg-slate-50/'],
+.dark #subcontratas-section-container .bg-slate-100,
+.dark #subcontratas-section-container .bg-slate-200 {
+  background-color: var(--cae-dark-surface-soft) !important;
+}
+
+.dark #subcontratas-section-container [id^='obra-progress-card-'] {
+  color: #eaf4fa !important;
+  background-color: var(--cae-dark-surface-raised) !important;
+  background-image: none !important;
+  border-color: var(--cae-dark-border) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.24) !important;
+}
+
+.dark #subcontratas-section-container [id^='obra-progress-card-'][class*='ring-blue-500'] {
+  background-color: #0c2639 !important;
+  border-color: #2f78a3 !important;
+  box-shadow: inset 0 0 0 1px rgba(71,151,196,.18), 0 1px 2px rgba(0,0,0,.28) !important;
+}
+
+.dark #subcontratas-section-container [id^='sub-card-'] {
+  color: #eaf4fa !important;
+  background-color: var(--cae-dark-surface-raised) !important;
+  background-image: none !important;
+  border-color: var(--cae-dark-border) !important;
+}
+
+.dark #subcontratas-section-container [id^='sub-card-'][class*='ring-blue-500'] {
+  background-color: #0c2639 !important;
+  border-color: #2f78a3 !important;
+}
+
+.dark #subcontratas-section-container [id^='doc-item-'] {
+  background-image: none !important;
+  background-color: #0d1b28 !important;
+}
+
+.dark #subcontratas-section-container [id^='doc-item-'][class*='border-l-rose-600'] {
+  background-color: #25171d !important;
+  border-color: #6b2b3a !important;
+}
+
+.dark #subcontratas-section-container [id^='doc-item-'][class*='border-l-amber-500'] {
+  background-color: #251f14 !important;
+  border-color: #715529 !important;
+}
+
+.dark #subcontratas-section-container [id^='doc-item-'][class*='border-l-emerald-500'] {
+  background-color: #10231f !important;
+  border-color: #285947 !important;
+}
+
+/* The filter strip, detail panel and secondary neutral blocks should not glow
+ * lighter than the surrounding app shell in dark mode. */
+.dark #subcontratas-section-container :where(
+  .dark\:bg-slate-800,
+  .dark\:bg-slate-800\/80,
+  .dark\:bg-slate-900,
+  .dark\:bg-slate-900\/60
+) {
+  border-color: var(--cae-dark-border);
+}
+
 /* Notification diagnostics: status pills must keep readable foregrounds. */
 .dark #root .profea-notifications-diagnostics .bg-white,
 .dark #root .profea-notifications-body .bg-white {

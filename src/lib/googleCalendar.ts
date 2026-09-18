@@ -23,6 +23,8 @@ declare global {
 }
 
 const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+
+export const isGoogleCalendarDirectConnectionAvailable = () => Boolean(GOOGLE_CLIENT_ID);
 const GOOGLE_SCOPE = [
   'openid',
   'email',
@@ -78,13 +80,19 @@ export const disconnectGoogleCalendar = () => {
   }
 };
 
-export async function connectGoogleCalendar(): Promise<GoogleCalendarConnection> {
+const normalizeEmail = (value: unknown) => String(value || '').trim().toLowerCase();
+
+export async function connectGoogleCalendar(expectedEmail?: string): Promise<GoogleCalendarConnection> {
   if (!GOOGLE_CLIENT_ID) {
     throw new Error('Falta configurar VITE_GOOGLE_CLIENT_ID para conectar Google Calendar.');
   }
 
+  const requiredEmail = normalizeEmail(expectedEmail);
   const cached = getGoogleCalendarConnection();
-  if (cached) return cached;
+  if (cached) {
+    if (!requiredEmail || normalizeEmail(cached.email) === requiredEmail) return cached;
+    disconnectGoogleCalendar();
+  }
 
   await loadGoogleIdentityServices();
 
@@ -93,6 +101,7 @@ export async function connectGoogleCalendar(): Promise<GoogleCalendarConnection>
       client_id: GOOGLE_CLIENT_ID,
       scope: GOOGLE_SCOPE,
       prompt: 'select_account consent',
+      ...(requiredEmail ? { login_hint: requiredEmail } : {}),
       callback: (response: any) => {
         if (response?.error) reject(new Error(response.error_description || response.error));
         else resolve(response);
@@ -110,6 +119,19 @@ export async function connectGoogleCalendar(): Promise<GoogleCalendarConnection>
   });
   if (!profileResponse.ok) throw new Error('No se pudo identificar la cuenta de Google conectada.');
   const profile = await profileResponse.json();
+  const connectedEmail = normalizeEmail(profile?.email);
+
+  if (requiredEmail && connectedEmail !== requiredEmail) {
+    if (window.google?.accounts?.oauth2?.revoke) {
+      try {
+        window.google.accounts.oauth2.revoke(accessToken, () => undefined);
+      } catch {
+        // El rechazo local sigue siendo válido aunque falle la revocación remota.
+      }
+    }
+    connectionCache = null;
+    throw new Error(`Debes conectar la cuenta corporativa ${expectedEmail}. La cuenta seleccionada (${connectedEmail || 'sin correo identificable'}) no coincide con tu usuario PROFEA.`);
+  }
 
   connectionCache = {
     connected: true,
@@ -126,8 +148,15 @@ const toGoogleDateTime = (date: string, time: string) => {
   return `${date}T${safeTime}:00`;
 };
 
-export async function createGoogleCalendarEvent(eventInput: CalendarEventInput): Promise<{ id: string; htmlLink: string }> {
-  const connection = getGoogleCalendarConnection() || await connectGoogleCalendar();
+export async function createGoogleCalendarEvent(
+  eventInput: CalendarEventInput,
+  expectedEmail?: string,
+): Promise<{ id: string; htmlLink: string }> {
+  const requiredEmail = normalizeEmail(expectedEmail);
+  let connection = getGoogleCalendarConnection();
+  if (!connection || (requiredEmail && normalizeEmail(connection.email) !== requiredEmail)) {
+    connection = await connectGoogleCalendar(expectedEmail);
+  }
 
   const hasTime = Boolean(eventInput.time?.trim());
   const startDateTime = hasTime ? toGoogleDateTime(eventInput.startIsoDate, eventInput.time!.trim()) : '';
@@ -189,26 +218,30 @@ export async function createGoogleCalendarEvent(eventInput: CalendarEventInput):
   return { id: String(data?.id || ''), htmlLink: String(data?.htmlLink || '') };
 }
 
-export function buildGoogleCalendarWebUrl(eventInput: CalendarEventInput): string {
+export function buildGoogleCalendarWebUrl(eventInput: CalendarEventInput, accountEmail?: string): string {
   const title = encodeURIComponent(eventInput.summary);
   const details = encodeURIComponent(eventInput.description || 'Sistema de Contratación PROFEA - Diputación de Cádiz');
   const location = encodeURIComponent(eventInput.location || 'Diputación de Cádiz');
 
   let datesParam = '';
   if (eventInput.time && eventInput.time.trim()) {
-    const startStr = eventInput.startIsoDate.replace(/-/g, '') + 'T' + eventInput.time.trim().replace(':', '') + '00';
-    const startDate = new Date(`${eventInput.startIsoDate}T${eventInput.time.trim()}:00`);
-    const durationMs = (eventInput.durationMinutes || 60) * 60 * 1000;
-    const endDate = new Date(startDate.getTime() + durationMs);
-    const endIso = endDate.toISOString().replace(/[-:]/g, '').split('.')[0];
-    datesParam = `${startStr}/${endIso}`;
+    const [hours, minutes] = eventInput.time.trim().split(':').map(Number);
+    const durationMinutes = Math.max(15, Number(eventInput.durationMinutes || 60));
+    const startDate = new Date(`${eventInput.startIsoDate}T00:00:00`);
+    startDate.setHours(Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60_000);
+    const formatLocal = (date: Date) =>
+      `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}00`;
+    datesParam = `${formatLocal(startDate)}/${formatLocal(endDate)}`;
   } else {
     const startFormatted = eventInput.startIsoDate.replace(/-/g, '');
-    const endBase = eventInput.endIsoDate ? new Date(eventInput.endIsoDate) : new Date(eventInput.startIsoDate);
+    const endBase = new Date(`${eventInput.endIsoDate || eventInput.startIsoDate}T00:00:00`);
     endBase.setDate(endBase.getDate() + 1);
-    const endFormatted = endBase.toISOString().split('T')[0].replace(/-/g, '');
+    const endFormatted = `${endBase.getFullYear()}${String(endBase.getMonth() + 1).padStart(2, '0')}${String(endBase.getDate()).padStart(2, '0')}`;
     datesParam = `${startFormatted}/${endFormatted}`;
   }
 
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${datesParam}&details=${details}&location=${location}`;
+  const authUser = normalizeEmail(accountEmail);
+  const accountParam = authUser ? `&authuser=${encodeURIComponent(authUser)}` : '';
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${datesParam}&details=${details}&location=${location}&ctz=Europe%2FMadrid${accountParam}`;
 }

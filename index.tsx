@@ -6,7 +6,6 @@ import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
-import { AdditionalWorksiteDocumentsPanel } from './components/AdditionalWorksiteDocumentsPanel';
 import { AnnualHiringPeriodsPanel } from './components/AnnualHiringPeriodsPanel';
 import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
 import { ExportRenunciationEnhancer } from './components/ExportRenunciationEnhancer';
@@ -18,9 +17,11 @@ import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppoin
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
+import { OfflineSyncStatus } from './components/OfflineSyncStatus';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import { installSidebarSwipe } from './src/lib/sidebarSwipe';
+import { initializeOfflineSync } from './src/lib/supabase';
 import './src/lib/worksiteAdditionalDocumentsLegalBodies';
 import './src/styles/design-system.css';
 import './notification-modal-layout.css';
@@ -91,6 +92,7 @@ window.addEventListener('popstate', normalizeLegacyLoginRoute);
 installModalRuntime();
 installButtonSounds();
 installSidebarSwipe();
+initializeOfflineSync();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).catch((error) => { console.warn('No se pudo registrar el service worker de PROFEA:', error); });
@@ -124,7 +126,6 @@ ReactDOM.createRoot(rootElement).render(
             <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
               <App />
               <WorksiteDocumentationPortal />
-              <AdditionalWorksiteDocumentsPanel />
               <AnnualHiringPeriodsPanel />
               <UiWorkflowEnhancements />
               <ExportRenunciationEnhancer />
@@ -134,6 +135,7 @@ ReactDOM.createRoot(rootElement).render(
               <PrlTrainingScheduleBridge />
               <SaeRenunciationBridge />
               <AppToastHost />
+              <OfflineSyncStatus />
               <AppInstallPromo />
             </React.Suspense>
           )}

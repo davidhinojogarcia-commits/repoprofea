@@ -392,7 +392,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">
-              Motor de aptitud médica V2
+              Motor de aptitud médica
             </h1>
             <p className="text-sm text-slate-500 mt-1 max-w-3xl">
               Extracción de texto + OCR local. Identifica trabajadores

@@ -1,5 +1,5 @@
 import type { AuthChangeEvent } from '@supabase/supabase-js';
-import { normalizeSupabaseUser, supabase, type SupabaseUser } from './supabase';
+import { getSessionUser, normalizeSupabaseUser, supabase, type SupabaseUser } from './supabase';
 import { auth } from './supabaseData';
 
 export type AppRole = 'admin' | 'user';
@@ -98,16 +98,16 @@ export function subscribeToAuth(callback: (user: User | null, event: AuthChangeE
 }
 
 export async function getCurrentRole(): Promise<AppRole | null> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  const profile = await readUserProfile(normalizeSupabaseUser(data.user));
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) return null;
+  const profile = await readUserProfile(normalizeSupabaseUser(sessionUser));
   return profile?.role || null;
 }
 
 export async function getUserProfile(): Promise<AuthProfile | null> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  return readUserProfile(normalizeSupabaseUser(data.user));
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) return null;
+  return readUserProfile(normalizeSupabaseUser(sessionUser));
 }
 
 export async function sendResetPassword(_email: string): Promise<void> {

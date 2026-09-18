@@ -131,7 +131,11 @@ function App() {
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('inventoryItem')) setActiveView('inventario');
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('inventoryItem') || params.has('inventoryInvite')) {
+      setActiveView('inventario');
+      window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'inventario' } }));
+    }
   }, []);
   const [people, setPeopleRaw] = useState<Person[]>([]);
 
@@ -1041,13 +1045,15 @@ function App() {
     today.setHours(0, 0, 0, 0);
 
     const normalizeWorkName = (value: unknown) => String(value || '').trim().toLocaleLowerCase('es-ES');
-    const canonicalObras = Array.from(new Map(
+    const canonicalObras: string[] = Array.from(new Map<string, string>(
       (savedObras || [])
         .map(obra => String(obra || '').trim())
         .filter(Boolean)
-        .map(obra => [normalizeWorkName(obra), obra] as const)
+        .map(obra => [normalizeWorkName(obra), obra] as [string, string])
     ).values());
-    const canonicalObraByKey = new Map(canonicalObras.map(obra => [normalizeWorkName(obra), obra] as const));
+    const canonicalObraByKey = new Map<string, string>(
+      canonicalObras.map(obra => [normalizeWorkName(obra), obra] as [string, string]),
+    );
     const activeObraKeys = new Set(canonicalObraByKey.keys());
 
     let filteredPeople = [...visiblePeople];

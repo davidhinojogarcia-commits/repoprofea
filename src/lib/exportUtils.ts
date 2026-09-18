@@ -1907,7 +1907,8 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
   drawInfoField('Centro Médico:', selectedPerson.sitioReconocimiento || '-', 110, 78);
   drawInfoField('Expediente Completo:', selectedPerson.documentacionCompleta === 'Sí' ? 'SÍ (Documentación OK)' : 'PENDIENTE', 110, 84);
 
-  // Aptitud Médica en Datos Consolidados
+  // Aptitud Médica en Datos Consolidados. Se deja una fila completa de separación
+  // respecto a "Talla de Calzado" para evitar solapes visuales en el PDF.
   const { estado: aptEstado, limitaciones: aptLim, validez: aptVal } = getAptitudMedicaInfo(selectedPerson);
   let aptLabel = aptEstado as string;
   if (aptEstado === 'Apto con limitaciones') {
@@ -1917,7 +1918,7 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
   } else if (aptEstado === 'No Apto') {
     aptLabel = 'NO APTO (Contratación No Autorizada)';
   }
-  drawInfoField('Aptitud Médica:', aptLabel, 20, 86);
+  drawInfoField('Aptitud Médica:', aptLabel, 20, 91);
 
   // KPI boxes below the personal section
   const uniqueObras = new Set(history.map(h => h.obra?.trim()).filter(Boolean)).size;

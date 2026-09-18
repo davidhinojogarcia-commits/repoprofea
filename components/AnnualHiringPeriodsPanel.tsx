@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CalendarRange, FileUp, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, FileUp, Save, Trash2, X } from 'lucide-react';
 import { parseAnnualHiringPeriodsPdf, type ParsedAnnualHiringMonth } from '../src/lib/annualHiringPeriodsParser';
 import { deleteAnnualHiringPeriods, listAnnualHiringPeriods, saveAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 
@@ -25,8 +25,13 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
       setVisible(on);
       if (!on) setOpen(false);
     };
+    const openFromNeedStep = () => setOpen(true);
     window.addEventListener('profea:navigate', h as EventListener);
-    return () => window.removeEventListener('profea:navigate', h as EventListener);
+    window.addEventListener('profea:open-annual-hiring-periods', openFromNeedStep);
+    return () => {
+      window.removeEventListener('profea:navigate', h as EventListener);
+      window.removeEventListener('profea:open-annual-hiring-periods', openFromNeedStep);
+    };
   }, []);
 
   const refresh = async () => setSaved(await listAnnualHiringPeriods());
@@ -144,9 +149,6 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
 
   if (!visible) return null;
   return <>
-    <button type="button" onClick={() => setOpen(true)} className="fixed z-[44] right-5 bottom-20 inline-flex items-center gap-2 rounded-2xl bg-emerald-700 text-white px-4 py-3 font-black shadow-xl hover:bg-emerald-800">
-      <CalendarRange className="w-5 h-5"/>Periodos anuales
-    </button>
     {open && <div className="fixed inset-0 z-[140] bg-slate-950/65 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center">
       <div className="w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border dark:border-slate-800 shadow-2xl">
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b dark:border-slate-800 px-5 py-4 flex items-center justify-between">

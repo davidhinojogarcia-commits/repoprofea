@@ -58,21 +58,27 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
     p.iban ? formatIban(p.iban) : '—',
   ]);
 
+  const horizontalMargin = 14;
+  const tableWidth = doc.internal.pageSize.getWidth() - (horizontalMargin * 2);
+
   autoTable(doc, {
     head,
     body,
     startY: 44,
     theme: 'grid',
+    margin: { left: horizontalMargin, right: horizontalMargin, bottom: 18 },
+    tableWidth,
     styles: { fontSize: 6.4, cellPadding: 1.8, valign: 'middle', overflow: 'linebreak' },
     headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 6.4 },
     columnStyles: {
-      0: { cellWidth: 31, halign: 'center' },
-      1: { cellWidth: 58 },
-      2: { cellWidth: 34, halign: 'center' },
-      3: { cellWidth: 39 },
-      4: { cellWidth: 45 },
-      5: { cellWidth: 36 },
-      6: { cellWidth: 46 },
+      // Total: 269 mm en A4 apaisado, dejando 14 mm a ambos lados.
+      0: { cellWidth: 29, halign: 'center' },
+      1: { cellWidth: 54 },
+      2: { cellWidth: 32, halign: 'center' },
+      3: { cellWidth: 36 },
+      4: { cellWidth: 42 },
+      5: { cellWidth: 33 },
+      6: { cellWidth: 43 },
     },
     alternateRowStyles: { fillColor: LIGHT_BLUE },
     didParseCell: data => {

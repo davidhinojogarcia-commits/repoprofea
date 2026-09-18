@@ -37,9 +37,12 @@ import {
   InventoryMaintenance,
   InventoryMovement,
   InventoryPark,
+  InventoryParkInvitation,
+  InventoryParkShare,
   addInventoryDocument,
   addInventoryMaintenance,
   createInventoryDocumentMailLinks,
+  createInventoryParkInvitation,
   deleteInventoryDocument,
   deleteInventoryMovement,
   ensureInventoryReady,
@@ -47,11 +50,15 @@ import {
   listInventoryItems,
   listInventoryMaintenance,
   listInventoryMovements,
+  listInventoryParkInvitations,
+  listInventoryParkShares,
   listInventoryParks,
   parkBaseLocation,
   registerInventoryMovement,
+  respondInventoryParkInvitation,
+  revokeInventoryParkMember,
   saveInventoryItem,
-  shareInventoryParkByEmail,
+  sendInventoryParkInvitationEmail,
   softDeleteInventoryItem,
   updateInventoryMovement,
   updateInventoryPark,
@@ -67,6 +74,18 @@ const MOVEMENT_TYPES = ['Salida a obra', 'Traslado', 'Devolución a nave', 'Aver
 const REQUIRED_MACHINE_DOCS = ['Marcado CE / placa identificativa', 'Declaración CE de conformidad', 'Manual de instrucciones', 'Revisión / comprobación periódica'];
 const BREAKDOWN_NOTICE = '[Aviso mantenimiento preparado]';
 const inputClass = 'w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm';
+
+const SUPERVISOR_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#e11d48', '#4f46e5', '#0f766e'];
+const supervisorColor = (key?: string | null) => {
+  const value = String(key || 'supervisor');
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  return SUPERVISOR_COLORS[Math.abs(hash) % SUPERVISOR_COLORS.length];
+};
+const itemSupervisor = (item: InventoryItem, shares: InventoryParkShare[]) =>
+  item.responsableActual
+    ? shares.find(share => share.status === 'accepted' && share.userId === item.responsableActual) || null
+    : null;
 
 const statusClass = (status: string) => {
   const s = (status || '').toLowerCase();
@@ -138,6 +157,10 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [quickItemId, setQuickItemId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [shareBusy, setShareBusy] = useState(false);
+  const [parkShares, setParkShares] = useState<InventoryParkShare[]>([]);
+  const [incomingInvitations, setIncomingInvitations] = useState<InventoryParkInvitation[]>([]);
+  const [invitationBusyId, setInvitationBusyId] = useState('');
+  const [shareNotice, setShareNotice] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [parkName, setParkName] = useState('');
@@ -148,8 +171,14 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
   const loadParkData = async (selected: InventoryPark) => {
     setPark(selected); setParkName(selected.nombre); setParkZone(selected.zona); setCoordinatorEmail(selected.coordinatorEmail || '');
-    const [i, m, mt, docs] = await Promise.all([listInventoryItems(selected.id), listInventoryMovements(selected.id), listInventoryMaintenance(selected.id), listInventoryDocuments(selected.id)]);
-    setItems(i); setMovements(m); setMaintenance(mt); setDocuments(docs);
+    const [i, m, mt, docs, shares] = await Promise.all([
+      listInventoryItems(selected.id),
+      listInventoryMovements(selected.id),
+      listInventoryMaintenance(selected.id),
+      listInventoryDocuments(selected.id),
+      listInventoryParkShares(selected.id),
+    ]);
+    setItems(i); setMovements(m); setMaintenance(mt); setDocuments(docs); setParkShares(shares);
     const active = i.filter(x => x.activo);
     const requestedId = new URLSearchParams(window.location.search).get('inventoryItem');
     const initialId = requestedId && active.some(x => x.id === requestedId) ? requestedId : active[0]?.id || '';
@@ -161,7 +190,11 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const reload = async (preferredParkId?: string) => {
     setLoading(true); setError('');
     try {
-      const ensured = await ensureInventoryReady();
+      const [ensured, invitations] = await Promise.all([
+        ensureInventoryReady(),
+        listInventoryParkInvitations(),
+      ]);
+      setIncomingInvitations(invitations);
       const all = await listInventoryParks();
       setParks(all);
       const selected = all.find(p => p.id === preferredParkId) || all.find(p => p.id === park?.id) || all.find(p => p.id === ensured.id) || all[0];
@@ -171,6 +204,16 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   };
 
   useEffect(() => { void reload(); }, []);
+
+  useEffect(() => {
+    const handleSyncState = (event: Event) => {
+      const detail = (event as CustomEvent<{ online?: boolean; pending?: number; syncing?: boolean; lastSyncedAt?: number | null }>).detail;
+      if (!detail?.online || detail.syncing || detail.pending !== 0 || !detail.lastSyncedAt) return;
+      if (park?.id) void reload(park.id);
+    };
+    window.addEventListener('profea:offline-sync-state', handleSyncState as EventListener);
+    return () => window.removeEventListener('profea:offline-sync-state', handleSyncState as EventListener);
+  }, [park?.id]);
 
   const baseLocation = park ? parkBaseLocation(park) : '';
   const activeItems = useMemo(() => items.filter(i => i.activo), [items]);
@@ -182,7 +225,11 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     return (!q || hay.includes(q)) && (!category || i.categoria === category) && (!status || i.estado === status);
   }), [activeItems, search, category, status]);
   const traceMovements = useMemo(() => movements.filter(m => m.itemId === traceItemId).slice().reverse(), [movements, traceItemId]);
-  const kpis = useMemo(() => ({ total: activeItems.length, disponibles: activeItems.filter(i => i.estado === 'Disponible').length, curso: activeItems.filter(i => /obra|traslado/i.test(i.estado)).length, incidencias: activeItems.filter(i => /aver|repar|revisión|fuera/i.test(i.estado)).length }), [activeItems]);
+  const inUseItems = useMemo(
+    () => activeItems.filter(item => /obra|traslado/i.test(item.estado || '')),
+    [activeItems],
+  );
+  const kpis = useMemo(() => ({ total: activeItems.length, disponibles: activeItems.filter(i => i.estado === 'Disponible').length, curso: inUseItems.length, incidencias: activeItems.filter(i => /aver|repar|revisión|fuera/i.test(i.estado)).length }), [activeItems, inUseItems]);
 
   const openQr = async (item: InventoryItem) => {
     const url = new URL(window.location.href); url.search = ''; url.searchParams.set('inventoryItem', item.id);
@@ -192,9 +239,19 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const exportPdf = async () => {
     if (!park) return;
     setPdfBusy(true);
-    try { await exportInventoryStatusPdf({ park, items: activeItems, movements, maintenance, documents }); }
-    catch (e: any) { alert(e?.message || 'No se pudo generar el informe PDF.'); }
-    finally { setPdfBusy(false); }
+    try {
+      await exportInventoryStatusPdf({
+        park,
+        items: inUseItems,
+        movements,
+        maintenance,
+        documents,
+      });
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo generar el informe de situación.');
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   const saveParkConfig = async () => {
@@ -205,9 +262,67 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     finally { setParkSaving(false); }
   };
 
+  const inviteSupervisor = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!park || !shareEmail.trim()) return;
+    setShareBusy(true);
+    setShareNotice(null);
+    try {
+      const invitation = await createInventoryParkInvitation(park.id, shareEmail);
+      setShareEmail('');
+      try {
+        await sendInventoryParkInvitationEmail(invitation.invitationId);
+        setShareNotice({
+          type: 'success',
+          message: `Invitación enviada a ${invitation.email}. El parque se compartirá cuando el compañero la acepte.`,
+        });
+      } catch (mailError: any) {
+        setShareNotice({
+          type: 'warning',
+          message: `Invitación creada para ${invitation.email}. El acceso sigue pendiente, pero el correo automático no pudo enviarse: ${mailError?.message || 'servicio de correo no configurado'}.`,
+        });
+      }
+      await loadParkData(park);
+    } catch (err: any) {
+      setShareNotice({ type: 'error', message: err?.message || 'No se pudo crear la invitación.' });
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const answerInvitation = async (invitation: InventoryParkInvitation, accept: boolean) => {
+    setInvitationBusyId(invitation.invitationId);
+    try {
+      await respondInventoryParkInvitation(invitation.invitationId, accept);
+      setShareNotice({
+        type: 'success',
+        message: accept
+          ? `Has aceptado compartir ${invitation.parkZone} · ${invitation.parkName}. El acceso queda guardado hasta que se revoque.`
+          : `Has rechazado la invitación a ${invitation.parkZone} · ${invitation.parkName}.`,
+      });
+      await reload(accept ? invitation.parkId : park?.id);
+    } catch (err: any) {
+      setShareNotice({ type: 'error', message: err?.message || 'No se pudo responder a la invitación.' });
+    } finally {
+      setInvitationBusyId('');
+    }
+  };
+
+  const revokeShare = async (share: InventoryParkShare) => {
+    if (!park || !share.userId || share.isOwner) return;
+    if (!window.confirm(`¿Revocar el acceso de ${share.displayName} a este parque?`)) return;
+    try {
+      await revokeInventoryParkMember(park.id, share.userId);
+      setShareNotice({ type: 'success', message: `Acceso revocado a ${share.displayName}.` });
+      await reload(park.id);
+    } catch (err: any) {
+      setShareNotice({ type: 'error', message: err?.message || 'No se pudo revocar el acceso.' });
+    }
+  };
+
   const removeMovement = async (movement: InventoryMovement) => {
     if (!park || !confirm('¿Eliminar este movimiento? El cambio quedará registrado internamente en la auditoría.')) return;
-    try { await deleteInventoryMovement(movement.id); await reload(park.id); }
+    try { await deleteInventoryMovement(movement.id, { parkId: park.id, itemId: movement.itemId }); await reload(park.id); }
     catch (e: any) { alert(e?.message || 'No se pudo eliminar el movimiento.'); }
   };
 
@@ -217,6 +332,54 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     <PageHeader eyebrow={`${park?.zona || 'Zona'} · ${park?.isOwned === false ? 'Parque compartido' : 'Parque propio'}`} title="Herramientas y maquinaria" description="Gestión rápida de equipos, documentación, mantenimiento y trazabilidad." icon={<Wrench className="h-5 w-5" />} />
     {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"><AlertTriangle className="inline w-4 h-4 mr-2" />{error}</div>}
 
+    {!!incomingInvitations.length && (
+      <div className="space-y-2">
+        {incomingInvitations.map(invitation => (
+          <div key={invitation.invitationId} className="rounded-2xl border border-blue-200 bg-blue-50/80 dark:border-blue-900 dark:bg-blue-950/30 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <div className="font-black text-sm">Invitación para compartir parque</div>
+              <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                <b>{invitation.inviterName}</b> quiere compartir contigo <b>{invitation.parkZone} · {invitation.parkName}</b>.
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                Si aceptas, el parque permanecerá disponible en tu cuenta hasta que se revoque el acceso.
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={invitationBusyId === invitation.invitationId}
+                onClick={() => void answerInvitation(invitation, false)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-bold"
+              >
+                Rechazar
+              </button>
+              <button
+                type="button"
+                disabled={invitationBusyId === invitation.invitationId}
+                onClick={() => void answerInvitation(invitation, true)}
+                className="rounded-xl bg-brand-primary text-white px-4 py-2.5 text-xs font-black"
+              >
+                {invitationBusyId === invitation.invitationId ? 'Procesando…' : 'Aceptar y compartir'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {shareNotice && (
+      <div className={`rounded-xl border px-4 py-3 text-xs font-semibold ${
+        shareNotice.type === 'success'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-200'
+          : shareNotice.type === 'warning'
+            ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-200'
+            : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/25 dark:text-red-200'
+      }`}>
+        {shareNotice.message}
+      </div>
+    )}
+
     <div className="md:hidden sticky top-2 z-30 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur p-3 shadow-lg">
       <select className={`${inputClass} font-bold`} value={quickItem?.id || ''} onChange={e => setQuickItemId(e.target.value)}>{activeItems.map(i => <option key={i.id} value={i.id}>{equipmentLabel(i)}</option>)}</select>
       {quickItem && <div className="mt-2 flex items-center justify-between gap-2"><div className="min-w-0"><div className="text-xs truncate text-slate-500">{quickItem.ubicacionActual}</div><span className={`inline-flex mt-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass(quickItem.estado)}`}>{quickItem.estado}</span></div><div className="grid grid-cols-4 gap-1.5 shrink-0"><Action title="Mover" onClick={() => setMovementItem(quickItem)} icon={<Truck />} /><Action title="Foto/estado" onClick={() => setMovementItem(quickItem)} icon={<Camera />} /><Action title="Trazabilidad" onClick={() => { setTraceItemId(quickItem.id); setTab('trazabilidad'); }} icon={<MapPinned />} /><Action title="Documentos" onClick={() => { setDocumentItem(quickItem); setTab('documentacion'); }} icon={<FolderOpen />} /></div></div>}
@@ -224,17 +387,100 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
     <div className="grid grid-cols-4 gap-2"><Kpi label="Equipos" value={kpis.total} /><Kpi label="Disponibles" value={kpis.disponibles} /><Kpi label="En curso" value={kpis.curso} /><Kpi label="Incidencias" value={kpis.incidencias} /></div>
 
+    {parkShares.filter(share => share.status === 'accepted').length > 1 && (
+      <div className="ui-surface p-3 flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider font-black text-slate-400 mr-1">Supervisores del parque</span>
+        {parkShares.filter(share => share.status === 'accepted').map(share => (
+          <span key={share.participantKey} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-[11px] font-bold">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: supervisorColor(share.userId) }} />
+            {share.displayName}{share.isOwner ? ' · propietario' : ''}
+          </span>
+        ))}
+      </div>
+    )}
+
     <div className="grid grid-cols-2 sm:flex gap-2">
       <button onClick={() => setEditingItem({ codigo: '', categoria: '', nombre: '', cantidad: 1, tipoGestion: 'individual', estado: 'Disponible', ubicacionActual: baseLocation, detalles: {}, observaciones: '', activo: true })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-3 text-sm font-bold"><Plus className="w-4 h-4" />Nuevo equipo</button>
-      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe PDF'}</button>
+      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50" title="Incluye únicamente herramientas y maquinaria actualmente asignadas a obra o en traslado"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
     </div>
 
     <details className="ui-surface p-4 group">
       <summary className="cursor-pointer list-none flex items-center justify-between font-black text-sm"><span>Parque, zona y uso compartido</span><span className="text-xs text-slate-400 group-open:hidden">Configurar</span></summary>
       <div className="pt-4 space-y-4">
         <div className="grid sm:grid-cols-3 gap-3"><Field label="Parque visible"><select className={inputClass} value={park?.id || ''} onChange={async e => { const p = parks.find(x => x.id === e.target.value); if (p) { setLoading(true); try { await loadParkData(p); } finally { setLoading(false); } } }}>{parks.map(p => <option key={p.id} value={p.id}>{p.zona} · {p.nombre}{p.isOwned === false ? ' · Compartido' : ''}</option>)}</select></Field><Field label="Nombre"><input className={inputClass} value={parkName} onChange={e => setParkName(e.target.value)} /></Field><Field label="Zona"><select className={inputClass} value={parkZone} onChange={e => setParkZone(e.target.value)}>{INVENTORY_ZONES.map(z => <option key={z}>{z}</option>)}</select></Field></div>
-        <div className="grid lg:grid-cols-2 gap-3"><Field label="Correo coordinador / responsable de mecánica"><input type="email" className={inputClass} value={coordinatorEmail} onChange={e => setCoordinatorEmail(e.target.value)} placeholder="mantenimiento@..." /></Field><form className="flex gap-2 items-end" onSubmit={async e => { e.preventDefault(); if (!park || !shareEmail.trim()) return; setShareBusy(true); try { await shareInventoryParkByEmail(park.id, shareEmail); setShareEmail(''); await reload(park.id); } catch (err: any) { alert(err?.message || 'No se pudo compartir el parque.'); } finally { setShareBusy(false); } }}><div className="flex-1"><Field label="Compartir con supervisor"><input type="email" className={inputClass} value={shareEmail} onChange={e => setShareEmail(e.target.value)} /></Field></div><button disabled={shareBusy} className="h-[42px] rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4"><Share2 className="w-4 h-4" /></button></form></div>
-        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-200">Este correo se utiliza también para preparar automáticamente el aviso cuando una máquina se registra como averiada en obra.</div>
+        <div className="grid lg:grid-cols-2 gap-3">
+          <Field label="Correo coordinador / responsable de mecánica">
+            <input type="email" className={inputClass} value={coordinatorEmail} onChange={e => setCoordinatorEmail(e.target.value)} placeholder="mantenimiento@..." />
+          </Field>
+          <form className="flex gap-2 items-end" onSubmit={inviteSupervisor}>
+            <div className="flex-1">
+              <Field label="Invitar supervisor al parque">
+                <input
+                  type="email"
+                  required
+                  className={inputClass}
+                  value={shareEmail}
+                  onChange={e => setShareEmail(e.target.value)}
+                  placeholder="correo.corporativo@..."
+                />
+              </Field>
+            </div>
+            <button
+              disabled={shareBusy}
+              className="h-[42px] rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 inline-flex items-center gap-2 font-bold text-xs"
+            >
+              <Share2 className="w-4 h-4" />
+              {shareBusy ? 'Enviando…' : 'Invitar'}
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-200">
+          La invitación no concede acceso automáticamente. El compañero debe aceptarla con su cuenta corporativa. Tras aceptarla, el parque queda compartido de forma permanente hasta revocación.
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
+            <div className="font-black text-sm">Personas con acceso al parque</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Los colores identifican quién está usando cada equipo.</div>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {parkShares.map(share => (
+              <div key={share.participantKey} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`w-3 h-3 rounded-full shrink-0 ${share.status === 'pending' ? 'opacity-35' : ''}`}
+                    style={{ backgroundColor: share.status === 'pending' ? '#94a3b8' : supervisorColor(share.userId) }}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold truncate">{share.displayName}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{share.email}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                    share.status === 'pending'
+                      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
+                  }`}>
+                    {share.isOwner ? 'Propietario' : share.status === 'pending' ? 'Pendiente' : 'Aceptado'}
+                  </span>
+                  {!share.isOwner && share.status === 'accepted' && (
+                    <button
+                      type="button"
+                      onClick={() => void revokeShare(share)}
+                      className="rounded-lg border border-red-200 dark:border-red-900 px-2.5 py-1.5 text-[10px] font-bold text-red-700 dark:text-red-300"
+                    >
+                      Revocar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {!parkShares.length && <div className="px-4 py-3 text-xs text-slate-500">No hay participantes registrados.</div>}
+          </div>
+        </div>
+
         <button onClick={() => void saveParkConfig()} disabled={parkSaving} className="inline-flex items-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-2.5 text-sm font-bold"><Save className="w-4 h-4" />Guardar configuración</button>
       </div>
     </details>
@@ -243,8 +489,8 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       ['resumen', 'Resumen', ClipboardList], ['inventario', 'Inventario', Boxes], ['movimientos', 'Movimientos', History], ['mantenimiento', 'Mantenimiento', Stethoscope], ['documentacion', 'Documentos', FileCheck2], ['trazabilidad', 'Trazabilidad', MapPinned],
     ] as [Tab, string, React.ElementType][]).map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold border ${tab === id ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}><Icon className="w-4 h-4" />{label}</button>)}</div></div>
 
-    {tab === 'resumen' && <SummaryView items={activeItems} movements={movements} documents={documents} onOpenItem={id => { setTraceItemId(id); setTab('trazabilidad'); }} />}
-    {tab === 'inventario' && <InventoryView items={filtered} documents={documents} categories={categories} search={search} category={category} status={status} setSearch={setSearch} setCategory={setCategory} setStatus={setStatus} onMove={setMovementItem} onMaintenance={setMaintenanceItem} onDocument={i => { setDocumentItem(i); setTab('documentacion'); }} onEdit={i => setEditingItem({ ...i })} onQr={openQr} onTrace={i => { setTraceItemId(i.id); setTab('trazabilidad'); }} onDelete={async i => { if (!park || !confirm(`¿Dar de baja ${i.nombre}?`)) return; await softDeleteInventoryItem(i.id); await reload(park.id); }} />}
+    {tab === 'resumen' && <SummaryView items={activeItems} movements={movements} documents={documents} shares={parkShares} onOpenItem={id => { setTraceItemId(id); setTab('trazabilidad'); }} />}
+    {tab === 'inventario' && <InventoryView items={filtered} documents={documents} shares={parkShares} categories={categories} search={search} category={category} status={status} setSearch={setSearch} setCategory={setCategory} setStatus={setStatus} onMove={setMovementItem} onMaintenance={setMaintenanceItem} onDocument={i => { setDocumentItem(i); setTab('documentacion'); }} onEdit={i => setEditingItem({ ...i })} onQr={openQr} onTrace={i => { setTraceItemId(i.id); setTab('trazabilidad'); }} onDelete={async i => { if (!park || !confirm(`¿Dar de baja ${i.nombre}?`)) return; await softDeleteInventoryItem(i.id); await reload(park.id); }} />}
     {tab === 'movimientos' && <MovementsView movements={movements} items={items} onTrace={id => { setTraceItemId(id); setTab('trazabilidad'); }} onEdit={setEditingMovement} onDelete={removeMovement} />}
     {tab === 'mantenimiento' && <MaintenanceView maintenance={maintenance} items={activeItems} onAdd={setMaintenanceItem} />}
     {tab === 'documentacion' && park && <DocumentsView park={park} items={activeItems} documents={documents} selectedItem={documentItem} setSelectedItem={setDocumentItem} onReload={() => reload(park.id)} />}
@@ -256,21 +502,33 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       const isBreakdown = data.tipo === 'Avería';
       const shouldPrepareMail = isBreakdown && Boolean(park.coordinatorEmail);
       const observation = shouldPrepareMail ? `${data.observaciones || ''}${data.observaciones ? '\n' : ''}${BREAKDOWN_NOTICE}` : data.observaciones;
-      await registerInventoryMovement({ itemId: movementItem.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: observation, latitud: data.latitud, longitud: data.longitud, fotoPaths: paths });
+      await registerInventoryMovement({
+        itemId: movementItem.id,
+        parkId: park.id,
+        origen: movementItem.ubicacionActual,
+        estadoAnterior: movementItem.estado,
+        tipo: data.tipo,
+        destino: data.destino,
+        estadoNuevo: data.estadoNuevo,
+        observaciones: observation,
+        latitud: data.latitud,
+        longitud: data.longitud,
+        fotoPaths: paths,
+      });
       const mail = shouldPrepareMail ? buildBreakdownMail(movementItem, data.destino, data.observaciones, paths.length) : null;
       setMovementItem(null);
       await reload(park.id);
-      if (mail && park.coordinatorEmail) window.location.href = `mailto:${encodeURIComponent(park.coordinatorEmail)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.body)}`;
+      if (mail && park.coordinatorEmail && navigator.onLine) window.location.href = `mailto:${encodeURIComponent(park.coordinatorEmail)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.body)}`;
     }} />}
-    {editingMovement && park && <MovementEditModal movement={editingMovement} item={items.find(i => i.id === editingMovement.itemId) || null} onClose={() => setEditingMovement(null)} onSave={async data => { const newPaths = data.files.length ? await uploadInventoryPhotos(park.id, editingMovement.itemId, data.files) : []; await updateInventoryMovement({ movementId: editingMovement.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: data.observaciones, latitud: data.latitud, longitud: data.longitud, fotoPaths: [...data.keptPaths, ...newPaths] }); setEditingMovement(null); await reload(park.id); }} />}
+    {editingMovement && park && <MovementEditModal movement={editingMovement} item={items.find(i => i.id === editingMovement.itemId) || null} onClose={() => setEditingMovement(null)} onSave={async data => { const newPaths = data.files.length ? await uploadInventoryPhotos(park.id, editingMovement.itemId, data.files) : []; await updateInventoryMovement({ movementId: editingMovement.id, itemId: editingMovement.itemId, parkId: park.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: data.observaciones, latitud: data.latitud, longitud: data.longitud, fotoPaths: [...data.keptPaths, ...newPaths] }); setEditingMovement(null); await reload(park.id); }} />}
     {maintenanceItem && park && <MaintenanceModal item={maintenanceItem} onClose={() => setMaintenanceItem(null)} onSave={async d => { const paths = d.files.length ? await uploadInventoryDocuments(park.id, maintenanceItem.id, d.files, 'maintenance') : []; await addInventoryMaintenance(park.id, maintenanceItem.id, { tipo: d.tipo, fecha: d.fecha, proximaRevision: d.proximaRevision, proveedor: d.proveedor, mechanicName: d.mechanicName, coste: d.coste, observaciones: d.observaciones, signedDocumentPaths: paths, createdBy: null }); setMaintenanceItem(null); await reload(park.id); }} />}
     {qrItem && <Modal title={`QR · ${qrItem.nombre}`} onClose={() => setQrItem(null)}><div className="text-center"><img src={qrDataUrl} alt="Código QR" className="mx-auto w-64 h-64 rounded-xl bg-white p-3" /><div className="mt-3 font-bold">{qrItem.codigo}</div></div></Modal>}
   </div>;
 };
 
-const SummaryView = ({ items, movements, documents, onOpenItem }: { items: InventoryItem[]; movements: InventoryMovement[]; documents: InventoryDocument[]; onOpenItem: (id: string) => void }) => <div className="grid lg:grid-cols-2 gap-4"><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Equipos en curso / incidencia</h3><div className="space-y-2">{items.filter(i => i.estado !== 'Disponible').slice(0, 12).map(i => <button key={i.id} onClick={() => onOpenItem(i.id)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3"><div className="flex justify-between gap-2"><div className="font-bold text-sm">{equipmentLabel(i)}</div><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="text-xs text-slate-500 mt-1 truncate">{i.ubicacionActual}</div></button>)}{!items.some(i => i.estado !== 'Disponible') && <div className="text-sm text-slate-500">No hay equipos actualmente en curso.</div>}</div></div><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Actividad reciente</h3><div className="space-y-2">{movements.slice(0, 10).map(m => { const item = items.find(i => i.id === m.itemId); return <button key={m.id} onClick={() => onOpenItem(m.itemId)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3"><div className="font-bold text-sm">{item?.nombre || 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.destino} · {new Date(m.createdAt).toLocaleString('es-ES')}</div>{m.fotoUrls?.[0] && <img src={m.fotoUrls[0]} className="mt-2 w-full h-28 object-cover rounded-xl" alt="Estado del equipo" />}</button>; })}</div><div className="mt-4 text-xs text-slate-500">{documents.length} documentos archivados.</div></div></div>;
+const SummaryView = ({ items, movements, documents, shares, onOpenItem }: { items: InventoryItem[]; movements: InventoryMovement[]; documents: InventoryDocument[]; shares: InventoryParkShare[]; onOpenItem: (id: string) => void }) => <div className="grid lg:grid-cols-2 gap-4"><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Equipos en curso / incidencia</h3><div className="space-y-2">{items.filter(i => i.estado !== 'Disponible').slice(0, 12).map(i => { const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId) : undefined; return <button key={i.id} onClick={() => onOpenItem(i.id)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3" style={color ? { borderLeftWidth: 4, borderLeftColor: color } : undefined}><div className="flex justify-between gap-2"><div className="min-w-0"><div className="font-bold text-sm">{equipmentLabel(i)}</div>{responsible && /obra|traslado/i.test(i.estado || '') && <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-300"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />En uso por {responsible.displayName}</div>}</div><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="text-xs text-slate-500 mt-1 truncate">{i.ubicacionActual}</div></button>; })}{!items.some(i => i.estado !== 'Disponible') && <div className="text-sm text-slate-500">No hay equipos actualmente en curso.</div>}</div></div><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Actividad reciente</h3><div className="space-y-2">{movements.slice(0, 10).map(m => { const item = items.find(i => i.id === m.itemId); return <button key={m.id} onClick={() => onOpenItem(m.itemId)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3"><div className="font-bold text-sm">{item?.nombre || 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.destino} · {new Date(m.createdAt).toLocaleString('es-ES')}</div>{m.fotoUrls?.[0] && <img src={m.fotoUrls[0]} className="mt-2 w-full h-28 object-cover rounded-xl" alt="Estado del equipo" />}</button>; })}</div><div className="mt-4 text-xs text-slate-500">{documents.length} documentos archivados.</div></div></div>;
 
-const InventoryView = ({ items, documents, categories, search, category, status, setSearch, setCategory, setStatus, onMove, onMaintenance, onDocument, onEdit, onQr, onTrace, onDelete }: { items: InventoryItem[]; documents: InventoryDocument[]; categories: string[]; search: string; category: string; status: string; setSearch: (v: string) => void; setCategory: (v: string) => void; setStatus: (v: string) => void; onMove: (i: InventoryItem) => void; onMaintenance: (i: InventoryItem) => void; onDocument: (i: InventoryItem) => void; onEdit: (i: InventoryItem) => void; onQr: (i: InventoryItem) => void; onTrace: (i: InventoryItem) => void; onDelete: (i: InventoryItem) => void }) => <div className="space-y-3"><div className="ui-surface p-3 grid sm:grid-cols-3 gap-2"><input className={inputClass} value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar equipo, código, marca, modelo, matrícula…" /><select className={inputClass} value={category} onChange={e => setCategory(e.target.value)}><option value="">Todas las categorías</option>{categories.map(c => <option key={c}>{c}</option>)}</select><select className={inputClass} value={status} onChange={e => setStatus(e.target.value)}><option value="">Todos los estados</option>{STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></div><div className="md:hidden space-y-3">{items.map(i => { const docs = documents.filter(d => d.itemId === i.id); return <div key={i.id} className="ui-surface p-4"><div className="flex justify-between gap-3"><div className="min-w-0"><div className="font-black">{i.codigo} · {i.nombre}</div><div className="text-xs text-slate-500 mt-1">{[i.marca, i.modelo, i.matricula || i.numeroSerie].filter(Boolean).join(' · ') || i.categoria}</div><div className="text-xs text-slate-400 mt-1 truncate">{i.ubicacionActual}</div></div><span className={`h-fit shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="grid grid-cols-4 gap-2 mt-4"><QuickAction label="Mover" icon={<Truck />} onClick={() => onMove(i)} /><QuickAction label="Foto" icon={<Camera />} onClick={() => onMove(i)} /><QuickAction label={`Docs ${docs.length}`} icon={<FolderOpen />} onClick={() => onDocument(i)} /><QuickAction label="Trazar" icon={<MapPinned />} onClick={() => onTrace(i)} /></div><div className="flex gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800"><Action title="Mantenimiento" onClick={() => onMaintenance(i)} icon={<Stethoscope />} /><Action title="Editar" onClick={() => onEdit(i)} icon={<Edit3 />} /><Action title="QR" onClick={() => void onQr(i)} icon={<QrCode />} /><Action title="Dar de baja" danger onClick={() => onDelete(i)} icon={<Trash2 />} /></div></div>; })}</div><div className="hidden md:block ui-surface overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">Equipo</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Ubicación</th><th className="p-3 text-left">Docs</th><th className="p-3 text-right">Acciones</th></tr></thead><tbody>{items.map(i => <tr key={i.id} className="border-t border-slate-100 dark:border-slate-800"><td className="p-3"><b>{i.codigo} · {i.nombre}</b><div className="text-xs text-slate-500">{[i.marca, i.modelo, i.matricula || i.numeroSerie].filter(Boolean).join(' · ') || i.categoria}</div></td><td className="p-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></td><td className="p-3 text-xs">{i.ubicacionActual}</td><td className="p-3">{documents.filter(d => d.itemId === i.id).length}</td><td className="p-3"><div className="flex justify-end gap-1"><Action title="Mover" onClick={() => onMove(i)} icon={<Truck />} /><Action title="Mantenimiento" onClick={() => onMaintenance(i)} icon={<Stethoscope />} /><Action title="Documentos" onClick={() => onDocument(i)} icon={<FolderOpen />} /><Action title="Editar" onClick={() => onEdit(i)} icon={<Edit3 />} /><Action title="QR" onClick={() => void onQr(i)} icon={<QrCode />} /><Action title="Trazabilidad" onClick={() => onTrace(i)} icon={<MapPinned />} /><Action title="Baja" danger onClick={() => onDelete(i)} icon={<Trash2 />} /></div></td></tr>)}</tbody></table></div></div>;
+const InventoryView = ({ items, documents, shares, categories, search, category, status, setSearch, setCategory, setStatus, onMove, onMaintenance, onDocument, onEdit, onQr, onTrace, onDelete }: { items: InventoryItem[]; documents: InventoryDocument[]; shares: InventoryParkShare[]; categories: string[]; search: string; category: string; status: string; setSearch: (v: string) => void; setCategory: (v: string) => void; setStatus: (v: string) => void; onMove: (i: InventoryItem) => void; onMaintenance: (i: InventoryItem) => void; onDocument: (i: InventoryItem) => void; onEdit: (i: InventoryItem) => void; onQr: (i: InventoryItem) => void; onTrace: (i: InventoryItem) => void; onDelete: (i: InventoryItem) => void }) => <div className="space-y-3"><div className="ui-surface p-3 grid sm:grid-cols-3 gap-2"><input className={inputClass} value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar equipo, código, marca, modelo, matrícula…" /><select className={inputClass} value={category} onChange={e => setCategory(e.target.value)}><option value="">Todas las categorías</option>{categories.map(c => <option key={c}>{c}</option>)}</select><select className={inputClass} value={status} onChange={e => setStatus(e.target.value)}><option value="">Todos los estados</option>{STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></div><div className="md:hidden space-y-3">{items.map(i => { const docs = documents.filter(d => d.itemId === i.id); const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId) : undefined; return <div key={i.id} className="ui-surface p-4" style={color && /obra|traslado/i.test(i.estado || '') ? { borderLeftWidth: 4, borderLeftColor: color } : undefined}><div className="flex justify-between gap-3"><div className="min-w-0"><div className="font-black">{i.codigo} · {i.nombre}</div><div className="text-xs text-slate-500 mt-1">{[i.marca, i.modelo, i.matricula || i.numeroSerie].filter(Boolean).join(' · ') || i.categoria}</div><div className="text-xs text-slate-400 mt-1 truncate">{i.ubicacionActual}</div>{responsible && /obra|traslado/i.test(i.estado || '') && <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-bold"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />En uso por {responsible.displayName}</div>}</div><span className={`h-fit shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="grid grid-cols-4 gap-2 mt-4"><QuickAction label="Mover" icon={<Truck />} onClick={() => onMove(i)} /><QuickAction label="Foto" icon={<Camera />} onClick={() => onMove(i)} /><QuickAction label={`Docs ${docs.length}`} icon={<FolderOpen />} onClick={() => onDocument(i)} /><QuickAction label="Trazar" icon={<MapPinned />} onClick={() => onTrace(i)} /></div><div className="flex gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800"><Action title="Mantenimiento" onClick={() => onMaintenance(i)} icon={<Stethoscope />} /><Action title="Editar" onClick={() => onEdit(i)} icon={<Edit3 />} /><Action title="QR" onClick={() => void onQr(i)} icon={<QrCode />} /><Action title="Dar de baja" danger onClick={() => onDelete(i)} icon={<Trash2 />} /></div></div>; })}</div><div className="hidden md:block ui-surface overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">Equipo</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Ubicación</th><th className="p-3 text-left">Responsable</th><th className="p-3 text-left">Docs</th><th className="p-3 text-right">Acciones</th></tr></thead><tbody>{items.map(i => { const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId) : undefined; return <tr key={i.id} className="border-t border-slate-100 dark:border-slate-800"><td className="p-3" style={color && /obra|traslado/i.test(i.estado || '') ? { borderLeft: `4px solid ${color}` } : undefined}><b>{i.codigo} · {i.nombre}</b><div className="text-xs text-slate-500">{[i.marca, i.modelo, i.matricula || i.numeroSerie].filter(Boolean).join(' · ') || i.categoria}</div></td><td className="p-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></td><td className="p-3 text-xs">{i.ubicacionActual}</td><td className="p-3 text-xs">{responsible && /obra|traslado/i.test(i.estado || '') ? <span className="inline-flex items-center gap-1.5 font-bold"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />{responsible.displayName}</span> : <span className="text-slate-400">—</span>}</td><td className="p-3">{documents.filter(d => d.itemId === i.id).length}</td><td className="p-3"><div className="flex justify-end gap-1"><Action title="Mover" onClick={() => onMove(i)} icon={<Truck />} /><Action title="Mantenimiento" onClick={() => onMaintenance(i)} icon={<Stethoscope />} /><Action title="Documentos" onClick={() => onDocument(i)} icon={<FolderOpen />} /><Action title="Editar" onClick={() => onEdit(i)} icon={<Edit3 />} /><Action title="QR" onClick={() => void onQr(i)} icon={<QrCode />} /><Action title="Trazabilidad" onClick={() => onTrace(i)} icon={<MapPinned />} /><Action title="Baja" danger onClick={() => onDelete(i)} icon={<Trash2 />} /></div></td></tr>; })}</tbody></table></div></div>;
 
 const QuickAction = ({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) => <button onClick={onClick} className="min-h-16 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1 text-[11px] font-bold [&>svg]:w-5 [&>svg]:h-5">{icon}<span>{label}</span></button>;
 

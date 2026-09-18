@@ -41,7 +41,7 @@ export const DirectoryStatusFilter: React.FC<Props> = ({ value, onChange, counts
       mount = existing || document.createElement('span');
       if (!existing) {
         mount.dataset.directoryMedicalFilter = 'true';
-        mount.className = 'relative flex items-stretch';
+        mount.className = 'relative flex items-stretch shrink-0';
         repeaters.insertAdjacentElement('afterend', mount);
       }
       setHost(mount);
@@ -93,7 +93,7 @@ export const DirectoryStatusFilter: React.FC<Props> = ({ value, onChange, counts
   if (!host) return null;
 
   return createPortal(
-    <div ref={panelRef} className="relative h-full">
+    <div ref={panelRef} className="relative h-full shrink-0">
       <button
         type="button"
         onClick={() => setOpen(current => !current)}

@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase";
+import { getSessionUser, supabase } from "../lib/supabase";
 import { syncMedicalAppointmentFromWorker } from "./medicalAppointmentAutoSync";
 
 export type DatabaseRecord = Record<string, any> & {
@@ -62,10 +62,10 @@ const resolveContractYear = (value: DatabaseRecord) => {
 };
 
 async function requireUser() {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user)
+  const user = await getSessionUser();
+  if (!user)
     throw new Error("Debes iniciar sesión para realizar esta operación.");
-  return data.user;
+  return user;
 }
 
 async function resolveObraId(obra: unknown): Promise<string | null> {

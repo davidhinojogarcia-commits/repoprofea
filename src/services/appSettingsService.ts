@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { getSessionUser, supabase } from '../lib/supabase';
 
 export interface AppBusinessSettings {
   savedObras: string[];
@@ -36,9 +36,9 @@ const normalize = (value: any): AppBusinessSettings => ({
 });
 
 async function requireUser() {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('No hay una sesión autenticada.');
-  return data.user;
+  const user = await getSessionUser();
+  if (!user) throw new Error('No hay una sesión autenticada.');
+  return user;
 }
 
 export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
@@ -49,7 +49,9 @@ export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
   const remote = rows?.[0]?.settings?.app;
   if (remote && typeof remote === 'object') return normalize(remote);
   const defaults = normalize(DEFAULTS);
-  await saveAppBusinessSettings(defaults);
+  if (typeof navigator === 'undefined' || navigator.onLine) {
+    await saveAppBusinessSettings(defaults);
+  }
   return defaults;
 }
 
