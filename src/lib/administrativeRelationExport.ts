@@ -18,7 +18,6 @@ const isRenounced = (p: Person) => {
   const row = p as any;
   return String(row.estadoContratacion || '').toLowerCase() === 'renuncia' || String(row.codigoSaeResultado || '') === '2100';
 };
-const renunciationLabel = (p: Person) => isRenounced(p) ? 'RENUNCIA · SAE 2100' : 'NO';
 const aptitudLabel = (p: Person) => {
   const { estado, limitaciones, validez } = getAptitudMedicaInfo(p);
   if (estado === 'Apto con limitaciones') return `APTO C/ LIMITACIONES\n${limitaciones || 'Sin detalle'}\nVálido ${validez}`;
