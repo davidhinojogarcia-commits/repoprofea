@@ -1275,7 +1275,6 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
       alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
     });
   });
-  applyPdfFooters(doc, config);
   const filename = generateExportFilename('PROFEA_RELACION_CONTRATADOS', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
   return { doc, filename };
