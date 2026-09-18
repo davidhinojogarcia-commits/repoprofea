@@ -375,3 +375,177 @@ html.dark body {
     flex: 0 0 auto;
   }
 }
+
+
+/* --------------------------------------------------------------------------
+ * PROFEA · Global text contrast hardening (light + dark)
+ * Keeps legacy utility-heavy screens readable without changing component logic.
+ * -------------------------------------------------------------------------- */
+
+/* LIGHT MODE
+ * Strengthen low-contrast neutral text used in labels, helper copy and metadata.
+ */
+html:not(.dark) #root .text-slate-400,
+html:not(.dark) #root .text-gray-400,
+html:not(.dark) #root .text-zinc-400 {
+  color: #64748b !important;
+}
+
+html:not(.dark) #root .text-slate-500,
+html:not(.dark) #root .text-gray-500,
+html:not(.dark) #root .text-zinc-500 {
+  color: #526477 !important;
+}
+
+html:not(.dark) #root .text-slate-600,
+html:not(.dark) #root .text-gray-600,
+html:not(.dark) #root .text-zinc-600 {
+  color: #3f5063 !important;
+}
+
+/* Form labels and native controls should never inherit a washed-out foreground. */
+html:not(.dark) #root label {
+  color: inherit;
+}
+
+html:not(.dark) #root input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html:not(.dark) #root select,
+html:not(.dark) #root textarea {
+  color: #172033;
+  background-color: #ffffff;
+}
+
+html:not(.dark) #root input::placeholder,
+html:not(.dark) #root textarea::placeholder {
+  color: #66768a !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root input:disabled,
+html:not(.dark) #root select:disabled,
+html:not(.dark) #root textarea:disabled,
+html:not(.dark) #root input[readonly] {
+  color: #526477 !important;
+  background-color: #f1f5f9 !important;
+  opacity: 1 !important;
+}
+
+/* Very pale semantic foreground utilities are difficult to read on white/pale cards.
+ * Only harden them when they are not explicitly placed on a strong brand/action surface.
+ */
+html:not(.dark) #root :where(
+  .bg-white,
+  .bg-slate-50,
+  .bg-slate-100,
+  .bg-gray-50,
+  .bg-gray-100,
+  .bg-blue-50,
+  .bg-sky-50,
+  .bg-indigo-50,
+  .bg-emerald-50,
+  .bg-green-50,
+  .bg-teal-50,
+  .bg-amber-50,
+  .bg-yellow-50,
+  .bg-orange-50,
+  .bg-red-50,
+  .bg-rose-50,
+  .bg-purple-50,
+  .bg-violet-50
+) :where(.text-slate-300,.text-gray-300,.text-zinc-300) {
+  color: #64748b !important;
+}
+
+html:not(.dark) #root :where(.bg-blue-50,.bg-sky-50,.bg-indigo-50) :where(.text-blue-200,.text-blue-300,.text-sky-200,.text-sky-300,.text-indigo-200,.text-indigo-300) {
+  color: #075985 !important;
+}
+html:not(.dark) #root :where(.bg-emerald-50,.bg-green-50,.bg-teal-50) :where(.text-emerald-200,.text-emerald-300,.text-green-200,.text-green-300,.text-teal-200,.text-teal-300) {
+  color: #0f766e !important;
+}
+html:not(.dark) #root :where(.bg-amber-50,.bg-yellow-50,.bg-orange-50) :where(.text-amber-200,.text-amber-300,.text-yellow-200,.text-yellow-300,.text-orange-200,.text-orange-300) {
+  color: #92400e !important;
+}
+html:not(.dark) #root :where(.bg-red-50,.bg-rose-50) :where(.text-red-200,.text-red-300,.text-rose-200,.text-rose-300) {
+  color: #b4233d !important;
+}
+
+/* White/light buttons and cards must retain a dark readable label. */
+html:not(.dark) #root button.bg-white,
+html:not(.dark) #root a.bg-white,
+html:not(.dark) #root [role='button'].bg-white {
+  color: #24364a;
+}
+
+html:not(.dark) #root table {
+  color: #26384c;
+}
+html:not(.dark) #root thead {
+  color: #27364a;
+}
+html:not(.dark) #root tbody {
+  color: #334155;
+}
+
+/* DARK MODE
+ * Slightly raise secondary-copy contrast and cover additional neutral utilities.
+ */
+.dark #root .text-slate-300,
+.dark #root .text-gray-300,
+.dark #root .text-zinc-300 {
+  color: #d2dee7 !important;
+}
+
+.dark #root .text-zinc-400 {
+  color: #9fb1bf !important;
+}
+
+.dark #root .text-slate-400,
+.dark #root .text-gray-400 {
+  color: #9fb1bf !important;
+}
+
+.dark #root .text-slate-500,
+.dark #root .text-gray-500,
+.dark #root .text-zinc-500 {
+  color: #a8bac7 !important;
+}
+
+/* Native/autofill input text can otherwise become dark-on-dark in Chromium/Safari. */
+.dark #root input:-webkit-autofill,
+.dark #root input:-webkit-autofill:hover,
+.dark #root input:-webkit-autofill:focus,
+.dark #root textarea:-webkit-autofill,
+.dark #root select:-webkit-autofill {
+  -webkit-text-fill-color: #eef6fb !important;
+  caret-color: #eef6fb !important;
+  box-shadow: 0 0 0 1000px #0b1927 inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* Ensure semantic pale badges/cards do not keep light-mode foregrounds in dark mode. */
+.dark #root :where(
+  .bg-blue-50,.bg-sky-50,.bg-indigo-50,
+  .bg-emerald-50,.bg-green-50,.bg-teal-50,
+  .bg-amber-50,.bg-yellow-50,.bg-orange-50,
+  .bg-red-50,.bg-rose-50,.bg-purple-50,.bg-violet-50
+) :where(.text-slate-900,.text-slate-800,.text-gray-900,.text-black) {
+  color: #eef6fb !important;
+}
+
+/* Disabled button copy must remain readable in both themes. */
+html:not(.dark) #root button:disabled {
+  opacity: .72;
+}
+.dark #root button:disabled {
+  opacity: .72;
+}
+
+/* Selection/highlight keeps text readable in both modes. */
+html:not(.dark) #root ::selection {
+  background: #b9dceb;
+  color: #102a43;
+}
+.dark #root ::selection {
+  background: #245d7c;
+  color: #ffffff;
+}
