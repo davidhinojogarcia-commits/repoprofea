@@ -152,32 +152,12 @@ export const generateSamplePreviewPDF = (customConfig?: Partial<PdfCustomConfig>
   const config = { ...getStoredPdfConfig(), ...customConfig };
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
 
-  // Header Lines
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-
-  // Supervisor
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text('SUPERVISOR: EJEMPLO DE RESPONSABLE TÉCNICO', 283, 18, { align: 'right' });
-
-  // Logo
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
-
-  // Title
-  doc.setFontSize(15);
-  doc.text('DOCUMENTO DE MUESTRA · PERSONALIZACIÓN PDF', 14, 25);
-
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.6);
-  doc.line(14, 28, 283, 28);
+  renderInstitutionalReportHeader(
+    doc,
+    'DOCUMENTO DE MUESTRA · PERSONALIZACIÓN PDF',
+    'SUPERVISOR: EJEMPLO DE RESPONSABLE TÉCNICO',
+    { customLogo: config.customLogo },
+  );
 
   const sampleColumns = ["Nº", "OBRA", "TRABAJADOR / DNI", "CATEGORÍA", "TELÉFONO", "FECHA INICIO", "ESTADO FORMACIÓN"];
   const sampleRows = [
@@ -189,14 +169,12 @@ export const generateSamplePreviewPDF = (customConfig?: Partial<PdfCustomConfig>
   autoTable(doc, {
     head: [sampleColumns],
     body: sampleRows,
-    startY: 33,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 8.5, cellPadding: 3, valign: 'middle', halign: 'center' as const },
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = `MUESTRA_PERSONALIZACION_PDF_${new Date().toISOString().slice(0, 10)}.pdf`;
   applyInstitutionalPdfStandard(doc);
@@ -594,30 +572,14 @@ export const preparePRLExcelData = async (dataToExport: Person[]) => {
 export const preparePRLPDFData = (dataToExport: Person[]) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-  
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-  
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 18, { align: 'right' });
-  
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
 
-  doc.setFontSize(16);
-  doc.text(`RELACIÓN TRABAJADORES SIN FORMACIÓN - PRL 20H`, 14, 26);
-  
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 283, 28);
+  renderInstitutionalReportHeader(
+    doc,
+    'RELACIÓN TRABAJADORES SIN FORMACIÓN · PRL 20H',
+    `SUPERVISOR: ${supervisorName.toUpperCase()}`,
+    { customLogo: config.customLogo },
+  );
 
   const tableColumn = ["QUINCENA", "OBRA", "TRABAJADOR / DNI / NAC.", "PERIODO CONTRATO", "TELÉFONO", "LUGAR FORMACIÓN", "ESTADO"];
   const tableRows = dataToExport.map(p => {
@@ -635,7 +597,7 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows,
-    startY: 32,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 3, valign: 'middle', halign: 'center' as const },
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
@@ -656,8 +618,6 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
       }
     }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_SIN_FORMACION_PRL', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
@@ -826,30 +786,14 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
 export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-  
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 18, { align: 'right' });
-  
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
 
-  doc.setFontSize(16);
-  doc.text(`RELACIÓN DE RECONOCIMIENTOS MÉDICOS`, 14, 26);
-  
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 283, 28);
+  renderInstitutionalReportHeader(
+    doc,
+    'RELACIÓN DE RECONOCIMIENTOS MÉDICOS',
+    `SUPERVISOR: ${supervisorName.toUpperCase()}`,
+    { customLogo: config.customLogo },
+  );
 
   const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "CONF.", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];
   const tableRows = dataToExport.map(p => {
@@ -881,7 +825,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows,
-    startY: 32,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 7.5, cellPadding: 2.5, valign: 'middle', halign: 'center' as const, overflow: 'linebreak' },
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
@@ -936,8 +880,6 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
     },
     alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_RRMM', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
@@ -1265,37 +1207,17 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
 
   groupKeys.forEach((key, index) => {
     if (index > 0) doc.addPage();
-    doc.setFontSize(8.5);
-    doc.setTextColor(70, 80, 95);
-    doc.setFont('helvetica', 'bold');
-    doc.text(config.headerLine1.toUpperCase(), 14, 12);
 
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(110, 120, 135);
-    doc.text(config.headerLine2.toUpperCase(), 14, 16);
-    
-    const supervisorName = grouped[key][0]?.supervisorResponsable || '-';
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-    doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 18, { align: 'right' });
-    
-    renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
-    
     const [quincena, ...obraParts] = key.split(' - ');
     const obra = obraParts.join(' - ');
-    
-    doc.setFontSize(14);
-    doc.text(`RELACIÓN DE TRABAJADORES CONTRATADOS`, 14, 24);
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`QUINCENA: ${quincena.toUpperCase()}`, 14, 30);
-    doc.text(`OBRA: ${obra.toUpperCase()}`, 14, 35);
-    
-    doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-    doc.setLineWidth(0.5);
-    doc.line(14, 37, 283, 37);
+    const supervisorName = grouped[key][0]?.supervisorResponsable || '-';
+
+    renderInstitutionalReportHeader(
+      doc,
+      'RELACIÓN DE TRABAJADORES CONTRATADOS',
+      `${quincena.toUpperCase()} · ${obra.toUpperCase()} · SUPERVISOR: ${supervisorName.toUpperCase()}`,
+      { customLogo: config.customLogo },
+    );
 
     const tableColumn = ["OFERTA / CAT.", "TRABAJADOR / DNI / NAC.", "PERIODO CONTRATO", "CONTACTO / TALLA", "SEGURIDAD / FORMACIÓN", "CITA MÉDICA", "APTITUD MÉDICA", "DOC. / OBSERVACIONES"];
     const tableRows = grouped[key].map(p => {
@@ -1339,7 +1261,7 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: 40,
+      startY: 44,
       theme: 'grid',
       styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
       headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontSize: 7.5, fontStyle: 'bold', halign: 'center' as const },
@@ -1488,25 +1410,14 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const config = getStoredPdfConfig();
 
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-  
-  renderPdfLogo(doc, 144, 4, 52, 10, true, config.customLogo);
-
-  doc.setFontSize(16);
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`RESUMEN DE CALZADO POR TALLAS`, 14, 26);
-  
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 196, 28);
+  const drawCalzadoHeader = () =>
+    renderInstitutionalReportHeader(
+      doc,
+      'RESUMEN DE CALZADO POR TALLAS',
+      `${dataToExport.length} trabajador(es)`,
+      { customLogo: config.customLogo },
+    );
+  drawCalzadoHeader();
 
   const summary: { [obra: string]: { [talla: string]: number } } = {};
   const allTallas = new Set<string>();
@@ -1529,12 +1440,13 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
   });
   const sortedObras = Array.from(allObras).sort();
 
-  let currentY = 35;
+  let currentY = 45;
 
   sortedObras.forEach((obra, index) => {
     if (currentY > 240) {
       doc.addPage();
-      currentY = 20;
+      drawCalzadoHeader();
+      currentY = 45;
     }
 
     doc.setFontSize(10);
@@ -1563,8 +1475,6 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_RESUMEN_CALZADO', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
@@ -1974,47 +1884,26 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
     .filter(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === cleanDni)
     .sort((a, b) => b.periodoInicio.localeCompare(a.periodoInicio)); // Sort descending (most recent first)
 
-  // Header band
-  doc.setFillColor(0, 84, 142);
-  doc.rect(0, 0, 210, 32, 'F');
-
-  // Title text in white
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(255, 255, 255);
-  doc.text('INFORME HISTÓRICO DE CONTRATACIONES', 15, 14);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('GESTIÓN DE FONDOS PROFEA · DIPUTACIÓN PROVINCIAL DE CÁDIZ', 15, 20);
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.text(`Expediente unificado de contratación para el DNI: ${selectedPerson.dni}`, 15, 25);
-
-  // Logo if loaded
-  try {
-    const logoBase64 = await getBase64Image(LOGO_URL);
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 145, 5, 52, 8);
-    }
-  } catch (err) {
-    console.warn('Logo addition failed:', err);
-  }
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME HISTÓRICO DE CONTRATACIONES',
+    `EXPEDIENTE UNIFICADO · DNI/NIE: ${selectedPerson.dni}`,
+  );
 
   // Personal data panel
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.5);
-  doc.roundedRect(15, 40, 180, 52, 4, 4, 'FD');
+  doc.roundedRect(15, 44, 180, 52, 4, 4, 'FD');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(30, 41, 59);
-  doc.text('DATOS CONSOLIDADOS DEL TRABAJADOR', 20, 47);
+  doc.text('DATOS CONSOLIDADOS DEL TRABAJADOR', 20, 51);
 
   // Divider
   doc.setDrawColor(226, 232, 240);
-  doc.line(20, 50, 190, 50);
+  doc.line(20, 54, 190, 54);
 
   const drawInfoField = (label: string, value: string, x: number, y: number) => {
     doc.setFont('helvetica', 'normal');
@@ -2028,17 +1917,17 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
     doc.text(value || '-', x + 34, y);
   };
 
-  drawInfoField('Apellidos y Nombre:', selectedPerson.apellidosNombre, 20, 56);
-  drawInfoField('NIF / DNI / NIE:', selectedPerson.dni, 20, 62);
-  drawInfoField('Fecha Nacimiento:', formatDate(selectedPerson.fechaNacimiento), 20, 68);
-  drawInfoField('Teléfono Móvil:', selectedPerson.telefono, 20, 74);
-  drawInfoField('Talla de Calzado:', selectedPerson.calzado, 20, 80);
+  drawInfoField('Apellidos y Nombre:', selectedPerson.apellidosNombre, 20, 60);
+  drawInfoField('NIF / DNI / NIE:', selectedPerson.dni, 20, 66);
+  drawInfoField('Fecha Nacimiento:', formatDate(selectedPerson.fechaNacimiento), 20, 72);
+  drawInfoField('Teléfono Móvil:', selectedPerson.telefono, 20, 78);
+  drawInfoField('Talla de Calzado:', selectedPerson.calzado, 20, 84);
 
-  drawInfoField('Formación PRL 20h:', selectedPerson.formacion, 110, 56);
-  drawInfoField('Lugar de Formación:', selectedPerson.lugarFormacion || '-', 110, 62);
-  drawInfoField('Cita Reconocimiento:', `${formatDate(selectedPerson.citaDia)} ${selectedPerson.citaHora || ''}`, 110, 68);
-  drawInfoField('Centro Médico:', selectedPerson.sitioReconocimiento || '-', 110, 74);
-  drawInfoField('Expediente Completo:', selectedPerson.documentacionCompleta === 'Sí' ? 'SÍ (Documentación OK)' : 'PENDIENTE', 110, 80);
+  drawInfoField('Formación PRL 20h:', selectedPerson.formacion, 110, 60);
+  drawInfoField('Lugar de Formación:', selectedPerson.lugarFormacion || '-', 110, 66);
+  drawInfoField('Cita Reconocimiento:', `${formatDate(selectedPerson.citaDia)} ${selectedPerson.citaHora || ''}`, 110, 72);
+  drawInfoField('Centro Médico:', selectedPerson.sitioReconocimiento || '-', 110, 78);
+  drawInfoField('Expediente Completo:', selectedPerson.documentacionCompleta === 'Sí' ? 'SÍ (Documentación OK)' : 'PENDIENTE', 110, 84);
 
   // Aptitud Médica en Datos Consolidados
   const { estado: aptEstado, limitaciones: aptLim, validez: aptVal } = getAptitudMedicaInfo(selectedPerson);
