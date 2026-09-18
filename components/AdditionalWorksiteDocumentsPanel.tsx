@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
-import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import {
@@ -189,12 +188,11 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
     const refresh = async () => {
       setLoading(true);
       try {
-        const [people, obras, _settings, userResult] = await Promise.all([
+        const [people, obras, userResult] = await Promise.all([
           getDocuments<Person>('trabajadores'),
           supabase.query('obras', {
             query: 'select=id,nombre,municipio,empresa,cif,recurso_preventivo&order=nombre.asc',
           }),
-          loadAppBusinessSettings(),
           supabase.auth.getUser(),
         ]);
         if (cancelled) return;
