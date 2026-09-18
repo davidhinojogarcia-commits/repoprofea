@@ -17,9 +17,11 @@ import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppoin
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
+import { OfflineSyncStatus } from './components/OfflineSyncStatus';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import { installSidebarSwipe } from './src/lib/sidebarSwipe';
+import { initializeOfflineSync } from './src/lib/supabase';
 import './src/lib/worksiteAdditionalDocumentsLegalBodies';
 import './src/styles/design-system.css';
 import './notification-modal-layout.css';
@@ -90,6 +92,7 @@ window.addEventListener('popstate', normalizeLegacyLoginRoute);
 installModalRuntime();
 installButtonSounds();
 installSidebarSwipe();
+initializeOfflineSync();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).catch((error) => { console.warn('No se pudo registrar el service worker de PROFEA:', error); });
@@ -132,6 +135,7 @@ ReactDOM.createRoot(rootElement).render(
               <PrlTrainingScheduleBridge />
               <SaeRenunciationBridge />
               <AppToastHost />
+              <OfflineSyncStatus />
               <AppInstallPromo />
             </React.Suspense>
           )}
