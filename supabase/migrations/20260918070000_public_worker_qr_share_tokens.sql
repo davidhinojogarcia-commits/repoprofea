@@ -108,7 +108,7 @@ begin
         'reconocimientoLimitaciones', t.reconocimiento_limitaciones,
         'reconocimientoObservaciones', t.reconocimiento_observaciones
       )
-      order by coalesce(t.periodo_inicio, t.fecha_registro::date) desc, t.id desc
+      order by coalesce(nullif(t.periodo_inicio, ''), nullif(t.fecha_registro, '')) desc, t.id desc
     ),
     '[]'::jsonb
   )
