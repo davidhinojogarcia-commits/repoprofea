@@ -25,6 +25,20 @@ create unique index if not exists inventory_park_invitations_pending_unique
 
 alter table public.inventory_park_invitations enable row level security;
 
+-- A partir de esta migración, un miembro no puede añadir directamente a otro miembro.
+-- El propietario conserva únicamente el alta inicial de sí mismo; las nuevas altas
+-- se realizan por inventory_respond_invitation después de una aceptación expresa.
+drop policy if exists inventory_members_insert on public.inventory_park_members;
+create policy inventory_members_insert on public.inventory_park_members
+for insert to authenticated
+with check (
+  user_id=(select auth.uid())
+  and exists(
+    select 1 from public.inventory_parks p
+    where p.id=park_id and p.created_by=(select auth.uid())
+  )
+);
+
 drop policy if exists inventory_park_invitations_select on public.inventory_park_invitations;
 create policy inventory_park_invitations_select
 on public.inventory_park_invitations
