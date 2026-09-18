@@ -55,8 +55,11 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const automaticHiringTarget = useMemo(() => {
     const today = new Date();
     const target = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const savedFortnight = typeof window !== 'undefined'
+      ? window.localStorage.getItem('profea-active-hiring-fortnight')
+      : null;
     return {
-      qType: today.getDate() <= 15 ? '1ª' : '2ª',
+      qType: savedFortnight === '2ª' ? '2ª' : '1ª',
       qMonth: MONTHS[target.getMonth()],
       qYear: target.getFullYear().toString(),
     };
@@ -118,6 +121,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       setFormData(null);
     }
   }, [person, automaticHiringTarget]);
+
+  useEffect(() => {
+    if (qType === '1ª' || qType === '2ª') {
+      window.localStorage.setItem('profea-active-hiring-fortnight', qType);
+    }
+  }, [qType]);
 
   useEffect(() => {
     let active = true;
