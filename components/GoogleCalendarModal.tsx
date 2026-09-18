@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Check, CheckCircle2, ExternalLink, Loader2, LogOut, Mail, X } from 'lucide-react';
+import { supabase } from '../src/lib/supabase';
 import {
   buildGoogleCalendarWebUrl,
   CalendarEventInput,
@@ -31,9 +32,11 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [createdLinks, setCreatedLinks] = useState<{ summary: string; link: string }[]>([]);
   const [reminderMinutes, setReminderMinutes] = useState(60);
+  const [profeaEmail, setProfeaEmail] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
+    void supabase.auth.getUser().then(({ data }) => setProfeaEmail(String(data.user?.email || '').trim()));
     setConnection(getGoogleCalendarConnection());
     setSelectedIndexes(events.map((_, index) => index));
     setCreatedLinks([]);
@@ -147,6 +150,12 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
           </button>
         </div>
 
+        {profeaEmail && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300">
+            <span className="font-bold">Usuario PROFEA:</span> {profeaEmail}
+          </div>
+        )}
+
         <div className={`rounded-2xl border p-4 ${connection ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'}`}>
           {connection ? (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -176,6 +185,12 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
             </div>
           )}
         </div>
+
+        {connection?.email && profeaEmail && connection.email.toLowerCase() !== profeaEmail.toLowerCase() && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            La cuenta de Google conectada ({connection.email}) es distinta del correo del usuario PROFEA ({profeaEmail}). Puedes mantenerla si es intencionado o desconectarla y elegir otra.
+          </div>
+        )}
 
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
           <div>
