@@ -3250,21 +3250,6 @@ export const generateStatsSummaryPDF = async ({
   doc.line(139, sigBoxY + 11, 188, sigBoxY + 11);
   doc.text('Fecha: _____ / _____ / ________', 114, sigBoxY + 18);
 
-  // Footer on all pages
-  const totalPages = doc.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `Informe Resumen Estadístico Oficial PROFEA | Emitido: ${new Date().toLocaleDateString('es-ES')} | © David Hinojo García | Página ${i} de ${totalPages}`,
-      105,
-      281,
-      { align: 'center' }
-    );
-  }
-
   const cleanFilterStr = filterLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
   const filename = `RESUMEN_ESTADISTICO_PROFEA_${cleanFilterStr}_${new Date().toISOString().slice(0, 10)}.pdf`;
 
