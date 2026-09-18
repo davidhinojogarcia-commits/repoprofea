@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Subcontratista, SubcontrataTrabajadorCAE } from '../../types';
-import { renderPdfLogo, getStoredPdfConfig, formatDate } from './exportUtils';
+import { applyInstitutionalPdfStandard, formatDate, renderInstitutionalReportHeader } from './exportUtils';
 import {
   getStoredObrasRecursosPreventivos,
   getStoredReporteTecnicoConfig,
@@ -160,7 +160,6 @@ export const generateSubcontrataReportPDF = async (
   const defaultCfg = getStoredReporteTecnicoConfig();
   const obrasRecursos = getStoredObrasRecursosPreventivos();
   const obraRecurso = sub.obra ? obrasRecursos[sub.obra] : undefined;
-  const config = getStoredPdfConfig();
   const compliance = getSubcontrataCompliance(sub);
 
   const effectiveTecnico = clean(options?.tecnicoNombre ?? defaultCfg.tecnicoNombre);
@@ -174,32 +173,15 @@ export const generateSubcontrataReportPDF = async (
   const pageWidth = 210;
   const contentWidth = pageWidth - marginLeft - marginRight;
 
-  renderPdfLogo(doc, marginLeft, 10, 48, 12, false, customLogo);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(0, 84, 142);
-  doc.text(config.headerLine1 || 'EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ', pageWidth - marginRight, 12, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(config.headerLine2 || 'ÁREA DE COOPERACIÓN | GESTIÓN PROFEA', pageWidth - marginRight, 16, { align: 'right' });
-  doc.text('COORDINACIÓN DE SEGURIDAD Y SALUD (CAE - LEY 32/2006)', pageWidth - marginRight, 20, { align: 'right' });
-  doc.setDrawColor(0, 84, 142);
-  doc.setLineWidth(0.8);
-  doc.line(marginLeft, 24, pageWidth - marginRight, 24);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  doc.text('INFORME DE CONTROL DOCUMENTAL DE SUBCONTRATA DE OBRA', marginLeft, 31);
   const now = new Date();
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text(
-    `Fecha de emisión: ${now.toLocaleDateString('es-ES')} ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} | Expediente Ref: ${sub.id.toUpperCase()}`,
-    marginLeft,
-    36,
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME DE CONTROL DOCUMENTAL DE SUBCONTRATA DE OBRA',
+    `EXPEDIENTE REF: ${sub.id.toUpperCase()} · ${sub.obra || 'OBRA SIN ASIGNAR'}`,
+    {
+      subtitle: 'COORDINACIÓN DE SEGURIDAD Y SALUD · GESTIÓN DE FONDOS PROFEA',
+      customLogo,
+    },
   );
 
   let bannerBg:[number,number,number] = [239, 246, 255];
@@ -220,11 +202,11 @@ export const generateSubcontrataReportPDF = async (
     bannerTitle = 'ESTADO DEL ACCESO: CONDICIONADO A SUBSANACIÓN';
     bannerSub = 'Existen incidencias o documentos pendientes que requieren subsanación.';
   }
-  doc.setFillColor(...bannerBg); doc.setDrawColor(...bannerBorder); doc.roundedRect(marginLeft, 40, contentWidth, 14, 2, 2, 'FD');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...bannerText); doc.text(bannerTitle, marginLeft + 4, 46);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(bannerSub, marginLeft + 4, 50.5);
+  doc.setFillColor(...bannerBg); doc.setDrawColor(...bannerBorder); doc.roundedRect(marginLeft, 43, contentWidth, 14, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...bannerText); doc.text(bannerTitle, marginLeft + 4, 49);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(bannerSub, marginLeft + 4, 53.5);
 
-  const metaY = 57;
+  const metaY = 60;
   const colW = (contentWidth - 4) / 2;
   const col2X = marginLeft + colW + 4;
   for (const x of [marginLeft, col2X]) {
@@ -290,35 +272,36 @@ export const generateSubcontrataReportPDF = async (
   const personnelEnd = renderPersonnelSection(doc, sub, checklistEnd, marginLeft, contentWidth);
 
   let sigY = personnelEnd;
-  if (sigY > 248) {
+  // Reserva compacta: evita crear una página nueva únicamente por firmas sobredimensionadas.
+  if (sigY > 252) {
     doc.addPage();
     sigY = 22;
   }
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.7); doc.setTextColor(100, 116, 139);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.4); doc.setTextColor(100, 116, 139);
   doc.text('Documento emitido para control CAE y acceso nominal a obra. La autorización individual depende de que la documentación acreditativa permanezca vigente.', marginLeft, sigY, { maxWidth: contentWidth });
   const signatures = [
     { label: 'Por el Supervisor de obra:', name: effectiveSupervisorFirma },
     { label: 'Por el Técnico de Obra:', name: effectiveTecnico },
     { label: 'Coordinación de Seguridad y Salud:', name: effectiveCoordinador },
   ].filter(item => item.name);
-  const sigBoxY = sigY + 5;
+  const sigBoxY = sigY + 4.5;
   if (signatures.length) {
     const gap = 3;
     const boxW = (contentWidth - gap * (signatures.length - 1)) / signatures.length;
     signatures.forEach((signature, index) => {
       const x = marginLeft + index * (boxW + gap);
-      doc.setDrawColor(203, 213, 225); doc.roundedRect(x, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4); doc.setTextColor(15, 23, 42); doc.text(signature.label, x + 2, sigBoxY + 4, { maxWidth: boxW - 4 });
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8); doc.setTextColor(71, 85, 105); doc.text(`Fdo: ${signature.name}`, x + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
+      const signatureH = 19;
+      doc.setDrawColor(203, 213, 225); doc.roundedRect(x, sigBoxY, boxW, signatureH, 1.5, 1.5, 'S');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.1); doc.setTextColor(15, 23, 42); doc.text(signature.label, x + 2, sigBoxY + 3.8, { maxWidth: boxW - 4 });
+      doc.setDrawColor(220, 226, 232); doc.line(x + 2, sigBoxY + 5.2, x + boxW - 2, sigBoxY + 5.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6); doc.setTextColor(71, 85, 105);
+      doc.text('Firma:', x + 2, sigBoxY + 10);
+      doc.line(x + 13, sigBoxY + 10.5, x + boxW - 2, sigBoxY + 10.5);
+      doc.text(`Fdo: ${signature.name}`, x + 2, sigBoxY + 16.2, { maxWidth: boxW - 4 });
     });
   }
 
-  const totalPages = (doc as any).internal.getNumberOfPages();
-  for (let page = 1; page <= totalPages; page += 1) {
-    doc.setPage(page);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.4); doc.setTextColor(148, 163, 184);
-    doc.text(`Página ${page} de ${totalPages} - Área de Cooperación PROFEA | Diputación Provincial de Cádiz`, pageWidth / 2, 290, { align: 'center' });
-  }
+  applyInstitutionalPdfStandard(doc);
 
   const cleanName = (sub.nombreEmpresa || 'subcontrata').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
   doc.save(`informe_subcontrata_${cleanName}_${now.toISOString().slice(0, 10)}.pdf`);

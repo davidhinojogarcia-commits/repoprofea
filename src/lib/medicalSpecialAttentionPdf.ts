@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Person, getAptitudMedicaInfo } from '../../types';
-import { getStoredPdfConfig, renderPdfLogo, applyPdfFooters } from './exportUtils';
+import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader } from './exportUtils';
 
 export type SpecialAttentionColumns = {
   dni: boolean;
@@ -35,7 +35,6 @@ export const generateMedicalSpecialAttentionPdf = (
   columns: SpecialAttentionColumns,
 ) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
-  const config = getStoredPdfConfig();
   const pageWidth = doc.internal.pageSize.getWidth();
 
   doc.setProperties({
@@ -45,32 +44,12 @@ export const generateMedicalSpecialAttentionPdf = (
     creator: 'Sistema de Gestión PROFEA',
   });
 
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, pageWidth, 20, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(...BLUE);
-  doc.text((config.headerLine1 || 'DIPUTACIÓN PROVINCIAL DE CÁDIZ').toUpperCase(), 14, 8.3);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text((config.headerLine2 || 'DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA').toUpperCase(), 14, 13.5);
-  renderPdfLogo(doc, pageWidth - 68, 4.5, 53, 10.5, true, config.customLogo);
-  doc.setDrawColor(218, 226, 233);
-  doc.setLineWidth(0.25);
-  doc.line(14, 18.2, pageWidth - 14, 18.2);
-
-  doc.setFillColor(...BLUE);
-  doc.rect(0, 20, pageWidth, 20, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(255, 255, 255);
-  doc.text('INFORME DE TRABAJADORES CON ESPECIAL ATENCIÓN', 14, 27.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.4);
-  doc.setTextColor(226, 241, 249);
-  doc.text(`${filters.estadoLabel || 'Aptos con limitaciones'} · ${people.length} trabajador(es)`, 14, 33);
-  doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, 14, 37);
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME DE TRABAJADORES CON ESPECIAL ATENCIÓN',
+    `${filters.estadoLabel || 'Aptos con limitaciones'} · ${people.length} trabajador(es)`,
+    { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
+  );
 
   const applied = [
     filters.obra ? `Obra: ${filters.obra}` : 'Obra: Todas',
@@ -157,7 +136,7 @@ export const generateMedicalSpecialAttentionPdf = (
     },
   });
 
-  applyPdfFooters(doc, config);
+  applyInstitutionalPdfStandard(doc);
   const suffix = [filters.obra, filters.mes, filters.quincena].filter(Boolean).join('_').replace(/[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ_-]+/g, '_');
   const filename = `INFORME_ESPECIAL_ATENCION${suffix ? `_${suffix}` : ''}_${new Date().toISOString().slice(0, 10)}.pdf`;
   return { doc, filename };

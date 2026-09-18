@@ -8,7 +8,7 @@ import {
   InventoryPark,
   parkBaseLocation,
 } from '../services/inventoryService';
-import { applyPdfFooters, getStoredPdfConfig, renderPdfLogo } from './exportUtils';
+import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader, renderInstitutionalSectionTitle } from './exportUtils';
 
 const BLUE: [number, number, number] = [0, 84, 142];
 const LIGHT: [number, number, number] = [240, 247, 255];
@@ -35,27 +35,12 @@ const fetchImageData = async (url: string): Promise<string | null> => {
 };
 
 const addHeader = (doc: jsPDF, title: string, subtitle: string) => {
-  const config = getStoredPdfConfig();
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, 210, 29, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(...BLUE);
-  doc.text((config.headerLine1 || 'DIPUTACIÓN PROVINCIAL DE CÁDIZ').toUpperCase(), 14, 8);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.setTextColor(95, 105, 120);
-  doc.text((config.headerLine2 || 'DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA').toUpperCase(), 14, 13);
-  renderPdfLogo(doc, 149, 3, 47, 11, true, config.customLogo);
-  doc.setFillColor(...BLUE);
-  doc.rect(0, 19, 210, 10, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11.5);
-  doc.text(title.toUpperCase(), 14, 25.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.4);
-  doc.text(subtitle, 196, 25.5, { align: 'right' });
+  renderInstitutionalReportHeader(
+    doc,
+    title,
+    subtitle,
+    { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
+  );
 };
 
 const ensureRoom = (doc: jsPDF, y: number, needed: number, title: string, subtitle: string) => {
@@ -65,15 +50,8 @@ const ensureRoom = (doc: jsPDF, y: number, needed: number, title: string, subtit
   return 36;
 };
 
-const addSectionTitle = (doc: jsPDF, text: string, y: number) => {
-  doc.setFillColor(...LIGHT);
-  doc.roundedRect(14, y, 182, 8, 2, 2, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(...BLUE);
-  doc.text(text, 18, y + 5.3);
-  return y + 11;
-};
+const addSectionTitle = (doc: jsPDF, text: string, y: number) =>
+  renderInstitutionalSectionTitle(doc, text, y, { x: 14, width: 182 });
 
 const drawTraceMap = (doc: jsPDF, movements: InventoryMovement[], y: number) => {
   const geo = movements.filter(m => m.latitud != null && m.longitud != null);
@@ -239,7 +217,7 @@ export async function exportInventoryStatusPdf(input: {
     y += 5;
   }
 
-  applyPdfFooters(doc);
+  applyInstitutionalPdfStandard(doc);
   const filename = `INFORME_MAQUINARIA_${safeName(park.zona)}_${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   return filename;

@@ -152,32 +152,12 @@ export const generateSamplePreviewPDF = (customConfig?: Partial<PdfCustomConfig>
   const config = { ...getStoredPdfConfig(), ...customConfig };
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
 
-  // Header Lines
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-
-  // Supervisor
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text('SUPERVISOR: EJEMPLO DE RESPONSABLE TÉCNICO', 283, 18, { align: 'right' });
-
-  // Logo
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
-
-  // Title
-  doc.setFontSize(15);
-  doc.text('DOCUMENTO DE MUESTRA · PERSONALIZACIÓN PDF', 14, 25);
-
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.6);
-  doc.line(14, 28, 283, 28);
+  renderInstitutionalReportHeader(
+    doc,
+    'DOCUMENTO DE MUESTRA · PERSONALIZACIÓN PDF',
+    'SUPERVISOR: EJEMPLO DE RESPONSABLE TÉCNICO',
+    { customLogo: config.customLogo },
+  );
 
   const sampleColumns = ["Nº", "OBRA", "TRABAJADOR / DNI", "CATEGORÍA", "TELÉFONO", "FECHA INICIO", "ESTADO FORMACIÓN"];
   const sampleRows = [
@@ -189,14 +169,12 @@ export const generateSamplePreviewPDF = (customConfig?: Partial<PdfCustomConfig>
   autoTable(doc, {
     head: [sampleColumns],
     body: sampleRows,
-    startY: 33,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 8.5, cellPadding: 3, valign: 'middle', halign: 'center' as const },
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = `MUESTRA_PERSONALIZACION_PDF_${new Date().toISOString().slice(0, 10)}.pdf`;
   applyInstitutionalPdfStandard(doc);
@@ -207,6 +185,23 @@ const BLUE_COLOR_HEX = '00548E';
 const LIGHT_BLUE_HEX = 'F0F7FF';
 const BLUE_COLOR_RGB: [number, number, number] = [0, 84, 142];
 const LIGHT_BLUE_RGB: [number, number, number] = [240, 247, 255];
+
+export const INSTITUTIONAL_PDF_THEME = {
+  blue: BLUE_COLOR_RGB,
+  lightBlue: LIGHT_BLUE_RGB,
+  text: [30, 41, 59] as [number, number, number],
+  muted: [100, 116, 139] as [number, number, number],
+  border: [203, 213, 225] as [number, number, number],
+  softBorder: [226, 232, 240] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
+  margin: 14,
+  headerTop: 20,
+  headerBandHeight: 18,
+  footerHeight: 14,
+  bodyFontSize: 8,
+  tableFontSize: 7,
+  sectionFontSize: 8.2,
+} as const;
 
 
 const INSTITUTION_NAME = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ';
@@ -239,58 +234,103 @@ export const applyPdfCopyrightStamp = (doc: jsPDF) => {
  * Mantiene el logotipo sobre fondo blanco para preservar su legibilidad y
  * separa identidad corporativa, título del documento y metadatos.
  */
-const renderInstitutionalReportHeader = (
+export const renderInstitutionalReportHeader = (
   doc: jsPDF,
   reportTitle: string,
-  metaLine?: string
+  metaLine?: string,
+  options: { subtitle?: string; generatedLabel?: string; customLogo?: string } = {},
 ) => {
   const config = getStoredPdfConfig();
+  const pageSize = doc.internal.pageSize;
+  const pageWidth = pageSize.width || pageSize.getWidth();
+  const margin = INSTITUTIONAL_PDF_THEME.margin;
+  const right = pageWidth - margin;
 
-  // Banda institucional blanca: el logotipo nunca se coloca sobre el azul.
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, 210, 20, 'F');
+  doc.setFillColor(...INSTITUTIONAL_PDF_THEME.white);
+  doc.rect(0, 0, pageWidth, 20, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text((config.headerLine1 || INSTITUTION_NAME).toUpperCase(), 15, 8.2);
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.blue);
+  doc.text((config.headerLine1 || INSTITUTION_NAME).toUpperCase(), margin, 8.2, {
+    maxWidth: Math.max(90, pageWidth - 105),
+  });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text((config.headerLine2 || `DESARROLLO LOCAL | ${INSTITUTION_SERVICE}`).toUpperCase(), 15, 13.3);
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.muted);
+  doc.text(
+    (options.subtitle || config.headerLine2 || `DESARROLLO LOCAL | ${INSTITUTION_SERVICE}`).toUpperCase(),
+    margin,
+    13.3,
+    { maxWidth: Math.max(95, pageWidth - 105) },
+  );
 
-  renderPdfLogo(doc, 142, 4.5, 53, 10.5, true, config.customLogo);
+  renderPdfLogo(doc, right - 53, 4.5, 53, 10.5, true, options.customLogo || config.customLogo);
 
   doc.setDrawColor(218, 226, 233);
   doc.setLineWidth(0.25);
-  doc.line(15, 18.2, 195, 18.2);
+  doc.line(margin, 18.2, right, 18.2);
 
-  // Banda de identificación del informe.
-  doc.setFillColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.rect(0, 20, 210, 18, 'F');
+  doc.setFillColor(...INSTITUTIONAL_PDF_THEME.blue);
+  doc.rect(0, 20, pageWidth, 18, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.7);
-  doc.setTextColor(255, 255, 255);
-  doc.text(reportTitle.toUpperCase(), 15, 27.2);
+  let titleFontSize = 10.7;
+  doc.setFontSize(titleFontSize);
+  const title = reportTitle.toUpperCase();
+  const titleMaxWidth = pageWidth - margin * 2;
+  while (titleFontSize > 8 && doc.getTextWidth(title) > titleMaxWidth) {
+    titleFontSize -= 0.35;
+    doc.setFontSize(titleFontSize);
+  }
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.white);
+  doc.text(title, margin, 27.2, { maxWidth: titleMaxWidth });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
+  doc.setFontSize(7);
   doc.setTextColor(226, 241, 249);
-  const issued = `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`;
-  doc.text(issued, 15, 32.3);
+  const issued =
+    options.generatedLabel ||
+    `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+  doc.text(issued, margin, 32.3, { maxWidth: pageWidth * 0.48 });
 
   if (metaLine?.trim()) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
     doc.setTextColor(240, 249, 255);
-    doc.text(metaLine.toUpperCase(), 15, 36.1, { maxWidth: 180 });
+    doc.text(metaLine.toUpperCase(), right, 32.3, {
+      align: 'right',
+      maxWidth: Math.max(80, pageWidth * 0.45),
+    });
   }
 
-  // Acento secundario de la propia familia azul corporativa.
   doc.setFillColor(56, 189, 248);
-  doc.rect(0, 38, 210, 1.6, 'F');
+  doc.rect(0, 38, pageWidth, 1.4, 'F');
+};
+
+export const renderInstitutionalSectionTitle = (
+  doc: jsPDF,
+  title: string,
+  y: number,
+  options: { x?: number; width?: number; compact?: boolean } = {},
+) => {
+  const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+  const x = options.x ?? INSTITUTIONAL_PDF_THEME.margin;
+  const width = options.width ?? pageWidth - x - INSTITUTIONAL_PDF_THEME.margin;
+  const height = options.compact ? 6.5 : 8;
+
+  doc.setFillColor(...INSTITUTIONAL_PDF_THEME.lightBlue);
+  doc.setDrawColor(...INSTITUTIONAL_PDF_THEME.border);
+  doc.roundedRect(x, y, width, height, 1.4, 1.4, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(options.compact ? 7.2 : INSTITUTIONAL_PDF_THEME.sectionFontSize);
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.blue);
+  doc.text(title.toUpperCase(), x + 3, y + (options.compact ? 4.3 : 5.3), {
+    maxWidth: width - 6,
+  });
+
+  return y + height + (options.compact ? 2 : 3);
 };
 
 /**
@@ -300,7 +340,7 @@ const renderInstitutionalReportHeader = (
  * metadata and footer are always rendered through this common layer so every
  * exported document belongs to the same Diputación/PROFEA family.
  */
-const applyInstitutionalPdfStandard = (doc: jsPDF) => {
+export const applyInstitutionalPdfStandard = (doc: jsPDF) => {
   try {
     doc.setProperties({
       title: 'Documento de Gestión PROFEA',
@@ -532,30 +572,14 @@ export const preparePRLExcelData = async (dataToExport: Person[]) => {
 export const preparePRLPDFData = (dataToExport: Person[]) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-  
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-  
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 18, { align: 'right' });
-  
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
 
-  doc.setFontSize(16);
-  doc.text(`RELACIÓN TRABAJADORES SIN FORMACIÓN - PRL 20H`, 14, 26);
-  
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 283, 28);
+  renderInstitutionalReportHeader(
+    doc,
+    'RELACIÓN TRABAJADORES SIN FORMACIÓN · PRL 20H',
+    `SUPERVISOR: ${supervisorName.toUpperCase()}`,
+    { customLogo: config.customLogo },
+  );
 
   const tableColumn = ["QUINCENA", "OBRA", "TRABAJADOR / DNI / NAC.", "PERIODO CONTRATO", "TELÉFONO", "LUGAR FORMACIÓN", "ESTADO"];
   const tableRows = dataToExport.map(p => {
@@ -573,7 +597,7 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows,
-    startY: 32,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 3, valign: 'middle', halign: 'center' as const },
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
@@ -594,8 +618,6 @@ export const preparePRLPDFData = (dataToExport: Person[]) => {
       }
     }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_SIN_FORMACION_PRL', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
@@ -764,30 +786,14 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
 export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-  
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 18, { align: 'right' });
-  
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
 
-  doc.setFontSize(16);
-  doc.text(`RELACIÓN DE RECONOCIMIENTOS MÉDICOS`, 14, 26);
-  
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 283, 28);
+  renderInstitutionalReportHeader(
+    doc,
+    'RELACIÓN DE RECONOCIMIENTOS MÉDICOS',
+    `SUPERVISOR: ${supervisorName.toUpperCase()}`,
+    { customLogo: config.customLogo },
+  );
 
   const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "CONF.", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];
   const tableRows = dataToExport.map(p => {
@@ -819,7 +825,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows,
-    startY: 32,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 7.5, cellPadding: 2.5, valign: 'middle', halign: 'center' as const, overflow: 'linebreak' },
     headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontStyle: 'bold' },
@@ -875,8 +881,6 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
     alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
   });
 
-  applyPdfFooters(doc, config);
-
   const filename = generateExportFilename('PROFEA_RRMM', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
   return { doc, filename };
@@ -899,52 +903,33 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
     return lim.length > 0;
   });
 
-  // Cabecera institucional
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 11);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(`${config.headerLine2.toUpperCase()} | SERVICIO DE PREVENCIÓN DE RIESGOS LABORALES (PRL)`, 14, 15);
-
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 15, { align: 'right' });
-
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
-
-  // Título principal con tono preventivo destacado
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(180, 83, 9); // Amber-700
-  doc.text('INFORME DE SITUACIÓN DE TRABAJADORES CON ESPECIAL ATENCIÓN', 14, 23);
-
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(90, 100, 115);
-  doc.text('VIGILANCIA DE LA SALUD Y ADAPTACIÓN DE PUESTOS EN OBRA · PROGRAMA PROFEA', 14, 27);
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME DE SITUACIÓN DE TRABAJADORES CON ESPECIAL ATENCIÓN',
+    `SUPERVISOR: ${supervisorName.toUpperCase()}`,
+    {
+      subtitle: 'VIGILANCIA DE LA SALUD · PREVENCIÓN DE RIESGOS LABORALES · PROFEA',
+      customLogo: config.customLogo,
+    },
+  );
 
   // Cuadro de Confidencialidad y Uso Exclusivo en Obra
   doc.setFillColor(254, 243, 199); // Amber-100
   doc.setDrawColor(245, 158, 11); // Amber-500
   doc.setLineWidth(0.4);
-  doc.roundedRect(14, 30, 269, 13, 2, 2, 'FD');
+  doc.roundedRect(14, 44, 269, 13, 2, 2, 'FD');
 
   doc.setFontSize(7.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(146, 64, 14); // Amber-800
-  doc.text('AVISO DE CONFIDENCIALIDAD Y USO EN OBRA (Art. 22 y 32 bis Ley 31/1995 de Prevención de Riesgos Laborales):', 17, 34);
+  doc.text('AVISO DE CONFIDENCIALIDAD Y USO EN OBRA (Art. 22 y 32 bis Ley 31/1995 de Prevención de Riesgos Laborales):', 17, 48);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(120, 53, 15); // Amber-950
   const noticeText = 'Informe para uso en obra reservado para el encargado de la obra (recurso preventivo). Contiene únicamente las limitaciones físicas y restricciones de aptitud laboral detectadas en los reconocimientos médicos de la plantilla, con la exclusiva finalidad de coordinar la adaptación ergonómica, preventiva y funcional de las tareas en cada obra.';
   const splitNotice = doc.splitTextToSize(noticeText, 263);
-  doc.text(splitNotice, 17, 38);
+  doc.text(splitNotice, 17, 52);
 
   // Barra de métricas resumen
   const uniqueObras = Array.from(new Set(workersWithLimitations.map(p => p.obra?.trim()))).filter(Boolean);
@@ -953,7 +938,7 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(50, 60, 75);
-  doc.text(`Trabajadores con limitaciones detectadas: ${workersWithLimitations.length} | Obras afectadas: ${uniqueObras.length} | Ejercicio: ${currentYear} | Fecha de emisión: ${new Date().toLocaleDateString('es-ES')}`, 14, 47);
+  doc.text(`Trabajadores con limitaciones detectadas: ${workersWithLimitations.length} | Obras afectadas: ${uniqueObras.length} | Ejercicio: ${currentYear} | Fecha de emisión: ${new Date().toLocaleDateString('es-ES')}`, 14, 61);
 
   const tableColumn = [
     "Nº",
@@ -987,7 +972,7 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows.length > 0 ? tableRows : [["-", "No se detectaron trabajadores con limitaciones físicas en la base de datos", "-", "-", "-", "-", "-", "-"]],
-    startY: 50,
+    startY: 65,
     theme: 'grid',
     styles: { 
       fontSize: 7.5, 
@@ -1029,8 +1014,6 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
       fillColor: [255, 251, 235]
     }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_PRL_LIMITACIONES_TECNICO', workersWithLimitations, 'pdf');
   applyInstitutionalPdfStandard(doc);
@@ -1203,37 +1186,17 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
 
   groupKeys.forEach((key, index) => {
     if (index > 0) doc.addPage();
-    doc.setFontSize(8.5);
-    doc.setTextColor(70, 80, 95);
-    doc.setFont('helvetica', 'bold');
-    doc.text(config.headerLine1.toUpperCase(), 14, 12);
 
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(110, 120, 135);
-    doc.text(config.headerLine2.toUpperCase(), 14, 16);
-    
-    const supervisorName = grouped[key][0]?.supervisorResponsable || '-';
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-    doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 18, { align: 'right' });
-    
-    renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
-    
     const [quincena, ...obraParts] = key.split(' - ');
     const obra = obraParts.join(' - ');
-    
-    doc.setFontSize(14);
-    doc.text(`RELACIÓN DE TRABAJADORES CONTRATADOS`, 14, 24);
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`QUINCENA: ${quincena.toUpperCase()}`, 14, 30);
-    doc.text(`OBRA: ${obra.toUpperCase()}`, 14, 35);
-    
-    doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-    doc.setLineWidth(0.5);
-    doc.line(14, 37, 283, 37);
+    const supervisorName = grouped[key][0]?.supervisorResponsable || '-';
+
+    renderInstitutionalReportHeader(
+      doc,
+      'RELACIÓN DE TRABAJADORES CONTRATADOS',
+      `${quincena.toUpperCase()} · ${obra.toUpperCase()} · SUPERVISOR: ${supervisorName.toUpperCase()}`,
+      { customLogo: config.customLogo },
+    );
 
     const tableColumn = ["OFERTA / CAT.", "TRABAJADOR / DNI / NAC.", "PERIODO CONTRATO", "CONTACTO / TALLA", "SEGURIDAD / FORMACIÓN", "CITA MÉDICA", "APTITUD MÉDICA", "DOC. / OBSERVACIONES"];
     const tableRows = grouped[key].map(p => {
@@ -1277,7 +1240,7 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: 40,
+      startY: 44,
       theme: 'grid',
       styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
       headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontSize: 7.5, fontStyle: 'bold', halign: 'center' as const },
@@ -1312,7 +1275,6 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
       alternateRowStyles: { fillColor: LIGHT_BLUE_RGB }
     });
   });
-  applyPdfFooters(doc, config);
   const filename = generateExportFilename('PROFEA_RELACION_CONTRATADOS', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
   return { doc, filename };
@@ -1426,25 +1388,14 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const config = getStoredPdfConfig();
 
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 12);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 16);
-  
-  renderPdfLogo(doc, 144, 4, 52, 10, true, config.customLogo);
-
-  doc.setFontSize(16);
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`RESUMEN DE CALZADO POR TALLAS`, 14, 26);
-  
-  doc.setDrawColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 196, 28);
+  const drawCalzadoHeader = () =>
+    renderInstitutionalReportHeader(
+      doc,
+      'RESUMEN DE CALZADO POR TALLAS',
+      `${dataToExport.length} trabajador(es)`,
+      { customLogo: config.customLogo },
+    );
+  drawCalzadoHeader();
 
   const summary: { [obra: string]: { [talla: string]: number } } = {};
   const allTallas = new Set<string>();
@@ -1467,12 +1418,13 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
   });
   const sortedObras = Array.from(allObras).sort();
 
-  let currentY = 35;
+  let currentY = 45;
 
   sortedObras.forEach((obra, index) => {
     if (currentY > 240) {
       doc.addPage();
-      currentY = 20;
+      drawCalzadoHeader();
+      currentY = 45;
     }
 
     doc.setFontSize(10);
@@ -1501,8 +1453,6 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_RESUMEN_CALZADO', dataToExport, 'pdf');
   applyInstitutionalPdfStandard(doc);
@@ -1912,47 +1862,26 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
     .filter(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === cleanDni)
     .sort((a, b) => b.periodoInicio.localeCompare(a.periodoInicio)); // Sort descending (most recent first)
 
-  // Header band
-  doc.setFillColor(0, 84, 142);
-  doc.rect(0, 0, 210, 32, 'F');
-
-  // Title text in white
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(255, 255, 255);
-  doc.text('INFORME HISTÓRICO DE CONTRATACIONES', 15, 14);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('GESTIÓN DE FONDOS PROFEA · DIPUTACIÓN PROVINCIAL DE CÁDIZ', 15, 20);
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.text(`Expediente unificado de contratación para el DNI: ${selectedPerson.dni}`, 15, 25);
-
-  // Logo if loaded
-  try {
-    const logoBase64 = await getBase64Image(LOGO_URL);
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 145, 5, 52, 8);
-    }
-  } catch (err) {
-    console.warn('Logo addition failed:', err);
-  }
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME HISTÓRICO DE CONTRATACIONES',
+    `EXPEDIENTE UNIFICADO · DNI/NIE: ${selectedPerson.dni}`,
+  );
 
   // Personal data panel
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.5);
-  doc.roundedRect(15, 40, 180, 52, 4, 4, 'FD');
+  doc.roundedRect(15, 44, 180, 52, 4, 4, 'FD');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(30, 41, 59);
-  doc.text('DATOS CONSOLIDADOS DEL TRABAJADOR', 20, 47);
+  doc.text('DATOS CONSOLIDADOS DEL TRABAJADOR', 20, 51);
 
   // Divider
   doc.setDrawColor(226, 232, 240);
-  doc.line(20, 50, 190, 50);
+  doc.line(20, 54, 190, 54);
 
   const drawInfoField = (label: string, value: string, x: number, y: number) => {
     doc.setFont('helvetica', 'normal');
@@ -1966,17 +1895,17 @@ export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPe
     doc.text(value || '-', x + 34, y);
   };
 
-  drawInfoField('Apellidos y Nombre:', selectedPerson.apellidosNombre, 20, 56);
-  drawInfoField('NIF / DNI / NIE:', selectedPerson.dni, 20, 62);
-  drawInfoField('Fecha Nacimiento:', formatDate(selectedPerson.fechaNacimiento), 20, 68);
-  drawInfoField('Teléfono Móvil:', selectedPerson.telefono, 20, 74);
-  drawInfoField('Talla de Calzado:', selectedPerson.calzado, 20, 80);
+  drawInfoField('Apellidos y Nombre:', selectedPerson.apellidosNombre, 20, 60);
+  drawInfoField('NIF / DNI / NIE:', selectedPerson.dni, 20, 66);
+  drawInfoField('Fecha Nacimiento:', formatDate(selectedPerson.fechaNacimiento), 20, 72);
+  drawInfoField('Teléfono Móvil:', selectedPerson.telefono, 20, 78);
+  drawInfoField('Talla de Calzado:', selectedPerson.calzado, 20, 84);
 
-  drawInfoField('Formación PRL 20h:', selectedPerson.formacion, 110, 56);
-  drawInfoField('Lugar de Formación:', selectedPerson.lugarFormacion || '-', 110, 62);
-  drawInfoField('Cita Reconocimiento:', `${formatDate(selectedPerson.citaDia)} ${selectedPerson.citaHora || ''}`, 110, 68);
-  drawInfoField('Centro Médico:', selectedPerson.sitioReconocimiento || '-', 110, 74);
-  drawInfoField('Expediente Completo:', selectedPerson.documentacionCompleta === 'Sí' ? 'SÍ (Documentación OK)' : 'PENDIENTE', 110, 80);
+  drawInfoField('Formación PRL 20h:', selectedPerson.formacion, 110, 60);
+  drawInfoField('Lugar de Formación:', selectedPerson.lugarFormacion || '-', 110, 66);
+  drawInfoField('Cita Reconocimiento:', `${formatDate(selectedPerson.citaDia)} ${selectedPerson.citaHora || ''}`, 110, 72);
+  drawInfoField('Centro Médico:', selectedPerson.sitioReconocimiento || '-', 110, 78);
+  drawInfoField('Expediente Completo:', selectedPerson.documentacionCompleta === 'Sí' ? 'SÍ (Documentación OK)' : 'PENDIENTE', 110, 84);
 
   // Aptitud Médica en Datos Consolidados
   const { estado: aptEstado, limitaciones: aptLim, validez: aptVal } = getAptitudMedicaInfo(selectedPerson);
@@ -2116,6 +2045,65 @@ export const generatePeriodicReportPDF = async (
   zonaName?: string
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+
+  const drawFittedText = (
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    maxHeight: number,
+    options: {
+      maxFontSize?: number;
+      minFontSize?: number;
+      fontStyle?: 'normal' | 'bold' | 'italic' | 'bolditalic';
+      align?: 'left' | 'center' | 'right';
+      color?: [number, number, number];
+      lineHeightFactor?: number;
+    } = {},
+  ) => {
+    const value = String(text || '-').replace(/\s+/g, ' ').trim();
+    const maxFontSize = options.maxFontSize ?? 8;
+    const minFontSize = options.minFontSize ?? 5.2;
+    const lineHeightFactor = options.lineHeightFactor ?? 1.08;
+    const align = options.align ?? 'left';
+    const fontStyle = options.fontStyle ?? 'normal';
+
+    doc.setFont('helvetica', fontStyle);
+    if (options.color) doc.setTextColor(...options.color);
+
+    let fontSize = maxFontSize;
+    let lines: string[] = [];
+    let lineHeightMm = 0;
+
+    while (fontSize >= minFontSize) {
+      doc.setFontSize(fontSize);
+      lines = doc.splitTextToSize(value, maxWidth) as string[];
+      lineHeightMm = (fontSize * 0.352778) * lineHeightFactor;
+      const requiredHeight = Math.max(lineHeightMm, lines.length * lineHeightMm);
+      if (requiredHeight <= maxHeight) break;
+      fontSize = Math.max(minFontSize, fontSize - 0.35);
+      if (fontSize === minFontSize) {
+        doc.setFontSize(fontSize);
+        lines = doc.splitTextToSize(value, maxWidth) as string[];
+        lineHeightMm = (fontSize * 0.352778) * lineHeightFactor;
+        break;
+      }
+    }
+
+    const maxLines = Math.max(1, Math.floor(maxHeight / Math.max(lineHeightMm, 0.1)));
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      const last = lines.length - 1;
+      let tail = String(lines[last] || '').trim();
+      while (tail && doc.getTextWidth(`${tail}…`) > maxWidth) tail = tail.slice(0, -1);
+      lines[last] = `${tail || ''}…`;
+    }
+
+    const anchorX = align === 'center' ? x + maxWidth / 2 : align === 'right' ? x + maxWidth : x;
+    doc.text(lines, anchorX, y, { align, lineHeightFactor });
+    return { fontSize, lines };
+  };
+
   const totalContracts = filteredPeople.length;
   const uniqueDnis = new Set(filteredPeople.map(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, ''))).size;
   const uniqueObras = new Set(filteredPeople.map(p => p.obra.trim()).filter(Boolean)).size;
@@ -2142,16 +2130,17 @@ export const generatePeriodicReportPDF = async (
   );
 
   // Large Period subtitle
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`PERIODO DE ANÁLISIS: ${periodLabel.toUpperCase()}`, 15, 52);
+  drawFittedText(
+    `PERIODO DE ANÁLISIS: ${periodLabel.toUpperCase()}`,
+    15, 52, 180, 7.5,
+    { maxFontSize: 13, minFontSize: 8.5, fontStyle: 'bold', color: [15, 23, 42] },
+  );
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Este documento formal consolida las contrataciones efectuadas bajo las condiciones de búsqueda seleccionadas,', 15, 57);
-  doc.text('desglosando datos demográficos de la plantilla, proyectos asignados y certificaciones médicas/PRL.', 15, 61);
+  drawFittedText(
+    'Este documento formal consolida las contrataciones efectuadas bajo las condiciones de búsqueda seleccionadas, desglosando datos demográficos de la plantilla, proyectos asignados y certificaciones médicas/PRL.',
+    15, 57, 180, 8,
+    { maxFontSize: 8.5, minFontSize: 6.2, color: [100, 116, 139], lineHeightFactor: 1.12 },
+  );
 
   // Draw 4 aesthetic KPI cards
   const drawKpiCard = (title: string, value: string, x: number, y: number, w: number, h: number, description: string) => {
@@ -2161,27 +2150,21 @@ export const generatePeriodicReportPDF = async (
     doc.setLineWidth(0.4);
     doc.roundedRect(x, y, w, h, 2.5, 2.5, 'FD');
 
-    // Title label
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text(title, x + 4, y + 5.5);
+    drawFittedText(title, x + 4, y + 5.2, w - 8, 3.2, {
+      maxFontSize: 7.5, minFontSize: 5.4, color: [100, 116, 139],
+    });
 
-    // Huge bold value
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(0, 84, 142);
-    doc.text(value, x + 4, y + 13.5);
+    drawFittedText(value, x + 4, y + 13.2, w - 8, 5.2, {
+      maxFontSize: 14, minFontSize: 8, fontStyle: 'bold', color: [0, 84, 142],
+    });
 
     // Decorative mini-line
     doc.setFillColor(0, 84, 142);
     doc.rect(x + 4, y + 16, 10, 0.6, 'F');
 
-    // Bottom tiny caption
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(6.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(description, x + 4, y + 21);
+    drawFittedText(description, x + 4, y + 20.7, w - 8, 2.8, {
+      maxFontSize: 6.5, minFontSize: 4.8, fontStyle: 'italic', color: [148, 163, 184],
+    });
   };
 
   const cardW = 33;
@@ -2225,8 +2208,8 @@ export const generatePeriodicReportPDF = async (
     body: obraBreakdown,
     startY: 106,
     theme: 'striped',
-    styles: { fontSize: 7.5 },
-    headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold' },
+    styles: { fontSize: 7.5, overflow: 'linebreak', cellPadding: 1.8, valign: 'middle' },
+    headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold', overflow: 'linebreak' },
     margin: { left: 15, right: 15 },
     tableWidth: 'auto'
   });
@@ -2262,8 +2245,8 @@ export const generatePeriodicReportPDF = async (
     body: catBreakdown,
     startY: finalYOfObraTable + 4,
     theme: 'grid',
-    styles: { fontSize: 7.5 },
-    headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold' },
+    styles: { fontSize: 7.5, overflow: 'linebreak', cellPadding: 1.8, valign: 'middle' },
+    headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold', overflow: 'linebreak' },
     margin: { left: 15, right: 15 },
     tableWidth: 'auto'
   });
@@ -2281,10 +2264,11 @@ export const generatePeriodicReportPDF = async (
   renderPdfLogo(doc, 153, 3, 42, 7, true);
   doc.setFillColor(0, 84, 142);
   doc.rect(0, 14, 210, 7, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text(`REGISTRO COMPLETO DE CONTRATACIONES · ${periodLabel.toUpperCase()}`, 15, 18.5);
+  drawFittedText(
+    `REGISTRO COMPLETO DE CONTRATACIONES · ${periodLabel.toUpperCase()}`,
+    15, 18.3, 180, 4,
+    { maxFontSize: 7.5, minFontSize: 5.4, fontStyle: 'bold', color: [255, 255, 255] },
+  );
   doc.setFillColor(56, 189, 248);
   doc.rect(0, 21, 210, 1, 'F');
 
@@ -2328,8 +2312,21 @@ export const generatePeriodicReportPDF = async (
     body: listRows,
     startY: 32,
     theme: 'striped',
-    styles: { fontSize: 7, cellPadding: 2 },
-    headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold' },
+    styles: {
+      fontSize: 7,
+      cellPadding: 1.6,
+      overflow: 'linebreak',
+      valign: 'middle',
+      minCellHeight: 6,
+    },
+    headStyles: {
+      fillColor: [0, 84, 142],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      overflow: 'linebreak',
+      valign: 'middle',
+      minCellHeight: 8,
+    },
     columnStyles: {
       idx: { cellWidth: 7, halign: 'center' },
       worker: { cellWidth: 34, fontStyle: 'bold' },
@@ -2341,6 +2338,26 @@ export const generatePeriodicReportPDF = async (
       prl: { cellWidth: 12, halign: 'center' }
     },
     margin: { left: 15, right: 15 },
+    didParseCell: (data: any) => {
+      const raw = Array.isArray(data.cell?.text)
+        ? data.cell.text.join(' ')
+        : String(data.cell?.raw ?? data.cell?.text ?? '');
+      const compact = raw.replace(/\s+/g, ' ').trim();
+
+      if (data.section === 'body') {
+        if (compact.length > 90) data.cell.styles.fontSize = 5.4;
+        else if (compact.length > 65) data.cell.styles.fontSize = 5.8;
+        else if (compact.length > 45) data.cell.styles.fontSize = 6.2;
+        data.cell.styles.overflow = 'linebreak';
+        data.cell.styles.valign = 'middle';
+      }
+
+      if (data.section === 'head') {
+        data.cell.styles.fontSize = compact.length > 18 ? 5.8 : 6.4;
+        data.cell.styles.overflow = 'linebreak';
+        data.cell.styles.valign = 'middle';
+      }
+    },
     didDrawPage: (data) => {
       const pageCount = doc.getNumberOfPages();
       doc.setFontSize(7);
@@ -2368,7 +2385,7 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
   // Cabecera institucional común: logotipo visible sobre blanco y título homogéneo.
   renderInstitutionalReportHeader(
     doc,
-    'PROGRAMA PROFEA · INFORME RESUMEN DE OBRA (PIE DE OBRA)'
+    'PROGRAMA PROFEA · INFORME RESUMEN DE OBRA'
   );
 
   // Large Work subtitle Panel
@@ -2491,7 +2508,7 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(0, 84, 142);
-  doc.text('RELACIÓN NOMINAL DE TRABAJADORES A PIE DE OBRA', 15, 105);
+  doc.text('RELACIÓN NOMINAL DE TRABAJADORES POR OBRA', 15, 105);
 
   // Table of ALL workers in this work
   const listCols = [
@@ -2598,8 +2615,6 @@ export const generateMedicalTicketsPDF = async (
   workStartHourDefault: string = '08:00'
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
-  const logoBase64 = await getBase64Image(LOGO_URL);
-
   for (let i = 0; i < workers.length; i++) {
     if (i > 0) {
       doc.addPage();
@@ -2621,48 +2636,12 @@ export const generateMedicalTicketsPDF = async (
     const workerName = '___________________________________________';
     const workerDni = '___________________________';
 
-    // Thin slate frame around the A4 page (aesthetic margins)
-    doc.setDrawColor(226, 232, 240); // slate-200
-    doc.setLineWidth(0.5);
-    doc.roundedRect(10, 10, 190, 277, 4, 4, 'S');
-
-    // Solid top blue bar
-    doc.setFillColor(0, 84, 142);
-    doc.rect(10.5, 10.5, 189, 4, 'F');
-
-    // Header logo & titles
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 142, 16, 52, 8);
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(0, 84, 142);
-    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
-    doc.text(`Supervisor Responsable: ${p.supervisorResponsable || '-'} | Tel: ${supervisorPhone}`, 18, 31.5);
-
-    // Separating line
-    doc.setDrawColor(226, 232, 240);
-    doc.line(18, 36, 192, 36);
-
-    // Title
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(0, 84, 142);
-    doc.text('COMUNICACIÓN DE CITACIÓN PARA RECONOCIMIENTO MÉDICO', 105, 47, { align: 'center' });
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(148, 163, 184);
-    doc.text('(Documento obligatorio para la incorporación al puesto de trabajo)', 105, 52, { align: 'center' });
-
-    // Golden underline accent
-    doc.setFillColor(217, 119, 6); // Amber
-    doc.rect(65, 55, 80, 1, 'F');
+    renderInstitutionalReportHeader(
+      doc,
+      'COMUNICACIÓN DE CITACIÓN PARA RECONOCIMIENTO MÉDICO',
+      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
+    );
 
     // Official text section
     doc.setFont('helvetica', 'bold');
@@ -2743,57 +2722,15 @@ export const generateMedicalTicketsPDF = async (
     printGridItem('INICIO OBRA:', `${diaComienzoFormatted} - ${workStartHourVal} H`, 24, currentY + 38, 75);
     printGridItem('FIN CONTRATO:', diaFinContratoFormatted, 108, currentY + 38, 75);
 
-    // Official footer with copyright (Firma box removed from page 1)
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Documento oficial emitido: ${new Date().toLocaleDateString('es-ES')} | © David Hinojo García | PROFEA - Diputación de Cádiz`, 18, 281);
-
     // --- ANNEX / JUSTIFICANTE PAGE ---
     doc.addPage();
 
-    // Frame
-    doc.setDrawColor(226, 232, 240); // slate-200
-    doc.setLineWidth(0.5);
-    doc.roundedRect(10, 10, 190, 277, 4, 4, 'S');
-
-    // ANNEX / JUSTIFICANTE PAGE
-    // Top blue bar
-    doc.setFillColor(0, 84, 142);
-    doc.rect(10.5, 10.5, 189, 4, 'F');
-
-    // Header logo & titles
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 142, 16, 52, 8);
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(0, 84, 142);
-    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
-    doc.text(`Supervisor Responsable: ${p.supervisorResponsable || '-'} | Tel: ${supervisorPhone}`, 18, 31.5);
-
-    doc.setDrawColor(226, 232, 240);
-    doc.line(18, 36, 192, 36);
-
-    // Title for Justificante
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(0, 84, 142);
-    doc.text('ANEXO: JUSTIFICANTE DE ENTREGA DE CITACIÓN MÉDICA', 105, 47, { align: 'center' });
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(148, 163, 184);
-    doc.text('(Documento de archivo para la entidad contratante - Firmado por el trabajador)', 105, 52, { align: 'center' });
-
-    // Golden underline accent
-    doc.setFillColor(217, 119, 6); // Amber
-    doc.rect(40, 55, 130, 1, 'F');
+    renderInstitutionalReportHeader(
+      doc,
+      'ANEXO · JUSTIFICANTE DE ENTREGA DE CITACIÓN MÉDICA',
+      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      { subtitle: 'ARCHIVO DE CONTRATACIÓN · GESTIÓN DE FONDOS PROFEA' },
+    );
 
     // Section header
     doc.setFont('helvetica', 'bold');
@@ -2864,54 +2801,57 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
 
     annexY += 54;
 
-    // Beautiful Signature Boxes
+    // Bloques de firma compactos y homogéneos: conservan espacio suficiente
+    // para firma manuscrita/sello sin consumir media página innecesariamente.
+    const annexSignatureH = 36;
+
     // Left Box: Worker identity and signature
     doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.4);
-    doc.roundedRect(18, annexY, 84, 52, 2, 2, 'S');
+    doc.roundedRect(18, annexY, 84, annexSignatureH, 2, 2, 'S');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(7.4);
     doc.setTextColor(51, 65, 85);
-    doc.text('DATOS Y FIRMA DEL TRABAJADOR', 22, annexY + 6);
-    doc.line(22, annexY + 8, 98, annexY + 8);
+    doc.text('DATOS Y FIRMA DEL TRABAJADOR', 22, annexY + 5);
+    doc.line(22, annexY + 6.5, 98, annexY + 6.5);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
-    doc.text('Nombre y Apellidos (A MANO):', 22, annexY + 14);
-    doc.text('___________________________________________', 22, annexY + 19);
-    doc.text('DNI / NIE:', 22, annexY + 25);
-    doc.text('___________________________', 22, annexY + 30);
-    doc.text('Firma:', 22, annexY + 36);
+    doc.text('Nombre y apellidos:', 22, annexY + 11);
+    doc.line(22, annexY + 15, 96, annexY + 15);
+    doc.text('DNI / NIE:', 22, annexY + 20);
+    doc.line(42, annexY + 20.5, 96, annexY + 20.5);
+    doc.text('Firma:', 22, annexY + 26);
+    doc.line(37, annexY + 26.5, 96, annexY + 26.5);
     const sigDateStrAnnex = p.diaContratacion ? `Fecha: ${formatDate(p.diaContratacion)}` : 'Fecha: _____ / _____ / ________';
-    doc.text(sigDateStrAnnex, 22, annexY + 47);
+    doc.text(sigDateStrAnnex, 22, annexY + 33);
 
     // Right Box: Supervisor identity and signature
-    doc.roundedRect(108, annexY, 84, 52, 2, 2, 'S');
+    doc.roundedRect(108, annexY, 84, annexSignatureH, 2, 2, 'S');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('SUPERVISOR / ENTIDAD ENTREGADORA', 112, annexY + 6);
-    doc.line(112, annexY + 8, 188, annexY + 8);
+    doc.setFontSize(7.4);
+    doc.text('SUPERVISOR / ENTIDAD ENTREGADORA', 112, annexY + 5);
+    doc.line(112, annexY + 6.5, 188, annexY + 6.5);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
-    doc.text('Entregado por:', 112, annexY + 14);
+    doc.text('Entregado por:', 112, annexY + 11);
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(p.supervisorResponsable ? p.supervisorResponsable.toUpperCase() : 'ENCARGADO DE OBRA', 112, annexY + 19);
+    const supervisorLabel = p.supervisorResponsable ? p.supervisorResponsable.toUpperCase() : 'ENCARGADO DE OBRA';
+    doc.text(doc.splitTextToSize(supervisorLabel, 73).slice(0, 2), 112, annexY + 15, { lineHeightFactor: 0.9 });
 
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
-    doc.text('Firma y Sello:', 112, annexY + 28);
-    const deliveryDateStr = p.diaContratacion ? `Fecha de Entrega: ${formatDate(p.diaContratacion)}` : 'Fecha de Entrega: _____ / _____ / ________';
-    doc.text(deliveryDateStr, 112, annexY + 47);
+    doc.text('Firma y sello:', 112, annexY + 24);
+    doc.line(139, annexY + 24.5, 188, annexY + 24.5);
+    const deliveryDateStr = p.diaContratacion ? `Fecha de entrega: ${formatDate(p.diaContratacion)}` : 'Fecha de entrega: _____ / _____ / ________';
+    doc.text(deliveryDateStr, 112, annexY + 33);
 
-    // Official footer with copyright
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Copia de Control Administrativo | Documento emitido: ${new Date().toLocaleDateString('es-ES')} | © David Hinojo García | PROFEA - Diputación de Cádiz`, 18, 281);
   }
 
   const filename = `NOTIFICACIONES_CITAS_PROFEA_${new Date().toISOString().slice(0, 10)}.pdf`;
@@ -2937,8 +2877,6 @@ export const generateStatsSummaryPDF = async ({
   people = []
 }: GenerateStatsPDFParams) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
-  const logoBase64 = await getBase64Image(LOGO_URL);
-
   const total = stats.total || people.length;
 
   // Criterio de formaciones solicitado:
@@ -2986,54 +2924,15 @@ export const generateStatsSummaryPDF = async ({
     ? 'Todas las Obras'
     : obraFilter.join(', ');
 
-  // Thin outer frame
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(10, 10, 190, 277, 4, 4, 'S');
-
-  // Top blue bar
-  doc.setFillColor(0, 84, 142);
-  doc.rect(10.5, 10.5, 189, 4, 'F');
-
-  // Header logo & titles
-  if (logoBase64) {
-    try {
-      doc.addImage(logoBase64, 'PNG', 142, 16, 52, 8);
-    } catch (e) {
-      console.warn('Logo addition failed', e);
-    }
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(0, 84, 142);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
-  doc.text('Documentación Administrativa Oficial de Resumen Estadístico', 18, 31.5);
-
-  doc.setDrawColor(226, 232, 240);
-  doc.line(18, 35, 192, 35);
-
-  // Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(0, 84, 142);
-  doc.text('INFORME RESUMEN ESTADÍSTICO DE CONTRATACIÓN Y FORMACIÓN', 105, 44, { align: 'center' });
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'italic');
-  doc.setTextColor(100, 116, 139);
-  doc.text('PROGRAMA PROFEA - EVALUACIÓN DE CONTRATACIONES Y NECESIDADES PREVENTIVAS', 105, 49, { align: 'center' });
-
-  // Amber line accent
-  doc.setFillColor(217, 119, 6);
-  doc.rect(40, 52, 130, 1, 'F');
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME RESUMEN ESTADÍSTICO DE CONTRATACIÓN Y FORMACIÓN',
+    filterLabel,
+    { subtitle: 'PROGRAMA PROFEA · EVALUACIÓN DE CONTRATACIONES Y NECESIDADES PREVENTIVAS' },
+  );
 
   // Context Box
-  let currentY = 57;
+  let currentY = 46;
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(18, currentY, 174, 22, 2, 2, 'FD');
@@ -3316,52 +3215,40 @@ export const generateStatsSummaryPDF = async ({
   doc.text('DILIGENCIA: Se expide el presente informe cuantitativo y cualitativo de personal contratado y necesidades de formación preventivas', 18, signY + 3.5);
   doc.text('conforme a los expedientes de contratación registrados oficialmente en la plataforma de gestión PROFEA de la Diputación de Cádiz.', 18, signY + 7);
 
-  const sigBoxY = signY + 10;
+  const sigBoxY = signY + 9;
+  const compactSignatureH = 21;
 
   // Signature box 1
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.4);
-  doc.roundedRect(18, sigBoxY, 82, 25, 2, 2, 'S');
+  doc.roundedRect(18, sigBoxY, 82, compactSignatureH, 2, 2, 'S');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6.7);
   doc.setTextColor(51, 65, 85);
-  doc.text('RESPONSABLE TÉCNICO / SUPERVISOR', 22, sigBoxY + 4.5);
-  doc.line(22, sigBoxY + 6, 96, sigBoxY + 6);
+  doc.text('RESPONSABLE TÉCNICO / SUPERVISOR', 22, sigBoxY + 4);
+  doc.line(22, sigBoxY + 5.4, 96, sigBoxY + 5.4);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('Firma:', 22, sigBoxY + 12);
-  doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 21);
+  doc.text('Firma:', 22, sigBoxY + 10.5);
+  doc.line(36, sigBoxY + 11, 96, sigBoxY + 11);
+  doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 18);
 
   // Signature box 2
-  doc.roundedRect(110, sigBoxY, 82, 25, 2, 2, 'S');
+  doc.roundedRect(110, sigBoxY, 82, compactSignatureH, 2, 2, 'S');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6.3);
   doc.setTextColor(51, 65, 85);
-  doc.text('CONTROL Y GESTIÓN PROFEA (DIPUTACIÓN DE CÁDIZ)', 114, sigBoxY + 4.5);
-  doc.line(114, sigBoxY + 6, 188, sigBoxY + 6);
+  doc.text('CONTROL Y GESTIÓN PROFEA (DIPUTACIÓN DE CÁDIZ)', 114, sigBoxY + 4, { maxWidth: 74 });
+  doc.line(114, sigBoxY + 5.4, 188, sigBoxY + 5.4);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('Sello y Validación:', 114, sigBoxY + 12);
-  doc.text('Fecha: _____ / _____ / ________', 114, sigBoxY + 21);
-
-  // Footer on all pages
-  const totalPages = doc.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `Informe Resumen Estadístico Oficial PROFEA | Emitido: ${new Date().toLocaleDateString('es-ES')} | © David Hinojo García | Página ${i} de ${totalPages}`,
-      105,
-      281,
-      { align: 'center' }
-    );
-  }
+  doc.text('Sello / firma:', 114, sigBoxY + 10.5);
+  doc.line(139, sigBoxY + 11, 188, sigBoxY + 11);
+  doc.text('Fecha: _____ / _____ / ________', 114, sigBoxY + 18);
 
   const cleanFilterStr = filterLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
   const filename = `RESUMEN_ESTADISTICO_PROFEA_${cleanFilterStr}_${new Date().toISOString().slice(0, 10)}.pdf`;

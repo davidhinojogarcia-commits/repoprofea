@@ -30,7 +30,12 @@ import {
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
+import * as pdfjsLib from 'pdfjs-dist';
 import { getBase64Image, OFFICIAL_LOGO_BASE64 } from '../src/lib/exportUtils';
+
+if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
+}
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { recognizeAdministrativePagesFast } from '../src/lib/fastAdministrativeOcr';
 import { detectAdministrativeDataFromText, formatIban, formatSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
@@ -117,8 +122,16 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [isCameraLoading, setIsCameraLoading] = useState(false);
-  const [isMobileCameraDevice, setIsMobileCameraDevice] = useState(false);
-  const [hasLocalCamera, setHasLocalCamera] = useState(false);
+  const [isMobileCameraDevice, setIsMobileCameraDevice] = useState(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    const mobileByUa = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const touchDevice = (navigator.maxTouchPoints || 0) > 0;
+    return mobileByUa || (coarsePointer && touchDevice);
+  });
+  const [hasLocalCamera, setHasLocalCamera] = useState(() => Boolean(
+    typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia
+  ));
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -226,9 +239,9 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       
     } catch (err) {
       console.error("Error iniciando cámara web interactiva:", err);
-      // Fallback to standard device capture
-      fileInputRef.current?.click();
-      onToast("Iniciando captura con cámara nativa del sistema", "success");
+      // Fallback directo a la cámara nativa del sistema.
+      openNativeCameraCapture();
+      onToast("Abriendo la cámara nativa del sistema", "success");
     } finally {
       setIsCameraLoading(false);
     }
@@ -251,13 +264,31 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
 
-  const openThisDeviceCamera = async () => {
-    if (!hasLocalCamera || !navigator.mediaDevices?.getUserMedia) {
-      fileInputRef.current?.click();
-      onToast('Abriendo la cámara nativa disponible en este dispositivo.', 'success');
+  const openNativeCameraCapture = () => {
+    const input = fileInputRef.current;
+    if (!input) {
+      onToast('No se ha podido abrir la cámara nativa del dispositivo.', 'error');
       return;
     }
-    await startLiveCamera('environment');
+    input.value = '';
+    input.click();
+  };
+
+  const openThisDeviceCamera = () => {
+    // En móvil/tablet priorizamos siempre el selector nativo con capture="environment".
+    // iOS y Android lo gestionan mejor que getUserMedia cuando se usa la app/PWA sin QR.
+    if (isMobileCameraDevice) {
+      stopLiveCamera();
+      openNativeCameraCapture();
+      return;
+    }
+
+    if (!hasLocalCamera || !navigator.mediaDevices?.getUserMedia) {
+      openNativeCameraCapture();
+      return;
+    }
+
+    void startLiveCamera('environment');
   };
 
   const captureFrame = () => {
@@ -305,6 +336,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const scannedFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleRemoteCapture = React.useCallback((imageData: string, fileName: string) => {
     const img = new Image();
@@ -347,10 +379,16 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             
             setTimeout(() => {
               if (!isGallery && isContinuous) {
-                onToast(`Página ${nextPages.length} capturada con éxito. Abriendo cámara para la siguiente...`, 'success');
-                setTimeout(() => {
-                  fileInputRef.current?.click();
-                }, 600);
+                if (isMobileCameraDevice) {
+                  // Los navegadores móviles exigen una nueva interacción del usuario para
+                  // volver a abrir la cámara nativa; no forzamos un click diferido.
+                  onToast(`Página ${nextPages.length} capturada con éxito. Pulsa “Capturar con Cámara” para la siguiente.`, 'success');
+                } else {
+                  onToast(`Página ${nextPages.length} capturada con éxito. Abriendo cámara para la siguiente...`, 'success');
+                  setTimeout(() => {
+                    openNativeCameraCapture();
+                  }, 600);
+                }
               } else if (currentCount === totalFiles) {
                 onToast(`${totalFiles} página(s) agregada(s) con éxito`, 'success');
               }
@@ -427,6 +465,77 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         height: height,
       });
     };
+  };
+
+  const compressImageAsync = (base64Str: string, originalName: string) =>
+    new Promise<CapturedPage>((resolve) => compressImage(base64Str, originalName, resolve));
+
+  const handleScannedFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    setIsCameraLoading(true);
+    try {
+      const importedPages: CapturedPage[] = [];
+
+      for (const file of files) {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+        if (isPdf) {
+          const buffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+
+          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 1.6 });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            const context = canvas.getContext('2d');
+            if (!context) continue;
+
+            await page.render({ canvasContext: context, viewport }).promise;
+            const imageData = canvas.toDataURL('image/jpeg', 0.92);
+            importedPages.push(await compressImageAsync(
+              imageData,
+              `${file.name.replace(/\.pdf$/i, '')}_pagina_${pageNumber}.jpg`,
+            ));
+          }
+          continue;
+        }
+
+        if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) {
+          const imageData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => typeof reader.result === 'string'
+              ? resolve(reader.result)
+              : reject(new Error('No se pudo leer la imagen.'));
+            reader.onerror = () => reject(reader.error || new Error('No se pudo leer la imagen.'));
+            reader.readAsDataURL(file);
+          });
+          importedPages.push(await compressImageAsync(imageData, file.name));
+        }
+      }
+
+      if (!importedPages.length) {
+        onToast('El archivo no contiene páginas compatibles. Usa PDF o imágenes.', 'error');
+        return;
+      }
+
+      setPages(current => [...current, ...importedPages]);
+      onToast(
+        importedPages.length === 1
+          ? 'Archivo escaneado añadido y preparado para reconocimiento.'
+          : `${importedPages.length} páginas importadas y preparadas para reconocimiento.`,
+        'success',
+      );
+    } catch (error) {
+      console.error('Error importando archivo ya escaneado:', error);
+      onToast('No se ha podido preparar el archivo escaneado para el reconocimiento.', 'error');
+    } finally {
+      setIsCameraLoading(false);
+      if (scannedFileInputRef.current) scannedFileInputRef.current.value = '';
+    }
   };
 
   const deletePage = (id: string) => {
@@ -994,6 +1103,15 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         className="hidden" 
         id="gallery-capture-input"
       />
+      <input
+        type="file"
+        accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+        multiple
+        ref={scannedFileInputRef}
+        onChange={handleScannedFileImport}
+        className="hidden"
+        id="scanned-file-import-input"
+      />
  
       <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
@@ -1329,12 +1447,14 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
               </div>
 
               {/* Top Actions Block */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 
                 {/* Camera Trigger */}
                 <button
-                  onClick={() => startLiveCamera("environment")}
-                  className="group flex flex-col items-center justify-center p-6 bg-gradient-to-br from-[#00548E] to-[#003860] hover:from-[#006bb5] hover:to-[#00548E] text-white rounded-2xl shadow-md transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
+                  type="button"
+                  onClick={openThisDeviceCamera}
+                  disabled={isCameraLoading}
+                  className="group flex flex-col items-center justify-center p-6 bg-gradient-to-br from-[#00548E] to-[#003860] hover:from-[#006bb5] hover:to-[#00548E] disabled:opacity-60 disabled:cursor-wait text-white rounded-2xl shadow-md transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
                 >
                   {isCameraLoading ? (
                     <Loader2 className="w-8 h-8 mb-2 animate-spin" />
@@ -1342,7 +1462,9 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                     <Camera className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform duration-300" />
                   )}
                   <span className="font-bold text-sm tracking-wide">Capturar con Cámara</span>
-                  <span className="text-[10px] text-blue-100/85 mt-1 font-medium">Activa cámara interactiva en ráfaga</span>
+                  <span className="text-[10px] text-blue-100/85 mt-1 font-medium">
+                    {isMobileCameraDevice ? 'Abre la cámara nativa trasera del teléfono' : 'Activa la cámara interactiva del equipo'}
+                  </span>
                 </button>
 
                 {/* Gallery Upload */}
@@ -1355,13 +1477,29 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                   <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-medium">Permite seleccionar múltiples imágenes</span>
                 </button>
 
+                {/* Previously scanned file upload */}
+                <button
+                  type="button"
+                  onClick={() => scannedFileInputRef.current?.click()}
+                  disabled={isCameraLoading}
+                  className="group flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 disabled:cursor-wait text-slate-700 dark:text-slate-200 rounded-2xl transition-all duration-300 hover:-translate-y-0.5"
+                >
+                  {isCameraLoading ? (
+                    <Loader2 className="w-8 h-8 mb-2 animate-spin text-[#00548E] dark:text-blue-400" />
+                  ) : (
+                    <FileDown className="w-8 h-8 mb-2 text-[#00548E] dark:text-blue-400 group-hover:scale-110 transition-transform duration-300" />
+                  )}
+                  <span className="font-bold text-sm tracking-wide">Subir archivo escaneado</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-medium">PDF o imágenes · se preparan para OCR</span>
+                </button>
+
               </div>
 
               {/* Fallback to traditional capture */}
               <div className="flex justify-center pt-2">
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={openNativeCameraCapture}
                   className="text-xs font-semibold text-[#00548E] dark:text-blue-400 hover:underline flex items-center gap-1.5"
                 >
                   <Camera className="w-3.5 h-3.5" />
@@ -1379,7 +1517,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                   <FileText className="w-16 h-16 text-slate-300 dark:text-slate-700 mb-4 animate-pulse" />
                   <p className="text-base font-bold text-slate-700 dark:text-slate-300">Ninguna página capturada todavía</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 text-center max-w-sm px-4">
-                    Haz clic en el botón de la cámara para capturar la primera página o sube fotos desde tu galería para compilar tu PDF.
+                    Captura una página con la cámara, añade imágenes desde la galería o sube un PDF/archivo escaneado para pasarlo por reconocimiento.
                   </p>
                 </div>
               ) : (

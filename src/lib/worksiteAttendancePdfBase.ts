@@ -3,9 +3,8 @@ import autoTable from "jspdf-autotable";
 import type { Person } from "../../types";
 import type { WorksiteDocumentContext } from "./worksiteDocumentsPdf";
 import {
-  applyPdfFooters,
-  getStoredPdfConfig,
-  renderPdfLogo,
+  applyInstitutionalPdfStandard,
+  renderInstitutionalReportHeader,
 } from "./exportUtils";
 
 const BLUE: [number, number, number] = [0, 84, 142];
@@ -166,40 +165,15 @@ const drawInstitutionalHeader = (
   worker: Person,
   partLabel?: string,
 ) => {
-  const config = getStoredPdfConfig();
-  const width = doc.internal.pageSize.getWidth();
   const range = workerContractRange(worker, context);
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, width, 22, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10.5);
-  doc.setTextColor(...BLUE);
-  doc.text(
-    (config.headerLine1 || "DIPUTACIÓN PROVINCIAL DE CÁDIZ").toUpperCase(),
-    14,
-    8.3,
-  );
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(85, 105, 125);
-  doc.text("COOPERACIÓN · GESTIÓN DE FONDOS PROFEA", 14, 14);
-  renderPdfLogo(doc, width - 68, 4.2, 53, 10.5, true, config.customLogo);
-  doc.setDrawColor(218, 226, 233);
-  doc.line(14, 18.2, width - 14, 18.2);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14.2);
-  doc.setTextColor(...BLUE);
-  doc.text("REGISTRO DIARIO DE JORNADA", width / 2, 27.2, { align: "center" });
-  doc.setFontSize(8.6);
-  doc.text("Control horario individual · periodo contratado", width / 2, 32.4, {
-    align: "center",
-  });
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.4);
-  doc.setTextColor(80, 100, 120);
   const subtitle = `Contrato: ${fmtDateParts(range.start.year, range.start.month, range.start.day)} – ${fmtDateParts(range.end.year, range.end.month, range.end.day)}${partLabel ? ` · ${partLabel}` : ""}`;
-  doc.text(subtitle, width / 2, 36.5, { align: "center" });
-  return 40;
+  renderInstitutionalReportHeader(
+    doc,
+    "REGISTRO DIARIO DE JORNADA",
+    subtitle,
+    { subtitle: "COOPERACIÓN · GESTIÓN DE FONDOS PROFEA" },
+  );
+  return 42;
 };
 
 const drawIdentityBlock = (
@@ -455,7 +429,6 @@ export const generateContractAttendancePdf = (
   context: AttendanceContext,
 ) => {
   const doc = new jsPDF({ orientation: "landscape", format: "a4" });
-  const config = getStoredPdfConfig();
   doc.setProperties({
     title: "REGISTRO DIARIO DE JORNADA · PERIODOS CONTRATADOS",
     author: "Diputación Provincial de Cádiz",
@@ -471,10 +444,7 @@ export const generateContractAttendancePdf = (
     doc.setTextColor(...BLUE);
     doc.text("No hay trabajadores en el periodo seleccionado.", 20, 30);
   }
-  applyPdfFooters(doc, {
-    ...config,
-    footerText: "Diputación de Cádiz · PROFEA · Registro diario de jornada",
-  });
+  applyInstitutionalPdfStandard(doc);
   return {
     doc,
     filename: `REGISTRO_DIARIO_JORNADA_CONTRATOS_${slug(context.obra)}_${slug(context.periodoLabel)}.pdf`,
