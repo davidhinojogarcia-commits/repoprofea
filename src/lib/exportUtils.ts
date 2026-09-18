@@ -903,52 +903,33 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
     return lim.length > 0;
   });
 
-  // Cabecera institucional
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 11);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(110, 120, 135);
-  doc.text(`${config.headerLine2.toUpperCase()} | SERVICIO DE PREVENCIÓN DE RIESGOS LABORALES (PRL)`, 14, 15);
-
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text(`SUPERVISOR: ${supervisorName.toUpperCase()}`, 283, 15, { align: 'right' });
-
-  renderPdfLogo(doc, 231, 4, 52, 10, true, config.customLogo);
-
-  // Título principal con tono preventivo destacado
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(180, 83, 9); // Amber-700
-  doc.text('INFORME DE SITUACIÓN DE TRABAJADORES CON ESPECIAL ATENCIÓN', 14, 23);
-
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(90, 100, 115);
-  doc.text('VIGILANCIA DE LA SALUD Y ADAPTACIÓN DE PUESTOS EN OBRA · PROGRAMA PROFEA', 14, 27);
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME DE SITUACIÓN DE TRABAJADORES CON ESPECIAL ATENCIÓN',
+    `SUPERVISOR: ${supervisorName.toUpperCase()}`,
+    {
+      subtitle: 'VIGILANCIA DE LA SALUD · PREVENCIÓN DE RIESGOS LABORALES · PROFEA',
+      customLogo: config.customLogo,
+    },
+  );
 
   // Cuadro de Confidencialidad y Uso Exclusivo en Obra
   doc.setFillColor(254, 243, 199); // Amber-100
   doc.setDrawColor(245, 158, 11); // Amber-500
   doc.setLineWidth(0.4);
-  doc.roundedRect(14, 30, 269, 13, 2, 2, 'FD');
+  doc.roundedRect(14, 44, 269, 13, 2, 2, 'FD');
 
   doc.setFontSize(7.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(146, 64, 14); // Amber-800
-  doc.text('AVISO DE CONFIDENCIALIDAD Y USO EN OBRA (Art. 22 y 32 bis Ley 31/1995 de Prevención de Riesgos Laborales):', 17, 34);
+  doc.text('AVISO DE CONFIDENCIALIDAD Y USO EN OBRA (Art. 22 y 32 bis Ley 31/1995 de Prevención de Riesgos Laborales):', 17, 48);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(120, 53, 15); // Amber-950
   const noticeText = 'Informe para uso en obra reservado para el encargado de la obra (recurso preventivo). Contiene únicamente las limitaciones físicas y restricciones de aptitud laboral detectadas en los reconocimientos médicos de la plantilla, con la exclusiva finalidad de coordinar la adaptación ergonómica, preventiva y funcional de las tareas en cada obra.';
   const splitNotice = doc.splitTextToSize(noticeText, 263);
-  doc.text(splitNotice, 17, 38);
+  doc.text(splitNotice, 17, 52);
 
   // Barra de métricas resumen
   const uniqueObras = Array.from(new Set(workersWithLimitations.map(p => p.obra?.trim()))).filter(Boolean);
@@ -957,7 +938,7 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(50, 60, 75);
-  doc.text(`Trabajadores con limitaciones detectadas: ${workersWithLimitations.length} | Obras afectadas: ${uniqueObras.length} | Ejercicio: ${currentYear} | Fecha de emisión: ${new Date().toLocaleDateString('es-ES')}`, 14, 47);
+  doc.text(`Trabajadores con limitaciones detectadas: ${workersWithLimitations.length} | Obras afectadas: ${uniqueObras.length} | Ejercicio: ${currentYear} | Fecha de emisión: ${new Date().toLocaleDateString('es-ES')}`, 14, 61);
 
   const tableColumn = [
     "Nº",
@@ -991,7 +972,7 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows.length > 0 ? tableRows : [["-", "No se detectaron trabajadores con limitaciones físicas en la base de datos", "-", "-", "-", "-", "-", "-"]],
-    startY: 50,
+    startY: 65,
     theme: 'grid',
     styles: { 
       fontSize: 7.5, 
@@ -1033,8 +1014,6 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
       fillColor: [255, 251, 235]
     }
   });
-
-  applyPdfFooters(doc, config);
 
   const filename = generateExportFilename('PROFEA_PRL_LIMITACIONES_TECNICO', workersWithLimitations, 'pdf');
   applyInstitutionalPdfStandard(doc);
