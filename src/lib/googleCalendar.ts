@@ -23,6 +23,8 @@ declare global {
 }
 
 const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+
+export const isGoogleCalendarDirectConnectionAvailable = () => Boolean(GOOGLE_CLIENT_ID);
 const GOOGLE_SCOPE = [
   'openid',
   'email',
@@ -196,19 +198,21 @@ export function buildGoogleCalendarWebUrl(eventInput: CalendarEventInput): strin
 
   let datesParam = '';
   if (eventInput.time && eventInput.time.trim()) {
-    const startStr = eventInput.startIsoDate.replace(/-/g, '') + 'T' + eventInput.time.trim().replace(':', '') + '00';
-    const startDate = new Date(`${eventInput.startIsoDate}T${eventInput.time.trim()}:00`);
-    const durationMs = (eventInput.durationMinutes || 60) * 60 * 1000;
-    const endDate = new Date(startDate.getTime() + durationMs);
-    const endIso = endDate.toISOString().replace(/[-:]/g, '').split('.')[0];
-    datesParam = `${startStr}/${endIso}`;
+    const [hours, minutes] = eventInput.time.trim().split(':').map(Number);
+    const durationMinutes = Math.max(15, Number(eventInput.durationMinutes || 60));
+    const startDate = new Date(`${eventInput.startIsoDate}T00:00:00`);
+    startDate.setHours(Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60_000);
+    const formatLocal = (date: Date) =>
+      `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}00`;
+    datesParam = `${formatLocal(startDate)}/${formatLocal(endDate)}`;
   } else {
     const startFormatted = eventInput.startIsoDate.replace(/-/g, '');
-    const endBase = eventInput.endIsoDate ? new Date(eventInput.endIsoDate) : new Date(eventInput.startIsoDate);
+    const endBase = new Date(`${eventInput.endIsoDate || eventInput.startIsoDate}T00:00:00`);
     endBase.setDate(endBase.getDate() + 1);
-    const endFormatted = endBase.toISOString().split('T')[0].replace(/-/g, '');
+    const endFormatted = `${endBase.getFullYear()}${String(endBase.getMonth() + 1).padStart(2, '0')}${String(endBase.getDate()).padStart(2, '0')}`;
     datesParam = `${startFormatted}/${endFormatted}`;
   }
 
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${datesParam}&details=${details}&location=${location}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${datesParam}&details=${details}&location=${location}&ctz=Europe%2FMadrid`;
 }
