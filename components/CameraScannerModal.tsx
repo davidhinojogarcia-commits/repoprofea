@@ -226,9 +226,9 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       
     } catch (err) {
       console.error("Error iniciando cámara web interactiva:", err);
-      // Fallback to standard device capture
-      fileInputRef.current?.click();
-      onToast("Iniciando captura con cámara nativa del sistema", "success");
+      // Fallback directo a la cámara nativa del sistema.
+      openNativeCameraCapture();
+      onToast("Abriendo la cámara nativa del sistema", "success");
     } finally {
       setIsCameraLoading(false);
     }
@@ -251,13 +251,31 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
 
-  const openThisDeviceCamera = async () => {
-    if (!hasLocalCamera || !navigator.mediaDevices?.getUserMedia) {
-      fileInputRef.current?.click();
-      onToast('Abriendo la cámara nativa disponible en este dispositivo.', 'success');
+  const openNativeCameraCapture = () => {
+    const input = fileInputRef.current;
+    if (!input) {
+      onToast('No se ha podido abrir la cámara nativa del dispositivo.', 'error');
       return;
     }
-    await startLiveCamera('environment');
+    input.value = '';
+    input.click();
+  };
+
+  const openThisDeviceCamera = () => {
+    // En móvil/tablet priorizamos siempre el selector nativo con capture="environment".
+    // iOS y Android lo gestionan mejor que getUserMedia cuando se usa la app/PWA sin QR.
+    if (isMobileCameraDevice) {
+      stopLiveCamera();
+      openNativeCameraCapture();
+      return;
+    }
+
+    if (!hasLocalCamera || !navigator.mediaDevices?.getUserMedia) {
+      openNativeCameraCapture();
+      return;
+    }
+
+    void startLiveCamera('environment');
   };
 
   const captureFrame = () => {
@@ -347,10 +365,16 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
             
             setTimeout(() => {
               if (!isGallery && isContinuous) {
-                onToast(`Página ${nextPages.length} capturada con éxito. Abriendo cámara para la siguiente...`, 'success');
-                setTimeout(() => {
-                  fileInputRef.current?.click();
-                }, 600);
+                if (isMobileCameraDevice) {
+                  // Los navegadores móviles exigen una nueva interacción del usuario para
+                  // volver a abrir la cámara nativa; no forzamos un click diferido.
+                  onToast(`Página ${nextPages.length} capturada con éxito. Pulsa “Capturar con Cámara” para la siguiente.`, 'success');
+                } else {
+                  onToast(`Página ${nextPages.length} capturada con éxito. Abriendo cámara para la siguiente...`, 'success');
+                  setTimeout(() => {
+                    openNativeCameraCapture();
+                  }, 600);
+                }
               } else if (currentCount === totalFiles) {
                 onToast(`${totalFiles} página(s) agregada(s) con éxito`, 'success');
               }
@@ -1333,8 +1357,10 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                 
                 {/* Camera Trigger */}
                 <button
-                  onClick={() => startLiveCamera("environment")}
-                  className="group flex flex-col items-center justify-center p-6 bg-gradient-to-br from-[#00548E] to-[#003860] hover:from-[#006bb5] hover:to-[#00548E] text-white rounded-2xl shadow-md transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
+                  type="button"
+                  onClick={openThisDeviceCamera}
+                  disabled={isCameraLoading}
+                  className="group flex flex-col items-center justify-center p-6 bg-gradient-to-br from-[#00548E] to-[#003860] hover:from-[#006bb5] hover:to-[#00548E] disabled:opacity-60 disabled:cursor-wait text-white rounded-2xl shadow-md transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
                 >
                   {isCameraLoading ? (
                     <Loader2 className="w-8 h-8 mb-2 animate-spin" />
@@ -1342,7 +1368,9 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                     <Camera className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform duration-300" />
                   )}
                   <span className="font-bold text-sm tracking-wide">Capturar con Cámara</span>
-                  <span className="text-[10px] text-blue-100/85 mt-1 font-medium">Activa cámara interactiva en ráfaga</span>
+                  <span className="text-[10px] text-blue-100/85 mt-1 font-medium">
+                    {isMobileCameraDevice ? 'Abre la cámara nativa trasera del teléfono' : 'Activa la cámara interactiva del equipo'}
+                  </span>
                 </button>
 
                 {/* Gallery Upload */}
@@ -1361,7 +1389,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
               <div className="flex justify-center pt-2">
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={openNativeCameraCapture}
                   className="text-xs font-semibold text-[#00548E] dark:text-blue-400 hover:underline flex items-center gap-1.5"
                 >
                   <Camera className="w-3.5 h-3.5" />
