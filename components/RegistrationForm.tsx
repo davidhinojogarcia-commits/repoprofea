@@ -4,6 +4,7 @@ import { PlusCircle, FileText, User, Calendar, Briefcase, Phone, Ruler, Award, M
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, normalizeIban, normalizeSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
+import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 
 interface RegistrationFormProps {
   onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>) => void;
@@ -112,9 +113,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   people = []
 }) => {
   const today = new Date();
-  const defaultQType = today.getDate() <= 15 ? '1ª' : '2ª';
-  const defaultQMonth = MONTHS[today.getMonth()];
-  const defaultQYear = today.getFullYear().toString();
+  const nextHiringMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const defaultQType = '1ª';
+  const defaultQMonth = MONTHS[nextHiringMonth.getMonth()];
+  const defaultQYear = nextHiringMonth.getFullYear().toString();
 
   const [formData, setFormData] = useState({
     supervisorResponsable: '',
@@ -144,6 +146,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [qType, setQType] = useState(defaultQType);
   const [qMonth, setQMonth] = useState(defaultQMonth);
   const [qYear, setQYear] = useState(defaultQYear);
+  const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
 
   const [isManualCategory, setIsManualCategory] = useState(false);
 
@@ -167,8 +170,43 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   };
 
   useEffect(() => {
-    setFormData(prev => ({ ...prev, quincena: `${qType} ${qMonth} ${qYear}` }));
-  }, [qType, qMonth, qYear]);
+    let active = true;
+
+    const loadPeriods = async () => {
+      try {
+        const records = await listAnnualHiringPeriods();
+        if (active) setAnnualHiringPeriods(records);
+      } catch (error) {
+        console.error('No se pudieron cargar los periodos anuales de contratación:', error);
+      }
+    };
+
+    const handlePeriodsUpdated = () => {
+      void loadPeriods();
+    };
+
+    void loadPeriods();
+    window.addEventListener('profea:annual-hiring-periods-updated', handlePeriodsUpdated as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener('profea:annual-hiring-periods-updated', handlePeriodsUpdated as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const monthNumber = MONTHS.indexOf(qMonth) + 1;
+    const annuality = annualHiringPeriods.find((record) => record.year === Number(qYear));
+    const monthPeriods = annuality?.months.find((month) => month.month === monthNumber);
+    const periodoInicio = qType === '2ª' ? (monthPeriods?.period2Start || '') : (monthPeriods?.period1Start || '');
+    const periodoFin = qType === '2ª' ? (monthPeriods?.period2End || '') : (monthPeriods?.period1End || '');
+
+    setFormData(prev => ({
+      ...prev,
+      quincena: `${qType} ${qMonth} ${qYear}`,
+      periodoInicio,
+      periodoFin,
+    }));
+  }, [qType, qMonth, qYear, annualHiringPeriods]);
 
   useEffect(() => {
     const handleAdministrativeScan = (event: Event) => {
