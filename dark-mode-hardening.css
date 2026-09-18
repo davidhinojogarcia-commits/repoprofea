@@ -534,10 +534,10 @@ html:not(.dark) #root tbody {
 
 /* Disabled button copy must remain readable in both themes. */
 html:not(.dark) #root button:disabled {
-  color-opacity: 1;
+  opacity: .72;
 }
 .dark #root button:disabled {
-  opacity: .68;
+  opacity: .72;
 }
 
 /* Selection/highlight keeps text readable in both modes. */
