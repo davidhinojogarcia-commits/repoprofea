@@ -37,9 +37,12 @@ import {
   InventoryMaintenance,
   InventoryMovement,
   InventoryPark,
+  InventoryParkInvitation,
+  InventoryParkShare,
   addInventoryDocument,
   addInventoryMaintenance,
   createInventoryDocumentMailLinks,
+  createInventoryParkInvitation,
   deleteInventoryDocument,
   deleteInventoryMovement,
   ensureInventoryReady,
@@ -47,11 +50,15 @@ import {
   listInventoryItems,
   listInventoryMaintenance,
   listInventoryMovements,
+  listInventoryParkInvitations,
+  listInventoryParkShares,
   listInventoryParks,
   parkBaseLocation,
   registerInventoryMovement,
+  respondInventoryParkInvitation,
+  revokeInventoryParkMember,
   saveInventoryItem,
-  shareInventoryParkByEmail,
+  sendInventoryParkInvitationEmail,
   softDeleteInventoryItem,
   updateInventoryMovement,
   updateInventoryPark,
@@ -67,6 +74,18 @@ const MOVEMENT_TYPES = ['Salida a obra', 'Traslado', 'Devolución a nave', 'Aver
 const REQUIRED_MACHINE_DOCS = ['Marcado CE / placa identificativa', 'Declaración CE de conformidad', 'Manual de instrucciones', 'Revisión / comprobación periódica'];
 const BREAKDOWN_NOTICE = '[Aviso mantenimiento preparado]';
 const inputClass = 'w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm';
+
+const SUPERVISOR_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#e11d48', '#4f46e5', '#0f766e'];
+const supervisorColor = (key?: string | null) => {
+  const value = String(key || 'supervisor');
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  return SUPERVISOR_COLORS[Math.abs(hash) % SUPERVISOR_COLORS.length];
+};
+const itemSupervisor = (item: InventoryItem, shares: InventoryParkShare[]) =>
+  item.responsableActual
+    ? shares.find(share => share.status === 'accepted' && share.userId === item.responsableActual) || null
+    : null;
 
 const statusClass = (status: string) => {
   const s = (status || '').toLowerCase();
@@ -138,6 +157,10 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [quickItemId, setQuickItemId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [shareBusy, setShareBusy] = useState(false);
+  const [parkShares, setParkShares] = useState<InventoryParkShare[]>([]);
+  const [incomingInvitations, setIncomingInvitations] = useState<InventoryParkInvitation[]>([]);
+  const [invitationBusyId, setInvitationBusyId] = useState('');
+  const [shareNotice, setShareNotice] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [parkName, setParkName] = useState('');
@@ -148,8 +171,14 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
   const loadParkData = async (selected: InventoryPark) => {
     setPark(selected); setParkName(selected.nombre); setParkZone(selected.zona); setCoordinatorEmail(selected.coordinatorEmail || '');
-    const [i, m, mt, docs] = await Promise.all([listInventoryItems(selected.id), listInventoryMovements(selected.id), listInventoryMaintenance(selected.id), listInventoryDocuments(selected.id)]);
-    setItems(i); setMovements(m); setMaintenance(mt); setDocuments(docs);
+    const [i, m, mt, docs, shares] = await Promise.all([
+      listInventoryItems(selected.id),
+      listInventoryMovements(selected.id),
+      listInventoryMaintenance(selected.id),
+      listInventoryDocuments(selected.id),
+      listInventoryParkShares(selected.id),
+    ]);
+    setItems(i); setMovements(m); setMaintenance(mt); setDocuments(docs); setParkShares(shares);
     const active = i.filter(x => x.activo);
     const requestedId = new URLSearchParams(window.location.search).get('inventoryItem');
     const initialId = requestedId && active.some(x => x.id === requestedId) ? requestedId : active[0]?.id || '';
@@ -161,7 +190,11 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const reload = async (preferredParkId?: string) => {
     setLoading(true); setError('');
     try {
-      const ensured = await ensureInventoryReady();
+      const [ensured, invitations] = await Promise.all([
+        ensureInventoryReady(),
+        listInventoryParkInvitations(),
+      ]);
+      setIncomingInvitations(invitations);
       const all = await listInventoryParks();
       setParks(all);
       const selected = all.find(p => p.id === preferredParkId) || all.find(p => p.id === park?.id) || all.find(p => p.id === ensured.id) || all[0];
@@ -219,6 +252,64 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     finally { setParkSaving(false); }
   };
 
+  const inviteSupervisor = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!park || !shareEmail.trim()) return;
+    setShareBusy(true);
+    setShareNotice(null);
+    try {
+      const invitation = await createInventoryParkInvitation(park.id, shareEmail);
+      setShareEmail('');
+      try {
+        await sendInventoryParkInvitationEmail(invitation.invitationId);
+        setShareNotice({
+          type: 'success',
+          message: `Invitación enviada a ${invitation.email}. El parque se compartirá cuando el compañero la acepte.`,
+        });
+      } catch (mailError: any) {
+        setShareNotice({
+          type: 'warning',
+          message: `Invitación creada para ${invitation.email}. El acceso sigue pendiente, pero el correo automático no pudo enviarse: ${mailError?.message || 'servicio de correo no configurado'}.`,
+        });
+      }
+      await loadParkData(park);
+    } catch (err: any) {
+      setShareNotice({ type: 'error', message: err?.message || 'No se pudo crear la invitación.' });
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const answerInvitation = async (invitation: InventoryParkInvitation, accept: boolean) => {
+    setInvitationBusyId(invitation.invitationId);
+    try {
+      await respondInventoryParkInvitation(invitation.invitationId, accept);
+      setShareNotice({
+        type: 'success',
+        message: accept
+          ? `Has aceptado compartir ${invitation.parkZone} · ${invitation.parkName}. El acceso queda guardado hasta que se revoque.`
+          : `Has rechazado la invitación a ${invitation.parkZone} · ${invitation.parkName}.`,
+      });
+      await reload(accept ? invitation.parkId : park?.id);
+    } catch (err: any) {
+      setShareNotice({ type: 'error', message: err?.message || 'No se pudo responder a la invitación.' });
+    } finally {
+      setInvitationBusyId('');
+    }
+  };
+
+  const revokeShare = async (share: InventoryParkShare) => {
+    if (!park || !share.userId || share.isOwner) return;
+    if (!window.confirm(`¿Revocar el acceso de ${share.displayName} a este parque?`)) return;
+    try {
+      await revokeInventoryParkMember(park.id, share.userId);
+      setShareNotice({ type: 'success', message: `Acceso revocado a ${share.displayName}.` });
+      await reload(park.id);
+    } catch (err: any) {
+      setShareNotice({ type: 'error', message: err?.message || 'No se pudo revocar el acceso.' });
+    }
+  };
+
   const removeMovement = async (movement: InventoryMovement) => {
     if (!park || !confirm('¿Eliminar este movimiento? El cambio quedará registrado internamente en la auditoría.')) return;
     try { await deleteInventoryMovement(movement.id); await reload(park.id); }
@@ -231,12 +322,72 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     <PageHeader eyebrow={`${park?.zona || 'Zona'} · ${park?.isOwned === false ? 'Parque compartido' : 'Parque propio'}`} title="Herramientas y maquinaria" description="Gestión rápida de equipos, documentación, mantenimiento y trazabilidad." icon={<Wrench className="h-5 w-5" />} />
     {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"><AlertTriangle className="inline w-4 h-4 mr-2" />{error}</div>}
 
+    {!!incomingInvitations.length && (
+      <div className="space-y-2">
+        {incomingInvitations.map(invitation => (
+          <div key={invitation.invitationId} className="rounded-2xl border border-blue-200 bg-blue-50/80 dark:border-blue-900 dark:bg-blue-950/30 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <div className="font-black text-sm">Invitación para compartir parque</div>
+              <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                <b>{invitation.inviterName}</b> quiere compartir contigo <b>{invitation.parkZone} · {invitation.parkName}</b>.
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                Si aceptas, el parque permanecerá disponible en tu cuenta hasta que se revoque el acceso.
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={invitationBusyId === invitation.invitationId}
+                onClick={() => void answerInvitation(invitation, false)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-bold"
+              >
+                Rechazar
+              </button>
+              <button
+                type="button"
+                disabled={invitationBusyId === invitation.invitationId}
+                onClick={() => void answerInvitation(invitation, true)}
+                className="rounded-xl bg-brand-primary text-white px-4 py-2.5 text-xs font-black"
+              >
+                {invitationBusyId === invitation.invitationId ? 'Procesando…' : 'Aceptar y compartir'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {shareNotice && (
+      <div className={`rounded-xl border px-4 py-3 text-xs font-semibold ${
+        shareNotice.type === 'success'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-200'
+          : shareNotice.type === 'warning'
+            ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-200'
+            : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/25 dark:text-red-200'
+      }`}>
+        {shareNotice.message}
+      </div>
+    )}
+
     <div className="md:hidden sticky top-2 z-30 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur p-3 shadow-lg">
       <select className={`${inputClass} font-bold`} value={quickItem?.id || ''} onChange={e => setQuickItemId(e.target.value)}>{activeItems.map(i => <option key={i.id} value={i.id}>{equipmentLabel(i)}</option>)}</select>
       {quickItem && <div className="mt-2 flex items-center justify-between gap-2"><div className="min-w-0"><div className="text-xs truncate text-slate-500">{quickItem.ubicacionActual}</div><span className={`inline-flex mt-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass(quickItem.estado)}`}>{quickItem.estado}</span></div><div className="grid grid-cols-4 gap-1.5 shrink-0"><Action title="Mover" onClick={() => setMovementItem(quickItem)} icon={<Truck />} /><Action title="Foto/estado" onClick={() => setMovementItem(quickItem)} icon={<Camera />} /><Action title="Trazabilidad" onClick={() => { setTraceItemId(quickItem.id); setTab('trazabilidad'); }} icon={<MapPinned />} /><Action title="Documentos" onClick={() => { setDocumentItem(quickItem); setTab('documentacion'); }} icon={<FolderOpen />} /></div></div>}
     </div>
 
     <div className="grid grid-cols-4 gap-2"><Kpi label="Equipos" value={kpis.total} /><Kpi label="Disponibles" value={kpis.disponibles} /><Kpi label="En curso" value={kpis.curso} /><Kpi label="Incidencias" value={kpis.incidencias} /></div>
+
+    {parkShares.filter(share => share.status === 'accepted').length > 1 && (
+      <div className="ui-surface p-3 flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider font-black text-slate-400 mr-1">Supervisores del parque</span>
+        {parkShares.filter(share => share.status === 'accepted').map(share => (
+          <span key={share.participantKey} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-[11px] font-bold">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: supervisorColor(share.userId) }} />
+            {share.displayName}{share.isOwner ? ' · propietario' : ''}
+          </span>
+        ))}
+      </div>
+    )}
 
     <div className="grid grid-cols-2 sm:flex gap-2">
       <button onClick={() => setEditingItem({ codigo: '', categoria: '', nombre: '', cantidad: 1, tipoGestion: 'individual', estado: 'Disponible', ubicacionActual: baseLocation, detalles: {}, observaciones: '', activo: true })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-3 text-sm font-bold"><Plus className="w-4 h-4" />Nuevo equipo</button>
@@ -247,8 +398,79 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       <summary className="cursor-pointer list-none flex items-center justify-between font-black text-sm"><span>Parque, zona y uso compartido</span><span className="text-xs text-slate-400 group-open:hidden">Configurar</span></summary>
       <div className="pt-4 space-y-4">
         <div className="grid sm:grid-cols-3 gap-3"><Field label="Parque visible"><select className={inputClass} value={park?.id || ''} onChange={async e => { const p = parks.find(x => x.id === e.target.value); if (p) { setLoading(true); try { await loadParkData(p); } finally { setLoading(false); } } }}>{parks.map(p => <option key={p.id} value={p.id}>{p.zona} · {p.nombre}{p.isOwned === false ? ' · Compartido' : ''}</option>)}</select></Field><Field label="Nombre"><input className={inputClass} value={parkName} onChange={e => setParkName(e.target.value)} /></Field><Field label="Zona"><select className={inputClass} value={parkZone} onChange={e => setParkZone(e.target.value)}>{INVENTORY_ZONES.map(z => <option key={z}>{z}</option>)}</select></Field></div>
-        <div className="grid lg:grid-cols-2 gap-3"><Field label="Correo coordinador / responsable de mecánica"><input type="email" className={inputClass} value={coordinatorEmail} onChange={e => setCoordinatorEmail(e.target.value)} placeholder="mantenimiento@..." /></Field><form className="flex gap-2 items-end" onSubmit={async e => { e.preventDefault(); if (!park || !shareEmail.trim()) return; setShareBusy(true); try { await shareInventoryParkByEmail(park.id, shareEmail); setShareEmail(''); await reload(park.id); } catch (err: any) { alert(err?.message || 'No se pudo compartir el parque.'); } finally { setShareBusy(false); } }}><div className="flex-1"><Field label="Compartir con supervisor"><input type="email" className={inputClass} value={shareEmail} onChange={e => setShareEmail(e.target.value)} /></Field></div><button disabled={shareBusy} className="h-[42px] rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4"><Share2 className="w-4 h-4" /></button></form></div>
-        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-200">Este correo se utiliza también para preparar automáticamente el aviso cuando una máquina se registra como averiada en obra.</div>
+        <div className="grid lg:grid-cols-2 gap-3">
+          <Field label="Correo coordinador / responsable de mecánica">
+            <input type="email" className={inputClass} value={coordinatorEmail} onChange={e => setCoordinatorEmail(e.target.value)} placeholder="mantenimiento@..." />
+          </Field>
+          <form className="flex gap-2 items-end" onSubmit={inviteSupervisor}>
+            <div className="flex-1">
+              <Field label="Invitar supervisor al parque">
+                <input
+                  type="email"
+                  required
+                  className={inputClass}
+                  value={shareEmail}
+                  onChange={e => setShareEmail(e.target.value)}
+                  placeholder="correo.corporativo@..."
+                />
+              </Field>
+            </div>
+            <button
+              disabled={shareBusy}
+              className="h-[42px] rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 inline-flex items-center gap-2 font-bold text-xs"
+            >
+              <Share2 className="w-4 h-4" />
+              {shareBusy ? 'Enviando…' : 'Invitar'}
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-200">
+          La invitación no concede acceso automáticamente. El compañero debe aceptarla con su cuenta corporativa. Tras aceptarla, el parque queda compartido de forma permanente hasta revocación.
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
+            <div className="font-black text-sm">Personas con acceso al parque</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Los colores identifican quién está usando cada equipo.</div>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {parkShares.map(share => (
+              <div key={share.participantKey} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`w-3 h-3 rounded-full shrink-0 ${share.status === 'pending' ? 'opacity-35' : ''}`}
+                    style={{ backgroundColor: share.status === 'pending' ? '#94a3b8' : supervisorColor(share.userId) }}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold truncate">{share.displayName}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{share.email}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                    share.status === 'pending'
+                      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
+                  }`}>
+                    {share.isOwner ? 'Propietario' : share.status === 'pending' ? 'Pendiente' : 'Aceptado'}
+                  </span>
+                  {!share.isOwner && share.status === 'accepted' && (
+                    <button
+                      type="button"
+                      onClick={() => void revokeShare(share)}
+                      className="rounded-lg border border-red-200 dark:border-red-900 px-2.5 py-1.5 text-[10px] font-bold text-red-700 dark:text-red-300"
+                    >
+                      Revocar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {!parkShares.length && <div className="px-4 py-3 text-xs text-slate-500">No hay participantes registrados.</div>}
+          </div>
+        </div>
+
         <button onClick={() => void saveParkConfig()} disabled={parkSaving} className="inline-flex items-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-2.5 text-sm font-bold"><Save className="w-4 h-4" />Guardar configuración</button>
       </div>
     </details>
@@ -257,8 +479,8 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       ['resumen', 'Resumen', ClipboardList], ['inventario', 'Inventario', Boxes], ['movimientos', 'Movimientos', History], ['mantenimiento', 'Mantenimiento', Stethoscope], ['documentacion', 'Documentos', FileCheck2], ['trazabilidad', 'Trazabilidad', MapPinned],
     ] as [Tab, string, React.ElementType][]).map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold border ${tab === id ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}><Icon className="w-4 h-4" />{label}</button>)}</div></div>
 
-    {tab === 'resumen' && <SummaryView items={activeItems} movements={movements} documents={documents} onOpenItem={id => { setTraceItemId(id); setTab('trazabilidad'); }} />}
-    {tab === 'inventario' && <InventoryView items={filtered} documents={documents} categories={categories} search={search} category={category} status={status} setSearch={setSearch} setCategory={setCategory} setStatus={setStatus} onMove={setMovementItem} onMaintenance={setMaintenanceItem} onDocument={i => { setDocumentItem(i); setTab('documentacion'); }} onEdit={i => setEditingItem({ ...i })} onQr={openQr} onTrace={i => { setTraceItemId(i.id); setTab('trazabilidad'); }} onDelete={async i => { if (!park || !confirm(`¿Dar de baja ${i.nombre}?`)) return; await softDeleteInventoryItem(i.id); await reload(park.id); }} />}
+    {tab === 'resumen' && <SummaryView items={activeItems} movements={movements} documents={documents} shares={parkShares} onOpenItem={id => { setTraceItemId(id); setTab('trazabilidad'); }} />}
+    {tab === 'inventario' && <InventoryView items={filtered} documents={documents} shares={parkShares} categories={categories} search={search} category={category} status={status} setSearch={setSearch} setCategory={setCategory} setStatus={setStatus} onMove={setMovementItem} onMaintenance={setMaintenanceItem} onDocument={i => { setDocumentItem(i); setTab('documentacion'); }} onEdit={i => setEditingItem({ ...i })} onQr={openQr} onTrace={i => { setTraceItemId(i.id); setTab('trazabilidad'); }} onDelete={async i => { if (!park || !confirm(`¿Dar de baja ${i.nombre}?`)) return; await softDeleteInventoryItem(i.id); await reload(park.id); }} />}
     {tab === 'movimientos' && <MovementsView movements={movements} items={items} onTrace={id => { setTraceItemId(id); setTab('trazabilidad'); }} onEdit={setEditingMovement} onDelete={removeMovement} />}
     {tab === 'mantenimiento' && <MaintenanceView maintenance={maintenance} items={activeItems} onAdd={setMaintenanceItem} />}
     {tab === 'documentacion' && park && <DocumentsView park={park} items={activeItems} documents={documents} selectedItem={documentItem} setSelectedItem={setDocumentItem} onReload={() => reload(park.id)} />}
