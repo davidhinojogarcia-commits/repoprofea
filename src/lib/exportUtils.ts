@@ -2116,6 +2116,65 @@ export const generatePeriodicReportPDF = async (
   zonaName?: string
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+
+  const drawFittedText = (
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    maxHeight: number,
+    options: {
+      maxFontSize?: number;
+      minFontSize?: number;
+      fontStyle?: 'normal' | 'bold' | 'italic' | 'bolditalic';
+      align?: 'left' | 'center' | 'right';
+      color?: [number, number, number];
+      lineHeightFactor?: number;
+    } = {},
+  ) => {
+    const value = String(text || '-').replace(/\s+/g, ' ').trim();
+    const maxFontSize = options.maxFontSize ?? 8;
+    const minFontSize = options.minFontSize ?? 5.2;
+    const lineHeightFactor = options.lineHeightFactor ?? 1.08;
+    const align = options.align ?? 'left';
+    const fontStyle = options.fontStyle ?? 'normal';
+
+    doc.setFont('helvetica', fontStyle);
+    if (options.color) doc.setTextColor(...options.color);
+
+    let fontSize = maxFontSize;
+    let lines: string[] = [];
+    let lineHeightMm = 0;
+
+    while (fontSize >= minFontSize) {
+      doc.setFontSize(fontSize);
+      lines = doc.splitTextToSize(value, maxWidth) as string[];
+      lineHeightMm = (fontSize * 0.352778) * lineHeightFactor;
+      const requiredHeight = Math.max(lineHeightMm, lines.length * lineHeightMm);
+      if (requiredHeight <= maxHeight) break;
+      fontSize = Math.max(minFontSize, fontSize - 0.35);
+      if (fontSize === minFontSize) {
+        doc.setFontSize(fontSize);
+        lines = doc.splitTextToSize(value, maxWidth) as string[];
+        lineHeightMm = (fontSize * 0.352778) * lineHeightFactor;
+        break;
+      }
+    }
+
+    const maxLines = Math.max(1, Math.floor(maxHeight / Math.max(lineHeightMm, 0.1)));
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      const last = lines.length - 1;
+      let tail = String(lines[last] || '').trim();
+      while (tail && doc.getTextWidth(`${tail}…`) > maxWidth) tail = tail.slice(0, -1);
+      lines[last] = `${tail || ''}…`;
+    }
+
+    const anchorX = align === 'center' ? x + maxWidth / 2 : align === 'right' ? x + maxWidth : x;
+    doc.text(lines, anchorX, y, { align, lineHeightFactor });
+    return { fontSize, lines };
+  };
+
   const totalContracts = filteredPeople.length;
   const uniqueDnis = new Set(filteredPeople.map(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, ''))).size;
   const uniqueObras = new Set(filteredPeople.map(p => p.obra.trim()).filter(Boolean)).size;
@@ -2142,16 +2201,17 @@ export const generatePeriodicReportPDF = async (
   );
 
   // Large Period subtitle
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`PERIODO DE ANÁLISIS: ${periodLabel.toUpperCase()}`, 15, 52);
+  drawFittedText(
+    `PERIODO DE ANÁLISIS: ${periodLabel.toUpperCase()}`,
+    15, 52, 180, 7.5,
+    { maxFontSize: 13, minFontSize: 8.5, fontStyle: 'bold', color: [15, 23, 42] },
+  );
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Este documento formal consolida las contrataciones efectuadas bajo las condiciones de búsqueda seleccionadas,', 15, 57);
-  doc.text('desglosando datos demográficos de la plantilla, proyectos asignados y certificaciones médicas/PRL.', 15, 61);
+  drawFittedText(
+    'Este documento formal consolida las contrataciones efectuadas bajo las condiciones de búsqueda seleccionadas, desglosando datos demográficos de la plantilla, proyectos asignados y certificaciones médicas/PRL.',
+    15, 57, 180, 8,
+    { maxFontSize: 8.5, minFontSize: 6.2, color: [100, 116, 139], lineHeightFactor: 1.12 },
+  );
 
   // Draw 4 aesthetic KPI cards
   const drawKpiCard = (title: string, value: string, x: number, y: number, w: number, h: number, description: string) => {
@@ -2161,27 +2221,21 @@ export const generatePeriodicReportPDF = async (
     doc.setLineWidth(0.4);
     doc.roundedRect(x, y, w, h, 2.5, 2.5, 'FD');
 
-    // Title label
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text(title, x + 4, y + 5.5);
+    drawFittedText(title, x + 4, y + 5.2, w - 8, 3.2, {
+      maxFontSize: 7.5, minFontSize: 5.4, color: [100, 116, 139],
+    });
 
-    // Huge bold value
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(0, 84, 142);
-    doc.text(value, x + 4, y + 13.5);
+    drawFittedText(value, x + 4, y + 13.2, w - 8, 5.2, {
+      maxFontSize: 14, minFontSize: 8, fontStyle: 'bold', color: [0, 84, 142],
+    });
 
     // Decorative mini-line
     doc.setFillColor(0, 84, 142);
     doc.rect(x + 4, y + 16, 10, 0.6, 'F');
 
-    // Bottom tiny caption
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(6.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(description, x + 4, y + 21);
+    drawFittedText(description, x + 4, y + 20.7, w - 8, 2.8, {
+      maxFontSize: 6.5, minFontSize: 4.8, fontStyle: 'italic', color: [148, 163, 184],
+    });
   };
 
   const cardW = 33;
@@ -2225,8 +2279,8 @@ export const generatePeriodicReportPDF = async (
     body: obraBreakdown,
     startY: 106,
     theme: 'striped',
-    styles: { fontSize: 7.5 },
-    headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold' },
+    styles: { fontSize: 7.5, overflow: 'linebreak', cellPadding: 1.8, valign: 'middle' },
+    headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold', overflow: 'linebreak' },
     margin: { left: 15, right: 15 },
     tableWidth: 'auto'
   });
@@ -2262,8 +2316,8 @@ export const generatePeriodicReportPDF = async (
     body: catBreakdown,
     startY: finalYOfObraTable + 4,
     theme: 'grid',
-    styles: { fontSize: 7.5 },
-    headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold' },
+    styles: { fontSize: 7.5, overflow: 'linebreak', cellPadding: 1.8, valign: 'middle' },
+    headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold', overflow: 'linebreak' },
     margin: { left: 15, right: 15 },
     tableWidth: 'auto'
   });
@@ -2281,10 +2335,11 @@ export const generatePeriodicReportPDF = async (
   renderPdfLogo(doc, 153, 3, 42, 7, true);
   doc.setFillColor(0, 84, 142);
   doc.rect(0, 14, 210, 7, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text(`REGISTRO COMPLETO DE CONTRATACIONES · ${periodLabel.toUpperCase()}`, 15, 18.5);
+  drawFittedText(
+    `REGISTRO COMPLETO DE CONTRATACIONES · ${periodLabel.toUpperCase()}`,
+    15, 18.3, 180, 4,
+    { maxFontSize: 7.5, minFontSize: 5.4, fontStyle: 'bold', color: [255, 255, 255] },
+  );
   doc.setFillColor(56, 189, 248);
   doc.rect(0, 21, 210, 1, 'F');
 
@@ -2328,8 +2383,21 @@ export const generatePeriodicReportPDF = async (
     body: listRows,
     startY: 32,
     theme: 'striped',
-    styles: { fontSize: 7, cellPadding: 2 },
-    headStyles: { fillColor: [0, 84, 142], textColor: [255, 255, 255], fontStyle: 'bold' },
+    styles: {
+      fontSize: 7,
+      cellPadding: 1.6,
+      overflow: 'linebreak',
+      valign: 'middle',
+      minCellHeight: 6,
+    },
+    headStyles: {
+      fillColor: [0, 84, 142],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      overflow: 'linebreak',
+      valign: 'middle',
+      minCellHeight: 8,
+    },
     columnStyles: {
       idx: { cellWidth: 7, halign: 'center' },
       worker: { cellWidth: 34, fontStyle: 'bold' },
@@ -2341,6 +2409,26 @@ export const generatePeriodicReportPDF = async (
       prl: { cellWidth: 12, halign: 'center' }
     },
     margin: { left: 15, right: 15 },
+    didParseCell: (data: any) => {
+      const raw = Array.isArray(data.cell?.text)
+        ? data.cell.text.join(' ')
+        : String(data.cell?.raw ?? data.cell?.text ?? '');
+      const compact = raw.replace(/\s+/g, ' ').trim();
+
+      if (data.section === 'body') {
+        if (compact.length > 90) data.cell.styles.fontSize = 5.4;
+        else if (compact.length > 65) data.cell.styles.fontSize = 5.8;
+        else if (compact.length > 45) data.cell.styles.fontSize = 6.2;
+        data.cell.styles.overflow = 'linebreak';
+        data.cell.styles.valign = 'middle';
+      }
+
+      if (data.section === 'head') {
+        data.cell.styles.fontSize = compact.length > 18 ? 5.8 : 6.4;
+        data.cell.styles.overflow = 'linebreak';
+        data.cell.styles.valign = 'middle';
+      }
+    },
     didDrawPage: (data) => {
       const pageCount = doc.getNumberOfPages();
       doc.setFontSize(7);
