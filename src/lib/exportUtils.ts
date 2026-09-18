@@ -2456,7 +2456,7 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
   // Cabecera institucional común: logotipo visible sobre blanco y título homogéneo.
   renderInstitutionalReportHeader(
     doc,
-    'PROGRAMA PROFEA · INFORME RESUMEN DE OBRA (PIE DE OBRA)'
+    'PROGRAMA PROFEA · INFORME RESUMEN DE OBRA'
   );
 
   // Large Work subtitle Panel
@@ -2579,7 +2579,7 @@ export const generateObraSummaryPDF = async (obraName: string, workers: Person[]
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(0, 84, 142);
-  doc.text('RELACIÓN NOMINAL DE TRABAJADORES A PIE DE OBRA', 15, 105);
+  doc.text('RELACIÓN NOMINAL DE TRABAJADORES POR OBRA', 15, 105);
 
   // Table of ALL workers in this work
   const listCols = [
