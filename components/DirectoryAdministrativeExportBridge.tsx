@@ -92,11 +92,13 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       row.className = 'directorio-export-row flex items-center justify-end gap-2';
       row.innerHTML = `
         <span class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación administrativa de trabajadores:</span>
-        <button type="button" data-admin-export="pdf" class="w-[112px] flex-none flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-300 dark:border-rose-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">▣&nbsp; PDF</button>
-        <button type="button" data-admin-export="excel" class="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">⇩&nbsp; Excel</button>`;
+        <button type="button" data-admin-export="pdf" class="w-[112px] flex-none flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-300 dark:border-rose-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border"><svg viewBox="0 0 24 24" width="12" height="12" class="mr-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>PDF</button>
+        <button type="button" data-admin-export="excel" class="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border"><svg viewBox="0 0 24 24" width="12" height="12" class="mr-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Excel</button>`;
       row.querySelector('[data-admin-export="pdf"]')?.addEventListener('click', () => void exportData('pdf'));
       row.querySelector('[data-admin-export="excel"]')?.addEventListener('click', () => void exportData('excel'));
-      group.prepend(row);
+      const encargadosRow = group.querySelector('[data-encargados-relation-row="1"]');
+      if (encargadosRow) encargadosRow.after(row);
+      else group.prepend(row);
     };
 
     ensureRowsAndLabels();
