@@ -18,7 +18,6 @@ const isRenounced = (p: Person) => {
   const row = p as any;
   return String(row.estadoContratacion || '').toLowerCase() === 'renuncia' || String(row.codigoSaeResultado || '') === '2100';
 };
-const renunciationLabel = (p: Person) => isRenounced(p) ? 'RENUNCIA · SAE 2100' : 'NO';
 const aptitudLabel = (p: Person) => {
   const { estado, limitaciones, validez } = getAptitudMedicaInfo(p);
   if (estado === 'Apto con limitaciones') return `APTO C/ LIMITACIONES\n${limitaciones || 'Sin detalle'}\nVálido ${validez}`;
@@ -58,19 +57,17 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
     'CONTACTO',
     'APTITUD MÉDICA',
     'Nº SEGURIDAD SOCIAL',
-    'CUENTA BANCARIA / IBAN',
-    'RENUNCIA'
+    'CUENTA BANCARIA / IBAN'
   ]];
 
   const body = people.map(p => [
     `${p.numOferta || '—'}\n${p.categoria || '—'}`,
-    `${p.apellidosNombre || '—'}\n${p.dni || '—'}\nNac.: ${formatDate(p.fechaNacimiento)}`,
+    `${p.apellidosNombre || '—'}\n${p.dni || '—'}\nNac.: ${formatDate(p.fechaNacimiento)}${isRenounced(p) ? '\nRENUNCIA' : ''}`,
     `Del ${formatDate(p.periodoInicio)}\nAl ${formatDate(p.periodoFin)}`,
     `${p.telefono || '—'}\n${p.obra || '—'}`,
     aptitudLabel(p),
     p.numeroSeguridadSocial ? formatSpanishSocialSecurityNumber(p.numeroSeguridadSocial) : '—',
     p.iban ? formatIban(p.iban) : '—',
-    renunciationLabel(p),
   ]);
 
   autoTable(doc, {
@@ -81,14 +78,13 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
     styles: { fontSize: 6.4, cellPadding: 1.8, valign: 'middle', overflow: 'linebreak' },
     headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 6.4 },
     columnStyles: {
-      0: { cellWidth: 29, halign: 'center' },
-      1: { cellWidth: 49 },
-      2: { cellWidth: 31, halign: 'center' },
-      3: { cellWidth: 37 },
-      4: { cellWidth: 43 },
-      5: { cellWidth: 34 },
-      6: { cellWidth: 44 },
-      7: { cellWidth: 28, halign: 'center' },
+      0: { cellWidth: 31, halign: 'center' },
+      1: { cellWidth: 58 },
+      2: { cellWidth: 34, halign: 'center' },
+      3: { cellWidth: 39 },
+      4: { cellWidth: 45 },
+      5: { cellWidth: 36 },
+      6: { cellWidth: 46 },
     },
     alternateRowStyles: { fillColor: LIGHT_BLUE },
     didParseCell: data => {
@@ -125,13 +121,13 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
     const imageId = workbook.addImage({ base64: logo, extension: 'png' });
     worksheet.addImage(imageId, { tl: { col: 0.2, row: 0.2 }, ext: { width: 195, height: 30 } });
   }
-  worksheet.mergeCells('C1:H1');
+  worksheet.mergeCells('C1:G1');
   const institution = worksheet.getCell('C1');
   institution.value = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ · GESTIÓN DE FONDOS PROFEA';
   institution.font = { name: 'Arial', bold: true, size: 10, color: { argb: BLUE_HEX } };
   institution.alignment = { horizontal: 'right' };
 
-  worksheet.mergeCells('A4:H4');
+  worksheet.mergeCells('A4:G4');
   const title = worksheet.getCell('A4');
   title.value = 'RELACIÓN ADMINISTRATIVA DE TRABAJADORES';
   title.font = { name: 'Arial', bold: true, size: 16, color: { argb: BLUE_HEX } };
@@ -139,13 +135,12 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
 
   const headers = [
     ['OFERTA / CAT.', 20],
-    ['TRABAJADOR / DNI / NACIMIENTO', 42],
+    ['TRABAJADOR / DNI / NACIMIENTO', 48],
     ['PERIODO CONTRATO', 25],
     ['CONTACTO', 34],
     ['APTITUD MÉDICA', 34],
     ['Nº SEGURIDAD SOCIAL', 23],
-    ['CUENTA BANCARIA / IBAN', 34],
-    ['RENUNCIA', 22],
+    ['CUENTA BANCARIA / IBAN', 36],
   ] as const;
   const headerRow = worksheet.getRow(6);
   headers.forEach(([label, width], index) => {
@@ -162,13 +157,12 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
   people.forEach((p, index) => {
     const row = worksheet.addRow([
       `${p.numOferta || '—'}\n${p.categoria || '—'}`,
-      `${p.apellidosNombre || '—'}\n${p.dni || '—'}\nNac.: ${formatDate(p.fechaNacimiento)}`,
+      `${p.apellidosNombre || '—'}\n${p.dni || '—'}\nNac.: ${formatDate(p.fechaNacimiento)}${isRenounced(p) ? '\nRENUNCIA' : ''}`,
       `Del ${formatDate(p.periodoInicio)} al ${formatDate(p.periodoFin)}`,
       `${p.telefono || '—'}\n${p.obra || '—'}`,
       aptitudLabel(p),
       p.numeroSeguridadSocial ? formatSpanishSocialSecurityNumber(p.numeroSeguridadSocial) : '—',
       p.iban ? formatIban(p.iban) : '—',
-      renunciationLabel(p),
     ]);
     row.height = 42;
     row.eachCell(cell => {
