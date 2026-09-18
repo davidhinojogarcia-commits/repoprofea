@@ -163,6 +163,53 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
     });
   }, [people, filterObra, filterQuincena, searchQuery]);
 
+  const googleCalendarEvents = useMemo<CalendarEventInput[]>(() => {
+    const monthPrefix = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    const result: CalendarEventInput[] = [];
+
+    filteredPeople.forEach(person => {
+      const appointment = toIsoDate(person.citaDia);
+      if ((filterEventType === 'ALL' || filterEventType === 'CITAS') && appointment?.startsWith(monthPrefix)) {
+        result.push({
+          summary: `Reconocimiento médico · ${person.apellidosNombre}`,
+          description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}`,
+          location: person.sitioReconocimiento || 'Centro de reconocimiento médico',
+          startIsoDate: appointment,
+          time: person.citaHora || '08:00',
+          durationMinutes: 30,
+          reminderMinutes: 1440,
+        });
+      }
+
+      if (filterEventType === 'ALL' || filterEventType === 'CONTRATOS') {
+        const start = toIsoDate(person.periodoInicio);
+        if (start?.startsWith(monthPrefix)) {
+          result.push({
+            summary: `Inicio contrato PROFEA · ${person.apellidosNombre}`,
+            description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}\nOferta: ${person.numOferta || '-'}`,
+            location: person.obra || 'PROFEA',
+            startIsoDate: start,
+            reminderMinutes: 1440,
+          });
+        }
+
+        const end = toIsoDate(person.periodoFin);
+        if (end?.startsWith(monthPrefix)) {
+          result.push({
+            summary: `Fin contrato PROFEA · ${person.apellidosNombre}`,
+            description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}`,
+            location: person.obra || 'PROFEA',
+            startIsoDate: end,
+            reminderMinutes: 1440,
+          });
+        }
+      }
+    });
+
+    return result;
+  }, [filteredPeople, filterEventType, currentDate]);
+
+
   // Map of events by ISO Date String (YYYY-MM-DD)
   // Store citas, inicios de contrato, fines de contrato, y contratos activos
   const eventsByDate = useMemo(() => {
@@ -369,6 +416,21 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
 
         {/* Top Actions: Push Notifications & View mode switcher */}
         <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+          <button
+            type="button"
+            onClick={() => {
+              if (!googleCalendarEvents.length) {
+                onToast('No hay avisos del mes visible para enviar a Google Calendar.', 'error');
+                return;
+              }
+              setIsGCalModalOpen(true);
+            }}
+            className="px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-[#00548E] border border-blue-200 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 dark:text-blue-300 dark:border-blue-800"
+            title="Seleccionar manualmente qué avisos enviar a Google Calendar"
+          >
+            <CalendarCheck className="w-4 h-4" />
+            Google Calendar
+          </button>
           {/* Push Notifications SW Toggle */}
           <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
             <button
@@ -1066,6 +1128,13 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
         );
       })()}
 
+      <GoogleCalendarModal
+        isOpen={isGCalModalOpen}
+        onClose={() => setIsGCalModalOpen(false)}
+        events={googleCalendarEvents}
+        title={`Avisos de ${monthNames[currentMonth]} ${currentYear}`}
+        onToast={onToast}
+      />
     </div>
   );
 };
