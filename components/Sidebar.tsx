@@ -185,7 +185,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-800/80 no-print">
           <button
             type="button"
-            onClick={onOpenScanner}
+            onClick={() => {
+              // En móvil cerramos primero el panel lateral para dejar el modal del
+              // escáner completamente visible. En escritorio mantenemos el estado actual.
+              if (isMobileOpen) setIsMobileOpen(false);
+              onOpenScanner();
+            }}
             className={`profea-sidebar-item w-full min-h-12 flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative text-slate-700 dark:text-slate-300 ${isCollapsed && !isMobileOpen ? 'lg:h-12 lg:w-full' : ''}`}
             title={isCollapsed && !isMobileOpen ? 'Escáner' : 'Escáner de documentos'}
           >
