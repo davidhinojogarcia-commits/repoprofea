@@ -104,6 +104,35 @@ export type InventoryPark = {
   isOwned?: boolean;
 };
 
+export type InventoryParkShare = {
+  participantKey: string;
+  userId?: string | null;
+  email: string;
+  displayName: string;
+  status: 'accepted' | 'pending';
+  role: string;
+  isOwner: boolean;
+  acceptedAt?: string | null;
+};
+
+export type InventoryParkInvitation = {
+  invitationId: string;
+  parkId: string;
+  parkName: string;
+  parkZone: string;
+  inviterName: string;
+  inviterEmail?: string | null;
+  createdAt: string;
+};
+
+export type InventoryInvitationCreateResult = {
+  invitationId: string;
+  email: string;
+  displayName: string;
+  parkName: string;
+  status: 'pending';
+};
+
 const parkBaseLocation = (park: Pick<InventoryPark, 'nombre' | 'zona'>) => `${park.nombre} (${park.zona})`;
 
 const mapPark = (row: any, userId?: string): InventoryPark => ({
@@ -481,8 +510,59 @@ export async function createInventoryDocumentMailLinks(docs: InventoryDocument[]
   return Promise.all(docs.map(async doc => ({ ...doc, downloadUrl: await signDocumentPath(doc.filePath, expiresIn) })));
 }
 
-export async function shareInventoryParkByEmail(parkId: string, email: string) {
-  return supabase.rpc('inventory_add_member_by_email', { p_park_id: parkId, p_email: email.trim().toLowerCase() });
+export async function listInventoryParkShares(parkId: string): Promise<InventoryParkShare[]> {
+  const rows = await supabase.rpc('inventory_list_park_shares', { p_park_id: parkId });
+  return (rows || []).map((row: any) => ({
+    participantKey: row.participant_key,
+    userId: row.user_id,
+    email: row.email || '',
+    displayName: row.display_name || row.email || 'Supervisor',
+    status: row.status === 'pending' ? 'pending' : 'accepted',
+    role: row.role || 'responsable',
+    isOwner: row.is_owner === true,
+    acceptedAt: row.accepted_at || null,
+  }));
+}
+
+export async function listInventoryParkInvitations(): Promise<InventoryParkInvitation[]> {
+  const rows = await supabase.rpc('inventory_list_invitations');
+  return (rows || []).map((row: any) => ({
+    invitationId: row.invitation_id,
+    parkId: row.park_id,
+    parkName: row.park_name || 'Parque de maquinaria',
+    parkZone: row.park_zone || '',
+    inviterName: row.inviter_name || row.inviter_email || 'Supervisor',
+    inviterEmail: row.inviter_email || null,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function createInventoryParkInvitation(
+  parkId: string,
+  email: string,
+): Promise<InventoryInvitationCreateResult> {
+  return supabase.rpc('inventory_create_invitation', {
+    p_park_id: parkId,
+    p_email: email.trim().toLowerCase(),
+  });
+}
+
+export async function sendInventoryParkInvitationEmail(invitationId: string) {
+  return supabase.edgeFunction('inventory-share-invite', { invitationId });
+}
+
+export async function respondInventoryParkInvitation(invitationId: string, accept: boolean) {
+  return supabase.rpc('inventory_respond_invitation', {
+    p_invitation_id: invitationId,
+    p_accept: accept,
+  });
+}
+
+export async function revokeInventoryParkMember(parkId: string, userId: string) {
+  return supabase.rpc('inventory_revoke_member', {
+    p_park_id: parkId,
+    p_user_id: userId,
+  });
 }
 
 export { parkBaseLocation };
