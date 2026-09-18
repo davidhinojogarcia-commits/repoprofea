@@ -117,8 +117,16 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [isCameraLoading, setIsCameraLoading] = useState(false);
-  const [isMobileCameraDevice, setIsMobileCameraDevice] = useState(false);
-  const [hasLocalCamera, setHasLocalCamera] = useState(false);
+  const [isMobileCameraDevice, setIsMobileCameraDevice] = useState(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    const mobileByUa = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const touchDevice = (navigator.maxTouchPoints || 0) > 0;
+    return mobileByUa || (coarsePointer && touchDevice);
+  });
+  const [hasLocalCamera, setHasLocalCamera] = useState(() => Boolean(
+    typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia
+  ));
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
