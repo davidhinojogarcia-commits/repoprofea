@@ -220,14 +220,14 @@ async function edgeFunctionErrorMessage(error: any): Promise<string> {
   return error?.message || 'La operación no se pudo completar.';
 }
 
-export async function queueOfflineRpc(name: string, body: any, label?: string) {
+export async function queueOfflineRpc(name: string, body: any, label?: string, meta?: any) {
   const user = await getSessionUser();
   if (!user) throw new Error('Debes iniciar sesión para guardar cambios sin conexión.');
   return enqueueOfflineOperation({
     kind: 'rpc',
     userId: user.id,
     label: label || name,
-    payload: { name, body },
+    payload: { name, body, meta: meta || null },
   });
 }
 
