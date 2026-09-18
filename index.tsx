@@ -6,7 +6,6 @@ import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
-import { AdditionalWorksiteDocumentsPanel } from './components/AdditionalWorksiteDocumentsPanel';
 import { AnnualHiringPeriodsPanel } from './components/AnnualHiringPeriodsPanel';
 import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
 import { ExportRenunciationEnhancer } from './components/ExportRenunciationEnhancer';
@@ -124,7 +123,6 @@ ReactDOM.createRoot(rootElement).render(
             <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
               <App />
               <WorksiteDocumentationPortal />
-              <AdditionalWorksiteDocumentsPanel />
               <AnnualHiringPeriodsPanel />
               <UiWorkflowEnhancements />
               <ExportRenunciationEnhancer />
