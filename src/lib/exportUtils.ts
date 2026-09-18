@@ -2616,8 +2616,6 @@ export const generateMedicalTicketsPDF = async (
   workStartHourDefault: string = '08:00'
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
-  const logoBase64 = await getBase64Image(LOGO_URL);
-
   for (let i = 0; i < workers.length; i++) {
     if (i > 0) {
       doc.addPage();
@@ -2639,48 +2637,12 @@ export const generateMedicalTicketsPDF = async (
     const workerName = '___________________________________________';
     const workerDni = '___________________________';
 
-    // Thin slate frame around the A4 page (aesthetic margins)
-    doc.setDrawColor(226, 232, 240); // slate-200
-    doc.setLineWidth(0.5);
-    doc.roundedRect(10, 10, 190, 277, 4, 4, 'S');
-
-    // Solid top blue bar
-    doc.setFillColor(0, 84, 142);
-    doc.rect(10.5, 10.5, 189, 4, 'F');
-
-    // Header logo & titles
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 142, 16, 52, 8);
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(0, 84, 142);
-    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
-    doc.text(`Supervisor Responsable: ${p.supervisorResponsable || '-'} | Tel: ${supervisorPhone}`, 18, 31.5);
-
-    // Separating line
-    doc.setDrawColor(226, 232, 240);
-    doc.line(18, 36, 192, 36);
-
-    // Title
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(0, 84, 142);
-    doc.text('COMUNICACIÓN DE CITACIÓN PARA RECONOCIMIENTO MÉDICO', 105, 47, { align: 'center' });
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(148, 163, 184);
-    doc.text('(Documento obligatorio para la incorporación al puesto de trabajo)', 105, 52, { align: 'center' });
-
-    // Golden underline accent
-    doc.setFillColor(217, 119, 6); // Amber
-    doc.rect(65, 55, 80, 1, 'F');
+    renderInstitutionalReportHeader(
+      doc,
+      'COMUNICACIÓN DE CITACIÓN PARA RECONOCIMIENTO MÉDICO',
+      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
+    );
 
     // Official text section
     doc.setFont('helvetica', 'bold');
@@ -2761,57 +2723,15 @@ export const generateMedicalTicketsPDF = async (
     printGridItem('INICIO OBRA:', `${diaComienzoFormatted} - ${workStartHourVal} H`, 24, currentY + 38, 75);
     printGridItem('FIN CONTRATO:', diaFinContratoFormatted, 108, currentY + 38, 75);
 
-    // Official footer with copyright (Firma box removed from page 1)
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Documento oficial emitido: ${new Date().toLocaleDateString('es-ES')} | © David Hinojo García | PROFEA - Diputación de Cádiz`, 18, 281);
-
     // --- ANNEX / JUSTIFICANTE PAGE ---
     doc.addPage();
 
-    // Frame
-    doc.setDrawColor(226, 232, 240); // slate-200
-    doc.setLineWidth(0.5);
-    doc.roundedRect(10, 10, 190, 277, 4, 4, 'S');
-
-    // ANNEX / JUSTIFICANTE PAGE
-    // Top blue bar
-    doc.setFillColor(0, 84, 142);
-    doc.rect(10.5, 10.5, 189, 4, 'F');
-
-    // Header logo & titles
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 142, 16, 52, 8);
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(0, 84, 142);
-    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
-    doc.text(`Supervisor Responsable: ${p.supervisorResponsable || '-'} | Tel: ${supervisorPhone}`, 18, 31.5);
-
-    doc.setDrawColor(226, 232, 240);
-    doc.line(18, 36, 192, 36);
-
-    // Title for Justificante
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(0, 84, 142);
-    doc.text('ANEXO: JUSTIFICANTE DE ENTREGA DE CITACIÓN MÉDICA', 105, 47, { align: 'center' });
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(148, 163, 184);
-    doc.text('(Documento de archivo para la entidad contratante - Firmado por el trabajador)', 105, 52, { align: 'center' });
-
-    // Golden underline accent
-    doc.setFillColor(217, 119, 6); // Amber
-    doc.rect(40, 55, 130, 1, 'F');
+    renderInstitutionalReportHeader(
+      doc,
+      'ANEXO · JUSTIFICANTE DE ENTREGA DE CITACIÓN MÉDICA',
+      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      { subtitle: 'ARCHIVO DE CONTRATACIÓN · GESTIÓN DE FONDOS PROFEA' },
+    );
 
     // Section header
     doc.setFont('helvetica', 'bold');
@@ -2933,11 +2853,6 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
     const deliveryDateStr = p.diaContratacion ? `Fecha de entrega: ${formatDate(p.diaContratacion)}` : 'Fecha de entrega: _____ / _____ / ________';
     doc.text(deliveryDateStr, 112, annexY + 33);
 
-    // Official footer with copyright
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Copia de Control Administrativo | Documento emitido: ${new Date().toLocaleDateString('es-ES')} | © David Hinojo García | PROFEA - Diputación de Cádiz`, 18, 281);
   }
 
   const filename = `NOTIFICACIONES_CITAS_PROFEA_${new Date().toISOString().slice(0, 10)}.pdf`;
