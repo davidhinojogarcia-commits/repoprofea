@@ -136,7 +136,7 @@ export const PersonTable: React.FC<PersonTableProps> = ({
                     </div>
                   </td>
 
-                  <td className="p-3.5 text-center">{person.documentacionCompleta === 'Sí' ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50"><CheckCircle className="w-3 h-3" /> OK</span> : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/50"><FileWarning className="w-3 h-3" /> Pendiente</span>}</td>
+                  <td className="p-3.5 text-center whitespace-nowrap">{person.documentacionCompleta === 'Sí' ? <span className="inline-flex min-w-[54px] shrink-0 items-center justify-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50"><CheckCircle className="w-3 h-3 shrink-0" /> OK</span> : <span className="inline-flex min-w-[82px] shrink-0 items-center justify-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/60"><FileWarning className="w-3 h-3 shrink-0" /> Pendiente</span>}</td>
 
                   <td className="p-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
