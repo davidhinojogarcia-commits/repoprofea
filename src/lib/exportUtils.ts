@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { Person, PdfCustomConfig, getAptitudMedicaInfo } from '../../types';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
+import { ensureWorkerQrShare } from '../services/workerQrShareService';
 export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
@@ -1594,20 +1595,36 @@ export const handleEmailFiles = async (dataToExport: Person[], allPeople?: Perso
   }
 };
 
-export const generateWorkerIDCardPDF = async (selectedPerson: Person, allPeople: Person[]) => {
+export const generateWorkerIDCardPDF = async (
+  selectedPerson: Person,
+  allPeople: Person[],
+  options: { includeQr?: boolean; qrUrl?: string } = {},
+) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const cleanDni = selectedPerson.dni.trim().toUpperCase().replace(/[\s-]/g, '');
   const history = allPeople.filter(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === cleanDni);
 
-  const appUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : 'https://ais-dev-z7d4v355a6bfwlbnq24eyg-269075130225.europe-west2.run.app';
+  const appUrl = typeof window !== 'undefined'
+    ? window.location.origin + window.location.pathname
+    : 'https://gestionprofea.vercel.app/';
 
-  let qrText = `${appUrl}?view-worker-pdf=${cleanDni}`;
-  
+  let qrText = '';
+  if (options.includeQr !== false) {
+    if (options.qrUrl?.trim()) {
+      qrText = options.qrUrl.trim();
+    } else {
+      const token = await ensureWorkerQrShare(Number(selectedPerson.id));
+      qrText = `${appUrl}?worker-qr=${encodeURIComponent(token)}`;
+    }
+  }
+
   let qrCodeDataUrl = '';
-  try {
-    qrCodeDataUrl = await QRCode.toDataURL(qrText, { margin: 1, width: 250 });
-  } catch (error) {
-    console.error('Error generating QR code:', error);
+  if (qrText) {
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(qrText, { margin: 1, width: 250 });
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
   }
 
   // Draw Card Badge
