@@ -197,8 +197,16 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     const monthNumber = MONTHS.indexOf(qMonth) + 1;
     const annuality = annualHiringPeriods.find((record) => record.year === Number(qYear));
     const monthPeriods = annuality?.months.find((month) => month.month === monthNumber);
-    const periodoInicio = qType === '2ª' ? (monthPeriods?.period2Start || '') : (monthPeriods?.period1Start || '');
-    const periodoFin = qType === '2ª' ? (monthPeriods?.period2End || '') : (monthPeriods?.period1End || '');
+    const periodoInicio = qType === '2ª'
+      ? (monthPeriods?.period2Start || '')
+      : qType === 'Mes'
+        ? (monthPeriods?.period1Start || monthPeriods?.period2Start || '')
+        : (monthPeriods?.period1Start || '');
+    const periodoFin = qType === '2ª'
+      ? (monthPeriods?.period2End || '')
+      : qType === 'Mes'
+        ? (monthPeriods?.period2End || monthPeriods?.period1End || '')
+        : (monthPeriods?.period1End || '');
 
     setFormData(prev => ({
       ...prev,
