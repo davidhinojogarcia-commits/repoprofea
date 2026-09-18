@@ -630,7 +630,7 @@ export const PersonList: React.FC<PersonListProps> = ({
           </div>
           <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
                <div className="flex flex-col gap-2 w-full sm:w-auto">
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
+                 <div data-encargados-relation-row="1" className="directorio-export-row flex items-center justify-end gap-2">
                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación de trabajadores para encargados:</span>
                    <button onClick={() => onExportPDF(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-red-500/20' : ''}`}>
                       <FileText className="w-3 h-3 mr-1.5" /> PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
