@@ -148,6 +148,27 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [qYear, setQYear] = useState(defaultQYear);
   const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
 
+  useEffect(() => {
+    const refreshAutomaticHiringWindow = () => {
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      setQType(now.getDate() <= 15 ? '1ª' : '2ª');
+      setQMonth(MONTHS[target.getMonth()]);
+      setQYear(target.getFullYear().toString());
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshAutomaticHiringWindow();
+    };
+
+    window.addEventListener('focus', refreshAutomaticHiringWindow);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', refreshAutomaticHiringWindow);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   const [isManualCategory, setIsManualCategory] = useState(false);
 
   const [showHistoryModal, setShowHistoryModal] = useState(false);
