@@ -260,7 +260,7 @@ export const renderInstitutionalReportHeader = (
   doc: jsPDF,
   reportTitle: string,
   metaLine?: string,
-  options: { subtitle?: string; generatedLabel?: string } = {},
+  options: { subtitle?: string; generatedLabel?: string; customLogo?: string } = {},
 ) => {
   const config = getStoredPdfConfig();
   const pageSize = doc.internal.pageSize;
@@ -288,7 +288,7 @@ export const renderInstitutionalReportHeader = (
     { maxWidth: Math.max(95, pageWidth - 105) },
   );
 
-  renderPdfLogo(doc, right - 53, 4.5, 53, 10.5, true, config.customLogo);
+  renderPdfLogo(doc, right - 53, 4.5, 53, 10.5, true, options.customLogo || config.customLogo);
 
   doc.setDrawColor(218, 226, 233);
   doc.setLineWidth(0.25);
