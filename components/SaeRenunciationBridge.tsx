@@ -85,7 +85,24 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
 
   let y = 58;
 
+  const startContinuationPage = () => {
+    doc.addPage();
+    y = 24;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...blue);
+    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ · GESTIÓN DE FONDOS PROFEA', l, 13);
+    doc.setDrawColor(...blue);
+    doc.setLineWidth(0.4);
+    doc.line(l, 17, r, 17);
+  };
+
+  const ensureSpace = (required: number) => {
+    if (y + required > ph - 30) startContinuationPage();
+  };
+
   const sectionTitle = (title: string) => {
+    ensureSpace(14);
     doc.setFillColor(...lightBlue);
     doc.setDrawColor(185, 220, 235);
     doc.roundedRect(l, y, width, 8, 1.5, 1.5, 'FD');
@@ -164,6 +181,8 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   y += noteH + 5;
 
   if (observations.trim()) {
+    const observationPreview = doc.splitTextToSize(observations.trim(), width);
+    ensureSpace(Math.min(46, 17 + observationPreview.length * 4.5));
     sectionTitle('Observaciones');
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -177,6 +196,7 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   const dateText = signedAt.toLocaleDateString('es-ES');
   const timeText = signedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
+  ensureSpace(refused ? 57 : 65);
   sectionTitle('Registro y firma');
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -214,14 +234,18 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
     doc.text('La incidencia queda registrada por el personal responsable de la gestión PROFEA.', l + 8, y + 27);
   }
 
-  doc.setDrawColor(203, 213, 225);
-  doc.line(l, ph - 23, r, ph - 23);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', l, ph - 17);
-  doc.text('Documento interno generado y archivado electrónicamente por GestionPROFEA.', l, ph - 13);
-  doc.text('Página 1 de 1', r, ph - 15, { align: 'right' });
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(203, 213, 225);
+    doc.line(l, ph - 23, r, ph - 23);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', l, ph - 17);
+    doc.text('Documento interno generado y archivado electrónicamente por GestionPROFEA.', l, ph - 13);
+    doc.text(`Página ${page} de ${totalPages}`, r, ph - 15, { align: 'right' });
+  }
 
   return { blob: doc.output('blob'), signedAt: signedAt.toISOString() };
 }
