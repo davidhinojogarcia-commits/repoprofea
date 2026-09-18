@@ -2,9 +2,9 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Person, getAptitudMedicaInfo } from "../../types";
 import {
-  applyPdfFooters,
+  applyInstitutionalPdfStandard,
   getStoredPdfConfig,
-  renderPdfLogo,
+  renderInstitutionalReportHeader,
 } from "./exportUtils";
 
 export type WorksiteDocumentContext = {
@@ -68,45 +68,13 @@ const setupDoc = (
     author: "Diputación Provincial de Cádiz",
     creator: "Sistema de Gestión PROFEA",
   });
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, w, 19, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
-  doc.setTextColor(...BLUE);
-  doc.text(
-    (config.headerLine1 || "DIPUTACIÓN PROVINCIAL DE CÁDIZ").toUpperCase(),
-    14,
-    7.8,
-  );
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.2);
-  doc.setTextColor(90, 105, 125);
-  doc.text("COOPERACIÓN · GESTIÓN DE FONDOS PROFEA", 14, 13.2);
-  renderPdfLogo(doc, w - 68, 4.2, 53, 10.5, true, config.customLogo);
-  doc.setDrawColor(218, 226, 233);
-  doc.line(14, 17.6, w - 14, 17.6);
 
-  doc.setFillColor(...BLUE);
-  doc.rect(0, 19, w, 18, "F");
-  doc.setFont("helvetica", "bold");
-  let titleFontSize = 11.5;
-  doc.setFontSize(titleFontSize);
-  const titleText = title.toUpperCase();
-  const titleMaxWidth = w - 28;
-  while (titleFontSize > 8.2 && doc.getTextWidth(titleText) > titleMaxWidth) {
-    titleFontSize -= 0.4;
-    doc.setFontSize(titleFontSize);
-  }
-  doc.setTextColor(255, 255, 255);
-  doc.text(titleText, 14, 26.3, { maxWidth: titleMaxWidth });
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.2);
-  doc.setTextColor(225, 239, 249);
-  doc.text(subtitle, 14, 31.4, { maxWidth: Math.max(90, w * 0.52) });
-  doc.text(`${context.obra} · ${context.periodoLabel}`, w - 14, 31.4, {
-    align: "right",
-    maxWidth: Math.max(95, w * 0.38),
-  });
+  renderInstitutionalReportHeader(
+    doc,
+    title,
+    `${context.obra} · ${context.periodoLabel}`,
+    { subtitle },
+  );
 
   return { doc, config, w };
 };
@@ -181,14 +149,10 @@ const drawResponsibleSignatureBand = (
 
 const finish = (
   doc: jsPDF,
-  config: ReturnType<typeof getStoredPdfConfig>,
+  _config: ReturnType<typeof getStoredPdfConfig>,
   filename: string,
 ) => {
-  applyPdfFooters(doc, {
-    ...config,
-    footerText:
-      "Diputación de Cádiz · Documento interno de prevención de riesgos laborales",
-  });
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename };
 };
 
