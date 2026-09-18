@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   CalendarRange,
   CheckCircle2,
+  ChevronDown,
   Download,
   Edit3,
   FileText,
@@ -118,9 +119,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   );
   const [showNeedForm, setShowNeedForm] = useState(false);
   const [editingNeedId, setEditingNeedId] = useState<string | null>(null);
-  const [needSort, setNeedSort] = useState<"recientes" | "obra" | "mes">(
-    "recientes",
-  );
+  const [openMonthKeys, setOpenMonthKeys] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [returnedReportIds, setReturnedReportIds] = useState<string[]>([]);
@@ -130,27 +129,52 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [previewOffsetY, setPreviewOffsetY] = useState(0);
   const selectedNeed = needs.find((n) => n.id === selectedNeedId) || null;
 
-  const sortedNeeds = useMemo(
-    () =>
-      [...needs].sort((a, b) => {
-        if (needSort === "obra")
-          return (
-            a.obra.localeCompare(b.obra, "es", { sensitivity: "base" }) ||
-            (b.ano || 0) - (a.ano || 0) ||
-            (monthNumber(b.mes) || 0) - (monthNumber(a.mes) || 0)
-          );
-        if (needSort === "mes")
-          return (
-            (b.ano || 0) - (a.ano || 0) ||
-            (monthNumber(b.mes) || 0) - (monthNumber(a.mes) || 0) ||
-            a.obra.localeCompare(b.obra, "es")
-          );
-        return String(b.createdAt || "").localeCompare(
-          String(a.createdAt || ""),
-        );
-      }),
-    [needs, needSort],
-  );
+  const groupedNeeds = useMemo(() => {
+    const groups = new Map<string, { key: string; mes: string; ano: number | null; monthOrder: number; needs: SaeNeed[] }>();
+
+    for (const need of needs) {
+      const monthOrder = monthNumber(need.mes) || 0;
+      const year = need.ano || null;
+      const key = `${year || 0}-${monthOrder}-${norm(need.mes)}`;
+      const current = groups.get(key);
+      if (current) {
+        current.needs.push(need);
+      } else {
+        groups.set(key, {
+          key,
+          mes: need.mes,
+          ano: year,
+          monthOrder,
+          needs: [need],
+        });
+      }
+    }
+
+    return Array.from(groups.values())
+      .map(group => ({
+        ...group,
+        needs: [...group.needs].sort((a, b) =>
+          a.obra.localeCompare(b.obra, "es", { sensitivity: "base" }),
+        ),
+      }))
+      .sort((a, b) =>
+        (b.ano || 0) - (a.ano || 0) ||
+        b.monthOrder - a.monthOrder ||
+        a.mes.localeCompare(b.mes, "es", { sensitivity: "base" }),
+      );
+  }, [needs]);
+
+  const monthKeyForNeed = (need: SaeNeed) =>
+    `${need.ano || 0}-${monthNumber(need.mes) || 0}-${norm(need.mes)}`;
+
+  const toggleMonth = (key: string) => {
+    setOpenMonthKeys(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const refresh = async (needId = selectedNeedId) => {
     const next = await listSaeNeeds();
@@ -186,12 +210,21 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         setCandidates(c);
       })
       .catch((e) =>
-        onToast(e.message || "No se pudo cargar la necesidad SAE.", "error"),
+        onToast(e.message || "No se pudo cargar la solicitud de mano de obra.", "error"),
       );
   }, [selectedNeedId]);
   useEffect(() => {
     setReturnedReportIds([]);
-  }, [selectedNeedId]);
+    const selected = needs.find(need => need.id === selectedNeedId);
+    if (!selected) return;
+    const key = monthKeyForNeed(selected);
+    setOpenMonthKeys(current => {
+      if (current.has(key)) return current;
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+  }, [selectedNeedId, needs]);
   useEffect(
     () => () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -233,7 +266,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     [selectedNeed, candidates],
   );
   const stepLabels = [
-    "Necesidad",
+    "Solicitud de mano de obra",
     "Informes SAE",
     "Candidatos",
     "Distribución",
@@ -335,7 +368,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const handleNeedFile = async (file?: File) => {
     if (!file) return;
     setBusy(true);
-    setProgress("Analizando necesidad de contratación…");
+    setProgress("Analizando solicitud de mano de obra…");
     try {
       const parsed = await parseSaeNeedFile(file, setProgress);
       const units = parsed.detectedNeeds?.length
@@ -357,8 +390,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       setShowNeedForm(true);
       onToast(
         forms.length > 1
-          ? `${forms.length} necesidades detectadas. Revise cada una.`
-          : "Necesidad analizada. Revise los datos antes de confirmar.",
+          ? `${forms.length} solicitudes de mano de obra detectadas. Revise cada una.`
+          : "Solicitud de mano de obra analizada. Revise los datos antes de confirmar.",
         "success",
       );
     } catch (e: any) {
@@ -396,7 +429,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         setEditingNeedId(null);
         setShowNeedForm(false);
         setNeedForm(emptyNeed);
-        onToast("Necesidad SAE actualizada.", "success");
+        onToast("Solicitud de mano de obra actualizada.", "success");
         return;
       }
       const created = await createSaeNeed(input);
@@ -408,16 +441,16 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         setPendingImportedNeeds(rest);
         setShowNeedForm(true);
         onToast(
-          `Necesidad guardada. Quedan ${rest.length + 1} por revisar.`,
+          `Solicitud guardada. Quedan ${rest.length + 1} por revisar.`,
           "success",
         );
       } else {
         setShowNeedForm(false);
         setNeedForm(emptyNeed);
-        onToast("Necesidad SAE creada correctamente.", "success");
+        onToast("Solicitud de mano de obra creada correctamente.", "success");
       }
     } catch (e: any) {
-      onToast(e.message || "No se pudo guardar la necesidad.", "error");
+      onToast(e.message || "No se pudo guardar la solicitud de mano de obra.", "error");
     } finally {
       setBusy(false);
     }
@@ -436,7 +469,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
     if (
       !window.confirm(
-        `¿Eliminar la necesidad de ${n.obra} (${n.mes} ${n.ano || ""}) y sus informes/candidatos asociados?`,
+        `¿Eliminar la solicitud de mano de obra de ${n.obra} (${n.mes} ${n.ano || ""}) y sus informes/candidatos asociados?`,
       )
     )
       return;
@@ -446,9 +479,9 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       await refresh("");
       setShowNeedForm(false);
       setEditingNeedId(null);
-      onToast("Necesidad SAE eliminada.", "success");
+      onToast("Solicitud de mano de obra eliminada.", "success");
     } catch (e: any) {
-      onToast(e.message || "No se pudo eliminar la necesidad.", "error");
+      onToast(e.message || "No se pudo eliminar la solicitud de mano de obra.", "error");
     } finally {
       setBusy(false);
     }
@@ -468,7 +501,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
     if (
       !window.confirm(
-        `¿Eliminar exclusivamente el informe “${report.fileName}” y sus candidatos importados? La necesidad de contratación se conservará.`,
+        `¿Eliminar exclusivamente el informe “${report.fileName}” y sus candidatos importados? La solicitud de mano de obra se conservará.`,
       )
     )
       return;
@@ -477,7 +510,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       await deleteSaeReport(report);
       await refresh(selectedNeedId);
       onToast(
-        "Informe SAE eliminado. La necesidad de contratación se conserva.",
+        "Informe SAE eliminado. La solicitud de mano de obra se conserva.",
         "success",
       );
     } catch (error: any) {
@@ -515,7 +548,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         norm(selectedNeed.mes) !== norm(parsed.mes)
       )
         throw new Error(
-          `El informe corresponde a ${parsed.mes}, pero la necesidad es de ${selectedNeed.mes}.`,
+          `El informe corresponde a ${parsed.mes}, pero la solicitud de mano de obra es de ${selectedNeed.mes}.`,
         );
       const fileBase64 = await fileToDataUrl(file);
       await createSaeReport(
@@ -837,7 +870,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">Gestión SAE</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Necesidad → informes → candidatos → quincenas → registros →
+              Solicitud de mano de obra → informes → candidatos → quincenas → registros →
               contratación → devolución SAE.
             </p>
           </div>
@@ -853,7 +886,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             </button>
             <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-sm cursor-pointer">
               <FileText className="w-4 h-4" />
-              Importar necesidad
+              Importar solicitud
               <input
                 type="file"
                 className="hidden"
@@ -870,7 +903,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm"
             >
               <Plus className="w-4 h-4" />
-              Nueva necesidad
+              Nueva solicitud
             </button>
           </div>
         </div>
@@ -917,8 +950,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           <div className="flex items-center justify-between">
             <h2 className="font-black text-lg">
               {editingNeedId
-                ? "Editar necesidad"
-                : "Revisión de necesidad de contratación"}
+                ? "Editar solicitud de mano de obra"
+                : "Revisión de solicitud de mano de obra"}
             </h2>
             {editingNeedId && (
               <span className="text-xs font-bold text-amber-600">
@@ -1042,7 +1075,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                 disabled={busy}
                 className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold"
               >
-                {editingNeedId ? "Guardar cambios" : "Confirmar necesidad"}
+                {editingNeedId ? "Guardar cambios" : "Confirmar solicitud"}
               </button>
             </div>
           </div>
@@ -1050,56 +1083,85 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       )}
       <div className="grid lg:grid-cols-[340px_1fr] gap-6 min-w-0">
         <aside className="ui-surface p-4 h-fit">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <h2 className="font-black">Necesidades</h2>
-            <select
-              value={needSort}
-              onChange={(e) => setNeedSort(e.target.value as any)}
-              className="ui-input !w-auto !py-1.5 text-xs"
-            >
-              <option value="recientes">Recientes</option>
-              <option value="obra">Por obra</option>
-              <option value="mes">Por mes</option>
-            </select>
+          <div className="mb-3">
+            <h2 className="font-black">Solicitudes de mano de obra</h2>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              Organizadas por mes. Pulse un mes para ver sus obras.
+            </p>
           </div>
           <div className="space-y-2">
-            {sortedNeeds.map((n) => (
-              <div
-                key={n.id}
-                className={`rounded-xl border p-3 ${selectedNeedId === n.id ? "border-[#00548E] bg-blue-50 dark:bg-blue-950/20" : "border-slate-200 dark:border-slate-800"}`}
-              >
-                <button
-                  onClick={() => setSelectedNeedId(n.id)}
-                  className="w-full text-left"
+            {groupedNeeds.map(group => {
+              const isOpen = openMonthKeys.has(group.key);
+              const workerTotal = group.needs.reduce(
+                (total, need) => total + need.categorias.reduce((sum, category) => sum + category.cantidad, 0),
+                0,
+              );
+              const selectedInside = group.needs.some(need => need.id === selectedNeedId);
+              return (
+                <div
+                  key={group.key}
+                  className={`overflow-hidden rounded-xl border ${selectedInside ? "border-[#00548E]/60 dark:border-blue-700" : "border-slate-200 dark:border-slate-800"}`}
                 >
-                  <div className="font-bold text-sm">{n.obra}</div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    {n.mes} {n.ano || ""} ·{" "}
-                    {n.categorias.reduce((s, c) => s + c.cantidad, 0)}{" "}
-                    trabajadores
-                  </div>
-                </button>
-                <div className="flex gap-2 mt-2 pt-2 border-t">
                   <button
-                    onClick={() => startEditNeed(n)}
-                    className="text-xs font-bold text-blue-700 inline-flex gap-1 items-center"
+                    type="button"
+                    onClick={() => toggleMonth(group.key)}
+                    className={`w-full flex items-center justify-between gap-3 px-3.5 py-3 text-left transition-colors ${selectedInside ? "bg-blue-50 dark:bg-blue-950/25" : "bg-slate-50/80 hover:bg-slate-100 dark:bg-slate-900/70 dark:hover:bg-slate-800/80"}`}
+                    aria-expanded={isOpen}
                   >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    Editar
+                    <div className="min-w-0">
+                      <div className="font-black text-sm capitalize">
+                        {group.mes} {group.ano || ""}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                        {group.needs.length} {group.needs.length === 1 ? "obra" : "obras"} · {workerTotal} trabajadores
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 shrink-0 text-slate-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                   </button>
-                  <button
-                    onClick={() => void removeNeed(n)}
-                    className="text-xs font-bold text-rose-700 inline-flex gap-1 items-center"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Eliminar
-                  </button>
+
+                  {isOpen && (
+                    <div className="space-y-2 border-t border-slate-200 p-2 dark:border-slate-800">
+                      {group.needs.map(n => (
+                        <div
+                          key={n.id}
+                          className={`rounded-lg border p-3 ${selectedNeedId === n.id ? "border-[#00548E] bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                        >
+                          <button
+                            onClick={() => setSelectedNeedId(n.id)}
+                            className="w-full text-left"
+                          >
+                            <div className="font-bold text-sm leading-snug">{n.obra}</div>
+                            <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                              {n.codigoObra ? `Obra ${n.codigoObra} · ` : ""}
+                              {n.categorias.reduce((sum, category) => sum + category.cantidad, 0)} trabajadores
+                            </div>
+                          </button>
+                          <div className="flex gap-3 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <button
+                              onClick={() => startEditNeed(n)}
+                              className="text-xs font-bold text-blue-700 dark:text-blue-400 inline-flex gap-1 items-center"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => void removeNeed(n)}
+                              className="text-xs font-bold text-rose-700 dark:text-rose-400 inline-flex gap-1 items-center"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {!needs.length && (
               <div className="text-sm text-slate-500 p-3">
-                Cree primero una necesidad.
+                Cree primero una solicitud de mano de obra.
               </div>
             )}
           </div>
@@ -1369,7 +1431,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           ) : (
             <div className="ui-surface p-10 text-center">
               <CalendarRange className="w-10 h-10 mx-auto text-slate-400 mb-3" />
-              <h2 className="font-black">Cree una necesidad para comenzar</h2>
+              <h2 className="font-black">Cree una solicitud de mano de obra para comenzar</h2>
             </div>
           )}
         </main>
