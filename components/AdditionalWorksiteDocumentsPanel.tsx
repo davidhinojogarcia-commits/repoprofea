@@ -352,14 +352,14 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
 
   return (
     <>
-      <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+      <section className="rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-sm">
         <div className="mb-5">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-[#00548E] dark:text-blue-400" />
             <h2 className="font-black text-xl">Otros documentos de obra</h2>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Selecciona el documento. La plantilla se previsualiza a la derecha y mantiene el formato institucional.
+            Selecciona el documento. En móvil puedes abrir la plantilla a pantalla completa; en pantallas grandes se previsualiza junto al formulario.
           </p>
         </div>
 
@@ -472,31 +472,51 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
                 <button
                   type="button"
                   onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-bold"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-bold"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   Ampliar
                 </button>
               )}
             </div>
-            {previewUrl ? (
-              <iframe
-                title={`Previsualización ${def.short}`}
-                src={previewUrl}
-                className="w-full h-[62vh] min-h-[520px] bg-white"
-              />
-            ) : (
-              <div className="min-h-[420px] grid place-items-center text-sm text-slate-500">
-                Preparando vista previa…
-              </div>
-            )}
+
+            <div className="sm:hidden p-4">
+              {previewUrl ? (
+                <button
+                  type="button"
+                  onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+                  className="w-full min-h-14 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-3 font-black"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Ver documento a pantalla completa
+                </button>
+              ) : (
+                <div className="min-h-24 grid place-items-center text-sm text-slate-500">
+                  Preparando vista previa…
+                </div>
+              )}
+            </div>
+
+            <div className="hidden sm:block">
+              {previewUrl ? (
+                <iframe
+                  title={`Previsualización ${def.short}`}
+                  src={previewUrl}
+                  className="w-full h-[62vh] min-h-[520px] bg-white"
+                />
+              ) : (
+                <div className="min-h-[420px] grid place-items-center text-sm text-slate-500">
+                  Preparando vista previa…
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
       {editOpen && worker && (
-        <div className="fixed inset-0 z-[125] bg-slate-950/70 p-3 sm:p-6 flex items-center justify-center">
-          <div className="w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border shadow-2xl">
+        <div className="fixed inset-0 z-[125] bg-slate-950/70 p-0 sm:p-6 flex items-center justify-center">
+          <div className="w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[94vh] overflow-y-auto rounded-none sm:rounded-3xl bg-white dark:bg-slate-950 border-0 sm:border shadow-2xl">
             <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b px-5 py-4 flex items-center justify-between">
               <div>
                 <h2 className="font-black text-xl">Completar documento</h2>
@@ -542,8 +562,8 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
       )}
 
       {signatureOpen && worker && (
-        <div className="fixed inset-0 z-[130] bg-slate-950/70 p-3 sm:p-6 flex items-center justify-center">
-          <div className="w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border shadow-2xl">
+        <div className="fixed inset-0 z-[130] bg-slate-950/70 p-0 sm:p-6 flex items-center justify-center">
+          <div className="w-full h-full sm:h-auto sm:max-w-6xl sm:max-h-[94vh] overflow-y-auto rounded-none sm:rounded-3xl bg-white dark:bg-slate-950 border-0 sm:border shadow-2xl">
             <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b px-5 py-4 flex items-center justify-between">
               <div>
                 <h2 className="font-black text-xl">Firma del documento</h2>
