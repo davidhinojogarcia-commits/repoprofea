@@ -38,8 +38,17 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    void supabase.auth.getUser().then(({ data }) => setProfeaEmail(String(data.user?.email || '').trim()));
-    setConnection(getGoogleCalendarConnection());
+    void supabase.auth.getUser().then(({ data }) => {
+      const registeredEmail = String(data.user?.email || '').trim();
+      setProfeaEmail(registeredEmail);
+      const cached = getGoogleCalendarConnection();
+      if (cached?.email && registeredEmail && cached.email.toLowerCase() !== registeredEmail.toLowerCase()) {
+        disconnectGoogleCalendar();
+        setConnection(null);
+      } else {
+        setConnection(cached);
+      }
+    });
     setSelectedIndexes(events.map((_, index) => index));
     setCreatedLinks([]);
   }, [isOpen, events]);
@@ -68,7 +77,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
     }
     setIsConnecting(true);
     try {
-      const connected = await connectGoogleCalendar();
+      const connected = await connectGoogleCalendar(profeaEmail);
       setConnection(connected);
       onToast(`Google Calendar conectado con ${connected.email || 'la cuenta seleccionada'}`, 'success');
     } catch (error: any) {
@@ -95,7 +104,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
     if (!directConnectionAvailable) {
       let opened = 0;
       selectedEvents.forEach((event) => {
-        const popup = window.open(buildGoogleCalendarWebUrl({ ...event, reminderMinutes }), '_blank', 'noopener,noreferrer');
+        const popup = window.open(buildGoogleCalendarWebUrl({ ...event, reminderMinutes }, profeaEmail), '_blank', 'noopener,noreferrer');
         if (popup) opened += 1;
       });
       if (opened === selectedEvents.length) {
@@ -112,7 +121,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
     if (!activeConnection) {
       setIsConnecting(true);
       try {
-        activeConnection = await connectGoogleCalendar();
+        activeConnection = await connectGoogleCalendar(profeaEmail);
         setConnection(activeConnection);
       } catch (error: any) {
         onToast(error?.message || 'No se pudo conectar Google Calendar.', 'error');
@@ -129,7 +138,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
 
     try {
       for (const ev of selectedEvents) {
-        const res = await createGoogleCalendarEvent({ ...ev, reminderMinutes });
+        const res = await createGoogleCalendarEvent({ ...ev, reminderMinutes }, profeaEmail);
         successCount += 1;
         if (res.htmlLink) links.push({ summary: ev.summary, link: res.htmlLink });
       }
@@ -149,7 +158,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
   };
 
   const handleOpenWebFallback = (ev: CalendarEventInput) => {
-    window.open(buildGoogleCalendarWebUrl(ev), '_blank', 'noopener,noreferrer');
+    window.open(buildGoogleCalendarWebUrl(ev, profeaEmail), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -173,8 +182,11 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
         </div>
 
         {profeaEmail && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300">
-            <span className="font-bold">Usuario PROFEA:</span> {profeaEmail}
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-slate-700 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-slate-200">
+            <div><span className="font-bold">Cuenta corporativa PROFEA:</span> {profeaEmail}</div>
+            <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              Google Calendar solo podrá sincronizarse con esta misma cuenta.
+            </div>
           </div>
         )}
 
@@ -205,7 +217,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-sm font-black text-slate-800 dark:text-slate-100">Conecta tu cuenta de Google</div>
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Los eventos se crearán en el calendario principal de la cuenta que selecciones.</div>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Los eventos se crearán únicamente en el calendario de {profeaEmail || 'tu cuenta corporativa PROFEA'}.</div>
               </div>
               <button type="button" disabled={isConnecting} onClick={() => void connect()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
                 {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
@@ -214,12 +226,6 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
             </div>
           )}
         </div>
-
-        {connection?.email && profeaEmail && connection.email.toLowerCase() !== profeaEmail.toLowerCase() && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-            La cuenta de Google conectada ({connection.email}) es distinta del correo del usuario PROFEA ({profeaEmail}). Puedes mantenerla si es intencionado o desconectarla y elegir otra.
-          </div>
-        )}
 
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
           <div>
