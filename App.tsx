@@ -131,7 +131,11 @@ function App() {
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('inventoryItem')) setActiveView('inventario');
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('inventoryItem') || params.has('inventoryInvite')) {
+      setActiveView('inventario');
+      window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'inventario' } }));
+    }
   }, []);
   const [people, setPeopleRaw] = useState<Person[]>([]);
 
