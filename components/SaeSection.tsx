@@ -842,6 +842,15 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('profea:open-annual-hiring-periods'))}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/80 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50 font-bold text-sm transition-colors"
+              title="Configurar los periodos generales de contratación de la anualidad"
+            >
+              <CalendarRange className="w-4 h-4" />
+              Períodos anuales
+            </button>
             <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-sm cursor-pointer">
               <FileText className="w-4 h-4" />
               Importar necesidad
