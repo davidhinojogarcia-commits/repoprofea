@@ -16,6 +16,7 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
   const [sourceKind, setSourceKind] = useState('');
   const [saved, setSaved] = useState<AnnualHiringPeriodsRecord[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const importedFilePendingRef = useRef(false);
 
   useEffect(() => {
     const h = (e: Event) => {
@@ -33,11 +34,36 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
 
   const existing = useMemo(() => saved.find((r) => r.year === year), [saved, year]);
 
+  useEffect(() => {
+    if (importedFilePendingRef.current) {
+      importedFilePendingRef.current = false;
+      return;
+    }
+    if (!existing) {
+      setMonths([]);
+      setSourceName('');
+      setSourceKind('');
+      return;
+    }
+    setMonths(existing.months.map((month) => ({
+      month: month.month,
+      monthName: month.monthName || MONTHS[month.month - 1],
+      period1Start: month.period1Start,
+      period1End: month.period1End,
+      period2Start: month.period2Start,
+      period2End: month.period2End,
+      warnings: month.warnings || [],
+    })));
+    setSourceName(existing.sourceFileName || '');
+    setSourceKind(existing.sourceKind || '');
+  }, [existing]);
+
   const handleFile = async (file?: File) => {
     if (!file) return;
     setBusy(true); setProgress('Analizando PDF de periodos anuales…');
     try {
       const parsed = await parseAnnualHiringPeriodsPdf(file, setProgress);
+      importedFilePendingRef.current = true;
       setSourceName(file.name);
       setSourceKind(parsed.source);
       setYear(parsed.year);
