@@ -208,6 +208,23 @@ const LIGHT_BLUE_HEX = 'F0F7FF';
 const BLUE_COLOR_RGB: [number, number, number] = [0, 84, 142];
 const LIGHT_BLUE_RGB: [number, number, number] = [240, 247, 255];
 
+export const INSTITUTIONAL_PDF_THEME = {
+  blue: BLUE_COLOR_RGB,
+  lightBlue: LIGHT_BLUE_RGB,
+  text: [30, 41, 59] as [number, number, number],
+  muted: [100, 116, 139] as [number, number, number],
+  border: [203, 213, 225] as [number, number, number],
+  softBorder: [226, 232, 240] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
+  margin: 14,
+  headerTop: 20,
+  headerBandHeight: 18,
+  footerHeight: 14,
+  bodyFontSize: 8,
+  tableFontSize: 7,
+  sectionFontSize: 8.2,
+} as const;
+
 
 const INSTITUTION_NAME = 'DIPUTACIÓN PROVINCIAL DE CÁDIZ';
 const INSTITUTION_SERVICE = 'GESTIÓN DE FONDOS PROFEA';
@@ -239,58 +256,103 @@ export const applyPdfCopyrightStamp = (doc: jsPDF) => {
  * Mantiene el logotipo sobre fondo blanco para preservar su legibilidad y
  * separa identidad corporativa, título del documento y metadatos.
  */
-const renderInstitutionalReportHeader = (
+export const renderInstitutionalReportHeader = (
   doc: jsPDF,
   reportTitle: string,
-  metaLine?: string
+  metaLine?: string,
+  options: { subtitle?: string; generatedLabel?: string } = {},
 ) => {
   const config = getStoredPdfConfig();
+  const pageSize = doc.internal.pageSize;
+  const pageWidth = pageSize.width || pageSize.getWidth();
+  const margin = INSTITUTIONAL_PDF_THEME.margin;
+  const right = pageWidth - margin;
 
-  // Banda institucional blanca: el logotipo nunca se coloca sobre el azul.
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, 210, 20, 'F');
+  doc.setFillColor(...INSTITUTIONAL_PDF_THEME.white);
+  doc.rect(0, 0, pageWidth, 20, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
-  doc.setTextColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.text((config.headerLine1 || INSTITUTION_NAME).toUpperCase(), 15, 8.2);
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.blue);
+  doc.text((config.headerLine1 || INSTITUTION_NAME).toUpperCase(), margin, 8.2, {
+    maxWidth: Math.max(90, pageWidth - 105),
+  });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text((config.headerLine2 || `DESARROLLO LOCAL | ${INSTITUTION_SERVICE}`).toUpperCase(), 15, 13.3);
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.muted);
+  doc.text(
+    (options.subtitle || config.headerLine2 || `DESARROLLO LOCAL | ${INSTITUTION_SERVICE}`).toUpperCase(),
+    margin,
+    13.3,
+    { maxWidth: Math.max(95, pageWidth - 105) },
+  );
 
-  renderPdfLogo(doc, 142, 4.5, 53, 10.5, true, config.customLogo);
+  renderPdfLogo(doc, right - 53, 4.5, 53, 10.5, true, config.customLogo);
 
   doc.setDrawColor(218, 226, 233);
   doc.setLineWidth(0.25);
-  doc.line(15, 18.2, 195, 18.2);
+  doc.line(margin, 18.2, right, 18.2);
 
-  // Banda de identificación del informe.
-  doc.setFillColor(BLUE_COLOR_RGB[0], BLUE_COLOR_RGB[1], BLUE_COLOR_RGB[2]);
-  doc.rect(0, 20, 210, 18, 'F');
+  doc.setFillColor(...INSTITUTIONAL_PDF_THEME.blue);
+  doc.rect(0, 20, pageWidth, 18, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.7);
-  doc.setTextColor(255, 255, 255);
-  doc.text(reportTitle.toUpperCase(), 15, 27.2);
+  let titleFontSize = 10.7;
+  doc.setFontSize(titleFontSize);
+  const title = reportTitle.toUpperCase();
+  const titleMaxWidth = pageWidth - margin * 2;
+  while (titleFontSize > 8 && doc.getTextWidth(title) > titleMaxWidth) {
+    titleFontSize -= 0.35;
+    doc.setFontSize(titleFontSize);
+  }
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.white);
+  doc.text(title, margin, 27.2, { maxWidth: titleMaxWidth });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
+  doc.setFontSize(7);
   doc.setTextColor(226, 241, 249);
-  const issued = `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`;
-  doc.text(issued, 15, 32.3);
+  const issued =
+    options.generatedLabel ||
+    `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+  doc.text(issued, margin, 32.3, { maxWidth: pageWidth * 0.48 });
 
   if (metaLine?.trim()) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
     doc.setTextColor(240, 249, 255);
-    doc.text(metaLine.toUpperCase(), 15, 36.1, { maxWidth: 180 });
+    doc.text(metaLine.toUpperCase(), right, 32.3, {
+      align: 'right',
+      maxWidth: Math.max(80, pageWidth * 0.45),
+    });
   }
 
-  // Acento secundario de la propia familia azul corporativa.
   doc.setFillColor(56, 189, 248);
-  doc.rect(0, 38, 210, 1.6, 'F');
+  doc.rect(0, 38, pageWidth, 1.4, 'F');
+};
+
+export const renderInstitutionalSectionTitle = (
+  doc: jsPDF,
+  title: string,
+  y: number,
+  options: { x?: number; width?: number; compact?: boolean } = {},
+) => {
+  const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+  const x = options.x ?? INSTITUTIONAL_PDF_THEME.margin;
+  const width = options.width ?? pageWidth - x - INSTITUTIONAL_PDF_THEME.margin;
+  const height = options.compact ? 6.5 : 8;
+
+  doc.setFillColor(...INSTITUTIONAL_PDF_THEME.lightBlue);
+  doc.setDrawColor(...INSTITUTIONAL_PDF_THEME.border);
+  doc.roundedRect(x, y, width, height, 1.4, 1.4, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(options.compact ? 7.2 : INSTITUTIONAL_PDF_THEME.sectionFontSize);
+  doc.setTextColor(...INSTITUTIONAL_PDF_THEME.blue);
+  doc.text(title.toUpperCase(), x + 3, y + (options.compact ? 4.3 : 5.3), {
+    maxWidth: width - 6,
+  });
+
+  return y + height + (options.compact ? 2 : 3);
 };
 
 /**
@@ -300,7 +362,7 @@ const renderInstitutionalReportHeader = (
  * metadata and footer are always rendered through this common layer so every
  * exported document belongs to the same Diputación/PROFEA family.
  */
-const applyInstitutionalPdfStandard = (doc: jsPDF) => {
+export const applyInstitutionalPdfStandard = (doc: jsPDF) => {
   try {
     doc.setProperties({
       title: 'Documento de Gestión PROFEA',
