@@ -259,10 +259,12 @@ export async function ensureInventoryReady(): Promise<InventoryPark> {
     return own;
   }
 
+  const parkId = crypto.randomUUID();
   const created = await supabase.query('inventory_parks', {
     method: 'POST',
     prefer: 'return=representation',
     body: {
+      id: parkId,
       nombre: INVENTORY_DEFAULT_PARK_NAME,
       zona: INVENTORY_DEFAULT_ZONE,
       descripcion: 'Parque de herramientas y maquinaria del supervisor.',
@@ -436,8 +438,13 @@ export async function listInventoryMovements(parkId: string): Promise<InventoryM
   for (const movement of movements) {
     if (!movement.fotoPaths.length) continue;
     const signed = await Promise.all(movement.fotoPaths.map(async path => {
-      const { data } = await supabase.storage.from('inventory-photos').createSignedUrl(path, 3600);
-      return data?.signedUrl || '';
+      if (offlineNow()) return '';
+      try {
+        const { data } = await supabase.storage.from('inventory-photos').createSignedUrl(path, 3600);
+        return data?.signedUrl || '';
+      } catch {
+        return '';
+      }
     }));
     movement.fotoUrls = signed.filter(Boolean);
   }
@@ -559,9 +566,14 @@ export async function deleteInventoryMovement(movementId: string, meta: { parkId
 }
 
 async function signDocumentPath(path: string, expiresIn = 3600) {
-  const { data, error } = await supabase.storage.from('inventory-documents').createSignedUrl(path, expiresIn);
-  if (error) throw error;
-  return data?.signedUrl || '';
+  if (offlineNow()) return '';
+  try {
+    const { data, error } = await supabase.storage.from('inventory-documents').createSignedUrl(path, expiresIn);
+    if (error) throw error;
+    return data?.signedUrl || '';
+  } catch {
+    return '';
+  }
 }
 
 export async function uploadInventoryDocuments(parkId: string, itemId: string, files: File[], folder = 'documents'): Promise<string[]> {
@@ -667,6 +679,7 @@ export async function createInventoryDocumentMailLinks(docs: InventoryDocument[]
 }
 
 export async function listInventoryParkShares(parkId: string): Promise<InventoryParkShare[]> {
+  if (offlineNow()) return [];
   try {
     const rows = await supabase.rpc('inventory_list_park_shares', { p_park_id: parkId });
     return (rows || []).map((row: any) => ({
@@ -686,6 +699,7 @@ export async function listInventoryParkShares(parkId: string): Promise<Inventory
 }
 
 export async function listInventoryParkInvitations(): Promise<InventoryParkInvitation[]> {
+  if (offlineNow()) return [];
   try {
     const rows = await supabase.rpc('inventory_list_invitations');
     return (rows || []).map((row: any) => ({
