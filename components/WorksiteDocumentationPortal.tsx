@@ -201,6 +201,16 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [refresh]);
 
   useEffect(() => {
+    const handleSyncState = (event: Event) => {
+      const detail = (event as CustomEvent<{ online?: boolean; pending?: number; syncing?: boolean; lastSyncedAt?: number | null }>).detail;
+      if (!isOpen || !detail?.online || detail.syncing || detail.pending !== 0 || !detail.lastSyncedAt) return;
+      void refresh();
+    };
+    window.addEventListener("profea:offline-sync-state", handleSyncState as EventListener);
+    return () => window.removeEventListener("profea:offline-sync-state", handleSyncState as EventListener);
+  }, [isOpen, refresh]);
+
+  useEffect(() => {
     const updateWidth = () => {
       if (window.innerWidth < 1024) return setSidebarWidth(0);
       const sidebar = document.querySelector(".profea-sidebar-shell") as HTMLElement | null;
