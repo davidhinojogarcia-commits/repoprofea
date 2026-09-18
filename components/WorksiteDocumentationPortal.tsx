@@ -59,6 +59,23 @@ type DocumentationView =
   | "control"
   | "otros";
 
+const WORKSITE_LAST_WORK_KEY = "profea:worksite-doc:last-work";
+const WORKSITE_LAST_VIEW_KEY = "profea:worksite-doc:last-view";
+const DOCUMENTATION_VIEWS: DocumentationView[] = [
+  "obra",
+  "trabajadores",
+  "epis",
+  "formacion",
+  "maquinaria",
+  "control",
+  "otros",
+];
+const storedDocumentationView = (): DocumentationView => {
+  if (typeof window === "undefined") return "obra";
+  const stored = window.localStorage.getItem(WORKSITE_LAST_VIEW_KEY) as DocumentationView | null;
+  return stored && DOCUMENTATION_VIEWS.includes(stored) ? stored : "obra";
+};
+
 const DEFAULT_COMPANY = "AEPSA (Diputación Provincial de Cádiz)";
 const DIPUTACION_CADIZ_CIF = "P1100000G";
 const DEFAULT_EPIS: Record<EpiKey, boolean> = {
@@ -126,7 +143,9 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [workers, setWorkers] = useState<Person[]>([]);
   const [workRows, setWorkRows] = useState<WorkRow[]>([]);
   const [configuredWorks, setConfiguredWorks] = useState<string[]>([]);
-  const [selectedWork, setSelectedWork] = useState("");
+  const [selectedWork, setSelectedWork] = useState(() =>
+    typeof window === "undefined" ? "" : window.localStorage.getItem(WORKSITE_LAST_WORK_KEY) || "",
+  );
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [empresa, setEmpresa] = useState(DEFAULT_COMPANY);
   const [cif, setCif] = useState(DIPUTACION_CADIZ_CIF);
@@ -142,7 +161,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(0);
-  const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>("obra");
+  const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>(storedDocumentationView);
 
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
@@ -211,6 +230,27 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     if (!selectedWork && workNames.length) setSelectedWork(workNames[0]);
     if (selectedWork && !workNames.includes(selectedWork) && workNames.length) setSelectedWork(workNames[0]);
   }, [selectedWork, workNames]);
+
+  useEffect(() => {
+    if (!selectedWork || typeof window === "undefined") return;
+    window.localStorage.setItem(WORKSITE_LAST_WORK_KEY, selectedWork);
+  }, [selectedWork]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(WORKSITE_LAST_VIEW_KEY, activeDocumentView);
+  }, [activeDocumentView]);
+
+  const selectDocumentView = (view: DocumentationView) => {
+    setActiveDocumentView(view);
+    if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("worksite-doc-content")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
 
   const selectedWorkWorkers = useMemo(
     () => workers.filter((person) => sameWork(person.obra || "", selectedWork)),
@@ -480,16 +520,16 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       className="fixed top-0 right-0 bottom-0 z-[35] overflow-y-auto bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
       style={{ left: sidebarWidth }}
     >
-      <div className="min-h-full px-4 sm:px-6 lg:px-8 py-6 pb-16">
-        <div className="max-w-[1580px] mx-auto space-y-6">
+      <div className="min-h-full px-2 sm:px-6 lg:px-8 py-2 sm:py-6 pb-20">
+        <div className="max-w-[1580px] mx-auto space-y-3 sm:space-y-6">
           <header className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-r from-[#003f6b] via-[#00548E] to-[#0876b8] px-6 py-5 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="bg-gradient-to-r from-[#003f6b] via-[#00548E] to-[#0876b8] px-4 py-4 sm:px-6 sm:py-5 text-white flex items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-3">
-                  <ClipboardCheck className="w-7 h-7" />
-                  <h1 className="text-2xl font-black tracking-tight">Documentación de obra</h1>
+                  <ClipboardCheck className="w-6 h-6 sm:w-7 sm:h-7" />
+                  <h1 className="text-xl sm:text-2xl font-black tracking-tight">Documentación de obra</h1>
                 </div>
-                <p className="text-sm text-blue-100 mt-1">
+                <p className="hidden sm:block text-sm text-blue-100 mt-1">
                   Biblioteca documental por obra y periodo, con cada documento en su propio espacio de trabajo.
                 </p>
               </div>
@@ -497,27 +537,77 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void refresh()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 p-2.5 sm:px-4 sm:py-2 text-sm font-semibold hover:bg-white/20"
+                  title="Actualizar"
                 >
                   <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                  Actualizar
+                  <span className="hidden sm:inline">Actualizar</span>
                 </button>
                 <button
                   type="button"
                   onClick={closeAndGoToSummary}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 p-2.5 sm:px-4 sm:py-2 text-sm font-semibold hover:bg-white/20"
+                  title="Cerrar"
                 >
                   <X className="w-4 h-4" />
-                  Cerrar
+                  <span className="hidden sm:inline">Cerrar</span>
                 </button>
               </div>
             </div>
           </header>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-5 items-start">
+          <div className="lg:hidden sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
+            <div className="px-3 pt-3 pb-2">
+              <label className="block text-[10px] uppercase tracking-wider font-black text-slate-500 dark:text-slate-400">
+                Obra actual
+                <select
+                  value={selectedWork}
+                  onChange={(event) => setSelectedWork(event.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm font-black"
+                >
+                  {workNames.map((work) => (
+                    <option key={work} value={work}>{work}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="overflow-x-auto overscroll-x-contain px-3 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex gap-2 min-w-max">
+                {libraryItems.map((item) => {
+                  const Icon = item.icon;
+                  const selected = activeDocumentView === item.id;
+                  const mobileLabel =
+                    item.id === "obra" ? "Obra" :
+                    item.id === "trabajadores" ? "Trabajadores" :
+                    item.id === "epis" ? "EPIs" :
+                    item.id === "formacion" ? "Formación" :
+                    item.id === "maquinaria" ? "Maquinaria" :
+                    item.id === "control" ? "Control" : "Otros";
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => selectDocumentView(item.id)}
+                      className={`min-h-14 rounded-xl border px-3 py-2 flex flex-col items-center justify-center gap-1 text-[10px] font-black transition-colors ${
+                        selected
+                          ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
+                          : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300"
+                      }`}
+                      aria-current={selected ? "page" : undefined}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{mobileLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-3 lg:gap-5 items-start">
             <aside
               data-worksite-document-library="1"
-              className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-fit lg:sticky lg:top-5"
+              className="hidden lg:block rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-fit lg:sticky lg:top-5"
             >
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-black text-sm uppercase tracking-wider text-slate-600 dark:text-slate-300">
@@ -578,7 +668,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveDocumentView(item.id)}
+                      onClick={() => selectDocumentView(item.id)}
                       className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
                         selected
                           ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
@@ -606,10 +696,10 @@ export const WorksiteDocumentationPortal: React.FC = () => {
               </div>
             </aside>
 
-            <main className="space-y-5 min-w-0">
-              <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm">
-                <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+            <main id="worksite-doc-content" className="space-y-3 sm:space-y-5 min-w-0 scroll-mt-40">
+              <section className="rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-5 shadow-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-2 sm:gap-3">
+                  <label className="hidden lg:block text-xs font-bold text-slate-600 dark:text-slate-300">
                     Obra
                     <input
                       value={selectedWork}
@@ -638,19 +728,17 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm"
                     />
                   </label>
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                  <label className="col-span-2 sm:col-span-1 text-xs font-bold text-slate-600 dark:text-slate-300">
                     Trabajadores
-                    <input
-                      value={periodWorkers.length}
-                      readOnly
-                      className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2.5 text-sm font-black"
-                    />
+                    <div className="mt-1.5 min-h-[42px] w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2.5 text-sm font-black">
+                      {periodWorkers.length} en este periodo
+                    </div>
                   </label>
                 </div>
               </section>
 
               {activeDocumentView === "obra" && (
-                <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+                <section className="rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-sm">
                   <div className="flex items-center gap-2 mb-5">
                     <HardHat className="w-5 h-5 text-blue-600" />
                     <div>
@@ -703,12 +791,26 @@ export const WorksiteDocumentationPortal: React.FC = () => {
               )}
 
               {activeDocumentView === "trabajadores" && (
-                <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+                <section className="rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-sm">
                   <div className="flex items-center gap-2 mb-4">
                     <Users className="w-5 h-5 text-blue-600" />
                     <h2 className="font-black text-lg">Trabajadores del periodo</h2>
                   </div>
-                  <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="sm:hidden space-y-2">
+                    {periodWorkers.map((person) => (
+                      <div key={person.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50/60 dark:bg-slate-950/30">
+                        <div className="font-black text-sm leading-snug">{person.apellidosNombre}</div>
+                        <div className="mt-1 text-xs text-slate-500">{person.dni} · {person.categoria || "Sin puesto"}</div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                          <div><span className="block text-slate-400">Inicio</span><b>{formatDate(person.periodoInicio)}</b></div>
+                          <div><span className="block text-slate-400">Fin</span><b>{formatDate(person.periodoFin)}</b></div>
+                          <div><span className="block text-slate-400">Calzado</span><b>{person.calzado || "-"}</b></div>
+                        </div>
+                      </div>
+                    ))}
+                    {!periodWorkers.length && <div className="text-sm text-slate-500 p-3">No hay trabajadores en este periodo.</div>}
+                  </div>
+                  <div className="hidden sm:block overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-sm min-w-[720px]">
                       <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                         <tr>
