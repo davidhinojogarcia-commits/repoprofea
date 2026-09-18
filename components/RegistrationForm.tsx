@@ -114,7 +114,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 }) => {
   const today = new Date();
   const nextHiringMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  const defaultQType = today.getDate() <= 15 ? '1ª' : '2ª';
+  const savedFortnight = typeof window !== 'undefined'
+    ? window.localStorage.getItem('profea-active-hiring-fortnight')
+    : null;
+  const defaultQType = savedFortnight === '2ª' ? '2ª' : '1ª';
   const defaultQMonth = MONTHS[nextHiringMonth.getMonth()];
   const defaultQYear = nextHiringMonth.getFullYear().toString();
 
@@ -149,25 +152,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
 
   useEffect(() => {
-    const refreshAutomaticHiringWindow = () => {
-      const now = new Date();
-      const target = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      setQType(now.getDate() <= 15 ? '1ª' : '2ª');
-      setQMonth(MONTHS[target.getMonth()]);
-      setQYear(target.getFullYear().toString());
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refreshAutomaticHiringWindow();
-    };
-
-    window.addEventListener('focus', refreshAutomaticHiringWindow);
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      window.removeEventListener('focus', refreshAutomaticHiringWindow);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
+    if (qType === '1ª' || qType === '2ª') {
+      window.localStorage.setItem('profea-active-hiring-fortnight', qType);
+    }
+  }, [qType]);
 
   const [isManualCategory, setIsManualCategory] = useState(false);
 
