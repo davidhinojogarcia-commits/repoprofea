@@ -205,6 +205,16 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
   useEffect(() => { void reload(); }, []);
 
+  useEffect(() => {
+    const handleSyncState = (event: Event) => {
+      const detail = (event as CustomEvent<{ online?: boolean; pending?: number; syncing?: boolean; lastSyncedAt?: number | null }>).detail;
+      if (!detail?.online || detail.syncing || detail.pending !== 0 || !detail.lastSyncedAt) return;
+      if (park?.id) void reload(park.id);
+    };
+    window.addEventListener('profea:offline-sync-state', handleSyncState as EventListener);
+    return () => window.removeEventListener('profea:offline-sync-state', handleSyncState as EventListener);
+  }, [park?.id]);
+
   const baseLocation = park ? parkBaseLocation(park) : '';
   const activeItems = useMemo(() => items.filter(i => i.activo), [items]);
   const quickItem = activeItems.find(i => i.id === quickItemId) || activeItems[0] || null;
@@ -312,7 +322,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
   const removeMovement = async (movement: InventoryMovement) => {
     if (!park || !confirm('¿Eliminar este movimiento? El cambio quedará registrado internamente en la auditoría.')) return;
-    try { await deleteInventoryMovement(movement.id); await reload(park.id); }
+    try { await deleteInventoryMovement(movement.id, { parkId: park.id, itemId: movement.itemId }); await reload(park.id); }
     catch (e: any) { alert(e?.message || 'No se pudo eliminar el movimiento.'); }
   };
 
@@ -492,13 +502,25 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       const isBreakdown = data.tipo === 'Avería';
       const shouldPrepareMail = isBreakdown && Boolean(park.coordinatorEmail);
       const observation = shouldPrepareMail ? `${data.observaciones || ''}${data.observaciones ? '\n' : ''}${BREAKDOWN_NOTICE}` : data.observaciones;
-      await registerInventoryMovement({ itemId: movementItem.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: observation, latitud: data.latitud, longitud: data.longitud, fotoPaths: paths });
+      await registerInventoryMovement({
+        itemId: movementItem.id,
+        parkId: park.id,
+        origen: movementItem.ubicacionActual,
+        estadoAnterior: movementItem.estado,
+        tipo: data.tipo,
+        destino: data.destino,
+        estadoNuevo: data.estadoNuevo,
+        observaciones: observation,
+        latitud: data.latitud,
+        longitud: data.longitud,
+        fotoPaths: paths,
+      });
       const mail = shouldPrepareMail ? buildBreakdownMail(movementItem, data.destino, data.observaciones, paths.length) : null;
       setMovementItem(null);
       await reload(park.id);
-      if (mail && park.coordinatorEmail) window.location.href = `mailto:${encodeURIComponent(park.coordinatorEmail)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.body)}`;
+      if (mail && park.coordinatorEmail && navigator.onLine) window.location.href = `mailto:${encodeURIComponent(park.coordinatorEmail)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.body)}`;
     }} />}
-    {editingMovement && park && <MovementEditModal movement={editingMovement} item={items.find(i => i.id === editingMovement.itemId) || null} onClose={() => setEditingMovement(null)} onSave={async data => { const newPaths = data.files.length ? await uploadInventoryPhotos(park.id, editingMovement.itemId, data.files) : []; await updateInventoryMovement({ movementId: editingMovement.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: data.observaciones, latitud: data.latitud, longitud: data.longitud, fotoPaths: [...data.keptPaths, ...newPaths] }); setEditingMovement(null); await reload(park.id); }} />}
+    {editingMovement && park && <MovementEditModal movement={editingMovement} item={items.find(i => i.id === editingMovement.itemId) || null} onClose={() => setEditingMovement(null)} onSave={async data => { const newPaths = data.files.length ? await uploadInventoryPhotos(park.id, editingMovement.itemId, data.files) : []; await updateInventoryMovement({ movementId: editingMovement.id, itemId: editingMovement.itemId, parkId: park.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: data.observaciones, latitud: data.latitud, longitud: data.longitud, fotoPaths: [...data.keptPaths, ...newPaths] }); setEditingMovement(null); await reload(park.id); }} />}
     {maintenanceItem && park && <MaintenanceModal item={maintenanceItem} onClose={() => setMaintenanceItem(null)} onSave={async d => { const paths = d.files.length ? await uploadInventoryDocuments(park.id, maintenanceItem.id, d.files, 'maintenance') : []; await addInventoryMaintenance(park.id, maintenanceItem.id, { tipo: d.tipo, fecha: d.fecha, proximaRevision: d.proximaRevision, proveedor: d.proveedor, mechanicName: d.mechanicName, coste: d.coste, observaciones: d.observaciones, signedDocumentPaths: paths, createdBy: null }); setMaintenanceItem(null); await reload(park.id); }} />}
     {qrItem && <Modal title={`QR · ${qrItem.nombre}`} onClose={() => setQrItem(null)}><div className="text-center"><img src={qrDataUrl} alt="Código QR" className="mx-auto w-64 h-64 rounded-xl bg-white p-3" /><div className="mt-3 font-bold">{qrItem.codigo}</div></div></Modal>}
   </div>;
