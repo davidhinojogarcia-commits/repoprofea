@@ -73,52 +73,6 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
   // Google Calendar modal state
   const [isGCalModalOpen, setIsGCalModalOpen] = useState(false);
 
-  const googleCalendarEvents = useMemo<CalendarEventInput[]>(() => {
-    const monthPrefix = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-    const result: CalendarEventInput[] = [];
-
-    filteredPeople.forEach(person => {
-      const appointment = toIsoDate(person.citaDia);
-      if ((filterEventType === 'ALL' || filterEventType === 'CITAS') && appointment?.startsWith(monthPrefix)) {
-        result.push({
-          summary: `Reconocimiento médico · ${person.apellidosNombre}`,
-          description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}`,
-          location: person.sitioReconocimiento || 'Centro de reconocimiento médico',
-          startIsoDate: appointment,
-          time: person.citaHora || '08:00',
-          durationMinutes: 30,
-          reminderMinutes: 1440,
-        });
-      }
-
-      if (filterEventType === 'ALL' || filterEventType === 'CONTRATOS') {
-        const start = toIsoDate(person.periodoInicio);
-        if (start?.startsWith(monthPrefix)) {
-          result.push({
-            summary: `Inicio contrato PROFEA · ${person.apellidosNombre}`,
-            description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}\nOferta: ${person.numOferta || '-'}`,
-            location: person.obra || 'PROFEA',
-            startIsoDate: start,
-            reminderMinutes: 1440,
-          });
-        }
-
-        const end = toIsoDate(person.periodoFin);
-        if (end?.startsWith(monthPrefix)) {
-          result.push({
-            summary: `Fin contrato PROFEA · ${person.apellidosNombre}`,
-            description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}`,
-            location: person.obra || 'PROFEA',
-            startIsoDate: end,
-            reminderMinutes: 1440,
-          });
-        }
-      }
-    });
-
-    return result;
-  }, [filteredPeople, filterEventType, currentDate]);
-
   // Push Notification State (Service Worker)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
     return typeof window !== 'undefined' && 'Notification' in window && window.Notification ? window.Notification.permission : 'default';
@@ -208,6 +162,53 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
       return true;
     });
   }, [people, filterObra, filterQuincena, searchQuery]);
+
+  const googleCalendarEvents = useMemo<CalendarEventInput[]>(() => {
+    const monthPrefix = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    const result: CalendarEventInput[] = [];
+
+    filteredPeople.forEach(person => {
+      const appointment = toIsoDate(person.citaDia);
+      if ((filterEventType === 'ALL' || filterEventType === 'CITAS') && appointment?.startsWith(monthPrefix)) {
+        result.push({
+          summary: `Reconocimiento médico · ${person.apellidosNombre}`,
+          description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}`,
+          location: person.sitioReconocimiento || 'Centro de reconocimiento médico',
+          startIsoDate: appointment,
+          time: person.citaHora || '08:00',
+          durationMinutes: 30,
+          reminderMinutes: 1440,
+        });
+      }
+
+      if (filterEventType === 'ALL' || filterEventType === 'CONTRATOS') {
+        const start = toIsoDate(person.periodoInicio);
+        if (start?.startsWith(monthPrefix)) {
+          result.push({
+            summary: `Inicio contrato PROFEA · ${person.apellidosNombre}`,
+            description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}\nOferta: ${person.numOferta || '-'}`,
+            location: person.obra || 'PROFEA',
+            startIsoDate: start,
+            reminderMinutes: 1440,
+          });
+        }
+
+        const end = toIsoDate(person.periodoFin);
+        if (end?.startsWith(monthPrefix)) {
+          result.push({
+            summary: `Fin contrato PROFEA · ${person.apellidosNombre}`,
+            description: `Trabajador: ${person.apellidosNombre}\nDNI: ${person.dni || '-'}\nObra: ${person.obra || '-'}\nCategoría: ${person.categoria || '-'}`,
+            location: person.obra || 'PROFEA',
+            startIsoDate: end,
+            reminderMinutes: 1440,
+          });
+        }
+      }
+    });
+
+    return result;
+  }, [filteredPeople, filterEventType, currentDate]);
+
 
   // Map of events by ISO Date String (YYYY-MM-DD)
   // Store citas, inicios de contrato, fines de contrato, y contratos activos
