@@ -103,17 +103,20 @@ export async function exportInventoryStatusPdf(input: {
 }) {
   const { park, items, movements, maintenance, documents } = input;
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4', unit: 'mm' });
-  const title = 'Informe de estado actual de herramientas y maquinaria';
+  const title = 'Informe de situación de herramientas y maquinaria';
   const subtitle = `${park.zona} · ${park.nombre}`;
   addHeader(doc, title, subtitle);
 
   let y = 36;
-  const inCourse = items.filter(i => i.activo);
-  const incidenceCount = inCourse.filter(i => /aver|repar|revisión|fuera/i.test(i.estado)).length;
+  // El informe de situación recibe únicamente equipos que están actualmente
+  // en uso operativo: asignados a una obra o en traslado.
+  const inCourse = items.filter(i => i.activo && /obra|traslado/i.test(i.estado || ''));
+  const assignedToWork = inCourse.filter(i => /obra/i.test(i.estado || '')).length;
+  const inTransit = inCourse.filter(i => /traslado/i.test(i.estado || '')).length;
   autoTable(doc, {
     startY: y,
-    head: [['Parque / nave', 'Equipos activos', 'En obra / traslado', 'Incidencias']],
-    body: [[parkBaseLocation(park), String(inCourse.length), String(inCourse.filter(i => /obra|traslado/i.test(i.estado)).length), String(incidenceCount)]],
+    head: [['Parque / nave', 'Equipos en uso', 'Asignados a obra', 'En traslado']],
+    body: [[parkBaseLocation(park), String(inCourse.length), String(assignedToWork), String(inTransit)]],
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 2.4, valign: 'middle' },
     headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold' },
@@ -218,7 +221,7 @@ export async function exportInventoryStatusPdf(input: {
   }
 
   applyInstitutionalPdfStandard(doc);
-  const filename = `INFORME_MAQUINARIA_${safeName(park.zona)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `INFORME_SITUACION_MAQUINARIA_${safeName(park.zona)}_${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   return filename;
 }
