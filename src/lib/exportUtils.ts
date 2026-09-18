@@ -2984,8 +2984,6 @@ export const generateStatsSummaryPDF = async ({
   people = []
 }: GenerateStatsPDFParams) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
-  const logoBase64 = await getBase64Image(LOGO_URL);
-
   const total = stats.total || people.length;
 
   // Criterio de formaciones solicitado:
@@ -3033,54 +3031,15 @@ export const generateStatsSummaryPDF = async ({
     ? 'Todas las Obras'
     : obraFilter.join(', ');
 
-  // Thin outer frame
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(10, 10, 190, 277, 4, 4, 'S');
-
-  // Top blue bar
-  doc.setFillColor(0, 84, 142);
-  doc.rect(10.5, 10.5, 189, 4, 'F');
-
-  // Header logo & titles
-  if (logoBase64) {
-    try {
-      doc.addImage(logoBase64, 'PNG', 142, 16, 52, 8);
-    } catch (e) {
-      console.warn('Logo addition failed', e);
-    }
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(0, 84, 142);
-  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', 18, 22);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', 18, 27);
-  doc.text('Documentación Administrativa Oficial de Resumen Estadístico', 18, 31.5);
-
-  doc.setDrawColor(226, 232, 240);
-  doc.line(18, 35, 192, 35);
-
-  // Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(0, 84, 142);
-  doc.text('INFORME RESUMEN ESTADÍSTICO DE CONTRATACIÓN Y FORMACIÓN', 105, 44, { align: 'center' });
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'italic');
-  doc.setTextColor(100, 116, 139);
-  doc.text('PROGRAMA PROFEA - EVALUACIÓN DE CONTRATACIONES Y NECESIDADES PREVENTIVAS', 105, 49, { align: 'center' });
-
-  // Amber line accent
-  doc.setFillColor(217, 119, 6);
-  doc.rect(40, 52, 130, 1, 'F');
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME RESUMEN ESTADÍSTICO DE CONTRATACIÓN Y FORMACIÓN',
+    filterLabel,
+    { subtitle: 'PROGRAMA PROFEA · EVALUACIÓN DE CONTRATACIONES Y NECESIDADES PREVENTIVAS' },
+  );
 
   // Context Box
-  let currentY = 57;
+  let currentY = 46;
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(18, currentY, 174, 22, 2, 2, 'FD');
