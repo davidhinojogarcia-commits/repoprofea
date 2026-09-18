@@ -671,7 +671,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       </div>
 
-      <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col lg:flex-row items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
+      <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col xl:flex-row items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
         <div className="relative flex-1 flex items-center min-h-[52px]">
           <div className="pl-4 pr-2 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-slate-400 dark:text-slate-500" />
@@ -685,10 +685,10 @@ export const PersonList: React.FC<PersonListProps> = ({
           />
         </div>
 
-        <div className="hidden lg:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
-        <div className="block lg:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
+        <div className="hidden xl:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
+        <div className="block xl:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
 
-        <div className="flex flex-col sm:flex-row items-stretch p-1.5 gap-1.5 lg:w-auto">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap items-stretch p-1.5 gap-1.5 xl:w-auto min-w-0">
           <MultiSearchableDropdown
             options={savedObras}
             selectedValues={selectedObraFilter}
@@ -696,7 +696,7 @@ export const PersonList: React.FC<PersonListProps> = ({
             placeholder="Obra: Todas"
             allLabel="Todas las obras"
             icon={<MapPin className="w-4 h-4" />}
-            className="!w-full sm:!w-48 lg:!w-72"
+            className="!w-full sm:!w-48 xl:!w-60"
             buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
           />
           <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
@@ -708,14 +708,14 @@ export const PersonList: React.FC<PersonListProps> = ({
             placeholder="Quincena: Todas"
             allLabel="Todas las quincenas"
             icon={<Clock className="w-4 h-4" />}
-            className="!w-full sm:!w-48 lg:!w-72"
+            className="!w-full sm:!w-48 xl:!w-60"
             buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
           />
           <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
           <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
           <button
             onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+            className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer whitespace-nowrap ${
               showOnlyRepeaters 
                 ? 'bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-300 dark:border-purple-800 shadow-sm ring-2 ring-purple-500/20' 
                 : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'
