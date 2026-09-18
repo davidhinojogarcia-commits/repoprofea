@@ -3,6 +3,7 @@ import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award,
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
+import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 
 interface EditPersonModalProps {
   person: Person | null;
@@ -51,16 +52,26 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   savedCategorias,
   allPeople
 }) => {
+  const automaticHiringTarget = useMemo(() => {
+    const today = new Date();
+    const target = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    return {
+      qType: today.getDate() <= 15 ? '1ª' : '2ª',
+      qMonth: MONTHS[target.getMonth()],
+      qYear: target.getFullYear().toString(),
+    };
+  }, [isOpen]);
+
   const parsedQuincena = useMemo(() => {
     if (!person || !person.quincena) {
-      return { qType: '1ª', qMonth: 'Enero', qYear: new Date().getFullYear().toString() };
+      return automaticHiringTarget;
     }
     const parts = person.quincena.split(' ');
     if (parts.length >= 3) {
       return { qType: parts[0], qMonth: parts[1], qYear: parts[2] };
     }
-    return { qType: '1ª', qMonth: 'Enero', qYear: new Date().getFullYear().toString() };
-  }, [person]);
+    return automaticHiringTarget;
+  }, [person, automaticHiringTarget]);
 
   const [formData, setFormData] = useState<Person | null>(() => {
     if (!person) return null;
@@ -74,6 +85,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const [qType, setQType] = useState(() => parsedQuincena.qType);
   const [qMonth, setQMonth] = useState(() => parsedQuincena.qMonth);
   const [qYear, setQYear] = useState(() => parsedQuincena.qYear);
+  const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
   const [isManualCategory, setIsManualCategory] = useState(() => {
     if (!person) return false;
     const isPredefined = person.categoria === 'Peón' || person.categoria === 'Oficial de 1ª';
@@ -97,17 +109,77 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
           setQMonth(parts[1]);
           setQYear(parts[2]);
         }
+      } else {
+        setQType(automaticHiringTarget.qType);
+        setQMonth(automaticHiringTarget.qMonth);
+        setQYear(automaticHiringTarget.qYear);
       }
     } else {
       setFormData(null);
     }
-  }, [person]);
+  }, [person, automaticHiringTarget]);
 
   useEffect(() => {
-    if (formData) {
-      setFormData(prev => prev ? ({ ...prev, quincena: `${qType} ${qMonth} ${qYear}` }) : null);
+    let active = true;
+
+    const loadPeriods = async () => {
+      try {
+        const records = await listAnnualHiringPeriods();
+        if (active) setAnnualHiringPeriods(records);
+      } catch (error) {
+        console.error('No se pudieron cargar los periodos anuales en Directorio:', error);
+      }
+    };
+
+    const handlePeriodsUpdated = () => void loadPeriods();
+    if (isOpen) void loadPeriods();
+    window.addEventListener('profea:annual-hiring-periods-updated', handlePeriodsUpdated as EventListener);
+
+    return () => {
+      active = false;
+      window.removeEventListener('profea:annual-hiring-periods-updated', handlePeriodsUpdated as EventListener);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!formData) return;
+
+    const selectedQuincena = `${qType} ${qMonth} ${qYear}`;
+    const originalQuincena = person?.quincena || '';
+    const hasStoredContractDates = Boolean(person?.periodoInicio && person?.periodoFin);
+    const selectionChanged = selectedQuincena !== originalQuincena;
+
+    // Preserve historical/consolidated contracts. Auto-fill only pending contract
+    // dates or when the user deliberately changes the target fortnight.
+    if (hasStoredContractDates && !selectionChanged) {
+      setFormData(prev => prev ? ({ ...prev, quincena: selectedQuincena }) : null);
+      return;
     }
-  }, [qType, qMonth, qYear]);
+
+    const monthNumber = MONTHS.indexOf(qMonth) + 1;
+    const annuality = annualHiringPeriods.find(record => record.year === Number(qYear));
+    const monthPeriods = annuality?.months.find(month => month.month === monthNumber);
+
+    const periodoInicio = qType === '2ª'
+      ? (monthPeriods?.period2Start || '')
+      : qType === 'Mes'
+        ? (monthPeriods?.period1Start || monthPeriods?.period2Start || '')
+        : (monthPeriods?.period1Start || '');
+    const periodoFin = qType === '2ª'
+      ? (monthPeriods?.period2End || '')
+      : qType === 'Mes'
+        ? (monthPeriods?.period2End || monthPeriods?.period1End || '')
+        : (monthPeriods?.period1End || '');
+
+    setFormData(prev => prev ? ({
+      ...prev,
+      quincena: selectedQuincena,
+      periodoInicio,
+      periodoFin,
+    }) : null);
+  }, [qType, qMonth, qYear, annualHiringPeriods, person]);
+
+
 
   const cleanObras = useMemo(() => Array.from(new Set((savedObras || []).map(o => o.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedObras]);
   const cleanLugares = useMemo(() => Array.from(new Set((savedLugares || []).map(l => l.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedLugares]);
