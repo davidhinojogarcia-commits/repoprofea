@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
 import type { Person } from '../../types';
 import { getAptitudMedicaInfo } from '../../types';
-import { applyPdfFooters, getBase64Image, getStoredPdfConfig, renderPdfLogo } from './exportUtils';
+import { applyInstitutionalPdfStandard, getBase64Image, renderInstitutionalReportHeader } from './exportUtils';
 import { formatIban, formatSpanishSocialSecurityNumber } from './personalDataValidators';
 
 const BLUE: [number, number, number] = [0, 84, 142];
@@ -30,25 +30,13 @@ const filename = (ext: 'pdf' | 'xlsx') => `PROFEA_RELACION_ADMINISTRATIVA_${MONT
 
 export const prepareAdministrativeRelationPDF = (people: Person[]) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
-  const config = getStoredPdfConfig();
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(70, 80, 95);
-  doc.text(config.headerLine1.toUpperCase(), 14, 11);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.setTextColor(110, 120, 135);
-  doc.text(config.headerLine2.toUpperCase(), 14, 15);
-  renderPdfLogo(doc, 231, 3.5, 52, 10, true, config.customLogo);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(BLUE[0], BLUE[1], BLUE[2]);
-  doc.text('RELACIÓN ADMINISTRATIVA DE TRABAJADORES', 14, 25);
-  doc.setDrawColor(BLUE[0], BLUE[1], BLUE[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, 28, 283, 28);
+  const supervisor = people.find(person => person.supervisorResponsable?.trim())?.supervisorResponsable?.trim() || '';
+  renderInstitutionalReportHeader(
+    doc,
+    'RELACIÓN ADMINISTRATIVA DE TRABAJADORES',
+    [`${people.length} trabajador(es)`, supervisor ? `Supervisor: ${supervisor}` : ''].filter(Boolean).join(' · '),
+    { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
+  );
 
   const head = [[
     'OFERTA / CAT.',
@@ -73,7 +61,7 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
   autoTable(doc, {
     head,
     body,
-    startY: 31,
+    startY: 44,
     theme: 'grid',
     styles: { fontSize: 6.4, cellPadding: 1.8, valign: 'middle', overflow: 'linebreak' },
     headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 6.4 },
@@ -103,7 +91,7 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
     },
   });
 
-  applyPdfFooters(doc, config);
+  applyInstitutionalPdfStandard(doc);
   return { doc, filename: filename('pdf') };
 };
 
