@@ -8,6 +8,7 @@ import {
   createGoogleCalendarEvent,
   disconnectGoogleCalendar,
   getGoogleCalendarConnection,
+  isGoogleCalendarDirectConnectionAvailable,
   type GoogleCalendarConnection,
 } from '../src/lib/googleCalendar';
 
@@ -33,6 +34,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
   const [createdLinks, setCreatedLinks] = useState<{ summary: string; link: string }[]>([]);
   const [reminderMinutes, setReminderMinutes] = useState(60);
   const [profeaEmail, setProfeaEmail] = useState('');
+  const directConnectionAvailable = isGoogleCalendarDirectConnectionAvailable();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,6 +62,10 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
   };
 
   const connect = async () => {
+    if (!directConnectionAvailable) {
+      onToast('La conexión directa no está configurada. Puedes añadir los avisos mediante Google Calendar Web.', 'success');
+      return;
+    }
     setIsConnecting(true);
     try {
       const connected = await connectGoogleCalendar();
@@ -83,6 +89,22 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
   const handleSyncDirectly = async () => {
     if (!selectedEvents.length) {
       onToast('Selecciona al menos un aviso para añadirlo a Google Calendar.', 'error');
+      return;
+    }
+
+    if (!directConnectionAvailable) {
+      let opened = 0;
+      selectedEvents.forEach((event) => {
+        const popup = window.open(buildGoogleCalendarWebUrl({ ...event, reminderMinutes }), '_blank', 'noopener,noreferrer');
+        if (popup) opened += 1;
+      });
+      if (opened === selectedEvents.length) {
+        onToast(`Se han abierto ${opened} aviso(s) en Google Calendar. Revisa cada uno y pulsa Guardar.`, 'success');
+      } else if (opened > 0) {
+        onToast(`Se han abierto ${opened} de ${selectedEvents.length} aviso(s). El navegador ha bloqueado alguna pestaña.`, 'error');
+      } else {
+        onToast('El navegador ha bloqueado la apertura de Google Calendar. Usa el botón “Web” de cada aviso.', 'error');
+      }
       return;
     }
 
@@ -156,8 +178,15 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
           </div>
         )}
 
-        <div className={`rounded-2xl border p-4 ${connection ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'}`}>
-          {connection ? (
+        <div className={`rounded-2xl border p-4 ${connection ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30' : directConnectionAvailable ? 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50' : 'border-blue-200 bg-blue-50/80 dark:border-blue-900 dark:bg-blue-950/30'}`}>
+          {!directConnectionAvailable ? (
+            <div className="flex flex-col gap-2">
+              <div className="text-sm font-black text-slate-800 dark:text-slate-100">Google Calendar Web disponible</div>
+              <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                La conexión directa todavía no tiene configurado el identificador OAuth de Google. Mientras tanto, los avisos pueden abrirse en Google Calendar con todos sus datos para revisarlos y guardarlos.
+              </div>
+            </div>
+          ) : connection ? (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
@@ -275,7 +304,11 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
             className="flex-1 px-5 py-2.5 bg-[#00548E] hover:bg-blue-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
-            {isSubmitting ? 'Añadiendo seleccionados…' : `Añadir ${selectedEvents.length} seleccionado(s) a Google Calendar`}
+            {isSubmitting
+              ? 'Añadiendo seleccionados…'
+              : directConnectionAvailable
+                ? `Añadir ${selectedEvents.length} seleccionado(s) a Google Calendar`
+                : `Abrir ${selectedEvents.length} seleccionado(s) en Google Calendar`}
           </button>
         </div>
       </div>
