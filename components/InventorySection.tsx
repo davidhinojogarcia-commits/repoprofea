@@ -182,7 +182,11 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     return (!q || hay.includes(q)) && (!category || i.categoria === category) && (!status || i.estado === status);
   }), [activeItems, search, category, status]);
   const traceMovements = useMemo(() => movements.filter(m => m.itemId === traceItemId).slice().reverse(), [movements, traceItemId]);
-  const kpis = useMemo(() => ({ total: activeItems.length, disponibles: activeItems.filter(i => i.estado === 'Disponible').length, curso: activeItems.filter(i => /obra|traslado/i.test(i.estado)).length, incidencias: activeItems.filter(i => /aver|repar|revisión|fuera/i.test(i.estado)).length }), [activeItems]);
+  const inUseItems = useMemo(
+    () => activeItems.filter(item => /obra|traslado/i.test(item.estado || '')),
+    [activeItems],
+  );
+  const kpis = useMemo(() => ({ total: activeItems.length, disponibles: activeItems.filter(i => i.estado === 'Disponible').length, curso: inUseItems.length, incidencias: activeItems.filter(i => /aver|repar|revisión|fuera/i.test(i.estado)).length }), [activeItems, inUseItems]);
 
   const openQr = async (item: InventoryItem) => {
     const url = new URL(window.location.href); url.search = ''; url.searchParams.set('inventoryItem', item.id);
@@ -192,9 +196,19 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const exportPdf = async () => {
     if (!park) return;
     setPdfBusy(true);
-    try { await exportInventoryStatusPdf({ park, items: activeItems, movements, maintenance, documents }); }
-    catch (e: any) { alert(e?.message || 'No se pudo generar el informe PDF.'); }
-    finally { setPdfBusy(false); }
+    try {
+      await exportInventoryStatusPdf({
+        park,
+        items: inUseItems,
+        movements,
+        maintenance,
+        documents,
+      });
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo generar el informe de situación.');
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   const saveParkConfig = async () => {
@@ -226,7 +240,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
     <div className="grid grid-cols-2 sm:flex gap-2">
       <button onClick={() => setEditingItem({ codigo: '', categoria: '', nombre: '', cantidad: 1, tipoGestion: 'individual', estado: 'Disponible', ubicacionActual: baseLocation, detalles: {}, observaciones: '', activo: true })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-3 text-sm font-bold"><Plus className="w-4 h-4" />Nuevo equipo</button>
-      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe PDF'}</button>
+      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50" title="Incluye únicamente herramientas y maquinaria actualmente asignadas a obra o en traslado"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
     </div>
 
     <details className="ui-surface p-4 group">
