@@ -526,6 +526,22 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const normalizedObras = new Set((savedObras || []).map(obra => String(obra || '').trim().toLocaleLowerCase('es-ES')).filter(Boolean));
+
+    setStatsObraFilter(current => {
+      if (current.includes('Todas')) return current;
+      const valid = current.filter(obra => normalizedObras.has(String(obra || '').trim().toLocaleLowerCase('es-ES')));
+      return valid.length ? valid : ['Todas'];
+    });
+
+    setSelectedObraFilter(current => {
+      if (current.includes('Todas')) return current;
+      const valid = current.filter(obra => normalizedObras.has(String(obra || '').trim().toLocaleLowerCase('es-ES')));
+      return valid.length ? valid : ['Todas'];
+    });
+  }, [savedObras]);
+
+  useEffect(() => {
     if (!businessSettingsHydratedRef.current) return;
     if (businessSettingsSaveTimerRef.current) window.clearTimeout(businessSettingsSaveTimerRef.current);
     businessSettingsSaveTimerRef.current = window.setTimeout(() => {
@@ -1024,11 +1040,24 @@ function App() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const normalizeWorkName = (value: unknown) => String(value || '').trim().toLocaleLowerCase('es-ES');
+    const canonicalObras = Array.from(new Map(
+      (savedObras || [])
+        .map(obra => String(obra || '').trim())
+        .filter(Boolean)
+        .map(obra => [normalizeWorkName(obra), obra] as const)
+    ).values());
+    const canonicalObraByKey = new Map(canonicalObras.map(obra => [normalizeWorkName(obra), obra] as const));
+    const activeObraKeys = new Set(canonicalObraByKey.keys());
+
     let filteredPeople = [...visiblePeople];
 
-    // Filtro por obra
+    // La configuración de obras es la fuente de verdad de los proyectos activos.
+    // Los registros históricos de trabajadores pueden conservar obras antiguas,
+    // pero no deben volver a contarlas como proyectos activos del Centro de Control.
     if (!statsObraFilter.includes('Todas')) {
-      filteredPeople = filteredPeople.filter(p => statsObraFilter.includes(p.obra));
+      const selectedKeys = new Set(statsObraFilter.map(normalizeWorkName));
+      filteredPeople = filteredPeople.filter(p => selectedKeys.has(normalizeWorkName(p.obra)));
     }
 
     // Filtro por fechas (Accesos Rápidos y Rango Personalizado)
@@ -1089,7 +1118,13 @@ function App() {
     
     filteredPeople.forEach(p => {
        if (p.quincena) desgloseQuincena[p.quincena] = (desgloseQuincena[p.quincena] || 0) + 1;
-       if (p.obra) desgloseObra[p.obra] = (desgloseObra[p.obra] || 0) + 1;
+
+       const obraKey = normalizeWorkName(p.obra);
+       const canonicalObra = canonicalObraByKey.get(obraKey);
+       if (canonicalObra && activeObraKeys.has(obraKey)) {
+         desgloseObra[canonicalObra] = (desgloseObra[canonicalObra] || 0) + 1;
+       }
+
        const dni = p.dni ? p.dni.trim().toUpperCase() : '';
        if (dni) {
          dniCounts[dni] = (dniCounts[dni] || 0) + 1;
@@ -1115,12 +1150,14 @@ function App() {
       conFormacion: filteredPeople.filter(p => p.formacion === 'Sí').length,
       formacionesReincorporacion,
       citasPendientes: filteredPeople.filter(p => new Date(p.citaDia) >= today).length,
-      totalObras: Object.keys(desgloseObra).length,
+      totalObras: statsObraFilter.includes('Todas')
+        ? canonicalObras.length
+        : canonicalObras.filter(obra => statsObraFilter.some(selected => normalizeWorkName(selected) === normalizeWorkName(obra))).length,
       trabajadoresRepetidos: Object.values(dniCounts).filter(count => count > 1).length,
       desgloseQuincena,
       desgloseObra
     };
-  }, [visiblePeople, statsFilterMode, statsStartDate, statsEndDate, statsObraFilter]);
+  }, [visiblePeople, savedObras, statsFilterMode, statsStartDate, statsEndDate, statsObraFilter]);
 
   const uniqueQuincenas = useMemo(() => Array.from(new Set(visiblePeople.map(p => p.quincena))).sort(), [visiblePeople]);
 

@@ -91,6 +91,13 @@ export const Stats: React.FC<StatsProps> = ({
   const [chartType, setChartType] = useState<'area' | 'bar' | 'line'>('area');
   const [quincenaViewMode, setQuincenaViewMode] = useState<'chart' | 'list'>('chart');
 
+  const registeredObras = useMemo(() => Array.from(new Map(
+    (savedObras || [])
+      .map(obra => String(obra || '').trim())
+      .filter(Boolean)
+      .map(obra => [obra.toLocaleLowerCase('es-ES'), obra] as const)
+  ).values()), [savedObras]);
+
   const currentMonthLabel = useMemo(() => {
     const monthNames = [
       'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -241,7 +248,7 @@ export const Stats: React.FC<StatsProps> = ({
             {/* Filtro por Obra */}
             <div className="w-full sm:w-auto min-w-[200px] border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50 dark:bg-slate-800/50">
               <MultiSearchableDropdown
-                options={savedObras}
+                options={registeredObras}
                 selectedValues={obraFilter}
                 onChange={setObraFilter}
                 placeholder="Obra: Todas"
@@ -477,7 +484,7 @@ export const Stats: React.FC<StatsProps> = ({
             <p className="text-slate-400 dark:text-slate-500 text-xs mb-3">Proyectos activos</p>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-100 dark:border-purple-900/40">
-            <MapPin className="w-3 h-3" /> {savedObras.length} obras registradas
+            <MapPin className="w-3 h-3" /> {registeredObras.length} obras registradas
           </div>
         </div>
 
