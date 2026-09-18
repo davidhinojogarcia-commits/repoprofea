@@ -2273,6 +2273,7 @@ function App() {
               apellidosNombre: person.apellidosNombre,
               dni: person.dni,
               obra: person.obra,
+              categoria: person.categoria,
             }))}
             onApplyAdministrativeData={async (workerId, data) => {
               const target = peopleRef.current.find(person => person.id === workerId);
