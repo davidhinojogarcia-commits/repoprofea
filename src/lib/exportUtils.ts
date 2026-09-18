@@ -2952,48 +2952,56 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
 
     annexY += 54;
 
-    // Beautiful Signature Boxes
+    // Bloques de firma compactos y homogéneos: conservan espacio suficiente
+    // para firma manuscrita/sello sin consumir media página innecesariamente.
+    const annexSignatureH = 36;
+
     // Left Box: Worker identity and signature
     doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.4);
-    doc.roundedRect(18, annexY, 84, 52, 2, 2, 'S');
+    doc.roundedRect(18, annexY, 84, annexSignatureH, 2, 2, 'S');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(7.4);
     doc.setTextColor(51, 65, 85);
-    doc.text('DATOS Y FIRMA DEL TRABAJADOR', 22, annexY + 6);
-    doc.line(22, annexY + 8, 98, annexY + 8);
+    doc.text('DATOS Y FIRMA DEL TRABAJADOR', 22, annexY + 5);
+    doc.line(22, annexY + 6.5, 98, annexY + 6.5);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
-    doc.text('Nombre y Apellidos (A MANO):', 22, annexY + 14);
-    doc.text('___________________________________________', 22, annexY + 19);
-    doc.text('DNI / NIE:', 22, annexY + 25);
-    doc.text('___________________________', 22, annexY + 30);
-    doc.text('Firma:', 22, annexY + 36);
+    doc.text('Nombre y apellidos:', 22, annexY + 11);
+    doc.line(22, annexY + 15, 96, annexY + 15);
+    doc.text('DNI / NIE:', 22, annexY + 20);
+    doc.line(42, annexY + 20.5, 96, annexY + 20.5);
+    doc.text('Firma:', 22, annexY + 26);
+    doc.line(37, annexY + 26.5, 96, annexY + 26.5);
     const sigDateStrAnnex = p.diaContratacion ? `Fecha: ${formatDate(p.diaContratacion)}` : 'Fecha: _____ / _____ / ________';
-    doc.text(sigDateStrAnnex, 22, annexY + 47);
+    doc.text(sigDateStrAnnex, 22, annexY + 33);
 
     // Right Box: Supervisor identity and signature
-    doc.roundedRect(108, annexY, 84, 52, 2, 2, 'S');
+    doc.roundedRect(108, annexY, 84, annexSignatureH, 2, 2, 'S');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('SUPERVISOR / ENTIDAD ENTREGADORA', 112, annexY + 6);
-    doc.line(112, annexY + 8, 188, annexY + 8);
+    doc.setFontSize(7.4);
+    doc.text('SUPERVISOR / ENTIDAD ENTREGADORA', 112, annexY + 5);
+    doc.line(112, annexY + 6.5, 188, annexY + 6.5);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
-    doc.text('Entregado por:', 112, annexY + 14);
+    doc.text('Entregado por:', 112, annexY + 11);
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(p.supervisorResponsable ? p.supervisorResponsable.toUpperCase() : 'ENCARGADO DE OBRA', 112, annexY + 19);
+    const supervisorLabel = p.supervisorResponsable ? p.supervisorResponsable.toUpperCase() : 'ENCARGADO DE OBRA';
+    doc.text(doc.splitTextToSize(supervisorLabel, 73).slice(0, 2), 112, annexY + 15, { lineHeightFactor: 0.9 });
 
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
-    doc.text('Firma y Sello:', 112, annexY + 28);
-    const deliveryDateStr = p.diaContratacion ? `Fecha de Entrega: ${formatDate(p.diaContratacion)}` : 'Fecha de Entrega: _____ / _____ / ________';
-    doc.text(deliveryDateStr, 112, annexY + 47);
+    doc.text('Firma y sello:', 112, annexY + 24);
+    doc.line(139, annexY + 24.5, 188, annexY + 24.5);
+    const deliveryDateStr = p.diaContratacion ? `Fecha de entrega: ${formatDate(p.diaContratacion)}` : 'Fecha de entrega: _____ / _____ / ________';
+    doc.text(deliveryDateStr, 112, annexY + 33);
 
     // Official footer with copyright
     doc.setFont('helvetica', 'normal');
@@ -3404,37 +3412,40 @@ export const generateStatsSummaryPDF = async ({
   doc.text('DILIGENCIA: Se expide el presente informe cuantitativo y cualitativo de personal contratado y necesidades de formación preventivas', 18, signY + 3.5);
   doc.text('conforme a los expedientes de contratación registrados oficialmente en la plataforma de gestión PROFEA de la Diputación de Cádiz.', 18, signY + 7);
 
-  const sigBoxY = signY + 10;
+  const sigBoxY = signY + 9;
+  const compactSignatureH = 21;
 
   // Signature box 1
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.4);
-  doc.roundedRect(18, sigBoxY, 82, 25, 2, 2, 'S');
+  doc.roundedRect(18, sigBoxY, 82, compactSignatureH, 2, 2, 'S');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6.7);
   doc.setTextColor(51, 65, 85);
-  doc.text('RESPONSABLE TÉCNICO / SUPERVISOR', 22, sigBoxY + 4.5);
-  doc.line(22, sigBoxY + 6, 96, sigBoxY + 6);
+  doc.text('RESPONSABLE TÉCNICO / SUPERVISOR', 22, sigBoxY + 4);
+  doc.line(22, sigBoxY + 5.4, 96, sigBoxY + 5.4);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('Firma:', 22, sigBoxY + 12);
-  doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 21);
+  doc.text('Firma:', 22, sigBoxY + 10.5);
+  doc.line(36, sigBoxY + 11, 96, sigBoxY + 11);
+  doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 18);
 
   // Signature box 2
-  doc.roundedRect(110, sigBoxY, 82, 25, 2, 2, 'S');
+  doc.roundedRect(110, sigBoxY, 82, compactSignatureH, 2, 2, 'S');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6.3);
   doc.setTextColor(51, 65, 85);
-  doc.text('CONTROL Y GESTIÓN PROFEA (DIPUTACIÓN DE CÁDIZ)', 114, sigBoxY + 4.5);
-  doc.line(114, sigBoxY + 6, 188, sigBoxY + 6);
+  doc.text('CONTROL Y GESTIÓN PROFEA (DIPUTACIÓN DE CÁDIZ)', 114, sigBoxY + 4, { maxWidth: 74 });
+  doc.line(114, sigBoxY + 5.4, 188, sigBoxY + 5.4);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('Sello y Validación:', 114, sigBoxY + 12);
-  doc.text('Fecha: _____ / _____ / ________', 114, sigBoxY + 21);
+  doc.text('Sello / firma:', 114, sigBoxY + 10.5);
+  doc.line(139, sigBoxY + 11, 188, sigBoxY + 11);
+  doc.text('Fecha: _____ / _____ / ________', 114, sigBoxY + 18);
 
   // Footer on all pages
   const totalPages = doc.getNumberOfPages();
