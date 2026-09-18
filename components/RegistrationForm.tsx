@@ -114,7 +114,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 }) => {
   const today = new Date();
   const nextHiringMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  const defaultQType = '1ª';
+  const defaultQType = today.getDate() <= 15 ? '1ª' : '2ª';
   const defaultQMonth = MONTHS[nextHiringMonth.getMonth()];
   const defaultQYear = nextHiringMonth.getFullYear().toString();
 
