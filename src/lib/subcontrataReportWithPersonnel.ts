@@ -290,26 +290,32 @@ export const generateSubcontrataReportPDF = async (
   const personnelEnd = renderPersonnelSection(doc, sub, checklistEnd, marginLeft, contentWidth);
 
   let sigY = personnelEnd;
-  if (sigY > 248) {
+  // Reserva compacta: evita crear una página nueva únicamente por firmas sobredimensionadas.
+  if (sigY > 252) {
     doc.addPage();
     sigY = 22;
   }
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.7); doc.setTextColor(100, 116, 139);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.4); doc.setTextColor(100, 116, 139);
   doc.text('Documento emitido para control CAE y acceso nominal a obra. La autorización individual depende de que la documentación acreditativa permanezca vigente.', marginLeft, sigY, { maxWidth: contentWidth });
   const signatures = [
     { label: 'Por el Supervisor de obra:', name: effectiveSupervisorFirma },
     { label: 'Por el Técnico de Obra:', name: effectiveTecnico },
     { label: 'Coordinación de Seguridad y Salud:', name: effectiveCoordinador },
   ].filter(item => item.name);
-  const sigBoxY = sigY + 5;
+  const sigBoxY = sigY + 4.5;
   if (signatures.length) {
     const gap = 3;
     const boxW = (contentWidth - gap * (signatures.length - 1)) / signatures.length;
     signatures.forEach((signature, index) => {
       const x = marginLeft + index * (boxW + gap);
-      doc.setDrawColor(203, 213, 225); doc.roundedRect(x, sigBoxY, boxW, 22, 1.5, 1.5, 'S');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4); doc.setTextColor(15, 23, 42); doc.text(signature.label, x + 2, sigBoxY + 4, { maxWidth: boxW - 4 });
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8); doc.setTextColor(71, 85, 105); doc.text(`Fdo: ${signature.name}`, x + 2, sigBoxY + 18, { maxWidth: boxW - 4 });
+      const signatureH = 19;
+      doc.setDrawColor(203, 213, 225); doc.roundedRect(x, sigBoxY, boxW, signatureH, 1.5, 1.5, 'S');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.1); doc.setTextColor(15, 23, 42); doc.text(signature.label, x + 2, sigBoxY + 3.8, { maxWidth: boxW - 4 });
+      doc.setDrawColor(220, 226, 232); doc.line(x + 2, sigBoxY + 5.2, x + boxW - 2, sigBoxY + 5.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6); doc.setTextColor(71, 85, 105);
+      doc.text('Firma:', x + 2, sigBoxY + 10);
+      doc.line(x + 13, sigBoxY + 10.5, x + boxW - 2, sigBoxY + 10.5);
+      doc.text(`Fdo: ${signature.name}`, x + 2, sigBoxY + 16.2, { maxWidth: boxW - 4 });
     });
   }
 
