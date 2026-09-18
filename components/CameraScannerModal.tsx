@@ -23,7 +23,9 @@ import {
   Brain,
   Cpu,
   Save,
-  ChevronLeft
+  ChevronLeft,
+  Search,
+  UserRound
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -61,6 +63,7 @@ interface ScannerWorkerTarget {
   apellidosNombre: string;
   dni: string;
   obra: string;
+  categoria?: string;
 }
 
 interface AdministrativeDataPayload {
@@ -83,6 +86,16 @@ interface CameraScannerModalProps {
 export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, onClose, onToast, onAddWorkers, workers, onApplyAdministrativeData }) => {
   const [pages, setPages] = useState<CapturedPage[]>([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+  const [workerSearch, setWorkerSearch] = useState('');
+  const [recentWorkerIds, setRecentWorkerIds] = useState<number[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('profea-scanner-recent-workers') || '[]');
+      return Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isFinite(id)).slice(0, 5) : [];
+    } catch {
+      return [];
+    }
+  });
   const [pdfName, setPdfName] = useState(() => {
     const now = new Date();
     const formattedDate = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -108,6 +121,47 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   const [hasLocalCamera, setHasLocalCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const normalizeWorkerSearch = (value: string) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const selectedWorker = workers.find(item => String(item.id) === selectedWorkerId) || null;
+
+  const matchingWorkers = React.useMemo(() => {
+    const term = normalizeWorkerSearch(workerSearch);
+    const sorted = [...workers].sort((a, b) => a.apellidosNombre.localeCompare(b.apellidosNombre, 'es'));
+    if (!term) return sorted.slice(0, 8);
+    return sorted
+      .filter(worker =>
+        [worker.apellidosNombre, worker.dni, worker.categoria, worker.obra]
+          .some(value => normalizeWorkerSearch(String(value || '')).includes(term))
+      )
+      .slice(0, 12);
+  }, [workers, workerSearch]);
+
+  const recentWorkers = React.useMemo(
+    () => recentWorkerIds
+      .map(id => workers.find(worker => worker.id === id))
+      .filter((worker): worker is ScannerWorkerTarget => Boolean(worker)),
+    [recentWorkerIds, workers],
+  );
+
+  const selectDestinationWorker = (worker: ScannerWorkerTarget) => {
+    setSelectedWorkerId(String(worker.id));
+    setWorkerSearch('');
+    setRecentWorkerIds(current => {
+      const next = [worker.id, ...current.filter(id => id !== worker.id)].slice(0, 5);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('profea-scanner-recent-workers', JSON.stringify(next));
+      }
+      return next;
+    });
+  };
 
   React.useEffect(() => {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
@@ -1136,36 +1190,114 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
               <RemoteScannerPairing onCapture={handleRemoteCapture} onToast={onToast} />
 
-              {/* Manual destination worker: never infer who receives the scanned data */}
+              {/* Manual destination worker: fast searchable selector */}
               <div className="p-4 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl">
                 <label className="block text-xs font-extrabold text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-2">
                   Trabajador destino
                 </label>
-                <select
-                  value={selectedWorkerId}
-                  onChange={(e) => setSelectedWorkerId(e.target.value)}
-                  className="w-full px-3 py-3 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                >
-                  <option value="">Selecciona manualmente un trabajador...</option>
-                  {[...workers]
-                    .sort((a, b) => a.apellidosNombre.localeCompare(b.apellidosNombre, 'es'))
-                    .map(worker => (
-                      <option key={worker.id} value={worker.id}>
-                        {worker.apellidosNombre}{worker.dni ? ` · ${worker.dni}` : ''}{worker.obra ? ` · ${worker.obra}` : ''}
-                      </option>
-                    ))}
-                </select>
-                {selectedWorkerId ? (() => {
-                  const worker = workers.find(item => item.id === Number(selectedWorkerId));
-                  if (!worker) return null;
-                  return (
-                    <div className="mt-2 text-xs text-amber-900 dark:text-amber-200">
-                      <span className="font-bold">Destino:</span> {worker.apellidosNombre}
-                      {worker.dni ? ` · DNI ${worker.dni}` : ''}
-                      {worker.obra ? ` · ${worker.obra}` : ''}
+
+                {selectedWorker && (
+                  <div className="mb-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/25">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                      <Check className="h-5 w-5" />
                     </div>
-                  );
-                })() : (
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Seleccionado</p>
+                      <p className="truncate text-sm font-extrabold text-slate-900 dark:text-slate-100">{selectedWorker.apellidosNombre}</p>
+                      <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                        {selectedWorker.dni ? `DNI ${selectedWorker.dni}` : 'Sin DNI'}
+                        {selectedWorker.categoria ? ` · ${selectedWorker.categoria}` : ''}
+                        {selectedWorker.obra ? ` · ${selectedWorker.obra}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWorkerId('')}
+                      className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-white hover:text-slate-800 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+                      title="Cambiar trabajador"
+                      aria-label="Cambiar trabajador"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={workerSearch}
+                    onChange={(event) => setWorkerSearch(event.target.value)}
+                    placeholder="Buscar por nombre, apellidos, DNI, puesto u obra..."
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-amber-300 bg-white py-3 pl-10 pr-10 text-sm font-semibold text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/40 dark:border-amber-800 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                  {workerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setWorkerSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      aria-label="Limpiar búsqueda"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {!workerSearch && recentWorkers.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-amber-800 dark:text-amber-300">Recientes</p>
+                    <div className="flex flex-wrap gap-2">
+                      {recentWorkers.map(worker => (
+                        <button
+                          key={worker.id}
+                          type="button"
+                          onClick={() => selectDestinationWorker(worker)}
+                          className="max-w-full rounded-full border border-amber-200 bg-white px-3 py-1.5 text-left text-xs font-bold text-slate-700 shadow-sm transition hover:border-amber-400 hover:bg-amber-50 dark:border-amber-900 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-amber-950/30"
+                        >
+                          <span className="block max-w-[250px] truncate">{worker.apellidosNombre}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {matchingWorkers.length > 0 ? matchingWorkers.map(worker => {
+                    const isSelected = String(worker.id) === selectedWorkerId;
+                    return (
+                      <button
+                        key={worker.id}
+                        type="button"
+                        onClick={() => selectDestinationWorker(worker)}
+                        className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${
+                          isSelected
+                            ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20'
+                            : 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/60 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-amber-800 dark:hover:bg-amber-950/20'
+                        }`}
+                      >
+                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                          <UserRound className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-extrabold text-slate-900 dark:text-slate-100">{worker.apellidosNombre}</p>
+                          <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            {worker.dni ? `DNI ${worker.dni}` : 'Sin DNI'}
+                            {worker.categoria ? ` · ${worker.categoria}` : ''}
+                          </p>
+                          {worker.obra && <p className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{worker.obra}</p>}
+                        </div>
+                        {isSelected && <Check className="mt-1 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+                      </button>
+                    );
+                  }) : (
+                    <div className="rounded-xl border border-dashed border-amber-300 px-4 py-5 text-center text-sm text-amber-900 dark:border-amber-800 dark:text-amber-200">
+                      No hay trabajadores que coincidan con la búsqueda.
+                    </div>
+                  )}
+                </div>
+
+                {!selectedWorkerId && (
                   <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">El botón Extraer datos permanecerá bloqueado hasta elegir un trabajador.</p>
                 )}
               </div>

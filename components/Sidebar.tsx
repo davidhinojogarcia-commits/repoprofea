@@ -184,20 +184,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-800/80 no-print">
           <button
+            type="button"
             onClick={onOpenScanner}
-            className={`
-              w-full flex items-center justify-center gap-2 px-3 py-3 bg-gradient-to-r from-[#00548E] to-blue-700 hover:from-[#004270] hover:to-blue-800 text-white rounded-xl shadow-md transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 group relative
-              ${isCollapsed && !isMobileOpen ? 'h-11 w-11 !p-0 rounded-full mx-auto' : ''}
-            `}
-            title="Escáner de Documentos con Cámara"
+            className={`profea-sidebar-item w-full min-h-12 flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative text-slate-700 dark:text-slate-300 ${isCollapsed && !isMobileOpen ? 'lg:h-12 lg:w-full' : ''}`}
+            title={isCollapsed && !isMobileOpen ? 'Escáner' : 'Escáner de documentos'}
           >
-            <Camera className="w-5 h-5 group-hover:scale-115 transition-transform" />
-            <span className={`font-bold text-xs tracking-wider uppercase whitespace-nowrap transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
-              Escáner
+            <Camera className="w-5 h-5 shrink-0 text-slate-500 dark:text-slate-400 group-hover:text-brand-primary dark:group-hover:text-blue-400" />
+            <span className={`min-w-0 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
+              <span className="font-semibold text-sm whitespace-nowrap text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400">
+                Escáner
+              </span>
             </span>
 
             {isCollapsed && !isMobileOpen && (
-              <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-[10px] font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-md">
+              <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-xs font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg">
                 Escáner
               </div>
             )}

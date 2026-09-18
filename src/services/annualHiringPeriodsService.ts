@@ -93,6 +93,17 @@ export async function saveAnnualHiringPeriods(record: AnnualHiringPeriodsRecord)
   window.dispatchEvent(new CustomEvent('profea:annual-hiring-periods-updated', { detail: { record } }));
 }
 
+export async function deleteAnnualHiringPeriods(year: number): Promise<void> {
+  const existing = await listAnnualHiringPeriods();
+  const next = existing.filter((item) => item.year !== year);
+  await supabase.rpc('patch_user_settings', {
+    p_patch: { annualHiringPeriods: next },
+  });
+  window.dispatchEvent(new CustomEvent('profea:annual-hiring-periods-updated', {
+    detail: { year, deleted: true },
+  }));
+}
+
 export async function updateAnnualHiringMonth(
   recordId: string,
   month: number,

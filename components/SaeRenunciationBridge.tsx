@@ -28,25 +28,225 @@ const sha256 = async (blob: Blob) => Array.from(new Uint8Array(await crypto.subt
 async function makePdf(flow: FlowData, phone: string, signature: string, refused: boolean, observations: string) {
   const { candidate: c, need: n, worker: w } = flow;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const pw = doc.internal.pageSize.getWidth(); const ph = doc.internal.pageSize.getHeight(); const l = 18; const r = pw - 18; const width = r - l;
-  try { const image = await fetch('/logo-pdf.png'); if (image.ok) doc.addImage(await blobToDataUrl(await image.blob()), 'PNG', l, 10, 48, 17, undefined, 'FAST'); } catch {}
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('DIPUTACIÓN DE CÁDIZ · PROFEA', r, 15, { align: 'right' });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text('Gestión de contratación · Servicio Andaluz de Empleo', r, 20, { align: 'right' });
-  doc.setDrawColor(0, 84, 142); doc.setLineWidth(.7); doc.line(l, 31, r, 31);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.text('INFORME DE RENUNCIA A LA CONTRATACIÓN', pw / 2, 43, { align: 'center' });
-  doc.setFontSize(9); doc.setTextColor(170, 20, 20); doc.text('Código SAE 2100 · Rechazo voluntario', pw / 2, 49, { align: 'center' }); doc.setTextColor(0, 0, 0);
-  let y = 61;
-  const field = (label: string, value: unknown) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(90); doc.text(label.toUpperCase(), l, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0); const lines = doc.splitTextToSize(String(value || '—'), width); doc.text(lines, l, y + 4.5); y += 5 + Math.max(1, lines.length) * 4.4; };
-  field('Trabajador', w?.apellidosNombre || workerName(c)); field('DNI / NIE', w?.dni || 'No consta en la ficha'); field('Teléfono', phone || w?.telefono || 'No consta'); field('Categoría / puesto', w?.categoria || c.category || '—'); field('Nº oferta SAE', w?.numOferta || c.offer_number || '—');
-  y += 2; field('Obra', w?.obra || workName(c, n) || '—'); field('Código de obra', c.work_code || n?.work_code || '—'); field('Periodo SAE', [monthLabel(c.hiring_month || n?.hiring_month), n?.hiring_year, fortnightLabel(c.fortnight)].filter(Boolean).join(' · ') || '—'); field('Periodo de contratación', [w?.periodoInicio, w?.periodoFin].filter(Boolean).join(' a ') || 'Pendiente / no iniciado'); field('Supervisor responsable', w?.supervisorResponsable || '—');
-  y += 3; doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('DECLARACIÓN', l, y); y += 6; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  const statement = refused ? 'Se deja constancia de que al trabajador arriba identificado se le ha presentado este documento relativo al rechazo voluntario de la contratación y que manifiesta su negativa a firmarlo. La incidencia queda registrada por el supervisor.' : 'El trabajador arriba identificado manifiesta voluntariamente su renuncia a la contratación correspondiente a la oferta, obra y periodo indicados, declarando haber leído y comprendido este documento antes de firmarlo.';
-  const statementLines = doc.splitTextToSize(statement, width); doc.text(statementLines, l, y); y += statementLines.length * 4.8 + 5;
-  if (observations.trim()) { doc.setFont('helvetica', 'bold'); doc.text('Observaciones:', l, y); doc.setFont('helvetica', 'normal'); const lines = doc.splitTextToSize(observations.trim(), width); doc.text(lines, l, y + 5); y += lines.length * 4.8 + 8; }
-  const signedAt = new Date(); doc.setFontSize(8.5); doc.text(`Fecha y hora del registro: ${signedAt.toLocaleString('es-ES')}`, l, y); y += 8;
-  doc.setDrawColor(180); doc.roundedRect(l, y, width, 48, 2, 2); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(refused ? 'CONSTANCIA DE NEGATIVA A FIRMAR' : 'FIRMA DEL TRABAJADOR', l + 4, y + 7);
-  if (!refused && signature) { try { doc.addImage(signature, 'PNG', l + 8, y + 10, 78, 32, undefined, 'FAST'); } catch {} } else if (refused) { doc.setTextColor(170, 20, 20); doc.text('EL TRABAJADOR SE NIEGA A FIRMAR', l + 8, y + 27); doc.setTextColor(0); }
-  doc.setDrawColor(210); doc.line(l, ph - 22, r, ph - 22); doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(100); doc.text('Documento generado y archivado electrónicamente por GestionPROFEA.', l, ph - 16); doc.text('Página 1 de 1', r, ph - 16, { align: 'right' });
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const l = 18;
+  const r = pw - 18;
+  const width = r - l;
+  const blue: [number, number, number] = [0, 84, 142];
+  const lightBlue: [number, number, number] = [239, 247, 251];
+  const slate: [number, number, number] = [71, 85, 105];
+  const softBorder: [number, number, number] = [203, 213, 225];
+
+  try {
+    const image = await fetch('/logo-pdf.png');
+    if (image.ok) {
+      doc.addImage(await blobToDataUrl(await image.blob()), 'PNG', l, 9, 49, 17, undefined, 'FAST');
+    }
+  } catch {}
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...blue);
+  doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', r, 14, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...slate);
+  doc.text('GESTIÓN DE FONDOS PROFEA · DOCUMENTO INTERNO DE CONTRATACIÓN', r, 19, { align: 'right' });
+
+  doc.setDrawColor(...blue);
+  doc.setLineWidth(0.55);
+  doc.line(l, 30, r, 30);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(...blue);
+  doc.text(
+    refused
+      ? 'ACTA DE CONSTANCIA DE RENUNCIA Y NEGATIVA A FIRMAR'
+      : 'DECLARACIÓN DE RENUNCIA A LA CONTRATACIÓN',
+    pw / 2,
+    41,
+    { align: 'center' }
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...slate);
+  doc.text(
+    refused
+      ? 'Documento interno para dejar constancia de la renuncia comunicada y de la negativa del trabajador a suscribirla.'
+      : 'Documento interno para dejar constancia expresa de la renuncia voluntaria del trabajador.',
+    pw / 2,
+    47,
+    { align: 'center', maxWidth: width }
+  );
+
+  let y = 58;
+
+  const startContinuationPage = () => {
+    doc.addPage();
+    y = 24;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...blue);
+    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ · GESTIÓN DE FONDOS PROFEA', l, 13);
+    doc.setDrawColor(...blue);
+    doc.setLineWidth(0.4);
+    doc.line(l, 17, r, 17);
+  };
+
+  const ensureSpace = (required: number) => {
+    if (y + required > ph - 30) startContinuationPage();
+  };
+
+  const sectionTitle = (title: string) => {
+    ensureSpace(14);
+    doc.setFillColor(...lightBlue);
+    doc.setDrawColor(185, 220, 235);
+    doc.roundedRect(l, y, width, 8, 1.5, 1.5, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...blue);
+    doc.text(title.toUpperCase(), l + 3, y + 5.3);
+    y += 11;
+  };
+
+  const drawFieldRow = (leftLabel: string, leftValue: unknown, rightLabel?: string, rightValue?: unknown) => {
+    const gap = 5;
+    const colW = rightLabel ? (width - gap) / 2 : width;
+
+    const drawCell = (x: number, wCell: number, label: string, value: unknown) => {
+      doc.setDrawColor(...softBorder);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(x, y, wCell, 14, 1.2, 1.2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(label.toUpperCase(), x + 3, y + 4.3);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      const lines = doc.splitTextToSize(String(value || '—'), wCell - 6);
+      doc.text(lines.slice(0, 2), x + 3, y + 9);
+    };
+
+    drawCell(l, colW, leftLabel, leftValue);
+    if (rightLabel) drawCell(l + colW + gap, colW, rightLabel, rightValue);
+    y += 17;
+  };
+
+  sectionTitle('Datos identificativos');
+  drawFieldRow('Trabajador/a', w?.apellidosNombre || workerName(c), 'DNI / NIE', w?.dni || 'No consta');
+  drawFieldRow('Teléfono de contacto', phone || w?.telefono || 'No consta', 'Categoría / puesto', w?.categoria || c.category || '—');
+
+  sectionTitle('Datos de la contratación');
+  drawFieldRow('Obra / actuación', w?.obra || workName(c, n) || '—', 'Código de obra', c.work_code || n?.work_code || '—');
+  drawFieldRow(
+    'Periodo de contratación previsto',
+    [w?.periodoInicio, w?.periodoFin].filter(Boolean).join(' a ') || 'Pendiente / no iniciado',
+    'Periodo de referencia',
+    [monthLabel(c.hiring_month || n?.hiring_month), n?.hiring_year, fortnightLabel(c.fortnight)].filter(Boolean).join(' · ') || '—'
+  );
+  drawFieldRow('Supervisor/a responsable', w?.supervisorResponsable || '—');
+
+  sectionTitle(refused ? 'Constancia de la renuncia y negativa a firmar' : 'Manifestación del trabajador');
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.4);
+  doc.setTextColor(30, 41, 59);
+
+  const statement = refused
+    ? 'Se hace constar que el trabajador arriba identificado ha comunicado su decisión de no continuar con el proceso de contratación o de no formalizar la incorporación correspondiente a la obra y periodo indicados. Se le informa del contenido y finalidad de este documento, destinado exclusivamente a dejar constancia interna de dicha decisión dentro de la gestión del programa PROFEA de la Diputación Provincial de Cádiz. El trabajador manifiesta su negativa a firmar la presente acta. Por este motivo, el personal responsable registra la incidencia, la fecha y hora en que se produce y, en su caso, las observaciones relevantes, quedando el documento incorporado al expediente interno de contratación.'
+    : 'El trabajador arriba identificado manifiesta, de forma libre y voluntaria, su decisión de renunciar a la contratación o incorporación correspondiente a la obra y periodo indicados. Declara haber sido informado del contenido y finalidad de este documento y confirma que su decisión supone no continuar con el proceso de contratación asociado a esta actuación. La presente declaración se incorpora al expediente interno de gestión del programa PROFEA de la Diputación Provincial de Cádiz con la finalidad de dejar constancia documental de la renuncia comunicada.';
+
+  const statementLines = doc.splitTextToSize(statement, width);
+  doc.text(statementLines, l, y);
+  y += statementLines.length * 4.6 + 5;
+
+  const note = refused
+    ? 'La ausencia de firma no impide la conservación de esta constancia interna, que refleja únicamente la incidencia comunicada y la negativa a suscribir el documento.'
+    : 'La firma acredita exclusivamente que el trabajador ha leído esta declaración y confirma la renuncia expresada en los términos anteriores.';
+
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(...softBorder);
+  const noteLines = doc.splitTextToSize(note, width - 8);
+  const noteH = Math.max(14, noteLines.length * 4.2 + 8);
+  doc.roundedRect(l, y, width, noteH, 1.5, 1.5, 'FD');
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8.2);
+  doc.setTextColor(...slate);
+  doc.text(noteLines, l + 4, y + 5.5);
+  y += noteH + 5;
+
+  if (observations.trim()) {
+    const observationPreview = doc.splitTextToSize(observations.trim(), width);
+    ensureSpace(Math.min(46, 17 + observationPreview.length * 4.5));
+    sectionTitle('Observaciones');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+    const obsLines = doc.splitTextToSize(observations.trim(), width);
+    doc.text(obsLines, l, y);
+    y += obsLines.length * 4.5 + 6;
+  }
+
+  const signedAt = new Date();
+  const dateText = signedAt.toLocaleDateString('es-ES');
+  const timeText = signedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+  ensureSpace(refused ? 57 : 65);
+  sectionTitle('Registro y firma');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...slate);
+  doc.text(`Fecha de registro: ${dateText}`, l, y);
+  doc.text(`Hora: ${timeText}`, l + 65, y);
+  y += 5;
+
+  const signatureHeight = refused ? 35 : 43;
+  doc.setDrawColor(...softBorder);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(l, y, width, signatureHeight, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(refused ? 'CONSTANCIA DE NEGATIVA A FIRMAR' : 'FIRMA DEL TRABAJADOR/A', l + 4, y + 6.5);
+
+  if (!refused && signature) {
+    try {
+      doc.addImage(signature, 'PNG', l + 8, y + 9, 75, 29, undefined, 'FAST');
+    } catch {}
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.3);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Firma manuscrita incorporada al documento en el momento del registro.', l + 92, y + 23, { maxWidth: width - 98 });
+  } else if (refused) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(153, 27, 27);
+    doc.text('EL TRABAJADOR/A MANIFIESTA SU NEGATIVA A FIRMAR', l + 8, y + 21);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.8);
+    doc.setTextColor(...slate);
+    doc.text('La incidencia queda registrada por el personal responsable de la gestión PROFEA.', l + 8, y + 27);
+  }
+
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(203, 213, 225);
+    doc.line(l, ph - 23, r, ph - 23);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Diputación Provincial de Cádiz · Gestión de Fondos PROFEA', l, ph - 17);
+    doc.text('Documento interno generado y archivado electrónicamente por GestionPROFEA.', l, ph - 13);
+    doc.text(`Página ${page} de ${totalPages}`, r, ph - 15, { align: 'right' });
+  }
+
   return { blob: doc.output('blob'), signedAt: signedAt.toISOString() };
 }
 
@@ -77,7 +277,7 @@ export const SaeRenunciationBridge: React.FC = () => {
     document.addEventListener('change',handler,true);return()=>{observer.disconnect();document.removeEventListener('change',handler,true);style.remove();};
   },[]);
 
-  const finalize=async(refuse=false)=>{if(!flow||(!refuse&&(!signature||!consent)))return;setBusy(true);try{const result=await makePdf(flow,phone,signature,refuse,observations);const fileName=`RENUNCIA_SAE_2100_${safeFilename(name)||flow.candidate.id}_${new Date().toISOString().slice(0,10)}.pdf`;const file=new File([result.blob],fileName,{type:'application/pdf'});const hash=await sha256(result.blob);const path=`${flow.candidate.need_id}/renuncias/${flow.candidate.id}/${Date.now()}-${fileName}`;const {error}=await supabase.storage.from('sae-documents').upload(path,result.blob,{contentType:'application/pdf',upsert:true});if(error)throw error;setPdfFile(file);if(pdfUrl)URL.revokeObjectURL(pdfUrl);setPdfUrl(URL.createObjectURL(file));const meta={estadoContratacion:'Renuncia',codigoSaeResultado:'2100',renunciaFecha:result.signedAt,renunciaFirmada:!refuse,renunciaNegativaFirma:refuse,renunciaDocumentoPath:path,renunciaDocumentoNombre:fileName,renunciaDocumentoHash:hash,renunciaTelefono:phone};if(flow.worker?.id){await updateDocument('trabajadores',flow.worker.id,meta as any);renouncedIds.current.add(Number(flow.worker.id));}await createDocument('contrataciones',`sae-renuncia-${flow.candidate.id}`,{trabajadorId:flow.worker?.id||flow.candidate.existing_worker_id||null,obra:flow.worker?.obra||workName(flow.candidate,flow.need),numOferta:flow.worker?.numOferta||flow.candidate.offer_number||'',categoria:flow.worker?.categoria||flow.candidate.category||'',periodoInicio:flow.worker?.periodoInicio||'',periodoFin:flow.worker?.periodoFin||'',quincena:flow.worker?.quincena||fortnightLabel(flow.candidate.fortnight),estado:'Renuncia',observaciones:`Renuncia SAE 2100${refuse?' · negativa a firmar':' · documento firmado'}`,candidateId:flow.candidate.id,needId:flow.candidate.need_id,...meta} as any).catch(e=>console.warn('No se pudo sincronizar contrataciones',e));await refreshWorkers();setRefused(refuse);setStep('done');if(!refuse&&navigator.share&&navigator.canShare?.({files:[file]})){try{await navigator.share({title:'Renuncia contratación PROFEA',text:`Copia firmada de la renuncia de ${name}.`,files:[file]});}catch{}}}catch(e:any){alert(e?.message||'No se pudo generar y archivar la renuncia.');}finally{setBusy(false);}};
+  const finalize=async(refuse=false)=>{if(!flow||(!refuse&&(!signature||!consent)))return;setBusy(true);try{const result=await makePdf(flow,phone,signature,refuse,observations);const fileName=`PROFEA_RENUNCIA_${refuse?'NEGATIVA_FIRMA':'FIRMADA'}_${safeFilename(name)||flow.candidate.id}_${new Date().toISOString().slice(0,10)}.pdf`;const file=new File([result.blob],fileName,{type:'application/pdf'});const hash=await sha256(result.blob);const path=`${flow.candidate.need_id}/renuncias/${flow.candidate.id}/${Date.now()}-${fileName}`;const {error}=await supabase.storage.from('sae-documents').upload(path,result.blob,{contentType:'application/pdf',upsert:true});if(error)throw error;setPdfFile(file);if(pdfUrl)URL.revokeObjectURL(pdfUrl);setPdfUrl(URL.createObjectURL(file));const meta={estadoContratacion:'Renuncia',codigoSaeResultado:'2100',renunciaFecha:result.signedAt,renunciaFirmada:!refuse,renunciaNegativaFirma:refuse,renunciaDocumentoPath:path,renunciaDocumentoNombre:fileName,renunciaDocumentoHash:hash,renunciaTelefono:phone};if(flow.worker?.id){await updateDocument('trabajadores',flow.worker.id,meta as any);renouncedIds.current.add(Number(flow.worker.id));}await createDocument('contrataciones',`sae-renuncia-${flow.candidate.id}`,{trabajadorId:flow.worker?.id||flow.candidate.existing_worker_id||null,obra:flow.worker?.obra||workName(flow.candidate,flow.need),numOferta:flow.worker?.numOferta||flow.candidate.offer_number||'',categoria:flow.worker?.categoria||flow.candidate.category||'',periodoInicio:flow.worker?.periodoInicio||'',periodoFin:flow.worker?.periodoFin||'',quincena:flow.worker?.quincena||fortnightLabel(flow.candidate.fortnight),estado:'Renuncia',observaciones:`Renuncia SAE 2100${refuse?' · negativa a firmar':' · documento firmado'}`,candidateId:flow.candidate.id,needId:flow.candidate.need_id,...meta} as any).catch(e=>console.warn('No se pudo sincronizar contrataciones',e));await refreshWorkers();setRefused(refuse);setStep('done');if(!refuse&&navigator.share&&navigator.canShare?.({files:[file]})){try{await navigator.share({title:'Renuncia contratación PROFEA',text:`Copia firmada de la renuncia de ${name}.`,files:[file]});}catch{}}}catch(e:any){alert(e?.message||'No se pudo generar y archivar la renuncia.');}finally{setBusy(false);}};
   const share=async()=>{if(!pdfFile)return;const text=`Hola ${name}. Te envío copia del informe de renuncia a la contratación PROFEA correspondiente a ${work||'la obra indicada'}, registrado con código SAE 2100.`;if(navigator.share&&navigator.canShare?.({files:[pdfFile]})){try{await navigator.share({title:'Renuncia contratación PROFEA',text,files:[pdfFile]});return;}catch{}}window.open(`https://wa.me/${whatsappPhone(phone)}?text=${encodeURIComponent(`${text}\n\nAdjunta el PDF descargado desde GestionPROFEA.`)}`,'_blank','noopener,noreferrer');};
   if(!flow)return null;
   const Info=({label,value}:{label:string;value:string})=><div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 border p-3"><div className="text-[10px] uppercase tracking-wider font-black text-slate-400">{label}</div><div className="font-bold mt-1 break-words">{value||'—'}</div></div>;
