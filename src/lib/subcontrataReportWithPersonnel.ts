@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Subcontratista, SubcontrataTrabajadorCAE } from '../../types';
-import { renderPdfLogo, getStoredPdfConfig, formatDate } from './exportUtils';
+import { applyInstitutionalPdfStandard, formatDate, renderInstitutionalReportHeader } from './exportUtils';
 import {
   getStoredObrasRecursosPreventivos,
   getStoredReporteTecnicoConfig,
@@ -160,7 +160,6 @@ export const generateSubcontrataReportPDF = async (
   const defaultCfg = getStoredReporteTecnicoConfig();
   const obrasRecursos = getStoredObrasRecursosPreventivos();
   const obraRecurso = sub.obra ? obrasRecursos[sub.obra] : undefined;
-  const config = getStoredPdfConfig();
   const compliance = getSubcontrataCompliance(sub);
 
   const effectiveTecnico = clean(options?.tecnicoNombre ?? defaultCfg.tecnicoNombre);
@@ -174,32 +173,15 @@ export const generateSubcontrataReportPDF = async (
   const pageWidth = 210;
   const contentWidth = pageWidth - marginLeft - marginRight;
 
-  renderPdfLogo(doc, marginLeft, 10, 48, 12, false, customLogo);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(0, 84, 142);
-  doc.text(config.headerLine1 || 'EXCMA. DIPUTACIÓN PROVINCIAL DE CÁDIZ', pageWidth - marginRight, 12, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(config.headerLine2 || 'ÁREA DE COOPERACIÓN | GESTIÓN PROFEA', pageWidth - marginRight, 16, { align: 'right' });
-  doc.text('COORDINACIÓN DE SEGURIDAD Y SALUD (CAE - LEY 32/2006)', pageWidth - marginRight, 20, { align: 'right' });
-  doc.setDrawColor(0, 84, 142);
-  doc.setLineWidth(0.8);
-  doc.line(marginLeft, 24, pageWidth - marginRight, 24);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  doc.text('INFORME DE CONTROL DOCUMENTAL DE SUBCONTRATA DE OBRA', marginLeft, 31);
   const now = new Date();
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text(
-    `Fecha de emisión: ${now.toLocaleDateString('es-ES')} ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} | Expediente Ref: ${sub.id.toUpperCase()}`,
-    marginLeft,
-    36,
+  renderInstitutionalReportHeader(
+    doc,
+    'INFORME DE CONTROL DOCUMENTAL DE SUBCONTRATA DE OBRA',
+    `EXPEDIENTE REF: ${sub.id.toUpperCase()} · ${sub.obra || 'OBRA SIN ASIGNAR'}`,
+    {
+      subtitle: 'COORDINACIÓN DE SEGURIDAD Y SALUD · GESTIÓN DE FONDOS PROFEA',
+      customLogo,
+    },
   );
 
   let bannerBg:[number,number,number] = [239, 246, 255];
@@ -220,11 +202,11 @@ export const generateSubcontrataReportPDF = async (
     bannerTitle = 'ESTADO DEL ACCESO: CONDICIONADO A SUBSANACIÓN';
     bannerSub = 'Existen incidencias o documentos pendientes que requieren subsanación.';
   }
-  doc.setFillColor(...bannerBg); doc.setDrawColor(...bannerBorder); doc.roundedRect(marginLeft, 40, contentWidth, 14, 2, 2, 'FD');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...bannerText); doc.text(bannerTitle, marginLeft + 4, 46);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(bannerSub, marginLeft + 4, 50.5);
+  doc.setFillColor(...bannerBg); doc.setDrawColor(...bannerBorder); doc.roundedRect(marginLeft, 43, contentWidth, 14, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...bannerText); doc.text(bannerTitle, marginLeft + 4, 49);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(bannerSub, marginLeft + 4, 53.5);
 
-  const metaY = 57;
+  const metaY = 60;
   const colW = (contentWidth - 4) / 2;
   const col2X = marginLeft + colW + 4;
   for (const x of [marginLeft, col2X]) {
@@ -319,12 +301,7 @@ export const generateSubcontrataReportPDF = async (
     });
   }
 
-  const totalPages = (doc as any).internal.getNumberOfPages();
-  for (let page = 1; page <= totalPages; page += 1) {
-    doc.setPage(page);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.4); doc.setTextColor(148, 163, 184);
-    doc.text(`Página ${page} de ${totalPages} - Área de Cooperación PROFEA | Diputación Provincial de Cádiz`, pageWidth / 2, 290, { align: 'center' });
-  }
+  applyInstitutionalPdfStandard(doc);
 
   const cleanName = (sub.nombreEmpresa || 'subcontrata').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
   doc.save(`informe_subcontrata_${cleanName}_${now.toISOString().slice(0, 10)}.pdf`);
