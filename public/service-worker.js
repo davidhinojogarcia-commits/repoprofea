@@ -1,8 +1,9 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-static-v4';
-const STATIC_ASSETS = ['/manifest.webmanifest','/icons/profea-icon-v4-32.png','/icons/profea-icon-v4-180.png','/icons/profea-icon-v4-192.png','/icons/profea-icon-v4-512.png','/icons/profea-icon-v4-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
+const CACHE_NAME = 'profea-static-v5';
+const RUNTIME_CACHE = 'profea-runtime-v5';
+const STATIC_ASSETS = ['/','/manifest.webmanifest','/icons/profea-icon-v4-32.png','/icons/profea-icon-v4-180.png','/icons/profea-icon-v4-192.png','/icons/profea-icon-v4-512.png','/icons/profea-icon-v4-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
 
 // 1. INSTALACIÓN: Guardar en caché recursos estáticos básicos
 self.addEventListener('install', (event) => {
@@ -20,7 +21,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
+          if (cache !== CACHE_NAME && cache !== RUNTIME_CACHE) {
             console.log('[Service Worker] Eliminando caché antigua:', cache);
             return caches.delete(cache);
           }
@@ -31,16 +32,50 @@ self.addEventListener('activate', (event) => {
 });
 
 // 3. RED Y CACHÉ
-// La navegación y los bundles versionados siempre salen de la red. Cachear index.html
-// o los assets JS de Vite puede mezclar dos despliegues y provocar el error fatal que
-// desaparece al recargar. Solo conservamos imágenes institucionales estables.
+// La aplicación debe poder arrancar sin cobertura después de haberse abierto al menos
+// una vez con conexión. Los bundles de Vite llevan hash de contenido, por lo que es
+// seguro conservarlos; la navegación usa network-first para evitar servir una versión
+// antigua cuando sí existe conexión.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (event.request.mode === 'navigate' || url.pathname.startsWith('/assets/')) {
-    event.respondWith(fetch(event.request));
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put('/', copy)));
+          }
+          return response;
+        })
+        .catch(async () => {
+          return (await caches.match(event.request)) ||
+            (await caches.match('/')) ||
+            new Response(
+              '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PROFEA sin conexión</title><body style="font-family:system-ui;padding:2rem"><h1>PROFEA</h1><p>Sin conexión y todavía no hay una copia local de la aplicación. Ábrela una vez con internet para habilitar el trabajo offline.</p></body></html>',
+              { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+            );
+        })
+    );
+    return;
+  }
+
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, copy)));
+          }
+          return response;
+        });
+      })
+    );
     return;
   }
 
