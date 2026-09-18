@@ -223,6 +223,10 @@ async function currentUserId() {
   return data.user.id;
 }
 
+const isMissingInventorySharingRpc = (error: any) =>
+  error?.code === 'PGRST202' ||
+  /could not find the function|does not exist/i.test(String(error?.message || ''));
+
 export async function listInventoryParks(): Promise<InventoryPark[]> {
   const userId = await currentUserId();
   const rows = await supabase.query('inventory_parks', {
@@ -511,30 +515,40 @@ export async function createInventoryDocumentMailLinks(docs: InventoryDocument[]
 }
 
 export async function listInventoryParkShares(parkId: string): Promise<InventoryParkShare[]> {
-  const rows = await supabase.rpc('inventory_list_park_shares', { p_park_id: parkId });
-  return (rows || []).map((row: any) => ({
-    participantKey: row.participant_key,
-    userId: row.user_id,
-    email: row.email || '',
-    displayName: row.display_name || row.email || 'Supervisor',
-    status: row.status === 'pending' ? 'pending' : 'accepted',
-    role: row.role || 'responsable',
-    isOwner: row.is_owner === true,
-    acceptedAt: row.accepted_at || null,
-  }));
+  try {
+    const rows = await supabase.rpc('inventory_list_park_shares', { p_park_id: parkId });
+    return (rows || []).map((row: any) => ({
+      participantKey: row.participant_key,
+      userId: row.user_id,
+      email: row.email || '',
+      displayName: row.display_name || row.email || 'Supervisor',
+      status: row.status === 'pending' ? 'pending' : 'accepted',
+      role: row.role || 'responsable',
+      isOwner: row.is_owner === true,
+      acceptedAt: row.accepted_at || null,
+    }));
+  } catch (error) {
+    if (isMissingInventorySharingRpc(error)) return [];
+    throw error;
+  }
 }
 
 export async function listInventoryParkInvitations(): Promise<InventoryParkInvitation[]> {
-  const rows = await supabase.rpc('inventory_list_invitations');
-  return (rows || []).map((row: any) => ({
-    invitationId: row.invitation_id,
-    parkId: row.park_id,
-    parkName: row.park_name || 'Parque de maquinaria',
-    parkZone: row.park_zone || '',
-    inviterName: row.inviter_name || row.inviter_email || 'Supervisor',
-    inviterEmail: row.inviter_email || null,
-    createdAt: row.created_at,
-  }));
+  try {
+    const rows = await supabase.rpc('inventory_list_invitations');
+    return (rows || []).map((row: any) => ({
+      invitationId: row.invitation_id,
+      parkId: row.park_id,
+      parkName: row.park_name || 'Parque de maquinaria',
+      parkZone: row.park_zone || '',
+      inviterName: row.inviter_name || row.inviter_email || 'Supervisor',
+      inviterEmail: row.inviter_email || null,
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    if (isMissingInventorySharingRpc(error)) return [];
+    throw error;
+  }
 }
 
 export async function createInventoryParkInvitation(
