@@ -30,7 +30,12 @@ import {
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
+import * as pdfjsLib from 'pdfjs-dist';
 import { getBase64Image, OFFICIAL_LOGO_BASE64 } from '../src/lib/exportUtils';
+
+if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
+}
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { recognizeAdministrativePagesFast } from '../src/lib/fastAdministrativeOcr';
 import { detectAdministrativeDataFromText, formatIban, formatSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
@@ -331,6 +336,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const scannedFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleRemoteCapture = React.useCallback((imageData: string, fileName: string) => {
     const img = new Image();
@@ -459,6 +465,77 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         height: height,
       });
     };
+  };
+
+  const compressImageAsync = (base64Str: string, originalName: string) =>
+    new Promise<CapturedPage>((resolve) => compressImage(base64Str, originalName, resolve));
+
+  const handleScannedFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    setIsCameraLoading(true);
+    try {
+      const importedPages: CapturedPage[] = [];
+
+      for (const file of files) {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+        if (isPdf) {
+          const buffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+
+          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 1.6 });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            const context = canvas.getContext('2d');
+            if (!context) continue;
+
+            await page.render({ canvasContext: context, viewport }).promise;
+            const imageData = canvas.toDataURL('image/jpeg', 0.92);
+            importedPages.push(await compressImageAsync(
+              imageData,
+              `${file.name.replace(/\.pdf$/i, '')}_pagina_${pageNumber}.jpg`,
+            ));
+          }
+          continue;
+        }
+
+        if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) {
+          const imageData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => typeof reader.result === 'string'
+              ? resolve(reader.result)
+              : reject(new Error('No se pudo leer la imagen.'));
+            reader.onerror = () => reject(reader.error || new Error('No se pudo leer la imagen.'));
+            reader.readAsDataURL(file);
+          });
+          importedPages.push(await compressImageAsync(imageData, file.name));
+        }
+      }
+
+      if (!importedPages.length) {
+        onToast('El archivo no contiene páginas compatibles. Usa PDF o imágenes.', 'error');
+        return;
+      }
+
+      setPages(current => [...current, ...importedPages]);
+      onToast(
+        importedPages.length === 1
+          ? 'Archivo escaneado añadido y preparado para reconocimiento.'
+          : `${importedPages.length} páginas importadas y preparadas para reconocimiento.`,
+        'success',
+      );
+    } catch (error) {
+      console.error('Error importando archivo ya escaneado:', error);
+      onToast('No se ha podido preparar el archivo escaneado para el reconocimiento.', 'error');
+    } finally {
+      setIsCameraLoading(false);
+      if (scannedFileInputRef.current) scannedFileInputRef.current.value = '';
+    }
   };
 
   const deletePage = (id: string) => {
@@ -1026,6 +1103,15 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         className="hidden" 
         id="gallery-capture-input"
       />
+      <input
+        type="file"
+        accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+        multiple
+        ref={scannedFileInputRef}
+        onChange={handleScannedFileImport}
+        className="hidden"
+        id="scanned-file-import-input"
+      />
  
       <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
@@ -1361,7 +1447,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
               </div>
 
               {/* Top Actions Block */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 
                 {/* Camera Trigger */}
                 <button
@@ -1391,6 +1477,22 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                   <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-medium">Permite seleccionar múltiples imágenes</span>
                 </button>
 
+                {/* Previously scanned file upload */}
+                <button
+                  type="button"
+                  onClick={() => scannedFileInputRef.current?.click()}
+                  disabled={isCameraLoading}
+                  className="group flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 disabled:cursor-wait text-slate-700 dark:text-slate-200 rounded-2xl transition-all duration-300 hover:-translate-y-0.5"
+                >
+                  {isCameraLoading ? (
+                    <Loader2 className="w-8 h-8 mb-2 animate-spin text-[#00548E] dark:text-blue-400" />
+                  ) : (
+                    <FileDown className="w-8 h-8 mb-2 text-[#00548E] dark:text-blue-400 group-hover:scale-110 transition-transform duration-300" />
+                  )}
+                  <span className="font-bold text-sm tracking-wide">Subir archivo escaneado</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-medium">PDF o imágenes · se preparan para OCR</span>
+                </button>
+
               </div>
 
               {/* Fallback to traditional capture */}
@@ -1415,7 +1517,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                   <FileText className="w-16 h-16 text-slate-300 dark:text-slate-700 mb-4 animate-pulse" />
                   <p className="text-base font-bold text-slate-700 dark:text-slate-300">Ninguna página capturada todavía</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 text-center max-w-sm px-4">
-                    Haz clic en el botón de la cámara para capturar la primera página o sube fotos desde tu galería para compilar tu PDF.
+                    Captura una página con la cámara, añade imágenes desde la galería o sube un PDF/archivo escaneado para pasarlo por reconocimiento.
                   </p>
                 </div>
               ) : (
