@@ -1,4 +1,16 @@
 import { createClient, type User } from '@supabase/supabase-js';
+import {
+  applyRestMutationToCachedReads,
+  enqueueOfflineOperation,
+  listOfflineOperations,
+  offlineCacheKey,
+  readOfflineCache,
+  removeOfflineOperation,
+  setOfflineSyncActivity,
+  updateOfflineOperationFailure,
+  writeOfflineCache,
+  type OfflineOperation,
+} from './offlineStore';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
 // La publishable key de Supabase está diseñada para usarse en clientes públicos.
@@ -8,8 +20,6 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publis
 const STORAGE_KEY = 'profea-supabase-auth';
 const LEGACY_STORAGE_KEY = 'profea-supabase-session';
 
-// Elimina únicamente el antiguo contenedor manual de access/refresh tokens.
-// La sesión vigente queda desde ahora bajo el almacenamiento gestionado por supabase-js.
 if (typeof window !== 'undefined') {
   try { window.localStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /* noop */ }
 }
@@ -30,13 +40,24 @@ const client = createClient(SUPABASE_URL, SUPABASE_KEY, {
   },
 });
 
+export async function getSessionUser(): Promise<User | null> {
+  const { data } = await client.auth.getSession();
+  return data.session?.user || null;
+}
+
 async function getAccessToken(): Promise<string | null> {
   const { data, error } = await client.auth.getSession();
   if (error) throw error;
   return data.session?.access_token || null;
 }
 
-async function request(path: string, options: RequestInit = {}): Promise<any> {
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+const isNetworkFailure = (error: unknown) =>
+  isOffline() ||
+  error instanceof TypeError ||
+  /failed to fetch|networkerror|network request failed|load failed/i.test(String((error as any)?.message || error || ''));
+
+async function performNetworkRequest(path: string, options: RequestInit = {}): Promise<any> {
   const token = await getAccessToken();
   const headers = new Headers(options.headers);
   headers.set('apikey', SUPABASE_KEY);
@@ -56,6 +77,91 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
   return data;
 }
 
+function parseBody(body: BodyInit | null | undefined) {
+  if (typeof body !== 'string' || !body) return body ?? null;
+  try { return JSON.parse(body); } catch { return body; }
+}
+
+function restTableFromPath(path: string) {
+  return path.match(/^\/rest\/v1\/([^?]+)/)?.[1] || '';
+}
+
+function optimisticRestResult(path: string, options: RequestInit) {
+  const prefer = new Headers(options.headers).get('Prefer') || '';
+  if (!prefer.includes('return=representation')) return null;
+  const parsed = parseBody(options.body);
+  const values = Array.isArray(parsed) ? parsed : parsed && typeof parsed === 'object' ? [parsed] : [];
+  const id = new URLSearchParams(path.split('?')[1] || '').get('id')?.replace(/^eq\./, '');
+  return values.map((value: any) => ({
+    ...(id && value?.id == null ? { id } : {}),
+    ...value,
+    __offlinePending: true,
+  }));
+}
+
+async function queueRestRequest(path: string, options: RequestInit, userId: string) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = Object.fromEntries(new Headers(options.headers).entries());
+  const rawBody = options.body == null ? null : typeof options.body === 'string' ? options.body : String(options.body);
+  const table = restTableFromPath(path);
+  const query = path.includes('?') ? path.slice(path.indexOf('?') + 1) : '';
+
+  await enqueueOfflineOperation({
+    kind: 'rest',
+    userId,
+    label: table ? `${method} ${table}` : `${method} datos`,
+    payload: { path, method, headers, body: rawBody },
+  });
+
+  if (table) {
+    await applyRestMutationToCachedReads({
+      userId,
+      table,
+      method,
+      query,
+      body: parseBody(rawBody),
+    });
+  }
+
+  return optimisticRestResult(path, options);
+}
+
+async function request(path: string, options: RequestInit = {}): Promise<any> {
+  const method = String(options.method || 'GET').toUpperCase();
+  const user = await getSessionUser();
+  const userId = user?.id || 'anonymous';
+  const cacheKey = offlineCacheKey(userId, 'rest', path);
+
+  if (method === 'GET') {
+    if (isOffline()) {
+      const cached = await readOfflineCache<any>(cacheKey);
+      if (cached !== null) return cached;
+      throw new Error('Sin conexión y sin una copia local disponible de estos datos.');
+    }
+    try {
+      const result = await performNetworkRequest(path, options);
+      await writeOfflineCache(cacheKey, result);
+      return result;
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error;
+      const cached = await readOfflineCache<any>(cacheKey);
+      if (cached !== null) return cached;
+      throw error;
+    }
+  }
+
+  if (!user?.id) return performNetworkRequest(path, options);
+
+  if (isOffline()) return queueRestRequest(path, options, user.id);
+
+  try {
+    return await performNetworkRequest(path, options);
+  } catch (error) {
+    if (!isNetworkFailure(error)) throw error;
+    return queueRestRequest(path, options, user.id);
+  }
+}
+
 const normalizeWork = (value: unknown) => String(value ?? '')
   .trim()
   .toLocaleLowerCase('es')
@@ -73,8 +179,7 @@ const workIdentity = (value: unknown) => {
 async function syncObrasPreventiveResource(rows: any): Promise<any> {
   if (!Array.isArray(rows) || !rows.length) return rows;
   try {
-    const { data } = await client.auth.getUser();
-    const user = data.user;
+    const user = await getSessionUser();
     if (!user) return rows;
 
     const settingsRows = await request(`/rest/v1/user_settings?user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`);
@@ -89,8 +194,7 @@ async function syncObrasPreventiveResource(rows: any): Promise<any> {
       if (!configuredName) return row;
       return { ...row, recurso_preventivo: configuredName };
     });
-  } catch (error) {
-    console.warn('No se pudo sincronizar el recurso preventivo de las obras:', error);
+  } catch {
     return rows;
   }
 }
@@ -116,6 +220,127 @@ async function edgeFunctionErrorMessage(error: any): Promise<string> {
   return error?.message || 'La operación no se pudo completar.';
 }
 
+export async function queueOfflineRpc(name: string, body: any, label?: string) {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Debes iniciar sesión para guardar cambios sin conexión.');
+  return enqueueOfflineOperation({
+    kind: 'rpc',
+    userId: user.id,
+    label: label || name,
+    payload: { name, body },
+  });
+}
+
+export async function queueOfflineStorageUpload(input: {
+  bucket: string;
+  path: string;
+  file: Blob;
+  options?: Record<string, any>;
+  label?: string;
+}) {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Debes iniciar sesión para guardar archivos sin conexión.');
+  return enqueueOfflineOperation({
+    kind: 'storage-upload',
+    userId: user.id,
+    label: input.label || `Subir ${input.path}`,
+    payload: {
+      bucket: input.bucket,
+      path: input.path,
+      file: input.file,
+      options: input.options || {},
+    },
+  });
+}
+
+export async function queueOfflineStorageRemove(bucket: string, paths: string[]) {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Debes iniciar sesión para guardar cambios sin conexión.');
+  return enqueueOfflineOperation({
+    kind: 'storage-remove',
+    userId: user.id,
+    label: 'Eliminar archivo',
+    payload: { bucket, paths },
+  });
+}
+
+async function replayOperation(operation: OfflineOperation) {
+  if (operation.kind === 'rest') {
+    const payload = operation.payload || {};
+    await performNetworkRequest(payload.path, {
+      method: payload.method,
+      headers: payload.headers,
+      body: payload.body ?? undefined,
+    });
+    return;
+  }
+  if (operation.kind === 'rpc') {
+    const { data, error } = await client.rpc(operation.payload.name, operation.payload.body || {});
+    if (error) throw error;
+    return data;
+  }
+  if (operation.kind === 'storage-upload') {
+    const { bucket, path, file, options } = operation.payload;
+    const { error } = await client.storage.from(bucket).upload(path, file, options || {});
+    if (error) throw error;
+    return;
+  }
+  if (operation.kind === 'storage-remove') {
+    const { error } = await client.storage.from(operation.payload.bucket).remove(operation.payload.paths || []);
+    if (error) throw error;
+  }
+}
+
+let flushPromise: Promise<void> | null = null;
+
+export async function flushOfflineQueue(): Promise<void> {
+  if (flushPromise) return flushPromise;
+  if (isOffline()) return;
+  flushPromise = (async () => {
+    await setOfflineSyncActivity(true);
+    try {
+      const user = await getSessionUser();
+      if (!user) {
+        await setOfflineSyncActivity(false, 'Inicia sesión para sincronizar los cambios pendientes.');
+        return;
+      }
+      const operations = await listOfflineOperations(user.id);
+      for (const operation of operations) {
+        try {
+          await replayOperation(operation);
+          await removeOfflineOperation(operation.id);
+        } catch (error) {
+          await updateOfflineOperationFailure(operation.id, error);
+          if (isNetworkFailure(error)) throw error;
+          // Conserva la operación para que el usuario no pierda trabajo.
+          throw error;
+        }
+      }
+      await setOfflineSyncActivity(false, '', true);
+    } catch (error) {
+      await setOfflineSyncActivity(false, error instanceof Error ? error.message : String(error));
+    } finally {
+      flushPromise = null;
+    }
+  })();
+  return flushPromise;
+}
+
+let offlineSyncInstalled = false;
+export function initializeOfflineSync() {
+  if (offlineSyncInstalled || typeof window === 'undefined') return;
+  offlineSyncInstalled = true;
+  const sync = () => {
+    if (navigator.onLine) void flushOfflineQueue();
+  };
+  window.addEventListener('online', sync);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sync();
+  });
+  window.addEventListener('pageshow', sync);
+  window.setTimeout(sync, 800);
+}
+
 export const supabase = {
   get url() { return SUPABASE_URL; },
   get key() { return SUPABASE_KEY; },
@@ -137,9 +362,6 @@ export const supabase = {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
 
-    // Configuración > Obras guarda el recurso preventivo en las preferencias del usuario.
-    // Documentación de obra consulta la tabla `obras`. Al leerla, superponemos la asignación
-    // configurada para que ambos módulos utilicen siempre el mismo nombre y no diverjan.
     if (table === 'obras' && method.toUpperCase() === 'GET') {
       return syncObrasPreventiveResource(result);
     }
@@ -147,11 +369,13 @@ export const supabase = {
     return result;
   },
   async rpc(name: string, body: any = {}) {
+    if (isOffline()) throw new Error('Esta operación necesita conexión. Los movimientos y cambios de obra compatibles se guardan automáticamente para sincronizarse después.');
     const { data, error } = await client.rpc(name, body);
     if (error) throw error;
     return data;
   },
   async edgeFunction(name: string, body: any) {
+    if (isOffline()) throw new Error('Esta operación necesita conexión a internet.');
     const { data, error } = await client.functions.invoke(name, { body });
     if (error) {
       const friendly = new Error(await edgeFunctionErrorMessage(error));
