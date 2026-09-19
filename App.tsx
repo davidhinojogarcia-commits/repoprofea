@@ -1,7 +1,7 @@
 
 import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth } from './src/lib/supabaseData';
-import { getSessionUser } from './src/lib/supabase';
+import { getSessionUser, supabase } from './src/lib/supabase';
 import {
   getActionHistoryState,
   redoActionHistory,
@@ -9,6 +9,7 @@ import {
   undoActionHistory,
 } from './src/lib/actionHistory';
 import { Header } from './components/Header';
+import { GuidedHome } from './components/GuidedHome';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
 import { Stats } from './components/Stats';
@@ -113,6 +114,8 @@ const ensureUniquePersonIds = (list: Person[]): Person[] => {
     return uniqueId === p.id ? p : { ...p, id: uniqueId };
   });
 };
+
+type InterfaceMode = 'guided' | 'full';
 
 function App() {
   useEffect(() => {
@@ -244,7 +247,71 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [interfaceMode, setInterfaceMode] = useState<InterfaceMode>('full');
+  const [isInterfaceModeSaving, setIsInterfaceModeSaving] = useState(false);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 3500); return () => window.clearTimeout(timer); }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateInterfaceMode = async () => {
+      try {
+        const user = await getSessionUser();
+        if (!user || cancelled) return;
+
+        const metadataMode = user.user_metadata?.profea_interface_mode;
+        const cachedMode = localStorage.getItem(`profea_interface_mode:${user.id}`);
+        const resolvedMode: InterfaceMode =
+          metadataMode === 'guided' || metadataMode === 'full'
+            ? metadataMode
+            : cachedMode === 'guided' || cachedMode === 'full'
+              ? cachedMode
+              : 'full';
+
+        setInterfaceMode(resolvedMode);
+        localStorage.setItem(`profea_interface_mode:${user.id}`, resolvedMode);
+      } catch (error) {
+        console.warn('No se pudo recuperar la preferencia de interfaz:', error);
+      }
+    };
+
+    void hydrateInterfaceMode();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyInterfaceMode = useCallback(async (nextMode: InterfaceMode) => {
+    if (isInterfaceModeSaving || nextMode === interfaceMode) return;
+
+    const previousMode = interfaceMode;
+    setInterfaceMode(nextMode);
+    setIsInterfaceModeSaving(true);
+
+    try {
+      const user = await getSessionUser();
+      if (!user) throw new Error('Sesión no disponible.');
+
+      localStorage.setItem(`profea_interface_mode:${user.id}`, nextMode);
+      const { error } = await supabase.auth.updateUser({
+        data: { profea_interface_mode: nextMode },
+      });
+      if (error) throw error;
+
+      setToast({
+        message: nextMode === 'guided' ? 'Vista guiada activada' : 'Vista completa activada',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('No se pudo guardar la preferencia de interfaz:', error);
+      setInterfaceMode(previousMode);
+      const user = await getSessionUser().catch(() => null);
+      if (user) localStorage.setItem(`profea_interface_mode:${user.id}`, previousMode);
+      setToast({ message: 'No se pudo guardar el cambio de vista.', type: 'error' });
+    } finally {
+      setIsInterfaceModeSaving(false);
+    }
+  }, [interfaceMode, isInterfaceModeSaving]);
   const [pendingPdfDni, setPendingPdfDni] = useState<string | null>(null);
   const [viewingWorkerPdf, setViewingWorkerPdf] = useState<string | null>(null);
   const [viewingWorkerName, setViewingWorkerName] = useState<string>('');
@@ -1989,6 +2056,7 @@ function App() {
         savedObras={savedObras}
         uniqueQuincenas={uniqueQuincenas}
         onOpenScanner={() => setIsScannerOpen(true)}
+        guidedMode={interfaceMode === 'guided'}
       />
 
       <WatermarkLogo />
@@ -2018,25 +2086,42 @@ function App() {
             canRedo={canRedo}
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
+            guidedMode={interfaceMode === 'guided'}
+            onInterfaceModeToggle={() => void applyInterfaceMode(interfaceMode === 'guided' ? 'full' : 'guided')}
+            isInterfaceModeSaving={isInterfaceModeSaving}
           />
           
           {activeView === 'dashboard' && (
             <div className="max-w-7xl mx-auto">
-              <Stats
-                stats={stats}
-                filterMode={statsFilterMode}
-                setFilterMode={setStatsFilterMode}
-                startDate={statsStartDate}
-                setStartDate={setStatsStartDate}
-                endDate={statsEndDate}
-                setEndDate={setStatsEndDate}
-                obraFilter={statsObraFilter}
-                setObraFilter={setStatsObraFilter}
-                savedObras={savedObras}
-                onOpenReportModal={() => setIsReportModalOpen(true)}
-                onExportObraSummary={handleExportObraSummary}
-                onExportStatsSummaryPDF={handleExportStatsPDF}
-              />
+              {interfaceMode === 'guided' ? (
+                <GuidedHome
+                  workersCount={people.length}
+                  worksCount={savedObras.length}
+                  alertsCount={notificationAlertsCount}
+                  onNavigate={(view) => {
+                    setActiveView(view);
+                    window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view } }));
+                  }}
+                  onOpenAlerts={() => setIsNotificationModalOpen(true)}
+                  onShowCompleteView={() => void applyInterfaceMode('full')}
+                />
+              ) : (
+                <Stats
+                  stats={stats}
+                  filterMode={statsFilterMode}
+                  setFilterMode={setStatsFilterMode}
+                  startDate={statsStartDate}
+                  setStartDate={setStatsStartDate}
+                  endDate={statsEndDate}
+                  setEndDate={setStatsEndDate}
+                  obraFilter={statsObraFilter}
+                  setObraFilter={setStatsObraFilter}
+                  savedObras={savedObras}
+                  onOpenReportModal={() => setIsReportModalOpen(true)}
+                  onExportObraSummary={handleExportObraSummary}
+                  onExportStatsSummaryPDF={handleExportStatsPDF}
+                />
+              )}
             </div>
           )}
 

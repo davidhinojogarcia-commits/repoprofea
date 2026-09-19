@@ -20,6 +20,7 @@ interface SidebarProps {
   savedObras: string[];
   uniqueQuincenas: string[];
   onOpenScanner: () => void;
+  guidedMode?: boolean;
 }
 
 type SidebarMenuItem = {
@@ -37,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobileOpen,
   setIsMobileOpen,
   onOpenScanner,
+  guidedMode = false,
 }) => {
   const { user, role, signOut, signingOut } = useAuthShell();
   const metadata = (user.user_metadata || {}) as Record<string, any>;
@@ -48,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .map(part => part.charAt(0).toUpperCase())
     .join('') || 'U';
 
-  const menuGroups: { label: string; items: SidebarMenuItem[] }[] = [
+  const completeMenuGroups: { label: string; items: SidebarMenuItem[] }[] = [
     {
       label: 'Contratación',
       items: [
@@ -86,6 +88,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
   ];
+
+  const guidedMenuGroups: { label: string; items: SidebarMenuItem[] }[] = [
+    {
+      label: 'Trabajo diario',
+      items: [
+        { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
+        { id: 'directorio', label: 'Trabajadores', icon: Users },
+        { id: 'registro', label: 'Añadir trabajador', icon: UserPlus },
+        { id: 'citas', label: 'Reconocimientos', icon: Calendar },
+        { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
+        {
+          id: 'subcontratas',
+          label: 'CAE',
+          subtitle: 'Coordinación de Actividades Empresariales',
+          icon: HardHat,
+        },
+        { id: 'inventario', label: 'Maquinaria y herramientas', icon: Wrench },
+        { id: 'sae', label: 'Selección SAE', icon: BriefcaseBusiness },
+      ],
+    },
+  ];
+
+  const menuGroups = guidedMode ? guidedMenuGroups : completeMenuGroups;
 
   const handleNavClick = (id: ViewMode) => {
     setActiveView(id);
@@ -141,6 +166,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <nav className="flex-1 py-4 px-3 space-y-2 overflow-y-auto overscroll-contain custom-scrollbar">
+          {guidedMode && (!isCollapsed || isMobileOpen) && (
+            <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/80 px-3 py-2.5 text-[11px] leading-4 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+              <span className="font-black">Vista guiada:</span> se muestran solo las tareas de uso más habitual.
+            </div>
+          )}
           {menuGroups.map((group, groupIndex) => (
             <div key={group.label} className={groupIndex === 0 ? '' : 'pt-4'}>
               <div className={`px-3 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>
@@ -210,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="px-3 pb-3 space-y-2 no-print">
-          {role === 'admin' && (
+          {role === 'admin' && !guidedMode && (
             <button
               type="button"
               data-profea-view="administracion"
