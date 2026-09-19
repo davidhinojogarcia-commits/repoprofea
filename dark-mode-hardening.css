@@ -486,6 +486,29 @@ html:not(.dark) #root label {
   color: inherit;
 }
 
+/* Strong action surfaces must always keep a high-contrast foreground in light mode.
+ * Some file-upload controls are <label> elements styled as buttons; without this
+ * guard they inherit the dark form-label color even on the corporate blue surface. */
+html:not(.dark) #root :is(button, label, a, [role='button']).text-white,
+html:not(.dark) #root :is(button, label, a, [role='button'])[class*="bg-[#00548E]"],
+html:not(.dark) #root :is(button, label, a, [role='button'])[class*="bg-[#0069A8]"],
+html:not(.dark) #root :is(button, label, a, [role='button']).bg-brand-primary,
+html:not(.dark) #root :is(button, label, a, [role='button']).bg-blue-600,
+html:not(.dark) #root :is(button, label, a, [role='button']).bg-blue-700 {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+html:not(.dark) #root :is(button, label, a, [role='button']).text-white svg,
+html:not(.dark) #root :is(button, label, a, [role='button'])[class*="bg-[#00548E]"] svg,
+html:not(.dark) #root :is(button, label, a, [role='button'])[class*="bg-[#0069A8]"] svg,
+html:not(.dark) #root :is(button, label, a, [role='button']).bg-brand-primary svg,
+html:not(.dark) #root :is(button, label, a, [role='button']).bg-blue-600 svg,
+html:not(.dark) #root :is(button, label, a, [role='button']).bg-blue-700 svg {
+  color: currentColor !important;
+  stroke: currentColor;
+}
+
 html:not(.dark) #root input:not([type='checkbox']):not([type='radio']):not([type='range']),
 html:not(.dark) #root select,
 html:not(.dark) #root textarea {
