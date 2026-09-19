@@ -47,6 +47,10 @@
   --ui-shadow-sm: 0 2px 8px rgba(15, 23, 42, .055);
   --ui-shadow-md: 0 10px 30px rgba(23, 50, 77, .09);
   --ui-shadow-lg: 0 24px 60px rgba(0, 63, 107, .14);
+  --ui-button-depth: 0 3px 0 rgba(23, 50, 77, .18), 0 8px 18px rgba(23, 50, 77, .10);
+  --ui-button-depth-hover: 0 4px 0 rgba(23, 50, 77, .20), 0 11px 24px rgba(23, 50, 77, .13);
+  --ui-button-depth-active: 0 1px 0 rgba(23, 50, 77, .20), 0 4px 10px rgba(23, 50, 77, .10);
+  --ui-button-depth-primary: 0 4px 0 rgba(0, 63, 107, .42), 0 10px 22px rgba(0, 84, 142, .20);
 
   /* Brand effects */
   --ui-gradient-brand: linear-gradient(135deg, #0069a8 0%, #00548e 48%, #003f6b 100%);
@@ -72,6 +76,10 @@
   --ui-border-strong: #365064;
   --ui-glass-bg: rgba(9, 22, 35, .72);
   --ui-glass-border: rgba(255, 255, 255, .12);
+  --ui-button-depth: 0 3px 0 rgba(0, 0, 0, .38), 0 8px 18px rgba(0, 0, 0, .24);
+  --ui-button-depth-hover: 0 4px 0 rgba(0, 0, 0, .42), 0 11px 24px rgba(0, 0, 0, .28);
+  --ui-button-depth-active: 0 1px 0 rgba(0, 0, 0, .42), 0 4px 10px rgba(0, 0, 0, .22);
+  --ui-button-depth-primary: 0 4px 0 rgba(0, 41, 70, .88), 0 10px 22px rgba(0, 0, 0, .28);
 }
 
 html,
@@ -115,35 +123,56 @@ body {
   border-radius: var(--ui-radius-md);
   font-weight: 700;
   transition: transform var(--ui-motion-fast) var(--ui-ease), box-shadow var(--ui-motion-fast) var(--ui-ease), filter var(--ui-motion-fast) var(--ui-ease), background-color var(--ui-motion-fast) var(--ui-ease);
+  position: relative;
+  transform: translateY(0);
+  box-shadow: var(--ui-button-depth);
 }
 
 .ui-button-primary {
   color: #fff;
   background: var(--ui-gradient-brand);
   border: 1px solid rgba(0, 63, 107, .30);
-  box-shadow: 0 7px 20px rgba(0, 84, 142, .18), inset 0 1px 0 rgba(255,255,255,.20);
+  box-shadow: var(--ui-button-depth-primary), inset 0 1px 0 rgba(255,255,255,.24);
 }
 
 .ui-button-secondary {
   color: var(--ui-brand-800);
   background: var(--ui-brand-50);
   border: 1px solid var(--ui-brand-200);
+  box-shadow: var(--ui-button-depth), inset 0 1px 0 rgba(255,255,255,.72);
 }
 
 .ui-button-ghost {
   color: var(--ui-text);
   background: transparent;
   border: 1px solid transparent;
+  box-shadow: none;
 }
 
 .ui-button-primary:hover,
-.ui-button-secondary:hover,
+.ui-button-secondary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--ui-button-depth-hover);
+}
+
+.ui-button-primary:hover {
+  box-shadow: 0 5px 0 rgba(0, 63, 107, .42), 0 13px 26px rgba(0, 84, 142, .22), inset 0 1px 0 rgba(255,255,255,.26);
+}
+
 .ui-button-ghost:hover {
   transform: translateY(-1px);
 }
 
 .ui-button-primary:active,
-.ui-button-secondary:active,
+.ui-button-secondary:active {
+  transform: translateY(2px) scale(.992);
+  box-shadow: var(--ui-button-depth-active);
+}
+
+.ui-button-primary:active {
+  box-shadow: 0 1px 0 rgba(0, 63, 107, .42), 0 4px 10px rgba(0, 84, 142, .16), inset 0 1px 0 rgba(255,255,255,.18);
+}
+
 .ui-button-ghost:active {
   transform: translateY(0) scale(.985);
 }
@@ -221,6 +250,37 @@ body {
   background: var(--ui-gradient-brand);
   border-color: rgba(255,255,255,.12);
   box-shadow: 0 8px 20px rgba(0,84,142,.18), inset 0 1px 0 rgba(255,255,255,.18);
+}
+
+
+/* Botones 3D discretos en la Vista completa.
+   Se aplica solo a controles con fondo visible para no convertir iconos o enlaces
+   transparentes en botones pesados. */
+.profea-full-mode button[class*="bg-"]:not(:disabled),
+.profea-full-mode button[class*="border-"][class*="shadow-"]:not(:disabled) {
+  box-shadow: var(--ui-button-depth);
+  transition: transform var(--ui-motion-fast) var(--ui-ease), box-shadow var(--ui-motion-fast) var(--ui-ease), filter var(--ui-motion-fast) var(--ui-ease);
+}
+
+.profea-full-mode button[class*="bg-"]:not(:disabled):hover,
+.profea-full-mode button[class*="border-"][class*="shadow-"]:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: var(--ui-button-depth-hover);
+}
+
+.profea-full-mode button[class*="bg-"]:not(:disabled):active,
+.profea-full-mode button[class*="border-"][class*="shadow-"]:not(:disabled):active {
+  transform: translateY(1px) scale(.994);
+  box-shadow: var(--ui-button-depth-active);
+}
+
+.profea-sidebar-item--active {
+  box-shadow: 0 4px 0 rgba(0, 63, 107, .28), 0 10px 22px rgba(0,84,142,.16), inset 0 1px 0 rgba(255,255,255,.18);
+}
+
+.profea-sidebar-item--active:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0, 63, 107, .28), 0 4px 10px rgba(0,84,142,.12), inset 0 1px 0 rgba(255,255,255,.14);
 }
 
 /* Consistent focus for legacy Tailwind-heavy screens until components are migrated. */
