@@ -28,6 +28,7 @@ import './subcontratas-mobile.css';
 import './institutional-polish.css';
 import './dark-mode-hardening.css';
 import './medical-citations-contrast.css';
+import './guided-mobile-accessibility.css';
 
 applyPlugin(jsPDF);
 (jsPDF as any).autoTableSetDefaults?.({
