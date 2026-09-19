@@ -907,29 +907,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
               contratación → devolución SAE.
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-sm cursor-pointer">
-              <FileText className="w-4 h-4" />
-              Importar solicitud
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,image/*"
-                disabled={busy}
-                onChange={(e) => {
-                  void handleNeedFile(e.target.files?.[0]);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </label>
-            <button
-              onClick={startNewNeed}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Nueva solicitud
-            </button>
-          </div>
+
         </div>
         <div
           className={`mt-5 rounded-2xl border p-4 sm:p-5 ${
@@ -1003,29 +981,102 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         </div>
 
         <div
-          className="mt-5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2"
+          className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-3"
           aria-label="Progreso SAE"
         >
           {stepLabels.map((label, index) => {
             const step = index + 1;
             const done = completedSteps[index];
             const current = !done && activeStep === step;
+            const tone = done
+              ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20"
+              : current
+                ? "border-blue-300 bg-blue-50/80 dark:border-blue-800 dark:bg-blue-950/25"
+                : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900";
             return (
               <div
                 key={label}
                 aria-current={current ? "step" : undefined}
-                className={`rounded-xl px-2 py-2.5 text-[11px] sm:text-xs font-bold border flex items-center justify-center gap-1.5 text-center transition-colors ${done ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : current ? "bg-[#00548E] text-white border-[#00548E] shadow-sm" : "bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800"}`}
+                className={`rounded-2xl border p-3.5 transition-colors ${tone}`}
               >
-                {done ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                ) : (
-                  <span
-                    className={`w-5 h-5 shrink-0 rounded-full grid place-items-center text-[10px] border ${current ? "border-white/70" : "border-slate-300 dark:border-slate-700"}`}
+                <div className="flex items-start gap-2.5">
+                  <div
+                    className={`w-7 h-7 shrink-0 rounded-lg grid place-items-center text-xs font-black ${
+                      done
+                        ? "bg-emerald-600 text-white"
+                        : current
+                          ? "bg-[#00548E] text-white"
+                          : "bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-500"
+                    }`}
                   >
-                    {step}
-                  </span>
+                    {done ? <CheckCircle2 className="w-4 h-4" /> : step}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-wider font-black text-slate-400">
+                      Paso {step}
+                    </div>
+                    <div className="font-black text-sm leading-tight">{label}</div>
+                  </div>
+                </div>
+
+                {step === 1 && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="min-h-10 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2 text-xs font-black cursor-pointer hover:bg-[#004270]">
+                      <FileText className="w-4 h-4" />
+                      Importar solicitud
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,image/*"
+                        disabled={busy}
+                        onChange={(event) => {
+                          void handleNeedFile(event.target.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={startNewNeed}
+                      disabled={busy}
+                      className="min-h-10 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-black disabled:opacity-50"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nueva solicitud
+                    </button>
+                  </div>
                 )}
-                <span>{label}</span>
+
+                {step === 2 && (
+                  <div className="mt-3">
+                    <label
+                      className={`min-h-10 w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-black ${
+                        selectedNeed && !busy
+                          ? "bg-[#00548E] text-white cursor-pointer hover:bg-[#004270]"
+                          : "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
+                      }`}
+                      title={selectedNeed ? "Importar informe SAE para la solicitud seleccionada" : "Selecciona primero una solicitud"}
+                    >
+                      <FileText className="w-4 h-4" />
+                      Añadir informe SAE
+                      <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        className="hidden"
+                        disabled={!selectedNeed || busy}
+                        onChange={(event) => {
+                          void handleReportFile(event.target.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {!selectedNeed && (
+                      <div className="mt-1.5 text-[10px] text-slate-500">
+                        Selecciona primero una solicitud del Paso 1.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1274,20 +1325,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                       {selectedNeed.mes} {selectedNeed.ano || ""}
                     </p>
                   </div>
-                  <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm cursor-pointer">
-                    <FileText className="w-4 h-4" />
-                    Añadir informe SAE
-                    <input
-                      type="file"
-                      accept=".pdf,image/*"
-                      className="hidden"
-                      disabled={busy}
-                      onChange={(e) => {
-                        void handleReportFile(e.target.files?.[0]);
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                   {[
