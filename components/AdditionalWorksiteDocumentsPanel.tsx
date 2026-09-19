@@ -165,16 +165,17 @@ const SignaturePad: React.FC<{
 
 interface AdditionalWorksiteDocumentsWorkspaceProps {
   selectedWork: string;
+  docType: AdditionalWorksiteDocumentType;
 }
 
 export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDocumentsWorkspaceProps> = ({
   selectedWork,
+  docType,
 }) => {
   const [loading, setLoading] = useState(false);
   const [workers, setWorkers] = useState<Person[]>([]);
   const [works, setWorks] = useState<WorkRow[]>([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState('');
-  const [docType, setDocType] = useState<AdditionalWorksiteDocumentType>('baja_voluntaria');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [supervisorName, setSupervisorName] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -239,6 +240,13 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
   const worker = workWorkers.find((item) => String(item.id) === selectedWorkerId) || null;
   const row = works.find((item) => sameWork(item.nombre, selectedWork));
   const def = ADDITIONAL_WORKSITE_DOCUMENTS[docType];
+
+  useEffect(() => {
+    setAnswers({});
+    setSignatures({});
+    setEditOpen(false);
+    setSignatureOpen(false);
+  }, [docType]);
 
   const documentContext = useMemo(
     () => ({
@@ -356,14 +364,14 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
         <div className="mb-5">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-[#00548E] dark:text-blue-400" />
-            <h2 className="font-black text-xl">Otros documentos de obra</h2>
+            <h2 className="font-black text-xl">{def.short}</h2>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Selecciona el documento. En móvil puedes abrir la plantilla a pantalla completa; en pantallas grandes se previsualiza junto al formulario.
+            Documento seleccionado desde la biblioteca lateral. Completa los datos o genera directamente la plantilla en blanco.
           </p>
         </div>
 
-        <div className="grid 2xl:grid-cols-[minmax(330px,0.8fr)_minmax(0,1.2fr)] gap-5 items-start">
+        <div className="grid xl:grid-cols-[minmax(285px,0.58fr)_minmax(0,1.42fr)] gap-5 items-start">
           <div className="space-y-5 min-w-0">
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="text-sm font-bold">
@@ -401,34 +409,6 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
               </div>
               <div className="sm:col-span-2">
                 <b>Supervisor/a:</b> {supervisorName || 'No identificado'}
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                Tipo de documento
-              </div>
-              <div className="grid sm:grid-cols-2 2xl:grid-cols-1 gap-2">
-                {(Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS) as [
-                  AdditionalWorksiteDocumentType,
-                  typeof def,
-                ][]).map(([key, definition]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setDocType(key)}
-                    className={`text-left rounded-xl border px-3.5 py-3 transition-colors ${
-                      docType === key
-                        ? 'border-[#00548E] bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
-                    }`}
-                  >
-                    <div className="font-black text-sm">{definition.short}</div>
-                    <div className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
-                      {definition.legal}
-                    </div>
-                  </button>
-                ))}
               </div>
             </div>
 
