@@ -1,15 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ClipboardCheck,
   Clock,
   FileDown,
   FileText,
   FolderOpen,
   HardHat,
-  RefreshCw,
   Save,
   Users,
-  X,
   Wrench,
   GraduationCap,
   ShieldCheck,
@@ -147,7 +144,6 @@ const workerKey = (person: Person) => String(person.id);
 const cleanDni = (person: Person) => safe(person.dni).toUpperCase().replace(/[\s-]/g, "");
 
 export const WorksiteDocumentationPortal: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [workers, setWorkers] = useState<Person[]>([]);
@@ -170,7 +166,6 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [attendanceOverrides, setAttendanceOverrides] = useState<Record<string, AttendanceOverride>>({});
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(0);
   const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>(storedDocumentationView);
 
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
@@ -200,42 +195,18 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [showToast]);
 
   useEffect(() => {
-    const handleNavigation = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      const open = detail?.view === "documentacion_obra";
-      setIsOpen(open);
-      if (open) void refresh();
-    };
-    window.addEventListener("profea:navigate", handleNavigation as EventListener);
-    return () => window.removeEventListener("profea:navigate", handleNavigation as EventListener);
+    void refresh();
   }, [refresh]);
 
   useEffect(() => {
     const handleSyncState = (event: Event) => {
       const detail = (event as CustomEvent<{ online?: boolean; pending?: number; syncing?: boolean; lastSyncedAt?: number | null }>).detail;
-      if (!isOpen || !detail?.online || detail.syncing || detail.pending !== 0 || !detail.lastSyncedAt) return;
+      if (!detail?.online || detail.syncing || detail.pending !== 0 || !detail.lastSyncedAt) return;
       void refresh();
     };
     window.addEventListener("profea:offline-sync-state", handleSyncState as EventListener);
     return () => window.removeEventListener("profea:offline-sync-state", handleSyncState as EventListener);
-  }, [isOpen, refresh]);
-
-  useEffect(() => {
-    const updateWidth = () => {
-      if (window.innerWidth < 1024) return setSidebarWidth(0);
-      const sidebar = document.querySelector(".profea-sidebar-shell") as HTMLElement | null;
-      setSidebarWidth(sidebar?.getBoundingClientRect().width || 0);
-    };
-    updateWidth();
-    const sidebar = document.querySelector(".profea-sidebar-shell") as HTMLElement | null;
-    const observer = sidebar && typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateWidth) : null;
-    if (sidebar && observer) observer.observe(sidebar);
-    window.addEventListener("resize", updateWidth);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", updateWidth);
-    };
-  }, [isOpen]);
+  }, [refresh]);
 
   const workNames = useMemo(() => {
     const values = new Set<string>(
@@ -512,14 +483,6 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     });
   };
 
-  const closeAndGoToSummary = () => {
-    const button = document.querySelector('[data-profea-view="dashboard"]') as HTMLButtonElement | null;
-    if (button) button.click();
-    else setIsOpen(false);
-  };
-
-  if (!isOpen) return null;
-
   const libraryItems: {
     id: DocumentationView;
     label: string;
@@ -547,46 +510,9 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   ];
 
   return (
-    <div
-      className="fixed top-0 right-0 bottom-0 z-[35] overflow-y-auto bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-      style={{ left: sidebarWidth }}
-    >
-      <div className="min-h-full px-2 sm:px-6 lg:px-8 py-2 sm:py-6 pb-20">
+    <div className="w-full text-slate-900 dark:text-slate-100">
+      <div className="pb-6">
         <div className="max-w-[1580px] mx-auto space-y-3 sm:space-y-6">
-          <header className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-r from-[#003f6b] via-[#00548E] to-[#0876b8] px-4 py-4 sm:px-6 sm:py-5 text-white flex items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-3">
-                  <ClipboardCheck className="w-6 h-6 sm:w-7 sm:h-7" />
-                  <h1 className="text-xl sm:text-2xl font-black tracking-tight">Documentación de obra</h1>
-                </div>
-                <p className="hidden sm:block text-sm text-blue-100 mt-1">
-                  Biblioteca documental por obra y periodo, con cada documento en su propio espacio de trabajo.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void refresh()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 p-2.5 sm:px-4 sm:py-2 text-sm font-semibold hover:bg-white/20"
-                  title="Actualizar"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                  <span className="hidden sm:inline">Actualizar</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={closeAndGoToSummary}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 p-2.5 sm:px-4 sm:py-2 text-sm font-semibold hover:bg-white/20"
-                  title="Cerrar"
-                >
-                  <X className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cerrar</span>
-                </button>
-              </div>
-            </div>
-          </header>
-
           <div className="lg:hidden sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
             <div className="px-3 pt-3 pb-2">
               <label className="block text-[10px] uppercase tracking-wider font-black text-slate-500 dark:text-slate-400">
