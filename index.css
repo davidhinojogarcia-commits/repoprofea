@@ -411,3 +411,42 @@ body.profea-modal-open {
     flex: 0 0 auto !important;
   }
 }
+
+
+/* Documentación de obra · carrusel táctil móvil.
+ * La regla global #root .flex { min-width:0 } anulaba min-w-max del track y en
+ * Safari/iOS podía dejar la banda sin una superficie horizontal desplazable real. */
+@media (max-width: 1023px) {
+  #root .worksite-doc-mobile-tabs {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: scroll !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-x: contain !important;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity !important;
+    touch-action: pan-x !important;
+    cursor: grab;
+  }
+
+  #root .worksite-doc-mobile-tabs:active {
+    cursor: grabbing;
+  }
+
+  #root .worksite-doc-mobile-tabs .worksite-doc-mobile-tabs-track {
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  #root .worksite-doc-mobile-tabs .worksite-doc-mobile-tab,
+  #root .worksite-doc-mobile-tabs .worksite-doc-mobile-tab * {
+    touch-action: pan-x !important;
+  }
+}
