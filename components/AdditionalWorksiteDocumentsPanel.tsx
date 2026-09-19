@@ -7,6 +7,9 @@ import {
   PencilLine,
   Printer,
   RotateCcw,
+  Search,
+  UserRound,
+  X,
 } from 'lucide-react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
@@ -176,6 +179,8 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
   const [workers, setWorkers] = useState<Person[]>([]);
   const [works, setWorks] = useState<WorkRow[]>([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState('');
+  const [workerSearch, setWorkerSearch] = useState('');
+  const [workerPickerOpen, setWorkerPickerOpen] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [supervisorName, setSupervisorName] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -231,11 +236,34 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
     [workers, selectedWork],
   );
 
+  const filteredWorkers = useMemo(() => {
+    const term = norm(workerSearch);
+    if (!term) return workWorkers.slice(0, 12);
+    return workWorkers
+      .filter((item) =>
+        [
+          item.apellidosNombre,
+          item.dni,
+          item.categoria,
+          item.numOferta,
+          item.telefono,
+        ].some((value) => norm(String(value || '')).includes(term)),
+      )
+      .slice(0, 20);
+  }, [workWorkers, workerSearch]);
+
   useEffect(() => {
     if (selectedWorkerId && !workWorkers.some((worker) => String(worker.id) === selectedWorkerId)) {
       setSelectedWorkerId('');
+      setWorkerSearch('');
     }
   }, [selectedWorkerId, workWorkers]);
+
+  useEffect(() => {
+    setSelectedWorkerId('');
+    setWorkerSearch('');
+    setWorkerPickerOpen(false);
+  }, [selectedWork]);
 
   const worker = workWorkers.find((item) => String(item.id) === selectedWorkerId) || null;
   const row = works.find((item) => sameWork(item.nombre, selectedWork));
@@ -383,21 +411,109 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
                   className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2.5 bg-white dark:bg-slate-900"
                 />
               </label>
-              <label className="text-sm font-bold">
-                Trabajador
-                <select
-                  value={selectedWorkerId}
-                  onChange={(event) => setSelectedWorkerId(event.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2.5 bg-white dark:bg-slate-900"
-                >
-                  <option value="">Sin seleccionar · plantilla en blanco</option>
-                  {workWorkers.map((item) => (
-                    <option key={item.id} value={String(item.id)}>
-                      {item.apellidosNombre} · {item.dni} · {item.categoria || 'Sin puesto'}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="text-sm font-bold sm:col-span-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Trabajador</span>
+                  <span className="text-[10px] font-semibold text-slate-400">
+                    {workWorkers.length} en esta obra
+                  </span>
+                </div>
+
+                {worker ? (
+                  <div className="mt-1.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/20 p-3">
+                    <div className="flex items-start gap-2">
+                      <div className="mt-0.5 rounded-lg bg-white dark:bg-slate-900 border border-blue-100 dark:border-blue-900 p-2 text-[#00548E] dark:text-blue-300">
+                        <UserRound className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-sm leading-tight">{worker.apellidosNombre}</div>
+                        <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          {worker.dni || 'Sin DNI'} · {worker.categoria || 'Sin puesto'}
+                        </div>
+                        {worker.numOferta && (
+                          <div className="mt-0.5 text-[10px] text-slate-400">
+                            Oferta: {worker.numOferta}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedWorkerId('');
+                          setWorkerSearch('');
+                          setWorkerPickerOpen(true);
+                        }}
+                        className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-slate-500 hover:text-red-600"
+                        title="Cambiar trabajador"
+                        aria-label="Cambiar trabajador"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorkerId('');
+                        setWorkerSearch('');
+                        setWorkerPickerOpen(true);
+                      }}
+                      className="mt-2 w-full rounded-lg border border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-slate-900 px-3 py-2 text-xs font-bold text-[#00548E] dark:text-blue-300"
+                    >
+                      Buscar otro trabajador
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative mt-1.5">
+                    <Search className="pointer-events-none absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                    <input
+                      type="search"
+                      value={workerSearch}
+                      onChange={(event) => {
+                        setWorkerSearch(event.target.value);
+                        setWorkerPickerOpen(true);
+                      }}
+                      onFocus={() => setWorkerPickerOpen(true)}
+                      placeholder="Nombre, DNI, puesto u oferta…"
+                      autoComplete="off"
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-3 text-sm font-semibold outline-none focus:border-[#00548E] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950"
+                    />
+
+                    {workerPickerOpen && (
+                      <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
+                        {filteredWorkers.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedWorkerId(String(item.id));
+                              setWorkerSearch('');
+                              setWorkerPickerOpen(false);
+                            }}
+                            className="w-full border-b last:border-b-0 border-slate-100 dark:border-slate-800 px-3 py-3 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30 focus:bg-blue-50 dark:focus:bg-blue-950/30"
+                          >
+                            <div className="font-black text-sm">{item.apellidosNombre}</div>
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                              <span>{item.dni || 'Sin DNI'}</span>
+                              <span>· {item.categoria || 'Sin puesto'}</span>
+                              {item.numOferta && <span>· Oferta {item.numOferta}</span>}
+                            </div>
+                          </button>
+                        ))}
+                        {!filteredWorkers.length && (
+                          <div className="px-4 py-5 text-center text-xs text-slate-500">
+                            No hay trabajadores que coincidan con “{workerSearch}”.
+                          </div>
+                        )}
+                        {!workerSearch && workWorkers.length > 12 && (
+                          <div className="border-t border-slate-100 dark:border-slate-800 px-3 py-2 text-center text-[10px] text-slate-400">
+                            Mostrando los primeros 12. Escribe para buscar entre todos.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 grid sm:grid-cols-2 gap-3 text-sm">
