@@ -641,7 +641,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 type="button"
                 id={`btn-idcard-${person.id}`}
                 onClick={handleSafeGenerateIDCard}
-                className={`group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl transition-all border cursor-pointer ${
+                className={`profea-worker-card-action profea-worker-card-action--idcard group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl transition-all border cursor-pointer ${
                   isNoAptoDocIncomplete
                     ? 'bg-red-50/60 dark:bg-red-950/30 text-red-700 dark:text-red-400 hover:bg-red-600 hover:text-white border-red-300 dark:border-red-800'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white border-slate-200 dark:border-slate-700'
@@ -657,7 +657,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 type="button"
                 id={`btn-history-${person.id}`}
                 onClick={() => onExportHistoryPDF(person)}
-                className="group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
+                className="profea-worker-card-action profea-worker-card-action--history group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
                 aria-label="Exportar Historial"
               >
                 <History className="w-4 h-4 mx-auto" />
@@ -669,7 +669,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 type="button"
                 id={`btn-calendar-${person.id}`}
                 onClick={handleSafeOpenCalendar}
-                className={`group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl transition-all border cursor-pointer ${
+                className={`profea-worker-card-action profea-worker-card-action--calendar group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl transition-all border cursor-pointer ${
                   isNoAptoDocIncomplete
                     ? 'bg-red-50/60 dark:bg-red-950/30 text-red-700 dark:text-red-400 hover:bg-red-600 hover:text-white border-red-300 dark:border-red-800'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#00548E] hover:text-white dark:hover:bg-[#00548E] dark:hover:text-white border-slate-200 dark:border-slate-700'
@@ -685,7 +685,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 type="button"
                 id={`btn-edit-${person.id}`}
                 onClick={() => onEdit(person)}
-                className="group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#00548E] hover:text-white dark:hover:bg-[#00548E] dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
+                className="profea-worker-card-action profea-worker-card-action--edit group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#00548E] hover:text-white dark:hover:bg-[#00548E] dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
                 aria-label="Editar"
               >
                 <Pencil className="w-4 h-4 mx-auto" />
@@ -697,7 +697,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 type="button"
                 id={`btn-delete-${person.id}`}
                 onClick={() => onDelete(person.id)}
-                className="group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white dark:hover:bg-red-500 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
+                className="profea-worker-card-action profea-worker-card-action--delete group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white dark:hover:bg-red-500 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
                 aria-label="Eliminar"
               >
                 <Trash2 className="w-4 h-4 mx-auto" />

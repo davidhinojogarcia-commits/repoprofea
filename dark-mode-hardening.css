@@ -707,3 +707,113 @@ html:not(.dark) #root .profea-renunciation-modal :is(
   color: #fde68a !important;
   -webkit-text-fill-color: #fde68a !important;
 }
+
+
+/* Directorio · contraste reforzado de los botones visibles en las tarjetas.
+ * Pensado para modo diurno y pantallas/tablets con brillo alto. */
+html:not(.dark) #root .profea-worker-card-action {
+  background-color: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  box-shadow:
+    0 2px 0 rgba(51, 65, 85, .18),
+    0 5px 12px rgba(15, 23, 42, .10) !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action--idcard {
+  color: #047857 !important;
+  -webkit-text-fill-color: #047857 !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action--history,
+html:not(.dark) #root .profea-worker-card-action--calendar,
+html:not(.dark) #root .profea-worker-card-action--edit {
+  color: #00548E !important;
+  -webkit-text-fill-color: #00548E !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action--delete {
+  background-color: #fff1f2 !important;
+  border-color: #fda4af !important;
+  color: #b91c1c !important;
+  -webkit-text-fill-color: #b91c1c !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action:hover,
+html:not(.dark) #root .profea-worker-card-action:focus-visible {
+  background-color: #00548E !important;
+  border-color: #00436f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+html:not(.dark) #root .profea-worker-card-action--idcard:hover,
+html:not(.dark) #root .profea-worker-card-action--idcard:focus-visible {
+  background-color: #047857 !important;
+  border-color: #065f46 !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action--delete:hover,
+html:not(.dark) #root .profea-worker-card-action--delete:focus-visible {
+  background-color: #dc2626 !important;
+  border-color: #b91c1c !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action:hover svg,
+html:not(.dark) #root .profea-worker-card-action:focus-visible svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+
+/* Botón Compartir que aparece bajo cada tarjeta. */
+html:not(.dark) #root .profea-share-record-button {
+  background-color: #ffffff !important;
+  border-color: #94a3b8 !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  box-shadow:
+    0 2px 0 rgba(51, 65, 85, .16),
+    0 5px 12px rgba(15, 23, 42, .09) !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root .profea-share-record-button svg {
+  color: #00548E !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root .profea-share-record-button:hover,
+html:not(.dark) #root .profea-share-record-button:focus-visible {
+  background-color: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  color: #00548E !important;
+  -webkit-text-fill-color: #00548E !important;
+}
+
+/* Botón flotante "volver arriba". */
+html:not(.dark) #root .profea-scroll-top-button {
+  background-color: #00548E !important;
+  border: 1px solid #003e6b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow:
+    0 4px 0 rgba(0, 62, 107, .30),
+    0 10px 20px rgba(0, 84, 142, .22) !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root .profea-scroll-top-button svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}

@@ -225,7 +225,7 @@ export const ShareRecordButton: React.FC<Props> = ({
 
   return (
     <>
-      <button type="button" onClick={openModal} title={`Compartir ${resourceLabel(resourceType)}`} className={`${compact ? 'p-2 rounded-lg' : 'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-700 ${className}`}>
+      <button type="button" onClick={openModal} title={`Compartir ${resourceLabel(resourceType)}`} className={`profea-share-record-button ${compact ? 'p-2 rounded-lg' : 'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-700 ${className}`}>
         <Share2 size={compact ? 16 : 15} />
         {!compact && <span>{label}</span>}
       </button>
