@@ -8,6 +8,7 @@ import {
   Download,
   Edit3,
   FileText,
+  FileUp,
   Link2,
   Loader2,
   Plus,
@@ -43,6 +44,10 @@ import {
   updateSaeNeed,
 } from "../src/services/saeService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
+import {
+  listAnnualHiringPeriods,
+  type AnnualHiringPeriodsRecord,
+} from "../src/services/annualHiringPeriodsService";
 
 interface SaeSectionProps {
   people: any[];
@@ -127,7 +132,17 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewOffsetX, setPreviewOffsetX] = useState(0);
   const [previewOffsetY, setPreviewOffsetY] = useState(0);
+  const [annualPeriods, setAnnualPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
   const selectedNeed = needs.find((n) => n.id === selectedNeedId) || null;
+  const currentYear = new Date().getFullYear();
+  const currentAnnualPeriods = annualPeriods.find((record) => record.year === currentYear) || null;
+  const annualPeriodsDone = Boolean(
+    currentAnnualPeriods?.months.some(
+      (month) =>
+        (month.period1Start && month.period1End) ||
+        (month.period2Start && month.period2End),
+    ),
+  );
 
   const groupedNeeds = useMemo(() => {
     const groups = new Map<string, { key: string; mes: string; ano: number | null; monthOrder: number; needs: SaeNeed[] }>();
@@ -198,6 +213,24 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     void refresh().catch((e) =>
       onToast(e.message || "No se pudo cargar SAE.", "error"),
     );
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const loadAnnualPeriods = async () => {
+      try {
+        const records = await listAnnualHiringPeriods();
+        if (!cancelled) setAnnualPeriods(records);
+      } catch (error) {
+        console.warn("No se pudo comprobar la anualidad SAE:", error);
+      }
+    };
+    const handleAnnualPeriodsUpdated = () => void loadAnnualPeriods();
+    void loadAnnualPeriods();
+    window.addEventListener("profea:annual-hiring-periods-updated", handleAnnualPeriodsUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("profea:annual-hiring-periods-updated", handleAnnualPeriodsUpdated);
+    };
   }, []);
   useEffect(() => {
     if (!selectedNeedId) return;
@@ -870,20 +903,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">Gestión SAE</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Solicitud de mano de obra → informes → candidatos → quincenas → registros →
+              Periodos anuales → solicitud de mano de obra → informes → candidatos → quincenas → registros →
               contratación → devolución SAE.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent('profea:open-annual-hiring-periods'))}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/80 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50 font-bold text-sm transition-colors"
-              title="Configurar los periodos generales de contratación de la anualidad"
-            >
-              <CalendarRange className="w-4 h-4" />
-              Períodos anuales
-            </button>
             <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-sm cursor-pointer">
               <FileText className="w-4 h-4" />
               Importar solicitud
@@ -907,6 +931,77 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             </button>
           </div>
         </div>
+        <div
+          className={`mt-5 rounded-2xl border p-4 sm:p-5 ${
+            annualPeriodsDone
+              ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20"
+              : "border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20"
+          }`}
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className={`w-9 h-9 shrink-0 rounded-xl grid place-items-center font-black text-sm ${
+                annualPeriodsDone
+                  ? "bg-emerald-600 text-white"
+                  : "bg-[#00548E] text-white"
+              }`}>
+                {annualPeriodsDone ? <CheckCircle2 className="w-5 h-5" /> : "0"}
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-black text-base sm:text-lg">Paso 0 · Periodos anuales</h2>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                    annualPeriodsDone
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                  }`}>
+                    {annualPeriodsDone ? `${currentYear} configurado` : `Pendiente · ${currentYear}`}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Se configura una sola vez al año y queda guardado para todas las gestiones SAE de la anualidad.
+                </p>
+                {annualPeriodsDone && (
+                  <p className="mt-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    {currentAnnualPeriods?.months.length || 0} mes(es) con periodos guardados. Puedes modificarlos cuando sea necesario.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("profea:open-annual-hiring-periods", {
+                      detail: { mode: "import" },
+                    }),
+                  )
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-2.5 text-sm font-black hover:bg-[#004270]"
+              >
+                <FileUp className="w-4 h-4" />
+                Importar periodos
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("profea:open-annual-hiring-periods", {
+                      detail: { mode: "manual" },
+                    }),
+                  )
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-black"
+              >
+                <CalendarRange className="w-4 h-4" />
+                Añadir periodos
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div
           className="mt-5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2"
           aria-label="Progreso SAE"
