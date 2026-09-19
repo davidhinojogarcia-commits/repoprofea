@@ -83,7 +83,7 @@ export function getActionHistoryState(): ActionHistoryState {
 export function subscribeActionHistory(listener: (state: ActionHistoryState) => void) {
   listeners.add(listener);
   listener(currentState());
-  return () => listeners.delete(listener);
+  return () => { listeners.delete(listener); };
 }
 
 export function recordActionHistory(
