@@ -17,7 +17,6 @@ import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppoin
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
-import { OfflineSyncStatus } from './components/OfflineSyncStatus';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
 import { installSidebarSwipe } from './src/lib/sidebarSwipe';
@@ -135,7 +134,6 @@ ReactDOM.createRoot(rootElement).render(
               <PrlTrainingScheduleBridge />
               <SaeRenunciationBridge />
               <AppToastHost />
-              <OfflineSyncStatus />
               <AppInstallPromo />
             </React.Suspense>
           )}
