@@ -650,3 +650,60 @@ html:not(.dark) #root ::selection {
   background: #245d7c;
   color: #ffffff;
 }
+
+
+/* Renuncia SAE · contraste de acciones en modo diurno.
+ * Botones con variantes propias para evitar colores heredados ilegibles. */
+html:not(.dark) #root .profea-renunciation-modal .profea-renunciation-primary {
+  background-color: #b91c1c !important;
+  border-color: #991b1b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+html:not(.dark) #root .profea-renunciation-modal .profea-renunciation-primary svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+html:not(.dark) #root .profea-renunciation-modal .profea-renunciation-secondary {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+}
+html:not(.dark) #root .profea-renunciation-modal .profea-renunciation-warning {
+  background-color: #fffbeb !important;
+  border-color: #f59e0b !important;
+  color: #78350f !important;
+  -webkit-text-fill-color: #78350f !important;
+}
+html:not(.dark) #root .profea-renunciation-modal .profea-renunciation-share {
+  background-color: #15803d !important;
+  border-color: #166534 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+html:not(.dark) #root .profea-renunciation-modal .profea-renunciation-close {
+  background-color: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+html:not(.dark) #root .profea-renunciation-modal :is(
+  .profea-renunciation-share,
+  .profea-renunciation-close
+) svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+.dark #root .profea-renunciation-modal .profea-renunciation-secondary {
+  background-color: #132337 !important;
+  border-color: #334b60 !important;
+  color: #eef6fb !important;
+  -webkit-text-fill-color: #eef6fb !important;
+}
+.dark #root .profea-renunciation-modal .profea-renunciation-warning {
+  background-color: rgba(120, 53, 15, .28) !important;
+  border-color: #b45309 !important;
+  color: #fde68a !important;
+  -webkit-text-fill-color: #fde68a !important;
+}
