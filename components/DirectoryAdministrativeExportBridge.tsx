@@ -80,10 +80,20 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       if (root) {
         // El rótulo genérico "RELACIÓN DE TRABAJADORES" no representa una
         // exportación concreta y duplicaba visualmente el bloque de informes.
-        root.querySelectorAll<HTMLElement>('span,div,label').forEach(node => {
-          if (normalizeLabel(node.textContent || '') === 'RELACION DE TRABAJADORES') {
-            node.remove();
-          }
+        root.querySelectorAll<HTMLElement>('span,div,label,p,h1,h2,h3,h4,h5,h6').forEach(node => {
+          const directText = Array.from(node.childNodes)
+            .filter(child => child.nodeType === Node.TEXT_NODE)
+            .map(child => child.textContent || '')
+            .join(' ');
+          const normalizedDirectText = normalizeLabel(directText);
+          const normalizedFullText = normalizeLabel(node.textContent || '');
+          const isGenericWorkerLabel =
+            normalizedDirectText === 'RELACION DE TRABAJADORES' ||
+            (
+              normalizedFullText === 'RELACION DE TRABAJADORES' &&
+              !node.querySelector('button,a,input,select,textarea')
+            );
+          if (isGenericWorkerLabel) node.remove();
         });
       }
 
