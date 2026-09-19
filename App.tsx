@@ -261,12 +261,17 @@ function App() {
 
         const metadataMode = user.user_metadata?.profea_interface_mode;
         const cachedMode = localStorage.getItem(`profea_interface_mode:${user.id}`);
+        const prefersGuidedOnThisDevice =
+          window.matchMedia('(max-width: 900px)').matches ||
+          window.matchMedia('(pointer: coarse)').matches;
         const resolvedMode: InterfaceMode =
           metadataMode === 'guided' || metadataMode === 'full'
             ? metadataMode
             : cachedMode === 'guided' || cachedMode === 'full'
               ? cachedMode
-              : 'full';
+              : prefersGuidedOnThisDevice
+                ? 'guided'
+                : 'full';
 
         setInterfaceMode(resolvedMode);
         localStorage.setItem(`profea_interface_mode:${user.id}`, resolvedMode);
@@ -286,6 +291,13 @@ function App() {
 
     const previousMode = interfaceMode;
     setInterfaceMode(nextMode);
+    if (
+      nextMode === 'guided' &&
+      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'subcontratas', 'inventario', 'sae'].includes(activeView)
+    ) {
+      setActiveView('dashboard');
+      window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
+    }
     setIsInterfaceModeSaving(true);
 
     try {
@@ -311,7 +323,7 @@ function App() {
     } finally {
       setIsInterfaceModeSaving(false);
     }
-  }, [interfaceMode, isInterfaceModeSaving]);
+  }, [interfaceMode, isInterfaceModeSaving, activeView]);
   const [pendingPdfDni, setPendingPdfDni] = useState<string | null>(null);
   const [viewingWorkerPdf, setViewingWorkerPdf] = useState<string | null>(null);
   const [viewingWorkerName, setViewingWorkerName] = useState<string>('');
@@ -2034,7 +2046,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0f7ff] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative overflow-x-clip selection:bg-[#00548E]/10 selection:text-[#00548E] dark:selection:bg-blue-600/20 dark:selection:text-blue-400 flex transition-colors duration-300">
+    <div className={`min-h-screen bg-[#f0f7ff] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative overflow-x-clip selection:bg-[#00548E]/10 selection:text-[#00548E] dark:selection:bg-blue-600/20 dark:selection:text-blue-400 flex transition-colors duration-300 ${interfaceMode === 'guided' ? 'profea-guided-mode' : 'profea-full-mode'}`}>
       {/* Subtle background pattern */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.02] dark:opacity-[0.04] z-0">
         <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#00548E 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
