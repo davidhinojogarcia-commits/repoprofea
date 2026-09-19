@@ -32,6 +32,12 @@ type GuidedAction = {
 
 const actions: GuidedAction[] = [
   {
+    title: 'Selección SAE',
+    description: 'Empezar el proceso de selección y contratación.',
+    view: 'sae',
+    icon: BriefcaseBusiness,
+  },
+  {
     title: 'Añadir trabajador',
     description: 'Dar de alta a una persona paso a paso.',
     view: 'registro',
@@ -66,12 +72,6 @@ const actions: GuidedAction[] = [
     description: 'Ver equipos disponibles, asignados o averiados.',
     view: 'inventario',
     icon: Wrench,
-  },
-  {
-    title: 'Selección SAE',
-    description: 'Entrar en el proceso de selección y contratación.',
-    view: 'sae',
-    icon: BriefcaseBusiness,
   },
 ];
 
