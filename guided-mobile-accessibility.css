@@ -389,3 +389,84 @@
     width: 100%;
   }
 }
+
+
+/* Vista guiada · corrección específica para tablet táctil.
+ * En tablet landscape conviven los breakpoints desktop (lg:flex-row) con
+ * (pointer:coarse). La regla táctil de width:100% en la recomendación podía
+ * comprimir la columna de pendientes hasta una sola letra por línea. */
+@media (min-width: 901px) and (pointer: coarse) {
+  .profea-guided-mode .profea-sidebar-shell {
+    width: 16rem !important;
+    max-width: 16rem !important;
+  }
+
+  .profea-guided-mode .profea-main-shell {
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 1 1 0% !important;
+  }
+
+  .profea-guided-mode .guided-home,
+  .profea-guided-mode .guided-today-card,
+  .profea-guided-mode .guided-route,
+  .profea-guided-mode .guided-help-panel {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .profea-guided-mode .guided-today-card > div {
+    display: grid !important;
+    grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 23rem) !important;
+    align-items: start !important;
+    gap: 1.25rem !important;
+  }
+
+  .profea-guided-mode .guided-today-card > div > :first-child {
+    min-width: 18rem !important;
+    width: auto !important;
+  }
+
+  .profea-guided-mode .guided-recommendation {
+    width: auto !important;
+    min-width: 20rem !important;
+    max-width: 23rem !important;
+    justify-self: stretch !important;
+  }
+
+  .profea-guided-mode .guided-start-button {
+    width: auto !important;
+  }
+
+  .profea-guided-mode .guided-today-item,
+  .profea-guided-mode .guided-step-card,
+  .profea-guided-mode .guided-secondary-action {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .profea-guided-mode .guided-today-item span,
+  .profea-guided-mode .guided-step-card span,
+  .profea-guided-mode .guided-secondary-action span {
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+  }
+}
+
+/* Tablet más estrecha: una sola columna, sin posibilidad de compresión lateral. */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .profea-guided-mode .guided-today-card > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .profea-guided-mode .guided-recommendation {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
