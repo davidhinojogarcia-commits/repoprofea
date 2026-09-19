@@ -91,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const guidedMenuGroups: { label: string; items: SidebarMenuItem[] }[] = [
     {
-      label: 'Trabajo diario',
+      label: 'Menú principal',
       items: [
         { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
         { id: 'directorio', label: 'Trabajadores', icon: Users },
@@ -158,22 +158,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0"
+            className="profea-mobile-close-menu lg:hidden flex items-center gap-2 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0"
             aria-label="Cerrar menú"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-6 h-6" />
+            {guidedMode && <span className="text-sm font-black">Cerrar</span>}
           </button>
         </div>
 
         <nav className="flex-1 py-4 px-3 space-y-2 overflow-y-auto overscroll-contain custom-scrollbar">
           {guidedMode && (!isCollapsed || isMobileOpen) && (
-            <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/80 px-3 py-2.5 text-[11px] leading-4 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-              <span className="font-black">Vista guiada:</span> se muestran solo las tareas de uso más habitual.
+            <div className="profea-guided-menu-help mb-4 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm leading-5 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+              <span className="font-black">Vista guiada.</span> Pulsa la tarea que quieras realizar.
             </div>
           )}
           {menuGroups.map((group, groupIndex) => (
             <div key={group.label} className={groupIndex === 0 ? '' : 'pt-4'}>
-              <div className={`px-3 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>
+              <div className={`profea-sidebar-group-label px-3 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>
                 {group.label}
               </div>
               <div className="space-y-1.5">
@@ -189,11 +190,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     >
                       <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`} />
                       <span className={`min-w-0 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
-                        <span className={`font-semibold text-sm whitespace-nowrap ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
+                        <span className={`profea-sidebar-label font-semibold text-sm whitespace-nowrap ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
                           {item.label}
                         </span>
                         {item.subtitle && (
-                          <span className={`mt-0.5 text-[10px] leading-[1.2] font-medium max-w-[13rem] ${isActive ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
+                          <span className={`profea-sidebar-subtitle mt-0.5 text-[10px] leading-[1.2] font-medium max-w-[13rem] ${isActive ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
                             {item.subtitle}
                           </span>
                         )}
