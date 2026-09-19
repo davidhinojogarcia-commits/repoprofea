@@ -110,6 +110,120 @@ const drawTraceMap = (doc: jsPDF, movements: InventoryMovement[], y: number) => 
   return y + h + 4;
 };
 
+
+const GENERAL_TRACE_COLORS: Array<[number, number, number]> = [
+  [0, 84, 142],
+  [5, 150, 105],
+  [217, 119, 6],
+  [124, 58, 237],
+  [225, 29, 72],
+  [8, 145, 178],
+  [79, 70, 229],
+  [15, 118, 110],
+];
+
+const drawGeneralTraceabilityMap = (
+  doc: jsPDF,
+  items: InventoryItem[],
+  movements: InventoryMovement[],
+  y: number,
+) => {
+  const itemIds = new Set(items.map(item => item.id));
+  const geo = movements
+    .filter(
+      movement =>
+        itemIds.has(movement.itemId) &&
+        movement.latitud != null &&
+        movement.longitud != null,
+    )
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+  const h = 72;
+  doc.setDrawColor(205, 215, 225);
+  doc.setFillColor(249, 251, 253);
+  doc.roundedRect(14, y, 182, h, 2, 2, 'FD');
+
+  if (!geo.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.2);
+    doc.setTextColor(90, 100, 115);
+    doc.text(
+      'No hay coordenadas registradas en los movimientos de las herramientas dispuestas.',
+      18,
+      y + 12,
+    );
+    doc.text(
+      'El resumen de trazabilidad se mantiene disponible mediante origen, destino, fecha y estado.',
+      18,
+      y + 18,
+    );
+    return y + h + 4;
+  }
+
+  const xs = geo.map(movement => Number(movement.longitud));
+  const ys = geo.map(movement => Number(movement.latitud));
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const project = (movement: InventoryMovement) => ({
+    x: 24 + 160 * ((Number(movement.longitud) - minX) / ((maxX - minX) || 1)),
+    y: y + 53 - 36 * ((Number(movement.latitud) - minY) / ((maxY - minY) || 1)),
+  });
+
+  const itemIndex = new Map(items.map((item, index) => [item.id, index]));
+  const grouped = new Map<string, InventoryMovement[]>();
+  for (const movement of geo) {
+    const current = grouped.get(movement.itemId) || [];
+    current.push(movement);
+    grouped.set(movement.itemId, current);
+  }
+
+  for (const [itemId, route] of grouped.entries()) {
+    const index = itemIndex.get(itemId) ?? 0;
+    const color = GENERAL_TRACE_COLORS[index % GENERAL_TRACE_COLORS.length];
+    const points = route.map(project);
+
+    doc.setDrawColor(...color);
+    doc.setLineWidth(0.65);
+    for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
+      doc.line(
+        points[pointIndex - 1].x,
+        points[pointIndex - 1].y,
+        points[pointIndex].x,
+        points[pointIndex].y,
+      );
+    }
+
+    points.forEach((point, pointIndex) => {
+      doc.setFillColor(...color);
+      doc.circle(point.x, point.y, pointIndex === points.length - 1 ? 2.3 : 1.5, 'F');
+    });
+
+    const last = points[points.length - 1];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
+    doc.setTextColor(...color);
+    doc.text(String(index + 1), last.x + 2.6, last.y - 1.5);
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.4);
+  doc.setTextColor(90, 100, 115);
+  doc.text(
+    'Representación general construida con las coordenadas registradas en los movimientos. El número identifica cada equipo en la tabla inferior.',
+    18,
+    y + 63,
+    { maxWidth: 174 },
+  );
+  return y + h + 4;
+};
+
 export async function exportInventoryStatusPdf(input: {
   park: InventoryPark;
   items: InventoryItem[];
@@ -268,6 +382,55 @@ export async function exportInventoryStatusPdf(input: {
 
     y += 5;
   }
+
+  y = ensureRoom(doc, y, 95, title, subtitle);
+  y = addSectionTitle(doc, 'MAPA GENERAL DE TRAZABILIDAD DE HERRAMIENTAS DISPUESTAS', y);
+  y = drawGeneralTraceabilityMap(doc, reportItems, movements, y);
+
+  const traceRows = reportItems.map((item, index) => {
+    const itemGeoMoves = movements
+      .filter(
+        movement =>
+          movement.itemId === item.id &&
+          movement.latitud != null &&
+          movement.longitud != null,
+      )
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+    const lastGeo = itemGeoMoves[itemGeoMoves.length - 1];
+    return [
+      String(index + 1),
+      itemSummaryLabel(item),
+      item.estado || '-',
+      item.ubicacionActual || '-',
+      lastGeo ? fmtDateTime(lastGeo.createdAt) : 'Sin coordenadas',
+      lastGeo?.destino || '-',
+    ];
+  });
+
+  autoTable(doc, {
+    startY: y,
+    head: [['#', 'Equipo / cantidad', 'Estado', 'Ubicación actual', 'Última posición', 'Destino registrado']],
+    body: traceRows.length
+      ? traceRows
+      : [['-', 'Sin herramientas dispuestas', '-', '-', '-', '-']],
+    theme: 'grid',
+    styles: { fontSize: 6.4, cellPadding: 1.5, valign: 'top', overflow: 'linebreak' },
+    headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center', fontStyle: 'bold' },
+      1: { cellWidth: 48 },
+      2: { cellWidth: 24 },
+      3: { cellWidth: 38 },
+      4: { cellWidth: 30 },
+      5: { cellWidth: 34 },
+    },
+    margin: { left: 14, right: 14 },
+  });
+  y = ((doc as any).lastAutoTable?.finalY || y + 20) + 7;
 
   const groups = new Map<string, InventoryItem[]>();
   for (const item of reportItems) {
