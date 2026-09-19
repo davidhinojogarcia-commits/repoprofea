@@ -529,7 +529,6 @@ export async function createSaeReport(
     await deleteSaeFile(storagePath);
     throw error;
   }
-  return id;
 }
 
 export async function listSaeCandidates(
