@@ -374,3 +374,40 @@ body.profea-modal-open {
     position: static !important;
   }
 }
+
+
+/* Documentación de obra: pestañas móviles siempre legibles.
+   La anchura se fija aquí (y no solo con utilidades) para impedir que cualquier
+   regla global de botones o flex las comprima hasta mostrar el texto letra a letra. */
+@media (max-width: 1023px) {
+  #root .worksite-doc-mobile-tabs .worksite-doc-mobile-tab {
+    flex: 0 0 132px !important;
+    width: 132px !important;
+    min-width: 132px !important;
+    max-width: 132px !important;
+    min-height: 84px !important;
+    height: auto !important;
+    flex-shrink: 0 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+  }
+
+  #root .worksite-doc-mobile-tabs .worksite-doc-mobile-tab-label {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+    line-height: 1.2 !important;
+  }
+
+  #root .worksite-doc-mobile-tabs .worksite-doc-mobile-tab svg {
+    flex: 0 0 auto !important;
+  }
+}
