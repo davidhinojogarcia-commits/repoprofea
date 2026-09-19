@@ -18,6 +18,22 @@ const safeName = (value: string) => value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓ
 const fmtDate = (value?: string | null) => value ? new Date(value.length === 10 ? `${value}T00:00:00` : value).toLocaleDateString('es-ES') : '-';
 const fmtDateTime = (value?: string | null) => value ? new Date(value).toLocaleString('es-ES') : '-';
 
+const normalizeLocation = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const itemUnits = (item: InventoryItem) => Math.max(1, Number(item.cantidad || 1));
+
+const itemSummaryLabel = (item: InventoryItem) => {
+  const identity = [item.codigo, item.nombre].filter(Boolean).join(' · ') || 'Equipo sin identificar';
+  const units = itemUnits(item);
+  return units > 1 ? `${units} uds. · ${identity}` : identity;
+};
+
 const fetchImageData = async (url: string): Promise<string | null> => {
   try {
     const response = await fetch(url);
@@ -108,25 +124,57 @@ export async function exportInventoryStatusPdf(input: {
   addHeader(doc, title, subtitle);
 
   let y = 36;
-  // El informe de situación recibe únicamente equipos que están actualmente
-  // en uso operativo: asignados a una obra o en traslado.
-  const inCourse = items.filter(i => i.activo && /obra|traslado/i.test(i.estado || ''));
-  const assignedToWork = inCourse.filter(i => /obra/i.test(i.estado || '')).length;
-  const inTransit = inCourse.filter(i => /traslado/i.test(i.estado || '')).length;
+  const baseLocation = parkBaseLocation(park);
+  const normalizedBase = normalizeLocation(baseLocation);
+
+  // Se consideran dispuestos fuera del parque todos los equipos activos cuya
+  // ubicación actual no coincide con la nave/parque. Además se incluyen las
+  // incidencias (avería, reparación, revisión o fuera de servicio) aunque el
+  // equipo haya regresado al parque, para que el informe de situación sea completo.
+  const reportItems = items
+    .filter((item) => {
+      if (!item.activo || /baja/i.test(item.estado || '')) return false;
+      const outsideBase =
+        Boolean(normalizeLocation(item.ubicacionActual)) &&
+        normalizeLocation(item.ubicacionActual) !== normalizedBase;
+      const operationalMovement = /obra|traslado/i.test(item.estado || '');
+      const incident = /aver|repar|revisi[oó]n|fuera/i.test(item.estado || '');
+      return outsideBase || operationalMovement || incident;
+    })
+    .slice()
+    .sort((a, b) => {
+      const location = (a.ubicacionActual || '').localeCompare(b.ubicacionActual || '', 'es');
+      if (location) return location;
+      const status = (a.estado || '').localeCompare(b.estado || '', 'es');
+      if (status) return status;
+      return (a.nombre || '').localeCompare(b.nombre || '', 'es');
+    });
+
+  const totalUnits = reportItems.reduce((sum, item) => sum + itemUnits(item), 0);
+  const disposedUnits = reportItems
+    .filter((item) => !/aver|repar|fuera/i.test(item.estado || ''))
+    .reduce((sum, item) => sum + itemUnits(item), 0);
+  const brokenUnits = reportItems
+    .filter((item) => /aver/i.test(item.estado || ''))
+    .reduce((sum, item) => sum + itemUnits(item), 0);
+  const repairUnits = reportItems
+    .filter((item) => /repar/i.test(item.estado || ''))
+    .reduce((sum, item) => sum + itemUnits(item), 0);
+
   autoTable(doc, {
     startY: y,
-    head: [['Parque / nave', 'Equipos en uso', 'Asignados a obra', 'En traslado']],
-    body: [[parkBaseLocation(park), String(inCourse.length), String(assignedToWork), String(inTransit)]],
+    head: [['Parque / nave', 'Unidades incluidas', 'Dispuestas / asignadas', 'Averiadas', 'En reparación']],
+    body: [[baseLocation, String(totalUnits), String(disposedUnits), String(brokenUnits), String(repairUnits)]],
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 2.4, valign: 'middle' },
+    styles: { fontSize: 7.5, cellPadding: 2.2, valign: 'middle' },
     headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: LIGHT },
     margin: { left: 14, right: 14 },
   });
   y = ((doc as any).lastAutoTable?.finalY || y + 15) + 7;
 
-  for (let index = 0; index < inCourse.length; index++) {
-    const item = inCourse[index];
+  for (let index = 0; index < reportItems.length; index++) {
+    const item = reportItems[index];
     const itemDocs = documents.filter(d => d.itemId === item.id);
     const itemMaint = maintenance.filter(m => m.itemId === item.id);
     const itemMoves = movements.filter(m => m.itemId === item.id).slice().sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -139,6 +187,7 @@ export async function exportInventoryStatusPdf(input: {
       startY: y,
       body: [
         ['Categoría', item.categoria || '-', 'Estado actual', item.estado || '-'],
+        ['Cantidad', String(itemUnits(item)), 'Tipo de gestión', item.tipoGestion === 'lote' ? 'Lote' : 'Individual'],
         ['Ubicación actual', item.ubicacionActual || '-', 'Marca / modelo', [item.marca, item.modelo].filter(Boolean).join(' · ') || '-'],
         ['Nº serie / matrícula', [item.numeroSerie, item.matricula].filter(Boolean).join(' · ') || '-', 'Documentación', missing.length ? `INCOMPLETA · faltan ${missing.length}` : 'BÁSICA COMPLETA'],
       ],
@@ -219,6 +268,52 @@ export async function exportInventoryStatusPdf(input: {
 
     y += 5;
   }
+
+  const groups = new Map<string, InventoryItem[]>();
+  for (const item of reportItems) {
+    const location = String(item.ubicacionActual || '').trim() || baseLocation;
+    const current = groups.get(location) || [];
+    current.push(item);
+    groups.set(location, current);
+  }
+
+  y = ensureRoom(doc, y, 42, title, subtitle);
+  y = addSectionTitle(doc, 'RESUMEN FINAL POR OBRA / UBICACIÓN', y);
+
+  const summaryRows = Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b, 'es'))
+    .map(([location, groupItems]) => {
+      const disposed = groupItems.filter(item => !/aver|repar|fuera/i.test(item.estado || ''));
+      const broken = groupItems.filter(item => /aver/i.test(item.estado || ''));
+      const repairing = groupItems.filter(item => /repar/i.test(item.estado || ''));
+      const list = (rows: InventoryItem[]) =>
+        rows.length ? rows.map(itemSummaryLabel).join('\n') : '-';
+      return [
+        location,
+        list(disposed),
+        list(broken),
+        list(repairing),
+      ];
+    });
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Obra / ubicación', 'Dispuestas / asignadas', 'Averiadas', 'En reparación']],
+    body: summaryRows.length
+      ? summaryRows
+      : [['Sin equipos fuera del parque ni incidencias registradas', '-', '-', '-']],
+    theme: 'grid',
+    styles: { fontSize: 6.9, cellPadding: 1.8, valign: 'top', overflow: 'linebreak' },
+    headStyles: { fillColor: BLUE, textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 38, fontStyle: 'bold' },
+      1: { cellWidth: 62 },
+      2: { cellWidth: 42 },
+      3: { cellWidth: 40 },
+    },
+    margin: { left: 14, right: 14 },
+  });
+  y = ((doc as any).lastAutoTable?.finalY || y + 20) + 5;
 
   applyInstitutionalPdfStandard(doc);
   const filename = `INFORME_SITUACION_MAQUINARIA_${safeName(park.zona)}_${new Date().toISOString().slice(0, 10)}.pdf`;
