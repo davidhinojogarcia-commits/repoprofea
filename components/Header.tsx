@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, Sun, Moon, Undo2, Redo2, Bell } from 'lucide-react';
+import { Menu, Sun, Moon, Undo2, Redo2, Bell, Compass, SlidersHorizontal } from 'lucide-react';
 import { BUTTON_GHOST } from '../constants';
 import { OfflineSyncStatus } from './OfflineSyncStatus';
 
@@ -13,9 +13,12 @@ interface HeaderProps {
   canRedo?: boolean;
   onOpenNotificationManager?: () => void;
   alertsCount?: number;
+  guidedMode?: boolean;
+  onInterfaceModeToggle?: () => void;
+  isInterfaceModeSaving?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onMenuClick, theme, onThemeToggle, onUndo, onRedo, canUndo = false, canRedo = false, onOpenNotificationManager, alertsCount = 0 }) => (
+export const Header: React.FC<HeaderProps> = ({ onMenuClick, theme, onThemeToggle, onUndo, onRedo, canUndo = false, canRedo = false, onOpenNotificationManager, alertsCount = 0, guidedMode = false, onInterfaceModeToggle, isInterfaceModeSaving = false }) => (
   <div className="sticky top-0 z-[80] ui-glass p-4 sm:p-5 md:p-6 rounded-2xl mb-6 md:mb-8 transition-all relative flex flex-col items-center overflow-hidden no-print app-navigation-panel">
     <div className="absolute top-0 left-0 w-full h-1 bg-brand-primary" />
     <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6 w-full max-w-none">
@@ -35,6 +38,22 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, theme, onThemeToggl
           {onUndo && <button onClick={onUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold select-none ${canUndo ? 'bg-white/85 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 shadow-xs hover:-translate-y-px active:translate-y-0 cursor-pointer' : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'}`} title={canUndo ? 'Deshacer cambio (Ctrl+Z)' : 'Nada que deshacer'} aria-label="Deshacer cambio"><Undo2 className="w-4 h-4" /><span className="hidden sm:inline text-[11px]">Deshacer</span></button>}
           {onRedo && <button onClick={onRedo} disabled={!canRedo} className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold select-none ${canRedo ? 'bg-white/85 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 shadow-xs hover:-translate-y-px active:translate-y-0 cursor-pointer' : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'}`} title={canRedo ? 'Rehacer cambio (Ctrl+Y)' : 'Nada que rehacer'} aria-label="Rehacer cambio"><Redo2 className="w-4 h-4" /><span className="hidden sm:inline text-[11px]">Rehacer</span></button>}
         </div>}
+        {onInterfaceModeToggle && (
+          <button
+            type="button"
+            onClick={onInterfaceModeToggle}
+            disabled={isInterfaceModeSaving}
+            className="ui-button-secondary !min-h-0 p-2.5 sm:px-3 flex items-center justify-center gap-2 shadow-xs shrink-0 no-print cursor-pointer disabled:opacity-60"
+            title={guidedMode ? 'Cambiar a Vista completa' : 'Activar Vista guiada'}
+            aria-label={guidedMode ? 'Cambiar a Vista completa' : 'Activar Vista guiada'}
+            aria-pressed={guidedMode}
+          >
+            {guidedMode ? <SlidersHorizontal className="w-5 h-5 text-brand-primary dark:text-blue-300" /> : <Compass className="w-5 h-5 text-brand-primary dark:text-blue-300" />}
+            <span className="hidden sm:inline text-[11px] font-black whitespace-nowrap">
+              {isInterfaceModeSaving ? 'Guardando…' : guidedMode ? 'Vista completa' : 'Vista guiada'}
+            </span>
+          </button>
+        )}
         {onOpenNotificationManager && <button onClick={onOpenNotificationManager} className="ui-button-secondary !min-h-0 p-2.5 flex items-center justify-center shadow-xs shrink-0 no-print cursor-pointer relative group" title="Gestión de Notificaciones Push y Alertas" aria-label="Gestión de Notificaciones Push"><Bell className="w-5 h-5 text-amber-500 group-hover:rotate-12 transition-transform" />{alertsCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-pulse shadow-sm">{alertsCount > 9 ? '9+' : alertsCount}</span>}</button>}
         <button onClick={onThemeToggle} className="ui-button-secondary !min-h-0 p-2.5 flex items-center justify-center shadow-xs shrink-0 no-print cursor-pointer" title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'} aria-label="Alternar tema">{theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-600" />}</button>
       </div>
