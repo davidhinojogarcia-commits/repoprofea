@@ -25,24 +25,24 @@ export const OfflineSyncStatus: React.FC = () => {
   }, []);
 
   const tone = !state.online
-    ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/90 dark:text-amber-200'
+    ? 'border-amber-200/80 bg-amber-50/70 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300'
     : state.lastError
-      ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/90 dark:text-red-200'
+      ? 'border-red-200/80 bg-red-50/70 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300'
       : state.syncing
-        ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/90 dark:text-blue-200'
+        ? 'border-blue-200/80 bg-blue-50/70 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300'
         : state.pending > 0
-          ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/90 dark:text-amber-200'
-          : 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/90 dark:text-emerald-200';
+          ? 'border-amber-200/80 bg-amber-50/70 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300'
+          : 'border-emerald-200/70 bg-emerald-50/55 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300';
 
   const label = !state.online
-    ? `Sin conexión · ${state.pending} pendiente${state.pending === 1 ? '' : 's'}`
+    ? `Sin conexión${state.pending > 0 ? ` · ${state.pending}` : ''}`
     : state.syncing
-      ? `Sincronizando ${state.pending} cambio${state.pending === 1 ? '' : 's'}…`
+      ? `Sincronizando${state.pending > 0 ? ` · ${state.pending}` : ''}`
       : state.lastError
-        ? 'Error de sincronización'
+        ? 'Error sync'
         : state.pending > 0
-          ? `${state.pending} cambio${state.pending === 1 ? '' : 's'} pendiente${state.pending === 1 ? '' : 's'}`
-          : 'En línea · Todo sincronizado';
+          ? `${state.pending} pendiente${state.pending === 1 ? '' : 's'}`
+          : 'Sincronizado';
 
   const Icon = !state.online
     ? WifiOff
@@ -67,10 +67,10 @@ export const OfflineSyncStatus: React.FC = () => {
             ? 'Los cambios están guardados en este dispositivo. Toca para intentar sincronizarlos.'
             : 'El trabajo del dispositivo está sincronizado con el servidor.'
       }
-      className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-3 sm:right-5 z-[220] max-w-[calc(100vw-1.5rem)] rounded-full border px-3 py-2 shadow-lg backdrop-blur-md text-[11px] sm:text-xs font-black inline-flex items-center gap-2 transition-colors ${tone}`}
+      className={`h-8 max-w-[132px] rounded-lg border px-2 text-[10px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shadow-none opacity-80 hover:opacity-100 transition-all shrink-0 ${tone}`}
       aria-live="polite"
     >
-      <Icon className={`w-4 h-4 shrink-0 ${state.syncing ? 'animate-spin' : ''}`} />
+      <Icon className={`w-3.5 h-3.5 shrink-0 ${state.syncing ? 'animate-spin' : ''}`} />
       <span className="truncate">{label}</span>
     </button>
   );
