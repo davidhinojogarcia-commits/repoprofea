@@ -1,6 +1,9 @@
 /* Refuerzo visual 3D para Vista guiada.
    Mantiene la estética institucional y hace más evidente qué elementos son pulsables. */
 .profea-guided-mode .guided-action-card,
+.profea-guided-mode .guided-step-card,
+.profea-guided-mode .guided-secondary-action,
+.profea-guided-mode .guided-start-button,
 .profea-guided-mode .guided-complete-button,
 .profea-guided-mode .guided-summary-card[type='button'],
 .profea-guided-mode .profea-interface-mode-button,
@@ -19,6 +22,9 @@
 }
 
 .dark .profea-guided-mode .guided-action-card,
+.dark .profea-guided-mode .guided-step-card,
+.dark .profea-guided-mode .guided-secondary-action,
+.dark .profea-guided-mode .guided-start-button,
 .dark .profea-guided-mode .guided-complete-button,
 .dark .profea-guided-mode .guided-summary-card[type='button'],
 .dark .profea-guided-mode .profea-interface-mode-button,
@@ -34,6 +40,9 @@
 
 @media (hover: hover) and (pointer: fine) {
   .profea-guided-mode .guided-action-card:hover,
+  .profea-guided-mode .guided-step-card:hover,
+  .profea-guided-mode .guided-secondary-action:hover,
+  .profea-guided-mode .guided-start-button:hover,
   .profea-guided-mode .guided-complete-button:hover,
   .profea-guided-mode .guided-summary-card[type='button']:hover,
   .profea-guided-mode .profea-interface-mode-button:hover,
@@ -48,6 +57,9 @@
 }
 
 .profea-guided-mode .guided-action-card:active,
+.profea-guided-mode .guided-step-card:active,
+.profea-guided-mode .guided-secondary-action:active,
+.profea-guided-mode .guided-start-button:active,
 .profea-guided-mode .guided-complete-button:active,
 .profea-guided-mode .guided-summary-card[type='button']:active,
 .profea-guided-mode .profea-interface-mode-button:active,
