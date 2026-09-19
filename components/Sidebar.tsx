@@ -94,6 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Menú principal',
       items: [
         { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
+        { id: 'sae', label: 'Selección SAE', icon: BriefcaseBusiness },
         { id: 'directorio', label: 'Trabajadores', icon: Users },
         { id: 'registro', label: 'Añadir trabajador', icon: UserPlus },
         { id: 'citas', label: 'Reconocimientos', icon: Calendar },
@@ -105,7 +106,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon: HardHat,
         },
         { id: 'inventario', label: 'Maquinaria y herramientas', icon: Wrench },
-        { id: 'sae', label: 'Selección SAE', icon: BriefcaseBusiness },
       ],
     },
   ];
