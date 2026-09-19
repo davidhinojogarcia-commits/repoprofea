@@ -332,3 +332,60 @@
   .profea-guided-mode .guided-step-card .guided-action-title { font-size: 1.05rem; }
   .profea-guided-mode .guided-step-card .guided-action-description { font-size: .94rem; line-height: 1.45; }
 }
+
+
+/* Vista guiada · asistente de jornada y contexto persistente. */
+.profea-guided-mode .guided-today-card {
+  border: 1px solid var(--ui-border);
+  border-radius: 1.1rem;
+}
+
+.profea-guided-mode .guided-today-item {
+  min-height: 58px;
+}
+
+.profea-guided-mode .guided-recommendation {
+  box-shadow: 0 4px 0 rgba(0, 84, 142, .14), 0 10px 22px rgba(0, 84, 142, .10);
+}
+
+.profea-guided-mode .guided-current-task-bar {
+  position: sticky;
+  top: .5rem;
+  z-index: 35;
+}
+
+.profea-guided-mode .guided-back-home-button {
+  background: #00548E !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: 1px solid #003f6b !important;
+  box-shadow: 0 3px 0 rgba(0, 63, 107, .32), 0 8px 18px rgba(0, 84, 142, .16) !important;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .profea-guided-mode .guided-current-task-bar {
+    top: .35rem;
+    margin-bottom: 1rem;
+    padding: .75rem;
+  }
+
+  .profea-guided-mode .guided-back-home-button {
+    width: 100%;
+    min-height: 54px;
+    font-size: .98rem;
+  }
+
+  .profea-guided-mode .guided-today-item {
+    min-height: 64px;
+    padding: .85rem;
+  }
+
+  .profea-guided-mode .guided-today-item span:nth-child(2) {
+    font-size: .98rem;
+    line-height: 1.4;
+  }
+
+  .profea-guided-mode .guided-recommendation {
+    width: 100%;
+  }
+}
