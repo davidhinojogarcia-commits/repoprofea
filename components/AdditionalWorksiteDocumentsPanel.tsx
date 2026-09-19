@@ -183,10 +183,10 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
   const [workerPickerOpen, setWorkerPickerOpen] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [supervisorName, setSupervisorName] = useState('');
-  const [editOpen, setEditOpen] = useState(false);
-  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [workMode, setWorkMode] = useState<'filled' | 'blank'>('filled');
   const [answers, setAnswers] = useState<WorksiteDocumentAnswers>({});
   const [signatures, setSignatures] = useState<WorksiteDocumentSignatures>({});
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
 
   useEffect(() => {
@@ -272,8 +272,12 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
   useEffect(() => {
     setAnswers({});
     setSignatures({});
-    setEditOpen(false);
-    setSignatureOpen(false);
+    setWorkMode('filled');
+    setPreviewOpen(false);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
   }, [docType]);
 
   const documentContext = useMemo(
@@ -289,59 +293,53 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
     [selectedWork, row, date, supervisorName],
   );
 
-  useEffect(() => {
-    if (!selectedWork) {
-      setPreviewUrl((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return '';
-      });
-      return;
-    }
-
-    const { doc } = generateAdditionalWorksiteDocument(docType, null, documentContext, {});
-    const url = URL.createObjectURL(doc.output('blob'));
-    setPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return url;
-    });
-
-    return () => URL.revokeObjectURL(url);
-  }, [docType, documentContext, selectedWork]);
-
   const generateBlank = () => {
     if (!selectedWork) return window.alert('Selecciona una obra.');
-    const { doc, filename } = generateAdditionalWorksiteDocument(docType, null, documentContext, {});
+    const { doc, filename } = generateAdditionalWorksiteDocument(
+      docType,
+      null,
+      documentContext,
+      {},
+      {},
+    );
     downloadPDF(doc, filename);
   };
 
-  const startFilled = () => {
-    if (!worker) return window.alert('Selecciona primero un trabajador.');
-    if (!safe(row?.recurso_preventivo)) {
-      return window.alert('La obra no tiene encargado/recurso preventivo configurado.');
+  const validateFilledDocument = (requireSignatures: boolean) => {
+    if (!worker) {
+      window.alert('Selecciona primero un trabajador.');
+      return false;
     }
-    if (!supervisorName) return window.alert('No se ha podido identificar el supervisor de la cuenta.');
-    setAnswers({});
-    setSignatures({});
-    setEditOpen(true);
-  };
-
-  const continueToSign = () => {
-    const missing = def.fields
+    if (!safe(row?.recurso_preventivo)) {
+      window.alert('La obra no tiene encargado/recurso preventivo configurado.');
+      return false;
+    }
+    if (!supervisorName) {
+      window.alert('No se ha podido identificar el supervisor de la cuenta.');
+      return false;
+    }
+    const missingFields = def.fields
       .filter((field) => field.required && !safe(answers[field.key]))
       .map((field) => field.label);
-    if (missing.length) return window.alert(`Completa antes de firmar: ${missing.join(', ')}.`);
-    setEditOpen(false);
-    setSignatureOpen(true);
+    if (missingFields.length) {
+      window.alert(`Completa los campos obligatorios: ${missingFields.join(', ')}.`);
+      return false;
+    }
+    if (requireSignatures) {
+      const missingSignatures: string[] = [];
+      if (def.signatureWorker && !signatures.worker) missingSignatures.push('trabajador');
+      if (def.signatureCompany && !signatures.foreman) missingSignatures.push('encargado');
+      if (def.signatureCompany && !signatures.supervisor) missingSignatures.push('supervisor');
+      if (missingSignatures.length) {
+        window.alert(`Faltan firmas: ${missingSignatures.join(', ')}.`);
+        return false;
+      }
+    }
+    return true;
   };
 
-  const finishSigned = () => {
-    if (!worker) return;
-    const missing: string[] = [];
-    if (def.signatureWorker && !signatures.worker) missing.push('trabajador');
-    if (def.signatureCompany && !signatures.foreman) missing.push('encargado');
-    if (def.signatureCompany && !signatures.supervisor) missing.push('supervisor');
-    if (missing.length) return window.alert(`Faltan firmas: ${missing.join(', ')}.`);
-
+  const generateFilled = () => {
+    if (!validateFilledDocument(true) || !worker) return;
     const { doc, filename } = generateAdditionalWorksiteDocument(
       docType,
       worker,
@@ -350,7 +348,38 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
       signatures,
     );
     downloadPDF(doc, filename);
-    setSignatureOpen(false);
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+  };
+
+  const openPreview = () => {
+    if (!selectedWork) return window.alert('Selecciona una obra.');
+    if (workMode === 'filled' && !worker) {
+      return window.alert('Selecciona un trabajador para previsualizar el documento cumplimentado.');
+    }
+
+    const { doc } =
+      workMode === 'blank'
+        ? generateAdditionalWorksiteDocument(docType, null, documentContext, {}, {})
+        : generateAdditionalWorksiteDocument(
+            docType,
+            worker,
+            documentContext,
+            answers,
+            signatures,
+          );
+    const url = URL.createObjectURL(doc.output('blob'));
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return url;
+    });
+    setPreviewOpen(true);
   };
 
   const fieldInput = (field: (typeof def.fields)[number]) => {
@@ -399,19 +428,59 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
           </p>
         </div>
 
-        <div className="grid xl:grid-cols-[minmax(285px,0.58fr)_minmax(0,1.42fr)] gap-5 items-start">
-          <div className="space-y-5 min-w-0">
-            <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-2 bg-slate-50 dark:bg-slate-950">
+            <div className="grid sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setWorkMode('filled')}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black transition-colors ${
+                  workMode === 'filled'
+                    ? 'bg-[#00548E] text-white shadow-sm'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                <PencilLine className="w-4 h-4" />
+                Completar y firmar
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkMode('blank')}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black transition-colors ${
+                  workMode === 'blank'
+                    ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                <Printer className="w-4 h-4" />
+                Generar en blanco
+              </button>
+            </div>
+          </div>
+
+          {workMode === 'blank' && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20 p-4 text-sm text-amber-900 dark:text-amber-200">
+              <div className="font-black">Modo plantilla en blanco</div>
+              <p className="mt-1 text-xs">
+                Los datos del trabajador, campos y firmas quedan bloqueados. Puedes previsualizar la plantilla o generar directamente el PDF en blanco.
+              </p>
+            </div>
+          )}
+
+          <div className={workMode === 'blank' ? 'pointer-events-none opacity-45 select-none' : ''}>
+            <div className="grid lg:grid-cols-2 gap-4">
               <label className="text-sm font-bold">
                 Fecha
                 <input
                   type="date"
                   value={date}
                   onChange={(event) => setDate(event.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2.5 bg-white dark:bg-slate-900"
+                  disabled={workMode === 'blank'}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-3 bg-white dark:bg-slate-900 disabled:cursor-not-allowed"
                 />
               </label>
-              <div className="text-sm font-bold sm:col-span-1">
+
+              <div className="text-sm font-bold">
                 <div className="flex items-center justify-between gap-2">
                   <span>Trabajador</span>
                   <span className="text-[10px] font-semibold text-slate-400">
@@ -475,10 +544,11 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
                       onFocus={() => setWorkerPickerOpen(true)}
                       placeholder="Nombre, DNI, puesto u oferta…"
                       autoComplete="off"
+                      disabled={workMode === 'blank'}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-3 text-sm font-semibold outline-none focus:border-[#00548E] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950"
                     />
 
-                    {workerPickerOpen && (
+                    {workerPickerOpen && workMode === 'filled' && (
                       <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
                         {filteredWorkers.map((item) => (
                           <button
@@ -489,7 +559,7 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
                               setWorkerSearch('');
                               setWorkerPickerOpen(false);
                             }}
-                            className="w-full border-b last:border-b-0 border-slate-100 dark:border-slate-800 px-3 py-3 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30 focus:bg-blue-50 dark:focus:bg-blue-950/30"
+                            className="w-full border-b last:border-b-0 border-slate-100 dark:border-slate-800 px-3 py-3 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
                           >
                             <div className="font-black text-sm">{item.apellidosNombre}</div>
                             <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
@@ -504,11 +574,6 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
                             No hay trabajadores que coincidan con “{workerSearch}”.
                           </div>
                         )}
-                        {!workerSearch && workWorkers.length > 12 && (
-                          <div className="border-t border-slate-100 dark:border-slate-800 px-3 py-2 text-center text-[10px] text-slate-400">
-                            Mostrando los primeros 12. Escribe para buscar entre todos.
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -516,207 +581,171 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 grid sm:grid-cols-2 gap-3 text-sm">
+            <div className="mt-4 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
               <div>
                 <b>Obra:</b> {selectedWork}
               </div>
               <div>
                 <b>Encargado/a:</b> {safe(row?.recurso_preventivo) || 'No configurado'}
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <b>Supervisor/a:</b> {supervisorName || 'No identificado'}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-blue-200 bg-blue-50/60 dark:border-blue-900/70 dark:bg-blue-950/20 p-4">
+            <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 dark:border-blue-900/70 dark:bg-blue-950/20 p-4">
               <div className="font-black">{def.title}</div>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">{def.legal}</p>
-              <p className="text-[11px] text-slate-500 mt-2">
-                Con trabajador seleccionado: completar datos → revisar → firmar → generar PDF.
-              </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                type="button"
-                onClick={generateBlank}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 font-bold"
-              >
-                <Printer className="w-4 h-4" />
-                Generar en blanco
-              </button>
-              <button
-                type="button"
-                onClick={startFilled}
-                disabled={loading || !worker}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-3 font-bold disabled:opacity-50"
-              >
-                <PencilLine className="w-4 h-4" />
-                Completar y firmar
-              </button>
+            <div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <PencilLine className="w-4 h-4 text-[#00548E] dark:text-blue-400" />
+                <h3 className="font-black">Datos del documento</h3>
+              </div>
+              {def.fields.length ? (
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {def.fields.map((field) => (
+                    <label
+                      key={field.key}
+                      className={`text-sm font-bold ${field.type === 'textarea' ? 'sm:col-span-2' : ''}`}
+                    >
+                      {field.label}
+                      {field.required && <span className="text-red-600"> *</span>}
+                      {fieldInput(field)}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-500">
+                  Este documento no requiere campos adicionales.
+                </div>
+              )}
             </div>
+
+            {(def.signatureWorker || def.signatureCompany) && (
+              <div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileSignature className="w-4 h-4 text-[#00548E] dark:text-blue-400" />
+                  <h3 className="font-black">Firmas</h3>
+                </div>
+                <div className="space-y-4">
+                  {def.signatureWorker && (
+                    <SignaturePad
+                      label="Firma de la persona trabajadora"
+                      name={worker?.apellidosNombre || ''}
+                      value={signatures.worker || ''}
+                      onChange={(value) =>
+                        setSignatures((current) => ({ ...current, worker: value }))
+                      }
+                    />
+                  )}
+                  {def.signatureCompany && (
+                    <div className="grid lg:grid-cols-2 gap-4">
+                      <SignaturePad
+                        label="Firma del encargado/a de obra"
+                        name={safe(row?.recurso_preventivo)}
+                        value={signatures.foreman || ''}
+                        onChange={(value) =>
+                          setSignatures((current) => ({ ...current, foreman: value }))
+                        }
+                      />
+                      <SignaturePad
+                        label="Firma del supervisor/a"
+                        name={supervisorName}
+                        value={signatures.supervisor || ''}
+                        onChange={(value) =>
+                          setSignatures((current) => ({ ...current, supervisor: value }))
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-100 dark:bg-slate-950">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
-              <div>
-                <div className="font-black text-sm">Previsualización</div>
-                <div className="text-[11px] text-slate-500">Plantilla · {def.short}</div>
-              </div>
-              {previewUrl && (
-                <button
-                  type="button"
-                  onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
-                  className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-bold"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Ampliar
-                </button>
-              )}
-            </div>
-
-            <div className="sm:hidden p-4">
-              {previewUrl ? (
-                <button
-                  type="button"
-                  onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
-                  className="w-full min-h-14 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-3 font-black"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Ver documento a pantalla completa
-                </button>
-              ) : (
-                <div className="min-h-24 grid place-items-center text-sm text-slate-500">
-                  Preparando vista previa…
-                </div>
-              )}
-            </div>
-
-            <div className="hidden sm:block">
-              {previewUrl ? (
-                <iframe
-                  title={`Previsualización ${def.short}`}
-                  src={previewUrl}
-                  className="w-full h-[62vh] min-h-[520px] bg-white"
-                />
-              ) : (
-                <div className="min-h-[420px] grid place-items-center text-sm text-slate-500">
-                  Preparando vista previa…
-                </div>
-              )}
+          <div className="sticky bottom-2 z-20 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur p-3 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={openPreview}
+                disabled={loading || (workMode === 'filled' && !worker)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#00548E]/30 bg-blue-50 dark:bg-blue-950/30 text-[#00548E] dark:text-blue-300 px-5 py-3 text-sm font-black disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Previsualizar documento
+              </button>
+              <button
+                type="button"
+                onClick={workMode === 'blank' ? generateBlank : generateFilled}
+                disabled={loading || (workMode === 'filled' && !worker)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-5 py-3 text-sm font-black disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {workMode === 'blank' ? <Printer className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                {workMode === 'blank' ? 'Generar PDF en blanco' : 'Generar PDF firmado'}
+              </button>
             </div>
           </div>
         </div>
       </section>
 
-      {editOpen && worker && (
-        <div className="fixed inset-0 z-[125] bg-slate-950/70 p-0 sm:p-6 flex items-center justify-center">
-          <div className="w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[94vh] overflow-y-auto rounded-none sm:rounded-3xl bg-white dark:bg-slate-950 border-0 sm:border shadow-2xl">
-            <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b px-5 py-4 flex items-center justify-between">
-              <div>
-                <h2 className="font-black text-xl">Completar documento</h2>
-                <p className="text-xs text-slate-500">
-                  {def.short} · {worker.apellidosNombre}
-                </p>
+      {previewOpen && (
+        <div className="fixed inset-0 z-[135] bg-slate-950/75 p-0 sm:p-5 flex items-center justify-center">
+          <div className="w-full h-full sm:h-[94vh] sm:max-w-6xl bg-white dark:bg-slate-950 sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+            <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-3 bg-white dark:bg-slate-950">
+              <div className="min-w-0">
+                <div className="font-black">Previsualización · {def.short}</div>
+                <div className="text-[11px] text-slate-500">
+                  {workMode === 'blank' ? 'Plantilla en blanco' : worker?.apellidosNombre || 'Documento cumplimentado'}
+                </div>
               </div>
-              <button onClick={() => setEditOpen(false)} className="p-2 rounded-xl border">
-                ×
-              </button>
-            </div>
-            <div className="p-5 sm:p-6">
-              <div className="grid sm:grid-cols-2 gap-4">
-                {def.fields.map((field) => (
-                  <label
-                    key={field.key}
-                    className={`text-sm font-bold ${field.type === 'textarea' ? 'sm:col-span-2' : ''}`}
+              <div className="flex items-center gap-2">
+                {previewUrl && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold"
                   >
-                    {field.label}
-                    {field.required && <span className="text-red-600"> *</span>}
-                    {fieldInput(field)}
-                  </label>
-                ))}
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Abrir aparte
+                  </button>
+                )}
                 <button
-                  onClick={() => setEditOpen(false)}
-                  className="rounded-xl border px-4 py-3 font-bold"
+                  type="button"
+                  onClick={closePreview}
+                  className="rounded-xl border p-2"
+                  aria-label="Cerrar previsualización"
                 >
-                  Cancelar
-                </button>
-                <button
-                  onClick={continueToSign}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-5 py-3 font-bold"
-                >
-                  <FileSignature className="w-4 h-4" />
-                  Continuar a firmas
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {signatureOpen && worker && (
-        <div className="fixed inset-0 z-[130] bg-slate-950/70 p-0 sm:p-6 flex items-center justify-center">
-          <div className="w-full h-full sm:h-auto sm:max-w-6xl sm:max-h-[94vh] overflow-y-auto rounded-none sm:rounded-3xl bg-white dark:bg-slate-950 border-0 sm:border shadow-2xl">
-            <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b px-5 py-4 flex items-center justify-between">
-              <div>
-                <h2 className="font-black text-xl">Firma del documento</h2>
-                <p className="text-xs text-slate-500">
-                  {def.short} · {worker.apellidosNombre}
-                </p>
-              </div>
-              <button onClick={() => setSignatureOpen(false)} className="p-2 rounded-xl border">
-                ×
-              </button>
-            </div>
-            <div className="p-5 sm:p-6 space-y-4">
-              <div className="rounded-2xl border border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 p-4 text-sm">
-                Los datos ya están completados. Firma cada persona requerida y genera el PDF definitivo.
-              </div>
-              {def.signatureWorker && (
-                <SignaturePad
-                  label="Firma de la persona trabajadora"
-                  name={worker.apellidosNombre}
-                  value={signatures.worker || ''}
-                  onChange={(value) => setSignatures((current) => ({ ...current, worker: value }))}
-                />
-              )}
-              {def.signatureCompany && (
-                <div className="grid lg:grid-cols-2 gap-4">
-                  <SignaturePad
-                    label="Firma del encargado/a de obra"
-                    name={safe(row?.recurso_preventivo)}
-                    value={signatures.foreman || ''}
-                    onChange={(value) => setSignatures((current) => ({ ...current, foreman: value }))}
+            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-900">
+              {previewUrl ? (
+                <>
+                  <iframe
+                    title={`Previsualización ${def.short}`}
+                    src={previewUrl}
+                    className="hidden sm:block w-full h-full bg-white"
                   />
-                  <SignaturePad
-                    label="Firma del supervisor/a"
-                    name={supervisorName}
-                    value={signatures.supervisor || ''}
-                    onChange={(value) => setSignatures((current) => ({ ...current, supervisor: value }))}
-                  />
+                  <div className="sm:hidden h-full p-5 grid place-items-center">
+                    <button
+                      type="button"
+                      onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-4 font-black"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Ver documento a pantalla completa
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="h-full grid place-items-center text-sm text-slate-500">
+                  Preparando vista previa…
                 </div>
               )}
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setSignatureOpen(false);
-                    setEditOpen(true);
-                  }}
-                  className="rounded-xl border px-4 py-3 font-bold"
-                >
-                  Volver a editar
-                </button>
-                <button
-                  onClick={finishSigned}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-5 py-3 font-black"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Aceptar firmas y generar PDF
-                </button>
-              </div>
             </div>
           </div>
         </div>

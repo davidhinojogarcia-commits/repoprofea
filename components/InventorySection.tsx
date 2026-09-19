@@ -248,7 +248,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     try {
       await exportInventoryStatusPdf({
         park,
-        items: inUseItems,
+        items: activeItems,
         movements,
         maintenance,
         documents,
@@ -407,7 +407,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
     <div className="grid grid-cols-2 sm:flex gap-2">
       <button onClick={() => setEditingItem({ codigo: '', categoria: '', nombre: '', cantidad: 1, tipoGestion: 'individual', estado: 'Disponible', ubicacionActual: baseLocation, detalles: {}, observaciones: '', activo: true })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-3 text-sm font-bold"><Plus className="w-4 h-4" />Nuevo equipo</button>
-      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50" title="Incluye únicamente herramientas y maquinaria actualmente asignadas a obra o en traslado"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
+      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50" title="Incluye todas las herramientas y maquinaria dispuestas fuera del parque, asignadas a obra y con incidencias, con resumen final por obra"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
     </div>
 
     <details className="ui-surface p-4 group">
