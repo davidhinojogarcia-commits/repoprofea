@@ -861,3 +861,87 @@ html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-prim
   stroke: #ffffff !important;
   opacity: 1 !important;
 }
+
+
+/* Directorio · tablet táctil: acciones con icono + texto visible.
+ * En pantallas táctiles no existe hover fiable, por lo que el tooltip no puede
+ * ser la única forma de identificar la acción. */
+#root .profea-worker-card-action .profea-worker-card-action-icon {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: currentColor !important;
+  stroke: currentColor !important;
+  fill: none !important;
+  flex: 0 0 auto !important;
+}
+
+@media (min-width: 641px) and (pointer: coarse) {
+  #root .profea-worker-card-actions {
+    width: 9.5rem !important;
+    min-width: 9.5rem !important;
+    max-width: 9.5rem !important;
+    align-items: stretch !important;
+  }
+
+  #root .profea-worker-card-actions .profea-worker-card-action {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: .55rem !important;
+    padding: .65rem .75rem !important;
+    white-space: nowrap !important;
+  }
+
+  #root .profea-worker-card-actions .profea-worker-card-action-icon {
+    width: 1.1rem !important;
+    height: 1.1rem !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  #root .profea-worker-card-actions .profea-worker-card-action-label {
+    display: inline !important;
+    position: static !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: none !important;
+    font-size: .8rem !important;
+    line-height: 1.1 !important;
+    font-weight: 800 !important;
+    color: currentColor !important;
+    -webkit-text-fill-color: currentColor !important;
+    white-space: nowrap !important;
+  }
+
+  /* Los tooltips por hover no aportan valor en tablet y pueden tapar contenido. */
+  #root .profea-worker-card-actions .profea-worker-card-action > span.absolute {
+    display: none !important;
+  }
+}
+
+/* Refuerzo explícito también en modo oscuro: ningún icono debe quedar del mismo
+ * color que el fondo del botón. */
+.dark #root .profea-worker-card-action {
+  opacity: 1 !important;
+}
+
+.dark #root .profea-worker-card-action--idcard {
+  color: #6ee7b7 !important;
+  -webkit-text-fill-color: #6ee7b7 !important;
+}
+
+.dark #root .profea-worker-card-action--history,
+.dark #root .profea-worker-card-action--calendar,
+.dark #root .profea-worker-card-action--edit {
+  color: #7dd3fc !important;
+  -webkit-text-fill-color: #7dd3fc !important;
+}
+
+.dark #root .profea-worker-card-action--delete {
+  color: #fda4af !important;
+  -webkit-text-fill-color: #fda4af !important;
+}
