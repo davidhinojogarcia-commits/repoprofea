@@ -1,3 +1,74 @@
+/* Refuerzo visual 3D para Vista guiada.
+   Mantiene la estética institucional y hace más evidente qué elementos son pulsables. */
+.profea-guided-mode .guided-action-card,
+.profea-guided-mode .guided-complete-button,
+.profea-guided-mode .guided-summary-card[type='button'],
+.profea-guided-mode .profea-interface-mode-button,
+.profea-guided-mode .profea-notification-button,
+.profea-guided-mode .profea-theme-button,
+.profea-guided-mode .profea-mobile-menu-button,
+.profea-guided-mode .profea-mobile-close-menu {
+  box-shadow:
+    0 5px 0 rgba(23, 50, 77, .16),
+    0 12px 26px rgba(23, 50, 77, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .75);
+  transition:
+    transform var(--ui-motion-fast) var(--ui-ease),
+    box-shadow var(--ui-motion-fast) var(--ui-ease),
+    filter var(--ui-motion-fast) var(--ui-ease);
+}
+
+.dark .profea-guided-mode .guided-action-card,
+.dark .profea-guided-mode .guided-complete-button,
+.dark .profea-guided-mode .guided-summary-card[type='button'],
+.dark .profea-guided-mode .profea-interface-mode-button,
+.dark .profea-guided-mode .profea-notification-button,
+.dark .profea-guided-mode .profea-theme-button,
+.dark .profea-guided-mode .profea-mobile-menu-button,
+.dark .profea-guided-mode .profea-mobile-close-menu {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, .42),
+    0 12px 26px rgba(0, 0, 0, .28),
+    inset 0 1px 0 rgba(255, 255, 255, .10);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profea-guided-mode .guided-action-card:hover,
+  .profea-guided-mode .guided-complete-button:hover,
+  .profea-guided-mode .guided-summary-card[type='button']:hover,
+  .profea-guided-mode .profea-interface-mode-button:hover,
+  .profea-guided-mode .profea-notification-button:hover,
+  .profea-guided-mode .profea-theme-button:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 7px 0 rgba(23, 50, 77, .17),
+      0 16px 32px rgba(23, 50, 77, .15),
+      inset 0 1px 0 rgba(255, 255, 255, .80);
+  }
+}
+
+.profea-guided-mode .guided-action-card:active,
+.profea-guided-mode .guided-complete-button:active,
+.profea-guided-mode .guided-summary-card[type='button']:active,
+.profea-guided-mode .profea-interface-mode-button:active,
+.profea-guided-mode .profea-notification-button:active,
+.profea-guided-mode .profea-theme-button:active,
+.profea-guided-mode .profea-mobile-menu-button:active,
+.profea-guided-mode .profea-mobile-close-menu:active {
+  transform: translateY(3px) scale(.994);
+  box-shadow:
+    0 1px 0 rgba(23, 50, 77, .18),
+    0 5px 12px rgba(23, 50, 77, .10),
+    inset 0 1px 0 rgba(255, 255, 255, .62);
+}
+
+.profea-guided-mode .guided-action-icon {
+  box-shadow:
+    0 3px 0 rgba(0, 84, 142, .12),
+    0 7px 14px rgba(0, 84, 142, .10),
+    inset 0 1px 0 rgba(255, 255, 255, .78);
+}
+
 /* Refuerzo de accesibilidad táctil para Vista guiada.
    Se limita a móvil/tablet o dispositivos de puntero grueso para no alterar
    la Vista completa de escritorio. */
@@ -139,6 +210,19 @@
     padding: 1rem;
     gap: 1rem;
     border-radius: 1rem;
+    border-color: color-mix(in srgb, var(--ui-border-strong) 82%, white);
+    box-shadow:
+      0 6px 0 rgba(23, 50, 77, .17),
+      0 14px 28px rgba(23, 50, 77, .13),
+      inset 0 1px 0 rgba(255, 255, 255, .80);
+  }
+
+  .profea-guided-mode .guided-action-card:active {
+    transform: translateY(4px) scale(.992);
+    box-shadow:
+      0 1px 0 rgba(23, 50, 77, .18),
+      0 5px 12px rgba(23, 50, 77, .10),
+      inset 0 1px 0 rgba(255, 255, 255, .64);
   }
 
   .profea-guided-mode .guided-action-icon {
