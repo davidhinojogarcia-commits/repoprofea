@@ -95,12 +95,12 @@ export const buildMedicalAppointmentWhatsAppText = (
   }
 
   if (observations) lines.push(`Observaciones: ${observations}`);
-  lines.push('', 'Se ha generado tu citación oficial en PDF con los datos e instrucciones del reconocimiento médico.');
-  lines.push('Si estás usando WhatsApp Web en un ordenador, adjunta el PDF descargado antes de pulsar Enviar.');
+  lines.push('', 'A continuación recibirás tu citación oficial en PDF con todos los datos e instrucciones del reconocimiento médico.');
+  lines.push('Lee el PDF completo antes de confirmar tu asistencia.');
 
   if (confirmationLinks) {
     lines.push('', 'CONFIRMACIÓN DE ASISTENCIA');
-    lines.push('Al confirmar mi asistencia, declaro haber recibido y leído la documentación y las indicaciones facilitadas para el proceso de contratación.');
+    lines.push('Después de recibir y leer el PDF, confirma tu asistencia. Al hacerlo declaras que has recibido y leído la documentación y las indicaciones facilitadas para el proceso de contratación.');
     lines.push('', `✅ Confirmar asistencia: ${confirmationLinks.confirm}`);
     lines.push(`❌ No puedo asistir: ${confirmationLinks.decline}`);
     lines.push('', 'La respuesta quedará registrada automáticamente en GestionProfea.');
@@ -191,6 +191,37 @@ const appendPrlTrainingSchedule = (doc: any, person: Person) => {
   doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, 192, 280, { align: 'right' });
 };
 
+export const openMedicalAppointmentWhatsAppMessage = (
+  person: Person,
+  reminder = false,
+  confirmationLinks?: MedicalConfirmationLinks,
+): void => {
+  const phone = normalizePhone(person.telefono || '');
+  if (phone.length < 10) {
+    cancelReservedMedicalAppointmentWhatsAppWindow();
+    throw new Error('El trabajador no tiene un teléfono válido para WhatsApp.');
+  }
+
+  const text = buildMedicalAppointmentWhatsAppText(person, reminder, confirmationLinks);
+  const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  const whatsappWindow = consumeReservedWhatsAppWindow();
+
+  if (whatsappWindow) {
+    try {
+      whatsappWindow.location.replace(whatsappUrl);
+      return;
+    } catch {
+      try {
+        whatsappWindow.location.href = whatsappUrl;
+        return;
+      } catch {}
+    }
+  }
+
+  const opened = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+  if (!opened) window.location.href = whatsappUrl;
+};
+
 export const createMedicalAppointmentPdfFile = async (person: Person): Promise<File> => {
   if (!person.citaDia || !person.citaHora || !person.sitioReconocimiento) {
     throw new Error('La cita debe tener fecha, hora y lugar antes de generar el PDF.');
@@ -259,6 +290,28 @@ const canNativeShareFiles = (file: File) => {
   } catch {
     return false;
   }
+};
+
+export const sharePreparedMedicalAppointmentPdf = async (
+  person: Person,
+  pdfFile: File,
+): Promise<'shared' | 'downloaded' | 'cancelled'> => {
+  if (canNativeShareFiles(pdfFile)) {
+    try {
+      await navigator.share({
+        title: 'Citación para reconocimiento médico PROFEA',
+        text: `PDF de citación para ${person.apellidosNombre || 'trabajador/a'} · WhatsApp ${person.telefono || '-'}`,
+        files: [pdfFile],
+      });
+      return 'shared';
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return 'cancelled';
+      console.warn('No se pudo abrir el sistema nativo de compartir; se descargará el PDF.', error);
+    }
+  }
+
+  downloadPdfFile(pdfFile);
+  return 'downloaded';
 };
 
 export const shareMedicalAppointmentByWhatsApp = async (
