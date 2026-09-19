@@ -1,6 +1,13 @@
 
 import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth } from './src/lib/supabaseData';
+import { getSessionUser } from './src/lib/supabase';
+import {
+  getActionHistoryState,
+  redoActionHistory,
+  subscribeActionHistory,
+  undoActionHistory,
+} from './src/lib/actionHistory';
 import { Header } from './components/Header';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
@@ -146,61 +153,61 @@ function App() {
     });
   }, []);
 
-  const [past, setPast] = useState<Person[][]>([]);
-  const [future, setFuture] = useState<Person[][]>([]);
+  const [historyState, setHistoryState] = useState(() => getActionHistoryState());
   const peopleRef = useRef<Person[]>(people);
   useEffect(() => {
     peopleRef.current = people;
   }, [people]);
 
-  const canUndo = past.length > 0;
-  const canRedo = future.length > 0;
+  useEffect(() => subscribeActionHistory(setHistoryState), []);
 
+  const canUndo = historyState.canUndo;
+  const canRedo = historyState.canRedo;
+
+  // Conserva la actualización inmediata del Directorio, pero el historial real
+  // se registra en la capa de datos para que abarque todos los módulos.
   const setPeopleWithHistory = useCallback((
     value: Person[] | ((prev: Person[]) => Person[]),
-    recordHistory: boolean = true
+    _recordHistory: boolean = true
   ) => {
     setPeopleRaw(prev => {
       const rawNext = typeof value === 'function' ? value(prev) : value;
-      const next = ensureUniquePersonIds(rawNext);
-      if (recordHistory && JSON.stringify(prev) !== JSON.stringify(next)) {
-        setPast(pStack => [...pStack.slice(-29), prev]);
-        setFuture([]);
+      return ensureUniquePersonIds(rawNext);
+    });
+  }, []);
+
+  const handleUndo = useCallback(async () => {
+    try {
+      const user = await getSessionUser();
+      if (!user) {
+        setToast({ message: 'Debes iniciar sesión para deshacer cambios.', type: 'error' });
+        return;
       }
-      return next;
-    });
+      const entry = await undoActionHistory(user.id);
+      if (!entry) return;
+      window.dispatchEvent(new CustomEvent('profea:history-applied', { detail: { direction: 'undo', label: entry.label } }));
+      setToast({ message: `Deshecho: ${entry.label}`, type: 'success' });
+    } catch (error) {
+      console.error('Error deshaciendo la operación:', error);
+      setToast({ message: 'No se pudo deshacer la última operación.', type: 'error' });
+    }
   }, []);
 
-  const handleUndo = useCallback(() => {
-    setPast(pastStack => {
-      if (pastStack.length === 0) return pastStack;
-      const previous = pastStack[pastStack.length - 1];
-      const newPast = pastStack.slice(0, pastStack.length - 1);
-      
-      setPeople(currentPeople => {
-        setFuture(futureStack => [currentPeople, ...futureStack]);
-        return previous;
-      });
-
-      setToast({ message: 'Acción deshecha (Deshacer)', type: 'success' });
-      return newPast;
-    });
-  }, []);
-
-  const handleRedo = useCallback(() => {
-    setFuture(futureStack => {
-      if (futureStack.length === 0) return futureStack;
-      const next = futureStack[0];
-      const newFuture = futureStack.slice(1);
-
-      setPeople(currentPeople => {
-        setPast(pastStack => [...pastStack, currentPeople]);
-        return next;
-      });
-
-      setToast({ message: 'Acción rehecha (Rehacer)', type: 'success' });
-      return newFuture;
-    });
+  const handleRedo = useCallback(async () => {
+    try {
+      const user = await getSessionUser();
+      if (!user) {
+        setToast({ message: 'Debes iniciar sesión para rehacer cambios.', type: 'error' });
+        return;
+      }
+      const entry = await redoActionHistory(user.id);
+      if (!entry) return;
+      window.dispatchEvent(new CustomEvent('profea:history-applied', { detail: { direction: 'redo', label: entry.label } }));
+      setToast({ message: `Rehecho: ${entry.label}`, type: 'success' });
+    } catch (error) {
+      console.error('Error rehaciendo la operación:', error);
+      setToast({ message: 'No se pudo rehacer la última operación.', type: 'error' });
+    }
   }, []);
 
   useEffect(() => {
