@@ -222,7 +222,14 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         if (!raw) return;
         const parsed = JSON.parse(raw) as { personId?: number };
         const person = people.find((item) => item.id === Number(parsed.personId));
-        if (person) setPendingPdfPerson(person);
+        if (person) {
+          setPendingPdfPerson(person);
+          // Si iOS/Android recargó la PWA al volver de WhatsApp, retomamos
+          // automáticamente el paso pendiente y generamos el PDF.
+          if (document.visibilityState === "visible") {
+            window.setTimeout(() => void preparePendingPdf(person), 0);
+          }
+        }
       } catch {}
     };
     recoverPending();
