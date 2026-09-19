@@ -55,7 +55,7 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   // Los bloques se dimensionan de forma compacta y el texto largo se adapta.
   const ensureSpace = (_required: number) => undefined;
 
-  const sectionTitle = (title: string) => {
+  const sectionTitle = (title: string, afterGap = 1.5) => {
     doc.setFillColor(...lightBlue);
     doc.setDrawColor(185, 220, 235);
     doc.roundedRect(l, y, width, 6, 1.2, 1.2, 'FD');
@@ -63,7 +63,10 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
     doc.setFontSize(7.4);
     doc.setTextColor(...blue);
     doc.text(title.toUpperCase(), l + 3, y + 4.1);
-    y += 7.5;
+    // Separación real entre la banda de título y el contenido siguiente.
+    // En bloques de texto largo evitamos que la primera línea invada visualmente
+    // el encabezado, especialmente en previsualización móvil/tablet.
+    y += 6 + afterGap;
   };
 
   const drawFieldRow = (leftLabel: string, leftValue: unknown, rightLabel?: string, rightValue?: unknown) => {
@@ -114,7 +117,10 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   );
   drawFieldRow('Supervisor/a responsable', w?.supervisorResponsable || '—');
 
-  sectionTitle(refused ? 'Constancia de la renuncia y negativa a firmar' : 'Manifestación del trabajador');
+  sectionTitle(
+    refused ? 'Constancia de la renuncia y negativa a firmar' : 'Manifestación del trabajador',
+    4.2,
+  );
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.8);
@@ -124,9 +130,11 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
     ? 'Se hace constar que el trabajador arriba identificado ha comunicado su decisión de no continuar con el proceso de contratación o de no formalizar la incorporación correspondiente a la obra y periodo indicados. Se le informa del contenido y finalidad de este documento, destinado exclusivamente a dejar constancia interna de dicha decisión dentro de la gestión del programa PROFEA de la Diputación Provincial de Cádiz. El trabajador manifiesta su negativa a firmar la presente acta. Por este motivo, el personal responsable registra la incidencia, la fecha y hora en que se produce y, en su caso, las observaciones relevantes, quedando el documento incorporado al expediente interno de contratación.'
     : 'El trabajador arriba identificado manifiesta, de forma libre y voluntaria, su decisión de renunciar a la contratación o incorporación correspondiente a la obra y periodo indicados. Declara haber sido informado del contenido y finalidad de este documento y confirma que su decisión supone no continuar con el proceso de contratación asociado a esta actuación. La presente declaración se incorpora al expediente interno de gestión del programa PROFEA de la Diputación Provincial de Cádiz con la finalidad de dejar constancia documental de la renuncia comunicada.';
 
-  const statementLines = doc.splitTextToSize(statement, width);
-  doc.text(statementLines, l, y, { lineHeightFactor: 1.05 });
-  y += statementLines.length * 3.1 + 3;
+  const statementX = l + 3;
+  const statementWidth = width - 6;
+  const statementLines = doc.splitTextToSize(statement, statementWidth);
+  doc.text(statementLines, statementX, y, { lineHeightFactor: 1.05 });
+  y += statementLines.length * 3.1 + 4;
 
   const note = refused
     ? 'La ausencia de firma no impide la conservación de esta constancia interna, que refleja únicamente la incidencia comunicada y la negativa a suscribir el documento.'
@@ -177,13 +185,13 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
   const timeText = signedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
   ensureSpace(refused ? 42 : 48);
-  sectionTitle('Registro y firma');
+  sectionTitle('Registro y firma', 4.2);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
   doc.setTextColor(...slate);
-  doc.text(`Fecha de registro: ${dateText}`, l, y);
-  doc.text(`Hora: ${timeText}`, l + 58, y);
-  y += 4;
+  doc.text(`Fecha de registro: ${dateText}`, l + 3, y);
+  doc.text(`Hora: ${timeText}`, l + 66, y);
+  y += 5.5;
 
   const signatureHeight = refused ? 27 : 31;
   doc.setDrawColor(...softBorder);
