@@ -29,6 +29,10 @@ import {
 } from "../src/lib/worksiteDocumentsPdf";
 import { generateContractAttendancePdf } from "../src/lib/worksiteAttendancePdf";
 import { AdditionalWorksiteDocumentsWorkspace } from "./AdditionalWorksiteDocumentsPanel";
+import {
+  ADDITIONAL_WORKSITE_DOCUMENTS,
+  type AdditionalWorksiteDocumentType,
+} from "../src/lib/worksiteAdditionalDocumentsPdf";
 
 type WorkRow = {
   id: string;
@@ -50,17 +54,18 @@ type EpiKey =
   | "calzado";
 
 type AttendanceOverride = { start: string; end: string };
-type DocumentationView =
+type CoreDocumentationView =
   | "obra"
   | "trabajadores"
   | "epis"
   | "formacion"
   | "maquinaria"
-  | "control"
-  | "otros";
+  | "control";
+type DocumentationView = CoreDocumentationView | AdditionalWorksiteDocumentType;
 
 const WORKSITE_LAST_WORK_KEY = "profea:worksite-doc:last-work";
 const WORKSITE_LAST_VIEW_KEY = "profea:worksite-doc:last-view";
+const ADDITIONAL_DOCUMENTATION_VIEWS = Object.keys(ADDITIONAL_WORKSITE_DOCUMENTS) as AdditionalWorksiteDocumentType[];
 const DOCUMENTATION_VIEWS: DocumentationView[] = [
   "obra",
   "trabajadores",
@@ -68,12 +73,17 @@ const DOCUMENTATION_VIEWS: DocumentationView[] = [
   "formacion",
   "maquinaria",
   "control",
-  "otros",
+  ...ADDITIONAL_DOCUMENTATION_VIEWS,
 ];
 const storedDocumentationView = (): DocumentationView => {
   if (typeof window === "undefined") return "obra";
-  const stored = window.localStorage.getItem(WORKSITE_LAST_VIEW_KEY) as DocumentationView | null;
-  return stored && DOCUMENTATION_VIEWS.includes(stored) ? stored : "obra";
+  const stored = window.localStorage.getItem(WORKSITE_LAST_VIEW_KEY);
+  // Compatibilidad con la versión anterior, donde todos estos documentos estaban
+  // agrupados dentro de una sola opción denominada "Otros documentos".
+  if (stored === "otros") return "baja_voluntaria";
+  return stored && DOCUMENTATION_VIEWS.includes(stored as DocumentationView)
+    ? stored as DocumentationView
+    : "obra";
 };
 
 const DEFAULT_COMPANY = "AEPSA (Diputación Provincial de Cádiz)";
@@ -513,16 +523,27 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const libraryItems: {
     id: DocumentationView;
     label: string;
+    mobileLabel?: string;
     description: string;
     icon: React.ElementType;
+    section?: "otros";
   }[] = [
-    { id: "obra", label: "Datos de la obra", description: "Empresa, CIF y responsable", icon: HardHat },
-    { id: "trabajadores", label: "Trabajadores", description: `${periodWorkers.length} en el periodo`, icon: Users },
-    { id: "epis", label: "Entrega de EPIs", description: "Relación y firma", icon: ShieldCheck },
-    { id: "formacion", label: "Formación e información", description: "Documento preventivo", icon: GraduationCap },
-    { id: "maquinaria", label: "Autorización de maquinaria", description: "Equipos por trabajador", icon: Wrench },
-    { id: "control", label: "Control horario", description: "Activos y prórrogas", icon: Clock },
-    { id: "otros", label: "Otros documentos", description: "Biblioteca complementaria", icon: FolderOpen },
+    { id: "obra", label: "Datos de la obra", mobileLabel: "Obra", description: "Empresa, CIF y responsable", icon: HardHat },
+    { id: "trabajadores", label: "Trabajadores", mobileLabel: "Trabajadores", description: `${periodWorkers.length} en el periodo`, icon: Users },
+    { id: "epis", label: "Entrega de EPIs", mobileLabel: "EPIs", description: "Relación y firma", icon: ShieldCheck },
+    { id: "formacion", label: "Formación e información", mobileLabel: "Formación", description: "Documento preventivo", icon: GraduationCap },
+    { id: "maquinaria", label: "Autorización de maquinaria", mobileLabel: "Maquinaria", description: "Equipos por trabajador", icon: Wrench },
+    { id: "control", label: "Control horario", mobileLabel: "Control", description: "Activos y prórrogas", icon: Clock },
+    ...(Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS) as [AdditionalWorksiteDocumentType, (typeof ADDITIONAL_WORKSITE_DOCUMENTS)[AdditionalWorksiteDocumentType]][]).map(
+      ([id, definition], index) => ({
+        id,
+        label: definition.short,
+        mobileLabel: definition.short,
+        description: definition.title,
+        icon: FileText,
+        ...(index === 0 ? { section: "otros" as const } : {}),
+      }),
+    ),
   ];
 
   return (
@@ -586,19 +607,13 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 {libraryItems.map((item) => {
                   const Icon = item.icon;
                   const selected = activeDocumentView === item.id;
-                  const mobileLabel =
-                    item.id === "obra" ? "Obra" :
-                    item.id === "trabajadores" ? "Trabajadores" :
-                    item.id === "epis" ? "EPIs" :
-                    item.id === "formacion" ? "Formación" :
-                    item.id === "maquinaria" ? "Maquinaria" :
-                    item.id === "control" ? "Control" : "Otros";
+                  const mobileLabel = item.mobileLabel || item.label;
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => selectDocumentView(item.id)}
-                      className={`min-h-14 rounded-xl border px-3 py-2 flex flex-col items-center justify-center gap-1 text-[10px] font-black transition-colors ${
+                      className={`min-h-14 max-w-[150px] rounded-xl border px-3 py-2 flex flex-col items-center justify-center gap-1 text-[10px] leading-tight font-black transition-colors ${
                         selected
                           ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
                           : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300"
@@ -606,7 +621,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       aria-current={selected ? "page" : undefined}
                     >
                       <Icon className="w-4 h-4" />
-                      <span>{mobileLabel}</span>
+                      <span className="text-center line-clamp-2">{mobileLabel}</span>
                     </button>
                   );
                 })}
@@ -675,32 +690,42 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                   const Icon = item.icon;
                   const selected = activeDocumentView === item.id;
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => selectDocumentView(item.id)}
-                      className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
-                        selected
-                          ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
-                          : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700"
-                      }`}
-                    >
-                      <Icon
-                        className={`w-4 h-4 shrink-0 ${
-                          selected ? "text-white" : "text-slate-500 dark:text-slate-400"
+                    <React.Fragment key={item.id}>
+                      {item.section === "otros" && (
+                        <div className="pt-3 pb-1 px-1">
+                          <div className="border-t border-slate-200 dark:border-slate-800 mb-3" />
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            Otros documentos
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => selectDocumentView(item.id)}
+                        className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
+                          selected
+                            ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
+                            : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700"
                         }`}
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-xs font-black">{item.label}</span>
-                        <span
-                          className={`block mt-0.5 text-[10px] truncate ${
-                            selected ? "text-blue-100" : "text-slate-500 dark:text-slate-400"
+                      >
+                        <Icon
+                          className={`w-4 h-4 shrink-0 ${
+                            selected ? "text-white" : "text-slate-500 dark:text-slate-400"
                           }`}
-                        >
-                          {item.description}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-xs font-black">{item.label}</span>
+                          <span
+                            className={`block mt-0.5 text-[10px] truncate ${
+                              selected ? "text-blue-100" : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >
+                            {item.description}
+                          </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -1153,8 +1178,11 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 </section>
               )}
 
-              {activeDocumentView === "otros" && (
-                <AdditionalWorksiteDocumentsWorkspace selectedWork={selectedWork} />
+              {ADDITIONAL_DOCUMENTATION_VIEWS.includes(activeDocumentView as AdditionalWorksiteDocumentType) && (
+                <AdditionalWorksiteDocumentsWorkspace
+                  selectedWork={selectedWork}
+                  docType={activeDocumentView as AdditionalWorksiteDocumentType}
+                />
               )}
             </main>
           </div>
