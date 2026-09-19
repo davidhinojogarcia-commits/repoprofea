@@ -22,6 +22,7 @@ import { CameraScannerModal } from './components/CameraScannerModal';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
+import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 import * as pdfjsLib from 'pdfjs-dist';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -2209,6 +2210,10 @@ function App() {
                 onExportStatsSummaryPDF={handleExportStatsPDF}
               />
             </div>
+          )}
+
+          {activeView === 'documentacion_obra' && (
+            <WorksiteDocumentationPortal />
           )}
 
           {activeView === 'inventario' && (
