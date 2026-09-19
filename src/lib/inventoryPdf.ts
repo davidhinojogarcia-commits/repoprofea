@@ -8,7 +8,7 @@ import {
   InventoryPark,
   parkBaseLocation,
 } from '../services/inventoryService';
-import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader, renderInstitutionalSectionTitle } from './exportUtils';
+import { applyInstitutionalPdfStandard, applyPdfCopyrightStamp, renderInstitutionalReportHeader, renderInstitutionalSectionTitle } from './exportUtils';
 
 const BLUE: [number, number, number] = [0, 84, 142];
 const LIGHT: [number, number, number] = [240, 247, 255];
@@ -479,6 +479,7 @@ export async function exportInventoryStatusPdf(input: {
   y = ((doc as any).lastAutoTable?.finalY || y + 20) + 5;
 
   applyInstitutionalPdfStandard(doc);
+  applyPdfCopyrightStamp(doc);
   const filename = `INFORME_SITUACION_MAQUINARIA_${safeName(park.zona)}_${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   return filename;

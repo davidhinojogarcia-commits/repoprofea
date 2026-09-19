@@ -143,7 +143,7 @@ export const VirtualPersonList: React.FC<VirtualPersonListProps> = ({
         </div>
       </div>
 
-      {showScrollTop && <button type="button" onClick={scrollToTop} id="btn-scroll-to-top" className="absolute bottom-4 right-6 p-3 bg-[#00548E] hover:bg-[#003e6b] text-white rounded-full shadow-lg hover:shadow-xl transition-all z-20 cursor-pointer flex items-center justify-center animate-in fade-in zoom-in-95 duration-200" title="Volver arriba" aria-label="Volver arriba de la lista"><ArrowUp className="w-5 h-5" /></button>}
+      {showScrollTop && <button type="button" onClick={scrollToTop} id="btn-scroll-to-top" className="profea-scroll-top-button absolute bottom-4 right-6 p-3 bg-[#00548E] hover:bg-[#003e6b] text-white rounded-full shadow-lg hover:shadow-xl transition-all z-20 cursor-pointer flex items-center justify-center animate-in fade-in zoom-in-95 duration-200" title="Volver arriba" aria-label="Volver arriba de la lista"><ArrowUp className="w-5 h-5" /></button>}
     </div>
   );
 };

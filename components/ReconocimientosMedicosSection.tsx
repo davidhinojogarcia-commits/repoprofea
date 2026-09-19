@@ -1,14 +1,17 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  FileText,
   FileUp,
   HeartPulse,
   Loader2,
   MessageCircle,
   Search,
+  Share2,
   ShieldAlert,
   UserCheck,
+  X,
 } from "lucide-react";
 import {
   Person,
@@ -19,7 +22,11 @@ import { extractClientDocumentText } from "../src/lib/clientDocumentText";
 import { analyzeMedicalDocumentText } from "../src/lib/medicalDocumentAnalyzer";
 import { updateDocument } from "../src/services/databaseService";
 import { persistMedicalRecognition } from "../src/services/medicalRecognitionService";
-import { shareMedicalAppointmentByWhatsApp } from "../src/lib/shareMedicalAppointment";
+import {
+  createMedicalAppointmentPdfFile,
+  openMedicalAppointmentWhatsAppMessage,
+  sharePreparedMedicalAppointmentPdf,
+} from "../src/lib/shareMedicalAppointment";
 import { prepareMedicalAppointmentConfirmation } from "../src/lib/medicalAppointmentConfirmation";
 
 interface Props {
@@ -113,6 +120,12 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
   const [progress, setProgress] = useState("");
   const [review, setReview] = useState<ReviewItem[]>([]);
   const [search, setSearch] = useState("");
+  const [pendingPdfPerson, setPendingPdfPerson] = useState<Person | null>(null);
+  const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
+  const [pendingPdfGenerating, setPendingPdfGenerating] = useState(false);
+  const [pendingPdfError, setPendingPdfError] = useState("");
+  const pendingPdfReturnRef = useRef(false);
+  const pendingPdfGeneratingRef = useRef(false);
 
   const stats = useMemo(
     () => ({
@@ -159,6 +172,113 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
       );
   }, [people]);
 
+  const preparePendingPdf = async (person: Person) => {
+    if (pendingPdfGeneratingRef.current) return;
+    pendingPdfGeneratingRef.current = true;
+    setPendingPdfGenerating(true);
+    setPendingPdfError("");
+    try {
+      const file = await createMedicalAppointmentPdfFile(person);
+      setPendingPdfFile(file);
+      try {
+        await updateDocument("trabajadores", person.id, {
+          ...person,
+          confirmacionCitaDocumentoPreparadoFecha: new Date().toISOString(),
+          confirmacionCitaDocumentoNombre: file.name,
+        } as any);
+      } catch (error) {
+        console.warn("[medical-pdf-ready] No se pudo registrar la preparación del PDF", error);
+      }
+      onToast(
+        `PDF de citación listo para compartir con ${person.apellidosNombre}.`,
+        "success",
+      );
+    } catch (error: any) {
+      console.error("[medical-pdf-ready]", error);
+      setPendingPdfError(
+        error?.message || "No se pudo generar el PDF de la citación.",
+      );
+    } finally {
+      pendingPdfGeneratingRef.current = false;
+      setPendingPdfGenerating(false);
+    }
+  };
+
+  const clearPendingPdf = () => {
+    setPendingPdfPerson(null);
+    setPendingPdfFile(null);
+    setPendingPdfError("");
+    pendingPdfReturnRef.current = false;
+    try {
+      sessionStorage.removeItem("profea:medical-pdf-pending");
+    } catch {}
+  };
+
+  useEffect(() => {
+    const recoverPending = () => {
+      if (pendingPdfPerson) return;
+      try {
+        const raw = sessionStorage.getItem("profea:medical-pdf-pending");
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { personId?: number };
+        const person = people.find((item) => item.id === Number(parsed.personId));
+        if (person) {
+          setPendingPdfPerson(person);
+          // Si iOS/Android recargó la PWA al volver de WhatsApp, retomamos
+          // automáticamente el paso pendiente y generamos el PDF.
+          if (document.visibilityState === "visible") {
+            window.setTimeout(() => void preparePendingPdf(person), 0);
+          }
+        }
+      } catch {}
+    };
+    recoverPending();
+  }, [people, pendingPdfPerson]);
+
+  useEffect(() => {
+    const handleAway = () => {
+      if (pendingPdfPerson && document.visibilityState === "hidden") {
+        pendingPdfReturnRef.current = true;
+      }
+    };
+    const handleReturn = () => {
+      if (
+        pendingPdfPerson &&
+        pendingPdfReturnRef.current &&
+        document.visibilityState === "visible" &&
+        !pendingPdfFile &&
+        !pendingPdfGeneratingRef.current
+      ) {
+        pendingPdfReturnRef.current = false;
+        void preparePendingPdf(pendingPdfPerson);
+      }
+    };
+    const handleBlur = () => {
+      if (pendingPdfPerson) pendingPdfReturnRef.current = true;
+    };
+    const handleFocus = () => {
+      if (
+        pendingPdfPerson &&
+        pendingPdfReturnRef.current &&
+        !pendingPdfFile &&
+        !pendingPdfGeneratingRef.current
+      ) {
+        pendingPdfReturnRef.current = false;
+        void preparePendingPdf(pendingPdfPerson);
+      }
+    };
+    document.addEventListener("visibilitychange", handleAway);
+    document.addEventListener("visibilitychange", handleReturn);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleAway);
+      document.removeEventListener("visibilitychange", handleReturn);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [pendingPdfPerson, pendingPdfFile]);
+
   const openWhatsApp = async (person: Person, reminder: boolean) => {
     const phone = normalizeWhatsAppPhone(person.telefono || "");
     if (phone.length < 10) {
@@ -173,29 +293,70 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
       onUpdatePeople(
         people.map((p) => (p.id === person.id ? prepared.updatedPerson : p)),
       );
-      const result = await shareMedicalAppointmentByWhatsApp(
+      setPendingPdfPerson(prepared.updatedPerson);
+      setPendingPdfFile(null);
+      setPendingPdfError("");
+      pendingPdfReturnRef.current = false;
+      try {
+        sessionStorage.setItem(
+          "profea:medical-pdf-pending",
+          JSON.stringify({ personId: person.id, reminder }),
+        );
+      } catch {}
+      openMedicalAppointmentWhatsAppMessage(
         prepared.updatedPerson,
         reminder,
         prepared.links,
       );
-      if (result === "shared") {
-        onToast(
-          `Citación PDF preparada para compartir con ${person.apellidosNombre}.`,
-          "success",
-        );
-      } else if (result === "opened") {
-        onToast(
-          "El PDF se ha descargado y WhatsApp se ha abierto con el mensaje preparado.",
-          "success",
-        );
-      }
+      onToast(
+        `WhatsApp abierto para ${person.apellidosNombre}. Al volver se preparará automáticamente el PDF.`,
+        "success",
+      );
     } catch (error: any) {
       console.error("[medical-whatsapp-share]", error);
       onToast(
         error?.message ||
-          "No se pudo preparar el PDF y el mensaje de WhatsApp.",
+          "No se pudo preparar el mensaje de WhatsApp y la confirmación.",
         "error",
       );
+    }
+  };
+
+  const sharePendingPdf = async () => {
+    if (!pendingPdfPerson) return;
+    try {
+      const file =
+        pendingPdfFile || (await createMedicalAppointmentPdfFile(pendingPdfPerson));
+      if (!pendingPdfFile) setPendingPdfFile(file);
+      const result = await sharePreparedMedicalAppointmentPdf(
+        pendingPdfPerson,
+        file,
+      );
+      if (result === "shared") {
+        const now = new Date().toISOString();
+        try {
+          await updateDocument("trabajadores", pendingPdfPerson.id, {
+            ...pendingPdfPerson,
+            confirmacionCitaDocumentoCompartidoFecha: now,
+            confirmacionCitaDocumentoNombre: file.name,
+          } as any);
+        } catch (error) {
+          console.warn("[medical-pdf-share] No se pudo registrar la acción de compartir", error);
+        }
+        onToast(
+          `PDF compartido desde el dispositivo. La cita seguirá pendiente hasta que ${pendingPdfPerson.apellidosNombre} confirme su asistencia.`,
+          "success",
+        );
+        clearPendingPdf();
+      } else if (result === "downloaded") {
+        onToast(
+          "Este dispositivo no permite compartir el PDF directamente. Se ha descargado para que puedas adjuntarlo manualmente.",
+          "success",
+        );
+      }
+    } catch (error: any) {
+      console.error("[medical-pdf-share]", error);
+      onToast(error?.message || "No se pudo compartir el PDF.", "error");
     }
   };
 
@@ -456,15 +617,88 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
               Avisos y confirmación de citas médicas
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              El botón prepara el mismo PDF de citación que genera Exportar
-              citas, con los datos del trabajador y todas sus instrucciones, y
-              lo comparte junto al mensaje. No usa Twilio ni API de pago.
+              Primero abre el WhatsApp directo del trabajador con la cita y los
+              enlaces de confirmación. Al volver a GestionProfea se genera el PDF
+              individual con todas las instrucciones y queda listo para compartir
+              desde el dispositivo. No usa Twilio ni API de pago.
             </p>
           </div>
           <div className="text-xs font-black px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">
             {upcomingAppointments.length} cita(s) próximas
           </div>
         </div>
+
+        {pendingPdfPerson && (
+          <div className="rounded-2xl border-2 border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/25 p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-[#00548E] dark:text-blue-300 shrink-0">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-black text-base text-slate-900 dark:text-white">
+                  {pendingPdfGenerating
+                    ? "Generando PDF de la citación…"
+                    : pendingPdfFile
+                      ? "PDF listo para compartir"
+                      : "Cuando vuelvas de WhatsApp prepararemos el PDF"}
+                </div>
+                <div className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">
+                  {pendingPdfPerson.apellidosNombre}
+                </div>
+                <div className="text-sm text-slate-600 dark:text-slate-300 mt-0.5">
+                  WhatsApp: {pendingPdfPerson.telefono || "Sin teléfono"}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  Al compartir archivos, iPhone/Android no permiten que GestionProfea
+                  seleccione automáticamente el contacto de WhatsApp. Comprueba que
+                  eliges este trabajador. Su confirmación se registrará cuando pulse
+                  “Confirmar asistencia” en el enlace recibido.
+                </div>
+                {pendingPdfError && (
+                  <div className="mt-2 text-xs font-bold text-red-700 dark:text-red-300">
+                    {pendingPdfError}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 shrink-0 sm:w-52">
+                {!pendingPdfFile && !pendingPdfGenerating && (
+                  <button
+                    type="button"
+                    onClick={() => void preparePendingPdf(pendingPdfPerson)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-300 dark:border-blue-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-black text-[#00548E] dark:text-blue-300"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Preparar PDF ahora
+                  </button>
+                )}
+                {pendingPdfGenerating && (
+                  <div className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/70 dark:bg-slate-900/70 px-4 py-3 text-sm font-bold text-slate-600 dark:text-slate-300">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generando…
+                  </div>
+                )}
+                {pendingPdfFile && (
+                  <button
+                    type="button"
+                    onClick={() => void sharePendingPdf()}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004a7d] px-4 py-3 text-sm font-black text-white"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Compartir PDF ahora
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={clearPendingPdf}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-300"
+                >
+                  <X className="w-4 h-4" />
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {upcomingAppointments.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-5 text-center text-sm text-slate-500">
