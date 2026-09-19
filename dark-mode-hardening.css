@@ -817,3 +817,47 @@ html:not(.dark) #root .profea-scroll-top-button svg {
   stroke: currentColor !important;
   opacity: 1 !important;
 }
+
+
+/* Renuncia SAE · blindaje Safari/iOS para los botones primarios.
+ * En algunos iPhone el estilo del botón rojo quedaba lavado/blank en modo claro,
+ * especialmente cuando estaba deshabilitado. No depender de utilidades heredadas. */
+html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-primary,
+html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-primary:not(:disabled) {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: #b91c1c !important;
+  background-color: #b91c1c !important;
+  background-image: none !important;
+  border: 1px solid #991b1b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-primary svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 1 !important;
+}
+
+/* Debe seguir siendo legible aunque aún falte firma/consentimiento. */
+html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-primary:disabled {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: #991b1b !important;
+  background-color: #991b1b !important;
+  background-image: none !important;
+  border-color: #7f1d1d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: .72 !important;
+  cursor: not-allowed;
+}
+
+html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-primary:disabled svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 1 !important;
+}

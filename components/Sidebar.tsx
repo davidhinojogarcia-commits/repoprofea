@@ -91,21 +91,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const guidedMenuGroups: { label: string; items: SidebarMenuItem[] }[] = [
     {
-      label: 'Menú principal',
+      label: 'Sigue estos pasos',
       items: [
-        { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
-        { id: 'sae', label: 'Selección SAE', icon: BriefcaseBusiness },
-        { id: 'directorio', label: 'Trabajadores', icon: Users },
-        { id: 'registro', label: 'Añadir trabajador', icon: UserPlus },
-        { id: 'citas', label: 'Reconocimientos', icon: Calendar },
-        { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
-        {
-          id: 'subcontratas',
-          label: 'CAE',
-          subtitle: 'Coordinación de Actividades Empresariales',
-          icon: HardHat,
-        },
-        { id: 'inventario', label: 'Maquinaria y herramientas', icon: Wrench },
+        { id: 'dashboard', label: 'Resumen', subtitle: 'Vuelve aquí si tienes dudas', icon: LayoutDashboard },
+        { id: 'sae', label: '1. Selección SAE', subtitle: 'Empieza aquí para contratar', icon: BriefcaseBusiness },
+        { id: 'directorio', label: '2. Trabajadores', subtitle: 'Revisa datos y documentos', icon: Users },
+        { id: 'citas', label: '3. Reconocimientos', subtitle: 'Citas y aptitud médica', icon: Calendar },
+        { id: 'documentacion_obra', label: '4. Documentación', subtitle: 'Documentos de la obra', icon: Files },
+        { id: 'subcontratas', label: '5. CAE', subtitle: 'Coordinación de empresas', icon: HardHat },
+        { id: 'inventario', label: '6. Maquinaria', subtitle: 'Equipos y herramientas', icon: Wrench },
+        { id: 'registro', label: 'Añadir trabajador', subtitle: 'Alta manual si la necesitas', icon: UserPlus },
       ],
     },
   ];
@@ -169,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="flex-1 py-4 px-3 space-y-2 overflow-y-auto overscroll-contain custom-scrollbar">
           {guidedMode && (!isCollapsed || isMobileOpen) && (
             <div className="profea-guided-menu-help mb-4 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm leading-5 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-              <span className="font-black">Vista guiada.</span> Pulsa la tarea que quieras realizar.
+              <span className="font-black">Vista guiada.</span> Si tienes dudas, empieza por el paso 1 y sigue el orden.
             </div>
           )}
           {menuGroups.map((group, groupIndex) => (

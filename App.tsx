@@ -35,7 +35,7 @@ import { persistMedicalRecognition } from './src/services/medicalRecognitionServ
 import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
 import ExcelJS from 'exceljs';
-import { CheckCircle, AlertTriangle, Cloud, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Cloud, RefreshCw, Home } from 'lucide-react';
 import { 
   preparePRLExcelData, 
   preparePRLPDFData, 
@@ -117,6 +117,16 @@ const ensureUniquePersonIds = (list: Person[]): Person[] => {
 };
 
 type InterfaceMode = 'guided' | 'full';
+
+const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: string; help: string }>> = {
+  sae: { step: 'Paso 1 de 6', title: 'Selección SAE', help: 'Selecciona trabajadores y prepara la contratación.' },
+  directorio: { step: 'Paso 2 de 6', title: 'Trabajadores', help: 'Revisa datos, documentación e historial.' },
+  citas: { step: 'Paso 3 de 6', title: 'Reconocimientos médicos', help: 'Comprueba citas y aptitud médica.' },
+  documentacion_obra: { step: 'Paso 4 de 6', title: 'Documentación de obra', help: 'Completa y revisa los documentos de la obra.' },
+  subcontratas: { step: 'Paso 5 de 6', title: 'CAE', help: 'Revisa la coordinación y documentación de empresas.' },
+  inventario: { step: 'Paso 6 de 6', title: 'Maquinaria y herramientas', help: 'Consulta equipos disponibles, asignados o averiados.' },
+  registro: { step: 'Tarea adicional', title: 'Añadir trabajador', help: 'Da de alta manualmente a un trabajador.' },
+};
 
 function App() {
   useEffect(() => {
@@ -376,6 +386,27 @@ function App() {
   const notificationAlertsCount = useMemo(() => {
     if (!people || people.length === 0) return 0;
     return getNotificationAlertsSummary(people).totalAlertas;
+  }, [people]);
+
+  const guidedTaskMetrics = useMemo(() => {
+    const missingDataCount = people.filter(person =>
+      !String(person.dni || '').trim() ||
+      !String(person.telefono || '').trim() ||
+      !String(person.obra || '').trim() ||
+      !String(person.categoria || '').trim()
+    ).length;
+
+    const pendingMedicalCount = people.filter(person => {
+      if (person.necesitaReconocimiento !== 'Sí') return false;
+      const state = String(person.aptitudMedica || person.reconocimientoEstado || '').trim().toLowerCase();
+      return !state || state.includes('pendiente') || (!person.citaDia && !state.includes('apto'));
+    }).length;
+
+    const pendingDocumentationCount = people.filter(
+      person => person.documentacionCompleta !== 'Sí',
+    ).length;
+
+    return { missingDataCount, pendingMedicalCount, pendingDocumentationCount };
   }, [people]);
 
   const supervisoresDisponibles = useMemo(() => {
@@ -2046,6 +2077,8 @@ function App() {
     );
   }
 
+  const guidedActiveContext = GUIDED_VIEW_CONTEXT[activeView];
+
   return (
     <div className={`min-h-screen bg-[#f0f7ff] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative overflow-x-clip selection:bg-[#00548E]/10 selection:text-[#00548E] dark:selection:bg-blue-600/20 dark:selection:text-blue-400 flex transition-colors duration-300 ${interfaceMode === 'guided' ? 'profea-guided-mode' : 'profea-full-mode'}`}>
       {/* Subtle background pattern */}
@@ -2103,6 +2136,29 @@ function App() {
             onInterfaceModeToggle={() => void applyInterfaceMode(interfaceMode === 'guided' ? 'full' : 'guided')}
             isInterfaceModeSaving={isInterfaceModeSaving}
           />
+
+          {interfaceMode === 'guided' && activeView !== 'dashboard' && guidedActiveContext && (
+            <div className="guided-current-task-bar max-w-7xl mx-auto mb-5 rounded-2xl border border-blue-200 bg-white/95 p-3 sm:p-4 shadow-sm dark:border-blue-900/60 dark:bg-slate-900/95">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveView('dashboard');
+                    window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
+                  }}
+                  className="guided-back-home-button inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-black text-white"
+                >
+                  <Home className="h-5 w-5" aria-hidden="true" />
+                  Volver a Resumen
+                </button>
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-[#00548E] dark:text-blue-300">{guidedActiveContext.step}</p>
+                  <p className="mt-0.5 text-base font-black text-slate-900 dark:text-white">{guidedActiveContext.title}</p>
+                  <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-300">{guidedActiveContext.help}</p>
+                </div>
+              </div>
+            </div>
+          )}
           
           {activeView === 'dashboard' && (
             <div className="max-w-7xl mx-auto">
@@ -2111,6 +2167,9 @@ function App() {
                   workersCount={people.length}
                   worksCount={savedObras.length}
                   alertsCount={notificationAlertsCount}
+                  pendingDataCount={guidedTaskMetrics.missingDataCount}
+                  pendingMedicalCount={guidedTaskMetrics.pendingMedicalCount}
+                  pendingDocumentationCount={guidedTaskMetrics.pendingDocumentationCount}
                   onNavigate={(view) => {
                     setActiveView(view);
                     window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view } }));
