@@ -63,6 +63,15 @@ type DocumentationView = CoreDocumentationView | AdditionalWorksiteDocumentType;
 const WORKSITE_LAST_WORK_KEY = "profea:worksite-doc:last-work";
 const WORKSITE_LAST_VIEW_KEY = "profea:worksite-doc:last-view";
 const ADDITIONAL_DOCUMENTATION_VIEWS = Object.keys(ADDITIONAL_WORKSITE_DOCUMENTS) as AdditionalWorksiteDocumentType[];
+const ADDITIONAL_DOCUMENT_MOBILE_LABELS: Record<AdditionalWorksiteDocumentType, string> = {
+  baja_voluntaria: "Baja voluntaria",
+  ausencia_trabajador: "Ausencia",
+  permiso_lactancia: "Permiso lactancia",
+  parte_asistencia_fremap: "Asistencia FREMAP",
+  comunicacion_accidente: "Accidente laboral",
+  certificado_trabajando_actualmente: "Certificado actual",
+  certificado_servicios_prestados: "Servicios prestados",
+};
 const DOCUMENTATION_VIEWS: DocumentationView[] = [
   "obra",
   "trabajadores",
@@ -501,7 +510,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       ([id, definition], index) => ({
         id,
         label: definition.short,
-        mobileLabel: definition.short,
+        mobileLabel: ADDITIONAL_DOCUMENT_MOBILE_LABELS[id],
         description: definition.title,
         icon: FileText,
         ...(index === 0 ? { section: "otros" as const } : {}),
@@ -531,7 +540,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
             <div className="px-3 pb-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
               Desliza horizontalmente para ver todos los documentos.
             </div>
-            <div className="overflow-x-auto overscroll-x-contain px-3 pb-3 snap-x snap-mandatory scroll-px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="worksite-doc-mobile-tabs overflow-x-auto overscroll-x-contain px-3 pb-3 snap-x snap-mandatory scroll-px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="flex gap-2.5 min-w-max items-stretch">
                 {libraryItems.map((item) => {
                   const Icon = item.icon;
@@ -544,7 +553,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       onClick={() => selectDocumentView(item.id)}
                       title={item.label}
                       aria-label={item.label}
-                      className={`w-[132px] min-w-[132px] min-h-[84px] snap-start rounded-2xl border px-3 py-3 flex flex-col items-center justify-center gap-1.5 text-[11px] sm:text-xs leading-[1.2] font-black text-center whitespace-normal transition-colors ${
+                      className={`worksite-doc-mobile-tab min-h-[84px] snap-start rounded-2xl border px-3 py-3 flex flex-col items-center justify-center gap-1.5 text-[11px] sm:text-xs leading-[1.2] font-black text-center transition-colors ${
                         selected
                           ? "border-[#00548E] bg-[#00548E] text-white shadow-md"
                           : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
@@ -552,7 +561,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       aria-current={selected ? "page" : undefined}
                     >
                       <Icon className="w-5 h-5 shrink-0" />
-                      <span className="flex min-h-[2.4rem] items-center justify-center text-center">
+                      <span className="worksite-doc-mobile-tab-label flex min-h-[2.4rem] items-center justify-center text-center">
                         {mobileLabel}
                       </span>
                     </button>
