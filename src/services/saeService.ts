@@ -426,7 +426,10 @@ export async function createSaeReport(
   const normalizedMime = mimeType === "image/jpg" ? "image/jpeg" : mimeType;
   if (!["application/pdf", "image/jpeg", "image/png"].includes(normalizedMime))
     throw new Error("Formato SAE no admitido. Use PDF, JPG o PNG.");
-  const storagePath = `${ownerId}/${needId}/${id}/${safeFilename(report.fileName || "informe_sae.pdf")}`;
+  // La política RLS de Storage valida que la primera carpeta sea el id de la
+  // solicitud SAE. Mantener este orden es imprescindible para poder guardar el
+  // informe sin relajar la seguridad entre supervisores.
+  const storagePath = `${needId}/${ownerId}/${id}/${safeFilename(report.fileName || "informe_sae.pdf")}`;
   await uploadSaeFile(storagePath, report.fileBase64);
   const extractionMethod = report.extractionSource.includes("ocr")
     ? "ocr"
@@ -437,72 +440,95 @@ export async function createSaeReport(
     report.extractedText.matchAll(/\[P[ÁA]GINA\s+(\d+)\]/gi),
   ).map((m) => Number(m[1]));
   const pageCount = pageNumbers.length ? Math.max(...pageNumbers) : 1;
-  await supabase.query("sae_reports", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: {
-      id,
-      need_id: needId,
-      owner_id: ownerId,
-      file_name: report.fileName,
-      mime_type: normalizedMime,
-      storage_path: storagePath,
-      page_count: pageCount,
-      extraction_method: extractionMethod,
-      processing_status: "review",
-      raw_text: report.extractedText,
-      detected_legend: Object.fromEntries(
-        SAE_RESULT_CODES.map(([code, label]) => [code, label]),
-      ),
-      created_by: ownerId,
-      updated_by: ownerId,
-    },
-  });
-  for (const c of candidates) {
-    const hiringMonth = monthNumber(c.mes || report.mes);
-    const fortnight = fortnightNumber(c.quincena || report.quincena);
-    await supabase.query("sae_candidates", {
+  try {
+    await supabase.query("sae_reports", {
       method: "POST",
       prefer: "return=minimal",
       body: {
-        id: uuid(),
+        id,
         need_id: needId,
-        source_report_id: id,
         owner_id: ownerId,
-        original_full_name: c.fullNameOriginal,
-        normalized_full_name: c.normalizedName,
-        first_name: c.nombre || null,
-        surnames: c.apellidos || null,
-        category: c.categoria || null,
-        offer_number: c.offerNumber || report.offerNumber || null,
-        work_name: c.obra || report.obra || null,
-        work_code: c.codigoObra || report.codigoObra || null,
-        hiring_month: hiringMonth,
-        fortnight,
-        source_page: Math.max(1, Number(c.pageNumber || 1)),
-        source_row_text: `${c.orderNumber} ${c.fullNameOriginal}`.trim(),
-        source_position: {
-          orderNumber: c.orderNumber,
-          x: c.overlayX,
-          y: c.overlayY,
-        },
-        confidence: String(c.confidence || "Media").toLowerCase(),
-        evidence: [
-          {
-            type: "document-row",
-            page: c.pageNumber,
-            text: c.fullNameOriginal,
-          },
-        ],
-        status: "sin_asignar",
-        selected_for_hire: false,
-        result_code: null,
+        file_name: report.fileName,
+        mime_type: normalizedMime,
+        storage_path: storagePath,
+        page_count: pageCount,
+        extraction_method: extractionMethod,
+        processing_status: "review",
+        raw_text: report.extractedText,
+        detected_legend: Object.fromEntries(
+          SAE_RESULT_CODES.map(([code, label]) => [code, label]),
+        ),
         created_by: ownerId,
         updated_by: ownerId,
       },
     });
+    for (const c of candidates) {
+      const hiringMonth = monthNumber(c.mes || report.mes);
+      const fortnight = fortnightNumber(c.quincena || report.quincena);
+      await supabase.query("sae_candidates", {
+        method: "POST",
+        prefer: "return=minimal",
+        body: {
+          id: uuid(),
+          need_id: needId,
+          source_report_id: id,
+          owner_id: ownerId,
+          original_full_name: c.fullNameOriginal,
+          normalized_full_name: c.normalizedName,
+          first_name: c.nombre || null,
+          surnames: c.apellidos || null,
+          category: c.categoria || null,
+          offer_number: c.offerNumber || report.offerNumber || null,
+          work_name: c.obra || report.obra || null,
+          work_code: c.codigoObra || report.codigoObra || null,
+          hiring_month: hiringMonth,
+          fortnight,
+          source_page: Math.max(1, Number(c.pageNumber || 1)),
+          source_row_text: `${c.orderNumber} ${c.fullNameOriginal}`.trim(),
+          source_position: {
+            orderNumber: c.orderNumber,
+            x: c.overlayX,
+            y: c.overlayY,
+          },
+          confidence: String(c.confidence || "Media").toLowerCase(),
+          evidence: [
+            {
+              type: "document-row",
+              page: c.pageNumber,
+              text: c.fullNameOriginal,
+            },
+          ],
+          status: "sin_asignar",
+          selected_for_hire: false,
+          result_code: null,
+          created_by: ownerId,
+          updated_by: ownerId,
+        },
+      });
+    }
+  
+    return id;
+  } catch (error) {
+    // Evita dejar un informe huérfano si falla la inserción del informe o de
+    // cualquiera de sus candidatos después de haber subido el archivo.
+    try {
+      await supabase.query("sae_candidates", {
+        method: "DELETE",
+        prefer: "return=minimal",
+        query: `source_report_id=eq.${encodeURIComponent(id)}`,
+      });
+      await supabase.query("sae_reports", {
+        method: "DELETE",
+        prefer: "return=minimal",
+        query: `id=eq.${encodeURIComponent(id)}`,
+      });
+    } catch {
+      // La limpieza de base de datos es de mejor esfuerzo; el error original
+      // debe seguir siendo el que se muestra al usuario.
+    }
+    await deleteSaeFile(storagePath);
+    throw error;
   }
-  return id;
 }
 
 export async function listSaeCandidates(

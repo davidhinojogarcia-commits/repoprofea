@@ -15,6 +15,7 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
   const [sourceName, setSourceName] = useState('');
   const [sourceKind, setSourceKind] = useState('');
   const [saved, setSaved] = useState<AnnualHiringPeriodsRecord[]>([]);
+  const [entryMode, setEntryMode] = useState<'import' | 'manual'>('manual');
   const fileRef = useRef<HTMLInputElement>(null);
   const importedFilePendingRef = useRef(false);
 
@@ -25,7 +26,18 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
       setVisible(on);
       if (!on) setOpen(false);
     };
-    const openFromNeedStep = () => setOpen(true);
+    const openFromNeedStep = (event: Event) => {
+      const mode = (event as CustomEvent<{ mode?: 'import' | 'manual' }>).detail?.mode || 'manual';
+      setEntryMode(mode);
+      if (mode === 'manual') {
+        setSourceName('');
+        setSourceKind('manual');
+      }
+      setOpen(true);
+      if (mode === 'import') {
+        window.setTimeout(() => fileRef.current?.click(), 0);
+      }
+    };
     window.addEventListener('profea:navigate', h as EventListener);
     window.addEventListener('profea:open-annual-hiring-periods', openFromNeedStep);
     return () => {
@@ -106,11 +118,11 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
       year,
       months: valid.map((m) => ({
         ...m,
-        source: 'imported',
+        source: entryMode === 'manual' ? 'manual' : 'imported',
         updatedAt: new Date().toISOString(),
       })),
-      sourceFileName: sourceName,
-      sourceKind,
+      sourceFileName: entryMode === 'manual' ? '' : sourceName,
+      sourceKind: entryMode === 'manual' ? 'manual' : sourceKind,
       importedAt: new Date().toISOString(),
     };
     setBusy(true);
@@ -149,10 +161,20 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
 
   if (!visible) return null;
   return <>
+    <input
+      ref={fileRef}
+      type="file"
+      accept="application/pdf,.pdf"
+      className="hidden"
+      onChange={(event) => {
+        void handleFile(event.target.files?.[0]);
+        event.currentTarget.value = '';
+      }}
+    />
     {open && <div className="fixed inset-0 z-[140] bg-slate-950/65 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center">
       <div className="w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border dark:border-slate-800 shadow-2xl">
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b dark:border-slate-800 px-5 py-4 flex items-center justify-between">
-          <div><h2 className="font-black text-xl">Periodos anuales generales de contratación</h2><p className="text-xs text-slate-500 mt-1">Una sola anualidad para todas las obras. Cada mes puede tener Periodo 1 y Periodo 2.</p></div>
+          <div><h2 className="font-black text-xl">{entryMode === 'import' ? 'Importar periodos anuales' : 'Añadir periodos manualmente'}</h2><p className="text-xs text-slate-500 mt-1">Una sola anualidad para todas las obras. Cada mes puede tener Periodo 1 y Periodo 2.</p></div>
           <button onClick={() => setOpen(false)} className="p-2 rounded-xl border"><X className="w-5 h-5"/></button>
         </div>
         <div className="p-5 sm:p-6 space-y-5">
@@ -167,9 +189,16 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
               </div>
             </div>
           </div>
-          <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={e=>void handleFile(e.target.files?.[0])}/>
-          <button type="button" disabled={busy} onClick={()=>fileRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-3 font-bold disabled:opacity-50"><FileUp className="w-4 h-4"/>{busy ? (progress || 'Analizando…') : 'Importar PDF de periodos'}</button>
-          {sourceName && <div className="text-xs text-slate-500">Documento: <b>{sourceName}</b> · lectura: {sourceKind || 'detectada'}</div>}
+          {entryMode === 'import' ? (
+            <>
+              <button type="button" disabled={busy} onClick={()=>fileRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-3 font-bold disabled:opacity-50"><FileUp className="w-4 h-4"/>{busy ? (progress || 'Analizando…') : 'Seleccionar PDF de periodos'}</button>
+              {sourceName && <div className="text-xs text-slate-500">Documento: <b>{sourceName}</b> · lectura: {sourceKind || 'detectada'}</div>}
+            </>
+          ) : (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-200">
+              Introduce las fechas directamente en la tabla. Solo se guardarán los meses que tengan algún periodo informado.
+            </div>
+          )}
           {warningCount > 0 && <div className="rounded-2xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-4 flex gap-3"><AlertTriangle className="w-5 h-5 text-amber-600 shrink-0"/><div><div className="font-black text-sm">Hay {warningCount} dato(s) que conviene revisar.</div><div className="text-xs text-slate-600 dark:text-slate-300 mt-1">La aplicación conserva las fechas leídas del PDF y no corrige automáticamente posibles erratas del documento.</div></div></div>}
           <div className="overflow-x-auto rounded-2xl border dark:border-slate-800"><table className="w-full text-sm min-w-[900px]"><thead className="bg-slate-50 dark:bg-slate-900"><tr><th className="text-left p-3">Mes</th><th className="text-left p-3">P1 inicio</th><th className="text-left p-3">P1 fin</th><th className="text-left p-3">P2 inicio</th><th className="text-left p-3">P2 fin</th><th className="text-left p-3">Revisión</th></tr></thead><tbody>{MONTHS.map((name,i)=>{const m=months.find(x=>x.month===i+1);return <tr key={name} className="border-t dark:border-slate-800"><td className="p-3 font-bold">{name}</td>{(['period1Start','period1End','period2Start','period2End'] as const).map(key=><td key={key} className="p-2"><input type="date" value={m?.[key]||''} onChange={e=>setDate(i+1,key,e.target.value)} className="w-full rounded-lg border px-2 py-2 bg-white dark:bg-slate-900"/></td>)}<td className="p-3 text-xs">{m?.warnings?.length ? <span className="text-amber-700 dark:text-amber-300 font-semibold">{m.warnings.join(' · ')}</span> : <span className="text-emerald-700 dark:text-emerald-400">OK</span>}</td></tr>})}</tbody></table></div>
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">

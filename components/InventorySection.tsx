@@ -82,6 +82,12 @@ const supervisorColor = (key?: string | null) => {
   for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
   return SUPERVISOR_COLORS[Math.abs(hash) % SUPERVISOR_COLORS.length];
 };
+const supervisorAccessLabel = (share: InventoryParkShare) =>
+  share.isOwner
+    ? 'Supervisor 1'
+    : share.status === 'pending'
+      ? 'Supervisor 2 · pendiente'
+      : 'Supervisor 2';
 const itemSupervisor = (item: InventoryItem, shares: InventoryParkShare[]) =>
   item.responsableActual
     ? shares.find(share => share.status === 'accepted' && share.userId === item.responsableActual) || null
@@ -393,7 +399,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
         {parkShares.filter(share => share.status === 'accepted').map(share => (
           <span key={share.participantKey} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-[11px] font-bold">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: supervisorColor(share.userId) }} />
-            {share.displayName}{share.isOwner ? ' · propietario' : ''}
+            {share.displayName} · {supervisorAccessLabel(share)}
           </span>
         ))}
       </div>
@@ -463,7 +469,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
                       ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
                       : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
                   }`}>
-                    {share.isOwner ? 'Propietario' : share.status === 'pending' ? 'Pendiente' : 'Aceptado'}
+                    {supervisorAccessLabel(share)}
                   </span>
                   {!share.isOwner && share.status === 'accepted' && (
                     <button

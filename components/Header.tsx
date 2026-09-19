@@ -1,6 +1,7 @@
 import React from 'react';
 import { Menu, Sun, Moon, Undo2, Redo2, Bell } from 'lucide-react';
 import { BUTTON_GHOST } from '../constants';
+import { OfflineSyncStatus } from './OfflineSyncStatus';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -29,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, theme, onThemeToggl
       </div>
       <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 w-full md:w-auto justify-between md:justify-end">
         <div className="text-left md:text-right hidden xl:block mr-2"><h2 className="text-brand-primary dark:text-blue-400 text-xs md:text-sm font-bold uppercase tracking-[0.2em] opacity-80">Sistema de Gestión</h2></div>
+        <OfflineSyncStatus />
         {(onUndo || onRedo) && <div className="flex items-center gap-1 bg-white/55 dark:bg-slate-900/55 p-1 rounded-xl border border-white/70 dark:border-white/10 no-print shadow-xs">
           {onUndo && <button onClick={onUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold select-none ${canUndo ? 'bg-white/85 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 shadow-xs hover:-translate-y-px active:translate-y-0 cursor-pointer' : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'}`} title={canUndo ? 'Deshacer cambio (Ctrl+Z)' : 'Nada que deshacer'} aria-label="Deshacer cambio"><Undo2 className="w-4 h-4" /><span className="hidden sm:inline text-[11px]">Deshacer</span></button>}
           {onRedo && <button onClick={onRedo} disabled={!canRedo} className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold select-none ${canRedo ? 'bg-white/85 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 shadow-xs hover:-translate-y-px active:translate-y-0 cursor-pointer' : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'}`} title={canRedo ? 'Rehacer cambio (Ctrl+Y)' : 'Nada que rehacer'} aria-label="Rehacer cambio"><Redo2 className="w-4 h-4" /><span className="hidden sm:inline text-[11px]">Rehacer</span></button>}

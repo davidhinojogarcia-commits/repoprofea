@@ -8,6 +8,7 @@ import {
   Download,
   Edit3,
   FileText,
+  FileUp,
   Link2,
   Loader2,
   Plus,
@@ -43,6 +44,10 @@ import {
   updateSaeNeed,
 } from "../src/services/saeService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
+import {
+  listAnnualHiringPeriods,
+  type AnnualHiringPeriodsRecord,
+} from "../src/services/annualHiringPeriodsService";
 
 interface SaeSectionProps {
   people: any[];
@@ -127,7 +132,17 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewOffsetX, setPreviewOffsetX] = useState(0);
   const [previewOffsetY, setPreviewOffsetY] = useState(0);
+  const [annualPeriods, setAnnualPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
   const selectedNeed = needs.find((n) => n.id === selectedNeedId) || null;
+  const currentYear = new Date().getFullYear();
+  const currentAnnualPeriods = annualPeriods.find((record) => record.year === currentYear) || null;
+  const annualPeriodsDone = Boolean(
+    currentAnnualPeriods?.months.some(
+      (month) =>
+        (month.period1Start && month.period1End) ||
+        (month.period2Start && month.period2End),
+    ),
+  );
 
   const groupedNeeds = useMemo(() => {
     const groups = new Map<string, { key: string; mes: string; ano: number | null; monthOrder: number; needs: SaeNeed[] }>();
@@ -198,6 +213,24 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     void refresh().catch((e) =>
       onToast(e.message || "No se pudo cargar SAE.", "error"),
     );
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const loadAnnualPeriods = async () => {
+      try {
+        const records = await listAnnualHiringPeriods();
+        if (!cancelled) setAnnualPeriods(records);
+      } catch (error) {
+        console.warn("No se pudo comprobar la anualidad SAE:", error);
+      }
+    };
+    const handleAnnualPeriodsUpdated = () => void loadAnnualPeriods();
+    void loadAnnualPeriods();
+    window.addEventListener("profea:annual-hiring-periods-updated", handleAnnualPeriodsUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("profea:annual-hiring-periods-updated", handleAnnualPeriodsUpdated);
+    };
   }, []);
   useEffect(() => {
     if (!selectedNeedId) return;
@@ -870,67 +903,180 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">Gestión SAE</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Solicitud de mano de obra → informes → candidatos → quincenas → registros →
+              Periodos anuales → solicitud de mano de obra → informes → candidatos → quincenas → registros →
               contratación → devolución SAE.
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent('profea:open-annual-hiring-periods'))}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/80 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50 font-bold text-sm transition-colors"
-              title="Configurar los periodos generales de contratación de la anualidad"
-            >
-              <CalendarRange className="w-4 h-4" />
-              Períodos anuales
-            </button>
-            <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-sm cursor-pointer">
-              <FileText className="w-4 h-4" />
-              Importar solicitud
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,image/*"
-                disabled={busy}
-                onChange={(e) => {
-                  void handleNeedFile(e.target.files?.[0]);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </label>
-            <button
-              onClick={startNewNeed}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Nueva solicitud
-            </button>
-          </div>
+
         </div>
         <div
-          className="mt-5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2"
+          className={`mt-5 rounded-2xl border p-4 sm:p-5 ${
+            annualPeriodsDone
+              ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20"
+              : "border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20"
+          }`}
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className={`w-9 h-9 shrink-0 rounded-xl grid place-items-center font-black text-sm ${
+                annualPeriodsDone
+                  ? "bg-emerald-600 text-white"
+                  : "bg-[#00548E] text-white"
+              }`}>
+                {annualPeriodsDone ? <CheckCircle2 className="w-5 h-5" /> : "0"}
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-black text-base sm:text-lg">Paso 0 · Periodos anuales</h2>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                    annualPeriodsDone
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                  }`}>
+                    {annualPeriodsDone ? `${currentYear} configurado` : `Pendiente · ${currentYear}`}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Se configura una sola vez al año y queda guardado para todas las gestiones SAE de la anualidad.
+                </p>
+                {annualPeriodsDone && (
+                  <p className="mt-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    {currentAnnualPeriods?.months.length || 0} mes(es) con periodos guardados. Puedes modificarlos cuando sea necesario.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("profea:open-annual-hiring-periods", {
+                      detail: { mode: "import" },
+                    }),
+                  )
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-4 py-2.5 text-sm font-black hover:bg-[#004270]"
+              >
+                <FileUp className="w-4 h-4" />
+                Importar periodos
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("profea:open-annual-hiring-periods", {
+                      detail: { mode: "manual" },
+                    }),
+                  )
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-black"
+              >
+                <CalendarRange className="w-4 h-4" />
+                Añadir periodos
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-3"
           aria-label="Progreso SAE"
         >
           {stepLabels.map((label, index) => {
             const step = index + 1;
             const done = completedSteps[index];
             const current = !done && activeStep === step;
+            const tone = done
+              ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20"
+              : current
+                ? "border-blue-300 bg-blue-50/80 dark:border-blue-800 dark:bg-blue-950/25"
+                : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900";
             return (
               <div
                 key={label}
                 aria-current={current ? "step" : undefined}
-                className={`rounded-xl px-2 py-2.5 text-[11px] sm:text-xs font-bold border flex items-center justify-center gap-1.5 text-center transition-colors ${done ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : current ? "bg-[#00548E] text-white border-[#00548E] shadow-sm" : "bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800"}`}
+                className={`rounded-2xl border p-3.5 transition-colors ${tone}`}
               >
-                {done ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                ) : (
-                  <span
-                    className={`w-5 h-5 shrink-0 rounded-full grid place-items-center text-[10px] border ${current ? "border-white/70" : "border-slate-300 dark:border-slate-700"}`}
+                <div className="flex items-start gap-2.5">
+                  <div
+                    className={`w-7 h-7 shrink-0 rounded-lg grid place-items-center text-xs font-black ${
+                      done
+                        ? "bg-emerald-600 text-white"
+                        : current
+                          ? "bg-[#00548E] text-white"
+                          : "bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-500"
+                    }`}
                   >
-                    {step}
-                  </span>
+                    {done ? <CheckCircle2 className="w-4 h-4" /> : step}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-wider font-black text-slate-400">
+                      Paso {step}
+                    </div>
+                    <div className="font-black text-sm leading-tight">{label}</div>
+                  </div>
+                </div>
+
+                {step === 1 && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="min-h-10 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2 text-xs font-black cursor-pointer hover:bg-[#004270]">
+                      <FileText className="w-4 h-4" />
+                      Importar solicitud
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,image/*"
+                        disabled={busy}
+                        onChange={(event) => {
+                          void handleNeedFile(event.target.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={startNewNeed}
+                      disabled={busy}
+                      className="min-h-10 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-black disabled:opacity-50"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nueva solicitud
+                    </button>
+                  </div>
                 )}
-                <span>{label}</span>
+
+                {step === 2 && (
+                  <div className="mt-3">
+                    <label
+                      className={`min-h-10 w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-black ${
+                        selectedNeed && !busy
+                          ? "bg-[#00548E] text-white cursor-pointer hover:bg-[#004270]"
+                          : "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
+                      }`}
+                      title={selectedNeed ? "Importar informe SAE para la solicitud seleccionada" : "Selecciona primero una solicitud"}
+                    >
+                      <FileText className="w-4 h-4" />
+                      Añadir informe SAE
+                      <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        className="hidden"
+                        disabled={!selectedNeed || busy}
+                        onChange={(event) => {
+                          void handleReportFile(event.target.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {!selectedNeed && (
+                      <div className="mt-1.5 text-[10px] text-slate-500">
+                        Selecciona primero una solicitud del Paso 1.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1179,20 +1325,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                       {selectedNeed.mes} {selectedNeed.ano || ""}
                     </p>
                   </div>
-                  <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm cursor-pointer">
-                    <FileText className="w-4 h-4" />
-                    Añadir informe SAE
-                    <input
-                      type="file"
-                      accept=".pdf,image/*"
-                      className="hidden"
-                      disabled={busy}
-                      onChange={(e) => {
-                        void handleReportFile(e.target.files?.[0]);
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                   {[
