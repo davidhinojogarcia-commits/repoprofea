@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import { AlertTriangle, CheckCircle2, Download, FileSignature, RotateCcw, Send, X } from 'lucide-react';
 import { createDocument, getDocument, updateDocument } from '../src/services/databaseService';
 import { supabase } from '../src/lib/supabase';
-import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader } from '../src/lib/exportUtils';
+import { applyInstitutionalPdfStandard, applyPdfCopyrightStamp, renderInstitutionalReportHeader } from '../src/lib/exportUtils';
 
 type CandidateRow = {
   id: string; need_id: string; source_report_id?: string | null; original_full_name?: string | null;
@@ -222,8 +222,9 @@ async function makePdf(flow: FlowData, phone: string, signature: string, refused
     doc.text('La incidencia queda registrada por el personal responsable de la gestión PROFEA.', l + 7, y + 21);
   }
 
-  // Pie institucional común; se mantiene la composición en una sola hoja.
+  // Pie institucional común y copyright del producto; se mantiene la composición en una sola hoja.
   applyInstitutionalPdfStandard(doc);
+  applyPdfCopyrightStamp(doc);
 
   return { blob: doc.output('blob'), signedAt: signedAt.toISOString() };
 }
