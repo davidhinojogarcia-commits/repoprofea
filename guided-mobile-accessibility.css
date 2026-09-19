@@ -268,3 +268,55 @@
     height: 3.5rem;
   }
 }
+
+
+/* Vista guiada reforzada para usuarios con poca experiencia digital.
+ * Prioriza una ruta única, textos grandes y controles táctiles evidentes. */
+.profea-guided-mode .guided-start-card {
+  box-shadow: 0 5px 0 rgba(0, 84, 142, .18), 0 14px 30px rgba(0, 84, 142, .12);
+}
+
+.profea-guided-mode .guided-start-button {
+  background: #00548E !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: 1px solid #003f6b !important;
+  box-shadow: 0 4px 0 rgba(0, 63, 107, .38), 0 10px 20px rgba(0, 84, 142, .18) !important;
+}
+
+.profea-guided-mode .guided-step-card,
+.profea-guided-mode .guided-secondary-action {
+  border: 1px solid var(--ui-border);
+  border-radius: 1rem;
+}
+
+.profea-guided-mode .guided-step-number {
+  box-shadow: 0 3px 0 rgba(0, 63, 107, .24);
+}
+
+.profea-guided-mode .guided-help-panel {
+  border-left: 5px solid #059669;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .profea-guided-mode .guided-start-card { padding: 1.1rem; }
+  .profea-guided-mode .guided-start-button { width: 100%; min-height: 60px; font-size: 1.05rem; }
+  .profea-guided-mode .guided-step-card { min-height: 128px; padding: 1rem; gap: .8rem; }
+  .profea-guided-mode .guided-step-number { width: 2.8rem; height: 2.8rem; font-size: 1.05rem; }
+  .profea-guided-mode .guided-secondary-action,
+  .profea-guided-mode .guided-status-card,
+  .profea-guided-mode .guided-complete-button { min-height: 116px !important; border-radius: 1rem; }
+  .profea-guided-mode .guided-help-panel h2 { font-size: 1.1rem; line-height: 1.4; }
+  .profea-guided-mode .guided-help-panel p { font-size: 1rem; line-height: 1.6; }
+}
+
+@media (max-width: 520px) {
+  .profea-guided-mode .guided-step-card {
+    display: grid;
+    grid-template-columns: 2.8rem 3.5rem minmax(0, 1fr);
+    align-items: center;
+  }
+  .profea-guided-mode .guided-step-card > svg { display: none; }
+  .profea-guided-mode .guided-step-card .guided-action-title { font-size: 1.05rem; }
+  .profea-guided-mode .guided-step-card .guided-action-description { font-size: .94rem; line-height: 1.45; }
+}
