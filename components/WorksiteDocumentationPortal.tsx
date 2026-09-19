@@ -602,8 +602,11 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 </select>
               </label>
             </div>
-            <div className="overflow-x-auto overscroll-x-contain px-3 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex gap-2 min-w-max">
+            <div className="px-3 pb-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+              Desliza horizontalmente para ver todos los documentos.
+            </div>
+            <div className="overflow-x-auto overscroll-x-contain px-3 pb-3 snap-x snap-mandatory scroll-px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex gap-2.5 min-w-max items-stretch">
                 {libraryItems.map((item) => {
                   const Icon = item.icon;
                   const selected = activeDocumentView === item.id;
@@ -613,15 +616,19 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       key={item.id}
                       type="button"
                       onClick={() => selectDocumentView(item.id)}
-                      className={`min-h-14 max-w-[150px] rounded-xl border px-3 py-2 flex flex-col items-center justify-center gap-1 text-[10px] leading-tight font-black transition-colors ${
+                      title={item.label}
+                      aria-label={item.label}
+                      className={`w-[132px] min-w-[132px] min-h-[84px] snap-start rounded-2xl border px-3 py-3 flex flex-col items-center justify-center gap-1.5 text-[11px] sm:text-xs leading-[1.2] font-black text-center whitespace-normal transition-colors ${
                         selected
-                          ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
-                          : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300"
+                          ? "border-[#00548E] bg-[#00548E] text-white shadow-md"
+                          : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
                       }`}
                       aria-current={selected ? "page" : undefined}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-center line-clamp-2">{mobileLabel}</span>
+                      <Icon className="w-5 h-5 shrink-0" />
+                      <span className="flex min-h-[2.4rem] items-center justify-center text-center">
+                        {mobileLabel}
+                      </span>
                     </button>
                   );
                 })}
