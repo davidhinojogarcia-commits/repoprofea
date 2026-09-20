@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   AlertTriangle,
@@ -146,7 +147,27 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
     return () => URL.revokeObjectURL(url);
   }, [isOpen, currentFile]);
 
-  if (!isOpen || !currentItem) return null;
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !currentItem || typeof document === 'undefined') return null;
 
   const updateCurrent = (field: keyof ProposedChecklistChange, value: any) => {
     setItems(previous => {
@@ -199,15 +220,16 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
         ? 'Trabajadores'
         : 'Maquinaria y equipos';
 
-  return (
+  return createPortal(
     <div
       id="modal-review-checklist-changes"
-      className="fixed inset-0 z-[130] bg-white dark:bg-slate-950 flex items-stretch justify-stretch p-0"
+      className="fixed !inset-0 z-[9999] m-0 flex h-[100dvh] w-[100vw] max-h-none max-w-none items-stretch justify-stretch overflow-hidden bg-white p-0 dark:bg-slate-950"
+      style={{ width: '100vw', height: '100dvh', inset: 0 }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="cae-review-title"
     >
-      <div className="bg-white dark:bg-slate-900 w-screen h-[100dvh] max-w-none rounded-none shadow-none border-0 flex flex-col overflow-hidden">
+      <div className="m-0 flex h-full w-full min-h-0 min-w-0 max-h-none max-w-none flex-col overflow-hidden rounded-none border-0 bg-white shadow-none dark:bg-slate-900">
         <div className="profea-cae-review-header bg-[var(--ui-gradient-brand)] px-4 py-3 sm:px-5 sm:py-4 text-white shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
@@ -236,10 +258,11 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="text-white/80 hover:text-white p-2 rounded-xl hover:bg-white/10 shrink-0"
+              className="shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 border-white bg-slate-950 text-white shadow-lg transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-white/50"
               aria-label="Cerrar revisión"
+              title="Cerrar revisión"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6" strokeWidth={3} aria-hidden="true" />
             </button>
           </div>
 
@@ -551,6 +574,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
