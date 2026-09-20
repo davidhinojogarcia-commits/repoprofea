@@ -1125,13 +1125,31 @@ function App() {
 
   const handleUpdatePerson = async (updatedPerson: Person) => {
     try {
-      await updateDocument('trabajadores', updatedPerson.id, updatedPerson as any);
-      updateAutocompleteLists(updatedPerson);
+      const persisted = await updateDocument<Person>('trabajadores', updatedPerson.id, updatedPerson as any);
+      const savedPerson = persisted && typeof persisted === 'object'
+        ? ({ ...updatedPerson, ...persisted, id: updatedPerson.id } as Person)
+        : updatedPerson;
+
+      // Reflejar el cambio inmediatamente en la ficha; la suscripción de Supabase
+      // seguirá actuando como fuente de sincronización posterior.
+      setPeople(prev => prev.map(person => person.id === savedPerson.id ? savedPerson : person));
+      updateAutocompleteLists(savedPerson);
       setEditingPerson(null);
-      setToast({ message: 'Registro actualizado correctamente', type: 'success' });
+
+      const queuedOffline = Boolean((persisted as any)?.__offlinePending);
+      setToast({
+        message: queuedOffline
+          ? `Cambios guardados en la ficha de ${savedPerson.apellidosNombre}. Se sincronizarán cuando vuelva la conexión.`
+          : `Cambios guardados correctamente en la ficha de ${savedPerson.apellidosNombre}.`,
+        type: 'success'
+      });
     } catch (error) {
       console.error('Error actualizando trabajador en Supabase:', error);
-      setToast({ message: 'No se pudo actualizar el registro.', type: 'error' });
+      const detail = error instanceof Error && error.message
+        ? ` ${error.message}`
+        : '';
+      setToast({ message: `No se pudieron guardar los cambios.${detail}`, type: 'error' });
+      throw error;
     }
   };
 

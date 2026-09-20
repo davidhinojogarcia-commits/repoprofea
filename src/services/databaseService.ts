@@ -384,7 +384,7 @@ export async function updateDocument<T extends DatabaseRecord>(
   collectionName: string,
   id: string | number,
   patch: Partial<T>,
-) {
+): Promise<T> {
   const user = await requireUser();
   const table = canonicalTable(collectionName);
   const current = await getDocument<T>(collectionName, id);
@@ -394,12 +394,31 @@ export async function updateDocument<T extends DatabaseRecord>(
   const body: any = await serialize(table, merged);
   if (isLegacyNumericTable(table) || table === "trabajadores" || table === "obras")
     body.updated_by = user.id;
-  await supabase.query(table, {
+
+  const requireVerifiedWorkerUpdate = table === "trabajadores";
+  const mutationResult = await supabase.query(table, {
     method: "PATCH",
-    prefer: "return=minimal",
+    prefer: requireVerifiedWorkerUpdate ? "return=representation" : "return=minimal",
     query: `id=eq.${encodeURIComponent(String(id))}`,
     body,
   });
+
+  let persisted = merged as T;
+  if (requireVerifiedWorkerUpdate) {
+    if (!Array.isArray(mutationResult) || mutationResult.length === 0) {
+      throw new Error(
+        "Supabase no confirmó la modificación. Comprueba que tienes permiso de edición sobre este trabajador.",
+      );
+    }
+
+    const returnedRow = mutationResult[0];
+    if (returnedRow?.__offlinePending) {
+      persisted = { ...(merged as T), __offlinePending: true } as T;
+    } else {
+      persisted = hydrate(returnedRow, table) as T;
+    }
+  }
+
   if (table === "trabajadores") {
     void syncMedicalAppointmentFromWorker(merged, id, user.id).catch(
       (error) => {
@@ -409,6 +428,8 @@ export async function updateDocument<T extends DatabaseRecord>(
   }
   if (table === "subcontratas")
     await syncSubcontrataChecklist(String(id), merged);
+
+  return persisted;
 }
 
 export async function deleteDocument(

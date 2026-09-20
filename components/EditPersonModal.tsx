@@ -9,7 +9,7 @@ interface EditPersonModalProps {
   person: Person | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (updatedPerson: Person) => void;
+  onSave: (updatedPerson: Person) => Promise<void> | void;
   savedObras: string[];
   savedLugares: string[];
   savedSitios: string[];
@@ -89,6 +89,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const [qMonth, setQMonth] = useState(() => parsedQuincena.qMonth);
   const [qYear, setQYear] = useState(() => parsedQuincena.qYear);
   const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
   const [isManualCategory, setIsManualCategory] = useState(() => {
     if (!person) return false;
     const isPredefined = person.categoria === 'Peón' || person.categoria === 'Oficial de 1ª';
@@ -241,7 +242,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     setFormData(prev => prev ? ({ ...prev, [name]: value }) : null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.reconocimientoEstado === 'No Apto') {
       formData.documentacionCompleta = 'No';
@@ -305,7 +306,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       finalData.limitacionesAptitud = finalData.reconocimientoLimitaciones;
     }
 
-    onSave(finalData);
+    setIsSaving(true);
+    try {
+      await onSave(finalData);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const isDniInvalid = formData.dni.replace(/[\s-]/g, '').length >= 9 && !isValidDNI(formData.dni);
@@ -402,7 +408,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
             <div className={`space-y-2 p-4 rounded-2xl transition-all duration-300 border ${formData.documentacionCompleta === 'No' ? 'bg-red-500/5 border-red-200 dark:border-red-900/40' : 'bg-transparent border-transparent'}`}><div className="flex items-center justify-between"><label className={`block text-xs font-bold ${formData.documentacionCompleta === 'No' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>{formData.documentacionCompleta === 'No' ? 'Observaciones / Documentos Faltantes' : 'Observaciones Generales'}</label><span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">Opcional</span></div><textarea name="observaciones" value={formData.observaciones || ''} onChange={handleChange} rows={3} className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none transition-all text-sm resize-none text-slate-800 dark:text-slate-100" /><AnimatePresence>{formData.documentacionCompleta === 'No' && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden flex flex-wrap gap-1.5 pt-1.5">{['Falta DNI / NIE','Falta NUSS / S.S.','Falta Certif. Formación','Falta Cuenta Bancaria','Falta Firma Contrato','Pendiente Reconocimiento'].map((tag) => <button key={tag} type="button" onClick={() => { const current = formData.observaciones ? formData.observaciones.trim() : ''; if (!current.includes(tag)) setFormData(prev => prev ? ({ ...prev, observaciones: current + (current ? ', ' : '') + tag }) : null); }} className="px-2 py-1 bg-red-100 dark:bg-red-950/40 hover:bg-red-200 dark:hover:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-[10px] font-bold transition-all border border-red-200/50 dark:border-red-900/30">+ {tag}</button>)}</motion.div>}</AnimatePresence></div>
 
-            <div className="flex gap-4 pt-6 border-t border-gray-50 dark:border-slate-800"><button type="button" onClick={onClose} className="flex-1 py-4 px-6 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-sm uppercase tracking-widest font-bold">Cancelar</button><button type="submit" className="flex-1 bg-[#00548E] dark:bg-blue-600 text-white font-bold py-4 px-6 rounded-2xl hover:bg-[#003B64] dark:hover:bg-blue-700 shadow-lg shadow-[#00548E]/10 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest"><Save className="w-4 h-4" /> Guardar</button></div>
+            <div className="flex gap-4 pt-6 border-t border-gray-50 dark:border-slate-800"><button type="button" onClick={onClose} className="flex-1 py-4 px-6 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-sm uppercase tracking-widest font-bold">Cancelar</button><button type="submit" disabled={isSaving} className="flex-1 bg-[#00548E] dark:bg-blue-600 text-white font-bold py-4 px-6 rounded-2xl hover:bg-[#003B64] dark:hover:bg-blue-700 shadow-lg shadow-[#00548E]/10 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest disabled:opacity-70 disabled:cursor-wait"><Save className="w-4 h-4" /> {isSaving ? 'Guardando…' : 'Guardar cambios'}</button></div>
           </form>
         </div>
       </div>
