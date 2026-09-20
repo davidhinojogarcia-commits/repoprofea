@@ -78,7 +78,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       void persistSubcontratas(previous, next);
       return next;
     });
-  }, [supervisorName]);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeToDocuments<Subcontratista>('subcontratas', items => {
@@ -137,7 +137,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       onToast('No se pudo cargar la configuración de subcontratas desde Supabase.', 'error');
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [supervisorName]);
 
   // Form states for new subcontrata
   const [newForm, setNewForm] = useState({

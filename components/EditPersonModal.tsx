@@ -300,7 +300,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       alert('⚠️ El número de teléfono no es válido. Debe tener 9 dígitos y empezar por 6, 7, 8 o 9.');
       return;
     }
-    const finalData = { ...formData };
+    const finalData = { ...formData, supervisorResponsable: supervisorName };
     if (finalData.necesitaReconocimiento === 'No') {
       finalData.citaDia = '';
       finalData.citaHora = '';

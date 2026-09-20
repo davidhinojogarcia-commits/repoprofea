@@ -10,6 +10,7 @@ import { GoogleCalendarModal } from './GoogleCalendarModal';
 import { CalendarEventInput } from '../src/lib/googleCalendar';
 import { ReconocimientosMedicosSection } from './ReconocimientosMedicosSection';
 import { createDocument, deleteDocument, subscribeToDocuments } from '../src/services/databaseService';
+import { useAuthShell } from './AuthGate';
 
 interface GestionCitasProps {
   people: Person[];
@@ -49,6 +50,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   onUpdateWorkStartHour,
   onUpdateSavedTelefonos
 }) => {
+  const { supervisorName, profile } = useAuthShell();
+  const accountSupervisorPhone = String(profile.telefono || '').trim();
   // Mode selection: 'ai', 'manual' or 'reconocimientos'
   const [activeTab, setActiveTab] = useState<'ai' | 'manual' | 'reconocimientos'>('reconocimientos');
   
@@ -81,8 +84,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
     date.setDate(date.getDate() + 18);
     return date.toISOString().split('T')[0];
   });
-  const [manualSupervisor, setManualSupervisor] = useState<string>('');
-  const [manualTelefonoSupervisor, setManualTelefonoSupervisor] = useState<string>('');
+  const manualSupervisor = supervisorName;
+  const [manualTelefonoSupervisor, setManualTelefonoSupervisor] = useState<string>(accountSupervisorPhone);
   const [manualDiaContratacion, setManualDiaContratacion] = useState<string>('');
   const [manualQuincena, setManualQuincena] = useState<string>(() => {
     const today = new Date();
@@ -114,7 +117,11 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   useEffect(() => {
     const unsubscribe = subscribeToDocuments<ScheduledCita>('citas', items => {
       suppressCitaPersistenceRef.current = true;
-      setLatestGeneratedCitasState(items);
+      setLatestGeneratedCitasState(items.map(item => ({
+        ...item,
+        supervisorResponsable: supervisorName,
+        telefonoSupervisor: accountSupervisorPhone || item.telefonoSupervisor || '',
+      })));
       hydratedCitasRef.current = true;
       queueMicrotask(() => { suppressCitaPersistenceRef.current = false; });
     }, { includeShared: true }, error => {
@@ -122,7 +129,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       onToast('No se pudieron cargar las citas desde Supabase.', 'error');
     });
     return () => unsubscribe();
-  }, []);
+  }, [supervisorName, accountSupervisorPhone]);
 
   const setLatestGeneratedCitas = useCallback((action: React.SetStateAction<ScheduledCita[]>) => {
     setLatestGeneratedCitasState(previous => {
@@ -174,51 +181,17 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
     if (latestGeneratedCitas.length > 0 && selectedPreviewIndex >= latestGeneratedCitas.length) setSelectedPreviewIndex(0);
   }, [latestGeneratedCitas, selectedPreviewIndex]);
 
-  // Auto-detect supervisor when manualObra or manualNumOferta changes
+  // El supervisor procede siempre de la cuenta activa.
   useEffect(() => {
-    let supName = '';
-    if (manualObra) {
-      const found = people.find(
-        p => p.obra?.trim().toLowerCase() === manualObra.trim().toLowerCase() && p.supervisorResponsable?.trim()
-      );
-      if (found) {
-        supName = found.supervisorResponsable;
-      }
+    if (accountSupervisorPhone) {
+      setManualTelefonoSupervisor(accountSupervisorPhone);
+      return;
     }
-    if (!supName && manualNumOferta) {
-      const found = people.find(
-        p => p.numOferta?.trim().toLowerCase() === manualNumOferta.trim().toLowerCase() && p.supervisorResponsable?.trim()
-      );
-      if (found) {
-        supName = found.supervisorResponsable;
-      }
-    }
-
-    if (supName) {
-      setManualSupervisor(supName);
-      // Try to find if we have a phone number for this supervisor in recent appointments or saved lists
-      const foundCitaWithPhone = latestGeneratedCitas.find(
-        c => c.supervisorResponsable?.trim().toLowerCase() === supName.trim().toLowerCase() && c.telefonoSupervisor?.trim()
-      );
-      if (foundCitaWithPhone && foundCitaWithPhone.telefonoSupervisor) {
-        setManualTelefonoSupervisor(foundCitaWithPhone.telefonoSupervisor);
-      } else {
-        setManualTelefonoSupervisor('');
-      }
-    }
-  }, [manualObra, manualNumOferta, people]);
-
-  // Auto-detect supervisor's phone when supervisor name changes manually
-  useEffect(() => {
-    if (manualSupervisor) {
-      const foundCitaWithPhone = latestGeneratedCitas.find(
-        c => c.supervisorResponsable?.trim().toLowerCase() === manualSupervisor.trim().toLowerCase() && c.telefonoSupervisor?.trim()
-      );
-      if (foundCitaWithPhone && foundCitaWithPhone.telefonoSupervisor) {
-        setManualTelefonoSupervisor(foundCitaWithPhone.telefonoSupervisor);
-      }
-    }
-  }, [manualSupervisor, latestGeneratedCitas]);
+    const previousPhone = latestGeneratedCitas.find(
+      item => item.supervisorResponsable === supervisorName && item.telefonoSupervisor?.trim(),
+    )?.telefonoSupervisor;
+    if (previousPhone) setManualTelefonoSupervisor(previousPhone);
+  }, [accountSupervisorPhone, latestGeneratedCitas, supervisorName]);
 
   // Handle AI Prompt Order
   const handleAIOrder = async () => {
@@ -255,25 +228,16 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           return;
         }
 
-        // Enrich generated items with auto-detected supervisor names and supervisor phone numbers
+        // La IA puede proponer fechas y lugares, pero el supervisor siempre es la cuenta activa.
         const enrichedSchedule = schedule.map(item => {
-          let supervisor = item.supervisorResponsable || '';
-          if (!supervisor && item.obra) {
-            const found = people.find(p => p.obra?.trim().toLowerCase() === item.obra?.trim().toLowerCase() && p.supervisorResponsable?.trim());
-            if (found) {
-              supervisor = found.supervisorResponsable;
-            }
-          }
-
-          let telSup = item.telefonoSupervisor || '';
-          if (!telSup && supervisor) {
-            const prevCita = latestGeneratedCitas.find(
-              c => c.supervisorResponsable?.trim().toLowerCase() === supervisor.trim().toLowerCase() && c.telefonoSupervisor?.trim()
-            );
-            if (prevCita && prevCita.telefonoSupervisor) {
-              telSup = prevCita.telefonoSupervisor;
-            }
-          }
+          const supervisor = supervisorName;
+          const telSup =
+            accountSupervisorPhone ||
+            item.telefonoSupervisor ||
+            latestGeneratedCitas.find(
+              c => c.supervisorResponsable === supervisorName && c.telefonoSupervisor?.trim()
+            )?.telefonoSupervisor ||
+            '';
 
           const getQuincenaFromDate = (dateStr: string) => {
             if (!dateStr) return '';
@@ -295,7 +259,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           return {
             ...item,
             quincena: item.quincena || getQuincenaFromDate(item.citaDia),
-            supervisorResponsable: supervisor,
+            supervisorResponsable: supervisorName,
             telefonoSupervisor: telSup
           };
         });
@@ -378,7 +342,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         quincena: manualQuincena,
         diaComienzo: manualDiaComienzo || manualCitaDia,
         diaFinContrato: manualDiaFinContrato || '',
-        supervisorResponsable: manualSupervisor || '',
+        supervisorResponsable: supervisorName,
         telefonoSupervisor: manualTelefonoSupervisor || '',
         diaContratacion: manualDiaContratacion || ''
       });
@@ -401,7 +365,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       citaDia: item.citaDia,
       citaHora: item.citaHora,
       sitioReconocimiento: item.sitioReconocimiento,
-      supervisorResponsable: item.supervisorResponsable || '',
+      supervisorResponsable: supervisorName,
       telefono: item.telefonoSupervisor || '',
       diaComienzo: item.diaComienzo,
       diaFinContrato: item.diaFinContrato,
@@ -446,31 +410,22 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       return;
     }
 
-    const ticketsData: TicketData[] = latestGeneratedCitas.map(item => {
-      let supervisor = item.supervisorResponsable || '';
-      if (!supervisor && item.obra) {
-        const found = people.find(p => p.obra?.trim().toLowerCase() === item.obra?.trim().toLowerCase() && p.supervisorResponsable?.trim());
-        if (found) {
-          supervisor = found.supervisorResponsable;
-        }
-      }
-      return {
-        apellidosNombre: '', // strictly anonymous
-        dni: '',
-        obra: item.obra,
-        numOferta: item.numOferta,
-        quincena: item.quincena,
-        citaDia: item.citaDia,
-        citaHora: item.citaHora,
-        sitioReconocimiento: item.sitioReconocimiento,
-        supervisorResponsable: supervisor,
-        telefono: item.telefonoSupervisor || '',
-        diaComienzo: item.diaComienzo,
-        diaFinContrato: item.diaFinContrato,
-        workStartHour: workStartHour,
-        diaContratacion: item.diaContratacion
-      };
-    });
+    const ticketsData: TicketData[] = latestGeneratedCitas.map(item => ({
+      apellidosNombre: '', // strictly anonymous
+      dni: '',
+      obra: item.obra,
+      numOferta: item.numOferta,
+      quincena: item.quincena,
+      citaDia: item.citaDia,
+      citaHora: item.citaHora,
+      sitioReconocimiento: item.sitioReconocimiento,
+      supervisorResponsable: supervisorName,
+      telefono: accountSupervisorPhone || item.telefonoSupervisor || '',
+      diaComienzo: item.diaComienzo,
+      diaFinContrato: item.diaFinContrato,
+      workStartHour,
+      diaContratacion: item.diaContratacion
+    }));
 
     const supervisorPhones: { [key: string]: string } = {};
     latestGeneratedCitas.forEach(item => {
@@ -1221,27 +1176,10 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Supervisor Responsable</label>
                         <input
                           type="text"
-                          value={activeTicket.supervisorResponsable || ''}
-                          onChange={(e) => {
-                            const updated = [...latestGeneratedCitas];
-                            const name = e.target.value;
-                            let phone = activeTicket.telefonoSupervisor || '';
-                            if (!phone) {
-                              const found = latestGeneratedCitas.find(
-                                c => c.supervisorResponsable?.trim().toLowerCase() === name.trim().toLowerCase() && c.telefonoSupervisor?.trim()
-                              );
-                              if (found && found.telefonoSupervisor) {
-                                phone = found.telefonoSupervisor;
-                              }
-                            }
-                            updated[selectedPreviewIndex] = {
-                              ...activeTicket,
-                              supervisorResponsable: name,
-                              telefonoSupervisor: phone
-                            };
-                            setLatestGeneratedCitas(updated);
-                          }}
-                          placeholder="Ej: Francisco Gómez"
+                          value={supervisorName}
+                          readOnly
+                          aria-readonly="true"
+                          placeholder="Nombre y apellidos de la cuenta"
                           className="w-full p-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         />
                       </div>

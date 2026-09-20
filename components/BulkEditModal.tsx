@@ -50,7 +50,6 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
   });
 
   // State values for each potential field
-  const [supervisorResponsable, setSupervisorResponsable] = useState(supervisorName);
   const [numOferta, setNumOferta] = useState('');
   const [obra, setObra] = useState('');
   const [categoria, setCategoria] = useState('Peón');
@@ -98,7 +97,6 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
         return allSame ? firstVal : '';
       };
 
-      setSupervisorResponsable(supervisorName);
       setNumOferta((getCommonValue('numOferta') as string) || '');
       setObra((getCommonValue('obra') as string) || '');
       
@@ -166,7 +164,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
         observaciones: false,
       });
     }
-  }, [selectedPeople, isOpen]);
+  }, [selectedPeople, isOpen, supervisorName]);
 
   const cleanObras = useMemo(() => Array.from(new Set((savedObras || []).map(o => o.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedObras]);
   const cleanLugares = useMemo(() => Array.from(new Set((savedLugares || []).map(l => l.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedLugares]);
