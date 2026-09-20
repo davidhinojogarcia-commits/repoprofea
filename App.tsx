@@ -24,13 +24,11 @@ import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   // Empaquetado por Vite: evita depender de un CDN externo para previsualizar PDFs.
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url,
-  ).toString();
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
