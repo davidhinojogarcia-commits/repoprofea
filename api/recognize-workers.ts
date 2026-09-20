@@ -106,7 +106,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (images.length > MAX_IMAGES) return sendJson(res, 400, { error: `Máximo ${MAX_IMAGES} imágenes por reconocimiento.` });
 
     const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
-    if (!key) return sendJson(res, 503, { error: 'El servicio de reconocimiento IA no está configurado en el servidor.' });
+    if (!key) return sendJson(res, 503, { error: 'El servicio de reconocimiento automático no está configurado en el servidor.' });
 
     const parts: any[] = [{ text: prompt }];
     for (const image of images) {
@@ -140,7 +140,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return sendJson(res, 200, { success: true, workers: unique });
   } catch (error: any) {
     console.error('[recognize-workers]', error instanceof Error ? error.message : error);
-    const message = String(error?.message || 'No se pudo completar el reconocimiento IA.');
+    const message = String(error?.message || 'No se pudo completar el reconocimiento automático.');
     const clientError = /máximo|recib|formato|petición/i.test(message);
     return sendJson(res, clientError ? 400 : 500, { error: message });
   }

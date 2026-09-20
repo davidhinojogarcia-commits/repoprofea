@@ -245,7 +245,7 @@ export const generateSubcontrataReportPDF = async (
     const state = item.estado === 'entregado' ? 'ENTREGADO (OK)' : item.estado === 'caducado' ? 'CADUCADO' : item.estado === 'incompleto' ? 'INCOMPLETO' : item.estado === 'no_aplica' ? 'NO APLICA' : 'PENDIENTE';
     let notes = item.observaciones || '';
     if (item.fechaCaducidad) notes = `${notes ? `${notes} · ` : ''}Caduca: ${formatDate(item.fechaCaducidad)}`;
-    if (item.detectadoPorIA) notes = `${notes ? `${notes} · ` : ''}Verificado con IA`;
+    if (item.detectadoPorIA) notes = `${notes ? `${notes} · ` : ''}Verificado`;
     return [String(index + 1), item.categoria === 'empresa' ? 'Empresa' : item.categoria === 'trabajadores' ? 'Personal' : 'Maquinaria', item.nombre, item.normativa, item.obligatorio ? 'Sí' : 'No', state, notes || '-'];
   });
 

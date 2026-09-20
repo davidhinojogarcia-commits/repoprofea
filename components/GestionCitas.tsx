@@ -196,7 +196,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   // Handle AI Prompt Order
   const handleAIOrder = async () => {
     if (!aiPrompt.trim()) {
-      onToast("Por favor, introduzca una instrucción u orden para la IA.", "error");
+      onToast("Por favor, introduzca una instrucción u orden para el asistente.", "error");
       return;
     }
 
@@ -216,7 +216,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || "Error en la respuesta del servidor de IA.");
+        throw new Error(errData.error || "Error en la respuesta del servicio de planificación.");
       }
 
       const data = await response.json();
@@ -224,7 +224,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         const schedule: ScheduledCita[] = data.schedule;
 
         if (schedule.length === 0) {
-          onToast("La IA no devolvió ninguna citación estructurada. Intente reformular su orden.", "error");
+          onToast("El asistente no devolvió ninguna citación estructurada. Intente reformular su orden.", "error");
           return;
         }
 
@@ -294,14 +294,14 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour);
         doc.save(filename);
 
-        onToast(`¡IA completada! Se han generado ${schedule.length} citas médicas y se ha descargado el PDF de tickets.`, "success");
+        onToast(`Planificación completada. Se han generado ${schedule.length} citas médicas y se ha descargado el PDF de tickets.`, "success");
         setAiPrompt('');
       } else {
-        throw new Error("No se pudo procesar la orden con la IA.");
+        throw new Error("No se pudo procesar la orden de planificación.");
       }
     } catch (error: any) {
       console.error("AI Order Error:", error);
-      onToast(error.message || "Error al comunicarse con la IA.", "error");
+      onToast(error.message || "Error al comunicarse con el servicio de planificación.", "error");
     } finally {
       setIsAiGenerating(false);
     }
@@ -434,7 +434,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   // Quick preset loader helper
   const applyPreset = (text: string) => {
     setAiPrompt(text);
-    onToast("Orden cargada en el asistente de IA.", "success");
+    onToast("Orden cargada en el asistente de planificación.", "success");
   };
 
   // Clear current active list
@@ -505,7 +505,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
             }`}
           >
             <Activity className="w-4 h-4 text-emerald-400" />
-            <span>Reconocimientos Médicos (IA PDF)</span>
+            <span>Reconocimientos Médicos (PDF)</span>
           </button>
           <button
             type="button"
@@ -517,7 +517,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Planificar Citas (IA)</span>
+            <span>Planificar Citas</span>
           </button>
           <button
             type="button"
@@ -588,7 +588,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                   }`}
                 >
                   <Sparkles className="w-4 h-4" />
-                  Asistente con IA
+                  Asistente de planificación
                 </button>
                 <button
                   onClick={() => setActiveTab('manual')}
@@ -603,7 +603,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                 </button>
               </div>
               <span className="hidden sm:inline-block text-[11px] font-bold text-[#00548E] dark:text-blue-400 uppercase tracking-widest">
-                {activeTab === 'ai' ? 'IA ACTIVA' : 'SISTEMA RÁPIDO'}
+                {activeTab === 'ai' ? 'ASISTENTE ACTIVO' : 'SISTEMA RÁPIDO'}
               </span>
             </div>
 
@@ -613,8 +613,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                 <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl p-4 flex items-start gap-3">
                   <Info className="w-5 h-5 text-[#00548E] dark:text-blue-400 shrink-0 mt-0.5" />
                   <div className="space-y-1 text-xs text-slate-600 dark:text-slate-350">
-                    <p className="font-semibold text-[#00548E] dark:text-blue-400">¿Cómo dar una orden a la IA?</p>
-                    <p>La IA analizará sus instrucciones de manera inteligente. Puede pedirle el número de trabajadores, el día, la hora de inicio, el centro médico e inclusive el día de comienzo de la obra. La IA calculará los horarios escalonados de manera automatizada.</p>
+                    <p className="font-semibold text-[#00548E] dark:text-blue-400">¿Cómo dar una orden al asistente?</p>
+                    <p>El asistente interpretará sus instrucciones. Puede indicar el número de trabajadores, el día, la hora de inicio, el centro médico e incluso el día de comienzo de la obra. El sistema calculará los horarios escalonados automáticamente.</p>
                   </div>
                 </div>
 
@@ -691,7 +691,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4" />
-                        Organizar e Imprimir con IA
+                        Organizar e imprimir
                       </>
                     )}
                   </button>
@@ -918,7 +918,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
               <div className="py-12 flex flex-col items-center justify-center text-center space-y-2.5 text-slate-400">
                 <Calendar className="w-8 h-8 opacity-60" />
                 <p className="text-xs font-semibold">No se han generado citaciones anónimas todavía.</p>
-                <p className="text-[10px] text-slate-500 max-w-sm">Use el Asistente con IA de arriba o cargue un lote manual para comenzar a imprimir de inmediato.</p>
+                <p className="text-[10px] text-slate-500 max-w-sm">Use el Asistente de planificación de arriba o cargue un lote manual para comenzar a imprimir de inmediato.</p>
               </div>
             ) : (
               <div className="space-y-3">

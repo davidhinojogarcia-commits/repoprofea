@@ -581,11 +581,11 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     }
 
     setIsRecognizing(true);
-    setRecognitionStep("Iniciando motor de IA y optimizando imágenes para extracción...");
+    setRecognitionStep("Iniciando reconocimiento automático y optimizando imágenes para extracción...");
 
     try {
       await new Promise(resolve => setTimeout(resolve, 800));
-      setRecognitionStep("Transmitiendo páginas escaneadas a Gemini 3.5 para lectura multimodal...");
+      setRecognitionStep("Procesando las páginas escaneadas para la extracción de datos...");
       
       const imagesPayload = pages.map(p => p.base64);
       
@@ -615,7 +615,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       }
     } catch (err: any) {
       console.error(err);
-      onToast(`Error en reconocimiento con IA: ${err.message}`, "error");
+      onToast(`Error en reconocimiento automático: ${err.message}`, "error");
     } finally {
       setIsRecognizing(false);
       setRecognitionStep("");
@@ -762,14 +762,14 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
       worksheet.mergeCells("A1:J1");
       const titleCell = worksheet.getCell("A1");
-      titleCell.value = "RELACIÓN DE TRABAJADORES EXTRAÍDOS POR IA (PLAN PROFEA)";
+      titleCell.value = "RELACIÓN DE TRABAJADORES EXTRAÍDOS AUTOMÁTICAMENTE (PLAN PROFEA)";
       titleCell.font = { name: "Arial", bold: true, size: 14, color: { argb: "00548E" } };
       titleCell.alignment = { horizontal: "center", vertical: "middle" };
       worksheet.getRow(1).height = 40;
 
       const subtitleCell = worksheet.getCell("A2");
       worksheet.mergeCells("A2:J2");
-      subtitleCell.value = `Documentación de origen: ${pdfName}.pdf | Relación autogenerada por IA`;
+      subtitleCell.value = `Documentación de origen: ${pdfName}.pdf | Relación generada automáticamente`;
       subtitleCell.font = { name: "Arial", italic: true, size: 9, color: { argb: "555555" } };
       subtitleCell.alignment = { horizontal: "center", vertical: "middle" };
 
@@ -882,7 +882,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(0, 84, 142);
-      doc.text(`RELACIÓN DE TRABAJADORES RECONOCIDOS POR IA (PROFEA)`, 14, 25);
+      doc.text(`RELACIÓN DE TRABAJADORES RECONOCIDOS AUTOMÁTICAMENTE (PROFEA)`, 14, 25);
       
       doc.setDrawColor(0, 84, 142);
       doc.setLineWidth(0.5);
@@ -932,7 +932,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
       doc.setFontSize(7.5);
       doc.setTextColor(150);
-      doc.text(`Relación autogenerada por IA el ${new Date().toLocaleString("es-ES")} | © David Hinojo García`, 14, doc.internal.pageSize.height - 10);
+      doc.text(`Relación generada automáticamente el ${new Date().toLocaleString("es-ES")} | © David Hinojo García`, 14, doc.internal.pageSize.height - 10);
 
       doc.save(`Relacion_Trabajadores_IA_${pdfName}.pdf`);
       onToast("Relación exportada a PDF correctamente", "success");
@@ -974,7 +974,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
           sitioReconocimiento: "",
           documentacionCompleta: "No" as const,
           necesitaReconocimiento: "Sí" as const,
-          observaciones: `Reconocido por IA de documento: ${pdfName}. Duración contrato: ${w.duracionContrato || "S/D"}. NUSS: ${w.nuss || "S/D"}. Correo: ${w.correo || "S/D"}. Municipio: ${w.municipio || "S/D"}.`
+          observaciones: `Reconocido automáticamente desde el documento: ${pdfName}. Duración contrato: ${w.duracionContrato || "S/D"}. NUSS: ${w.nuss || "S/D"}. Correo: ${w.correo || "S/D"}. Municipio: ${w.municipio || "S/D"}.`
         };
       });
 
@@ -1146,7 +1146,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
               </div>
               
               <h4 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                Extrayendo Datos con Inteligencia Artificial
+                Extrayendo datos automáticamente
               </h4>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-md">
                 {recognitionStep || "Iniciando análisis de documentación..."}
@@ -1162,7 +1162,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
                 <div>
                   <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-[#00548E] dark:text-blue-400 animate-pulse" />
-                    Relación de Datos de Trabajadores Extraídos por IA
+                    Relación de datos de trabajadores extraídos automáticamente
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Revisa, añade o modifica los datos detectados antes de proceder a la exportación o importación.</p>
                 </div>

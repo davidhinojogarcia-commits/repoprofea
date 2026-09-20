@@ -916,7 +916,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       <PageHeader
         eyebrow="Prevención y Coordinación de Actividades Empresariales"
         title="Control de Subcontratas de Obra (CAE)"
-        description="Expediente documental por empresa, personal y maquinaria, con revisión asistida por IA y validación humana antes de aplicar cambios."
+        description="Expediente documental por empresa, personal y maquinaria, con análisis automático y validación humana antes de aplicar cambios."
         icon={<HardHat className="h-5 w-5" />}
         actions={
           <>
@@ -1885,7 +1885,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                                 {item.detectadoPorIA && (
                                   <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 rounded-md flex items-center gap-1 border border-indigo-200 dark:border-indigo-800">
                                     <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                                    Verificado con IA
+                                    Verificado
                                   </span>
                                 )}
                               </div>
@@ -2029,7 +2029,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 Seleccione una subcontrata del listado
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                Elija una subcontrata en el panel lateral para revisar su checklist legal, cargar archivos con inteligencia artificial o generar el informe de estado de la subcontrata.
+                Elija una subcontrata en el panel lateral para revisar su checklist legal, cargar y analizar documentación o generar el informe de estado de la subcontrata.
               </p>
             </div>
           )}
