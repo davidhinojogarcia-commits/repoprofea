@@ -127,7 +127,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     } else {
       setFormData(null);
     }
-  }, [person, automaticHiringTarget]);
+  }, [person, automaticHiringTarget, supervisorName]);
 
   useEffect(() => {
     if (qType === '1ª' || qType === '2ª') {
