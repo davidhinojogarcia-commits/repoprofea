@@ -18,10 +18,11 @@ import {
   Check
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Ensure PDF.js worker is properly configured
+// Worker empaquetado por Vite: el visor no depende de un CDN externo.
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 }
 
 interface PdfViewerModalProps {
@@ -69,11 +70,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
 
     const loadDocument = async () => {
       try {
-        const loadingTask = pdfjsLib.getDocument({
-          url: pdfUrl,
-          cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-          cMapPacked: true,
-        });
+        const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
 
         const doc = await loadingTask.promise;
         if (!isMounted) return;

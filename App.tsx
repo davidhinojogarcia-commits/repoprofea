@@ -24,9 +24,11 @@ import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
+  // Empaquetado por Vite: evita depender de un CDN externo para previsualizar PDFs.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 }
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
@@ -1125,13 +1127,31 @@ function App() {
 
   const handleUpdatePerson = async (updatedPerson: Person) => {
     try {
-      await updateDocument('trabajadores', updatedPerson.id, updatedPerson as any);
-      updateAutocompleteLists(updatedPerson);
+      const persisted = await updateDocument<Person>('trabajadores', updatedPerson.id, updatedPerson as any);
+      const savedPerson = persisted && typeof persisted === 'object'
+        ? ({ ...updatedPerson, ...persisted, id: updatedPerson.id } as Person)
+        : updatedPerson;
+
+      // Reflejar el cambio inmediatamente en la ficha; la suscripción de Supabase
+      // seguirá actuando como fuente de sincronización posterior.
+      setPeople(prev => prev.map(person => person.id === savedPerson.id ? savedPerson : person));
+      updateAutocompleteLists(savedPerson);
       setEditingPerson(null);
-      setToast({ message: 'Registro actualizado correctamente', type: 'success' });
+
+      const queuedOffline = Boolean((persisted as any)?.__offlinePending);
+      setToast({
+        message: queuedOffline
+          ? `Cambios guardados en la ficha de ${savedPerson.apellidosNombre}. Se sincronizarán cuando vuelva la conexión.`
+          : `Cambios guardados correctamente en la ficha de ${savedPerson.apellidosNombre}.`,
+        type: 'success'
+      });
     } catch (error) {
       console.error('Error actualizando trabajador en Supabase:', error);
-      setToast({ message: 'No se pudo actualizar el registro.', type: 'error' });
+      const detail = error instanceof Error && error.message
+        ? ` ${error.message}`
+        : '';
+      setToast({ message: `No se pudieron guardar los cambios.${detail}`, type: 'error' });
+      throw error;
     }
   };
 

@@ -63,3 +63,25 @@ jobs:
           retention-days: 3
       - name: Build application
         run: npm run build
+      - name: Smoke test production server
+        run: |
+          set -euo pipefail
+          NODE_ENV=production node dist/server.cjs > /tmp/profea-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ -o /tmp/profea-index.html; then
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              cat /tmp/profea-server.log
+              exit 1
+            fi
+            sleep 0.5
+          done
+          test -s /tmp/profea-index.html
+          curl --fail --silent --show-error http://127.0.0.1:3000/manifest.webmanifest -o /tmp/profea-manifest.json
+          curl --fail --silent --show-error http://127.0.0.1:3000/service-worker.js -o /tmp/profea-service-worker.js
+          grep -q '"name": "PROFEA"' /tmp/profea-manifest.json
+          grep -q 'CACHE_NAME' /tmp/profea-service-worker.js
+          echo "Production smoke test passed."

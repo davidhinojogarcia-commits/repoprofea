@@ -94,7 +94,10 @@ installSidebarSwipe();
 initializeOfflineSync();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).catch((error) => { console.warn('No se pudo registrar el service worker de PROFEA:', error); });
+    navigator.serviceWorker
+      .register('/service-worker.js', { updateViaCache: 'none' })
+      .then((registration) => registration.update().catch(() => undefined))
+      .catch((error) => { console.warn('No se pudo registrar el service worker de PROFEA:', error); });
   });
 }
 const initialSearchParams = new URLSearchParams(window.location.search);
