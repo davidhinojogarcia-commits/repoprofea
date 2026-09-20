@@ -540,8 +540,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
             <div className="px-3 pb-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
               Desliza horizontalmente para ver todos los documentos.
             </div>
-            <div className="worksite-doc-mobile-tabs overflow-x-auto overscroll-x-contain px-3 pb-3 snap-x snap-mandatory scroll-px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex gap-2.5 min-w-max items-stretch">
+            <div className="worksite-doc-mobile-tabs overflow-x-auto overflow-y-hidden overscroll-x-contain px-3 pb-3 snap-x snap-proximity scroll-px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="worksite-doc-mobile-tabs-track flex flex-nowrap gap-2.5 min-w-max items-stretch">
                 {libraryItems.map((item) => {
                   const Icon = item.icon;
                   const selected = activeDocumentView === item.id;

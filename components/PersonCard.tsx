@@ -629,7 +629,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
             </div>
 
             {/* Action Buttons */}
-            <div className="flex sm:flex-col gap-2 w-full sm:w-auto mt-4 sm:mt-0 shrink-0">
+            <div className="profea-worker-card-actions flex sm:flex-col gap-2 w-full sm:w-auto mt-4 sm:mt-0 shrink-0">
               {isNoAptoDocIncomplete && (
                 <div className="w-full text-center sm:text-right mb-0.5" title="Atención: Trabajador No Apto. Verifique antes de cualquier gestión">
                   <span className="inline-flex items-center justify-center gap-1 text-[9px] font-black text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/80 px-2 py-0.5 rounded-md border border-red-300 dark:border-red-800 uppercase tracking-tight shadow-2xs">
@@ -648,7 +648,8 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 }`}
                 aria-label="Generar Tarjeta"
               >
-                <IdCard className="w-4 h-4 mx-auto" />
+                <IdCard className="profea-worker-card-action-icon w-4 h-4 mx-auto" />
+                <span className="profea-worker-card-action-label hidden">Carné</span>
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xs z-10">
                   {isNoAptoDocIncomplete ? 'Generar Carné (¡Riesgo No Apto!)' : 'Generar Carné PDF'}
                 </span>
@@ -660,7 +661,8 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 className="profea-worker-card-action profea-worker-card-action--history group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
                 aria-label="Exportar Historial"
               >
-                <History className="w-4 h-4 mx-auto" />
+                <History className="profea-worker-card-action-icon w-4 h-4 mx-auto" />
+                <span className="profea-worker-card-action-label hidden">Historial</span>
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xs z-10">
                   Exportar Historial PDF
                 </span>
@@ -676,7 +678,8 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 }`}
                 aria-label="Google Calendar"
               >
-                <Calendar className={`w-4 h-4 mx-auto ${isNoAptoDocIncomplete ? 'text-red-600 dark:text-red-400' : 'text-[#00548E] dark:text-blue-400'} group-hover/btn:text-white`} />
+                <Calendar className={`profea-worker-card-action-icon w-4 h-4 mx-auto ${isNoAptoDocIncomplete ? 'text-red-600 dark:text-red-400' : 'text-[#00548E] dark:text-blue-400'} group-hover/btn:text-white`} />
+                <span className="profea-worker-card-action-label hidden">Calendario</span>
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xs z-10">
                   {isNoAptoDocIncomplete ? 'Google Calendar (¡Riesgo No Apto!)' : 'Google Calendar'}
                 </span>
@@ -688,7 +691,8 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 className="profea-worker-card-action profea-worker-card-action--edit group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#00548E] hover:text-white dark:hover:bg-[#00548E] dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
                 aria-label="Editar"
               >
-                <Pencil className="w-4 h-4 mx-auto" />
+                <Pencil className="profea-worker-card-action-icon w-4 h-4 mx-auto" />
+                <span className="profea-worker-card-action-label hidden">Editar</span>
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xs z-10">
                   Editar
                 </span>
@@ -700,7 +704,8 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                 className="profea-worker-card-action profea-worker-card-action--delete group/btn relative flex-1 sm:flex-none p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white dark:hover:bg-red-500 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
                 aria-label="Eliminar"
               >
-                <Trash2 className="w-4 h-4 mx-auto" />
+                <Trash2 className="profea-worker-card-action-icon w-4 h-4 mx-auto" />
+                <span className="profea-worker-card-action-label hidden">Eliminar</span>
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xs z-10">
                   Eliminar
                 </span>
