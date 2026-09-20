@@ -15,6 +15,7 @@ import {
   Subcontratista,
   SubcontrataDocItem,
   SubcontrataEstadoExpediente,
+  SubcontrataTrabajadorCAE,
 } from '../types';
 import {
   ChecklistReviewModal,
@@ -24,7 +25,6 @@ import {
 import { extractClientDocumentText } from '../src/lib/clientDocumentText';
 import { verifySubcontractorPersonnel } from '../src/lib/caePersonnelVerifier';
 import { fillCaeDocumentDates } from '../src/lib/caeDocumentDates';
-import { updateDocument } from '../src/services/databaseService';
 
 interface Props {
   subcontrata: Subcontratista;
@@ -36,6 +36,7 @@ interface Props {
   onToast: (message: string, type: 'success' | 'error') => void;
   onFilterMissingInRed?: () => void;
   onOpenRequerimiento?: () => void;
+  onWorkersUpdate?: (workers: SubcontrataTrabajadorCAE[]) => void;
 }
 
 type Upload = {
@@ -95,6 +96,7 @@ export const FileUploaderIA: React.FC<Props> = ({
   subcontrata,
   onChecklistUpdate,
   onToast,
+  onWorkersUpdate,
 }) => {
   const input = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -432,24 +434,21 @@ export const FileUploaderIA: React.FC<Props> = ({
     onToast('Revisión CAE aplicada al checklist correctamente.', 'success');
   };
 
-  const saveWorkers = async () => {
+  const saveWorkers = () => {
     if (!workers.length) return;
-    try {
-      await updateDocument('subcontratas', subcontrata.id, {
-        trabajadoresCae: workers.map((worker: any) => ({
-          ...worker,
-          confirmadoPorUsuario: true,
-        })),
-      } as any);
-      onToast(
-        `${workers.length} trabajador(es) del ITA/RNT/IDC guardados en la subcontrata.`,
-        'success',
-      );
-      setWorkers([]);
-      setFiles([]);
-    } catch (error: any) {
-      onToast(error.message || 'No se pudo guardar el personal.', 'error');
-    }
+    const confirmedWorkers = workers.map((worker: any) => ({
+      ...worker,
+      confirmadoPorUsuario: true,
+    })) as SubcontrataTrabajadorCAE[];
+
+    if (onWorkersUpdate) onWorkersUpdate(confirmedWorkers);
+
+    onToast(
+      `${confirmedWorkers.length} trabajador(es) incorporados al apartado "Trabajadores de la empresa".`,
+      'success',
+    );
+    setWorkers([]);
+    setFiles([]);
   };
 
   return (
@@ -577,11 +576,11 @@ export const FileUploaderIA: React.FC<Props> = ({
           ))}
 
           <button
-            onClick={() => void saveWorkers()}
+            onClick={saveWorkers}
             className="mt-3 ui-button-primary inline-flex items-center gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
-            Guardar personal cotejado
+            Incorporar a trabajadores de la empresa
           </button>
         </div>
       )}

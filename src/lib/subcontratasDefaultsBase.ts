@@ -555,6 +555,7 @@ export const createNewSubcontratista = (
     fechaRegistro: now,
     fechaActualizacion: now,
     notas: data?.notas || "",
+    trabajadoresCae: data?.trabajadoresCae ? data.trabajadoresCae.map(worker => ({ ...worker })) : [],
   };
 };
 
