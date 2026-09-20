@@ -610,7 +610,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     if (!parsed.candidates.length)
       throw new Error("No se han reconocido candidatos.");
     const workKey = (v: string) => {
-      const s = norm(v).replace(/[.\\s_\\-/:]+/g, "");
+      const s = norm(v).replace(/[.\s_\-/:]+/g, "");
       const code = s.match(/(\\d{5})/)?.[1] || "";
       const type = s.includes("gr") ? "gr" : s.includes("ee") ? "ee" : "";
       return code && type ? `${code}${type}` : s;
@@ -671,7 +671,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
 
     const period =
       parsed.quincena ||
-      (parsed.categoria && !/\\bpeon(?:es)?\\b/i.test(normalizeSaeTextForPeriod(parsed.categoria))
+      (parsed.categoria && !/\bpeon(?:es)?\b/i.test(normalizeSaeTextForPeriod(parsed.categoria))
         ? "Mensual"
         : "Periodo por confirmar");
 
