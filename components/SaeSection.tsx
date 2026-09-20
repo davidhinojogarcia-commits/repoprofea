@@ -32,6 +32,7 @@ import {
   SaeCandidate,
   SaeNeed,
   SaeReport,
+  SaeReportVersion,
   createSaeNeed,
   createSaeReport,
   deleteSaeNeed,
@@ -900,8 +901,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     offsetX = 0,
     offsetY = 0,
     requireComplete = true,
+    archivedVersion?: SaeReportVersion,
   ): Promise<Uint8Array> => {
-    const rows = candidates.filter((c) => c.reportId === report.id);
+    const rows = archivedVersion?.candidates?.length
+      ? archivedVersion.candidates
+      : candidates.filter((c) => c.reportId === report.id);
     if (!rows.length)
       throw new Error("No hay candidatos asociados al informe.");
     if (requireComplete) {
@@ -943,16 +947,44 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      await updateSaeReportStatus(report.id, "finalized");
+      const reportRows = candidates.filter((candidate) => candidate.reportId === report.id);
+      const snapshot = reportRows.map((candidate) => ({
+        id: candidate.id,
+        orderNumber: candidate.orderNumber,
+        resultCode: candidate.resultCode,
+        pageNumber: candidate.pageNumber,
+        overlayX: candidate.overlayX,
+        overlayY: candidate.overlayY,
+      }));
+      const finalizedAt = new Date().toISOString();
+      const versionNumber =
+        (await updateSaeReportStatus(report.id, "finalized", snapshot)) ||
+        (report.versions?.length || 0) + 1;
       setReports((previous) =>
         previous.map((item) =>
-          item.id === report.id ? { ...item, status: "finalized" } : item,
+          item.id === report.id
+            ? {
+                ...item,
+                status: "finalized",
+                versions: [
+                  ...(item.versions || []),
+                  {
+                    version: versionNumber,
+                    finalizedAt,
+                    candidates: snapshot,
+                  },
+                ],
+              }
+            : item,
         ),
       );
       setReturnedReportIds((prev) =>
         prev.includes(report.id) ? prev : [...prev, report.id],
       );
-      onToast("Documento SAE generado y archivado como finalizado.", "success");
+      onToast(
+        `Documento SAE generado y archivado como versión ${versionNumber}.`,
+        "success",
+      );
     } catch (e: any) {
       onToast(e.message || "No se pudo generar el documento.", "error");
     } finally {
@@ -960,6 +992,37 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       setProgress("");
     }
   };
+  const downloadArchivedVersion = async (
+    report: SaeReport,
+    version: SaeReportVersion,
+  ) => {
+    setBusy(true);
+    setProgress(`Recuperando versión ${version.version} del informe SAE…`);
+    try {
+      const bytes = await buildReturnPdfBytes(report, 0, 0, true, version);
+      const url = URL.createObjectURL(bytesToBlob(bytes));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SAE_FINAL_${report.offerNumber || report.id}_V${version.version}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      onToast(
+        `Versión ${version.version} del informe SAE recuperada correctamente.`,
+        "success",
+      );
+    } catch (error: any) {
+      onToast(
+        error.message || "No se pudo recuperar la versión archivada.",
+        "error",
+      );
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
   const reopenReport = async (report: SaeReport) => {
     try {
       await updateSaeReportStatus(report.id, "review");
@@ -1544,6 +1607,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                   </div>
                                   <div className="mt-1 text-xs text-slate-500">
                                     Oferta {r.offerNumber || "—"} · {reportCandidates.length} candidatos · {r.categoria || "Categoría no detectada"}
+                                    {r.versions?.length ? ` · ${r.versions.length} versión(es) finalizada(s)` : ""}
                                   </div>
                                 </button>
                                 <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
@@ -1580,6 +1644,22 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                     <Trash2 className="w-4 h-4" />
                                     Eliminar informe
                                   </button>
+                                  {(r.versions || []).map((version) => (
+                                    <button
+                                      key={`${r.id}-version-${version.version}`}
+                                      type="button"
+                                      onClick={() => void downloadArchivedVersion(r, version)}
+                                      className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs inline-flex gap-1 items-center"
+                                      title={
+                                        version.finalizedAt
+                                          ? `Finalizada el ${new Date(version.finalizedAt).toLocaleString("es-ES")}`
+                                          : `Versión ${version.version}`
+                                      }
+                                    >
+                                      <Download className="w-4 h-4" />
+                                      Versión {version.version}
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
                             );
