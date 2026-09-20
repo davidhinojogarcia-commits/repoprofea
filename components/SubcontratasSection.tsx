@@ -7,7 +7,7 @@ import {
   AlertCircle, Phone, Mail, Check, X, Info, BarChart3, SlidersHorizontal,
   FileSignature, Eye, Briefcase
 } from 'lucide-react';
-import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, ReporteTecnicoConfig } from '../types';
+import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, SubcontrataTrabajadorCAE, ReporteTecnicoConfig } from '../types';
 import { 
   createNewSubcontratista, 
   getSubcontrataCompliance, 
@@ -35,6 +35,18 @@ interface SubcontratasSectionProps {
 }
 
 const STORAGE_KEY = 'profea_subcontratas_v1';
+
+const CAE_PERSON_DOC_LABELS: Record<string, string> = {
+  altas_ss: 'Alta / ITA / RNT / IDC',
+  dni_nie: 'DNI / NIE',
+  aptitud_medica: 'Aptitud médica',
+  formacion_prl: 'Formación PRL',
+  entrega_epis: 'Entrega de EPIs',
+  autorizacion_maquinaria: 'Autorización de maquinaria',
+};
+
+const formatCaePersonDocument = (value: string) =>
+  CAE_PERSON_DOC_LABELS[value] || value.replace(/_/g, ' ');
 
 export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   savedObras,
@@ -105,6 +117,11 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [checklistCategoryFilter, setChecklistCategoryFilter] = useState<'todos' | 'empresa' | 'trabajadores' | 'maquinaria'>('todos');
   const [checklistStatusFilter, setChecklistStatusFilter] = useState<'todos' | 'rojos' | 'entregados'>('todos');
+  const [editingCaeWorker, setEditingCaeWorker] = useState<{
+    subId: string;
+    worker: SubcontrataTrabajadorCAE;
+    isNew: boolean;
+  } | null>(null);
 
   // Obra Management States
   const [isManageObrasModalOpen, setIsManageObrasModalOpen] = useState(false);
@@ -434,6 +451,243 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
         fechaActualizacion: new Date().toISOString()
       };
     }));
+  };
+
+  const normalizeCaeWorkerDni = (value: string) =>
+    String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const handleMergeCaeWorkers = (
+    subId: string,
+    detectedWorkers: SubcontrataTrabajadorCAE[],
+  ) => {
+    setSubcontratistas(previous =>
+      previous.map(sub => {
+        if (sub.id !== subId) return sub;
+
+        const currentWorkers = Array.isArray(sub.trabajadoresCae) ? sub.trabajadoresCae : [];
+        const merged = [...currentWorkers];
+
+        detectedWorkers.forEach(detected => {
+          const detectedDni = normalizeCaeWorkerDni(detected.dni);
+          const index = merged.findIndex(existing => {
+            const existingDni = normalizeCaeWorkerDni(existing.dni);
+            return (
+              (detectedDni && existingDni === detectedDni) ||
+              (!detectedDni && existing.id === detected.id)
+            );
+          });
+
+          if (index < 0) {
+            merged.push({
+              ...detected,
+              confirmadoPorUsuario: true,
+              accesoModificadoManualmente: false,
+            });
+            return;
+          }
+
+          const existing = merged[index];
+          const preserveManualAccess = existing.accesoModificadoManualmente === true;
+
+          merged[index] = {
+            ...existing,
+            ...detected,
+            id: existing.id,
+            nombreApellidos:
+              existing.confirmadoPorUsuario && existing.nombreApellidos
+                ? existing.nombreApellidos
+                : detected.nombreApellidos || existing.nombreApellidos,
+            dni: detected.dni || existing.dni,
+            puestoTrabajo:
+              existing.confirmadoPorUsuario && existing.puestoTrabajo
+                ? existing.puestoTrabajo
+                : detected.puestoTrabajo || existing.puestoTrabajo,
+            telefono: existing.telefono || detected.telefono || '',
+            numeroSeguridadSocial:
+              existing.numeroSeguridadSocial || detected.numeroSeguridadSocial || '',
+            documentosAcreditados: Array.from(
+              new Set([
+                ...(existing.documentosAcreditados || []),
+                ...(detected.documentosAcreditados || []),
+              ]),
+            ),
+            archivosOrigen: Array.from(
+              new Set([...(existing.archivosOrigen || []), ...(detected.archivosOrigen || [])]),
+            ),
+            estadoAcceso: preserveManualAccess ? existing.estadoAcceso : detected.estadoAcceso,
+            motivosNoAutorizado: preserveManualAccess
+              ? existing.motivosNoAutorizado || []
+              : detected.motivosNoAutorizado || [],
+            confirmadoPorUsuario: true,
+            accesoModificadoManualmente: preserveManualAccess,
+          };
+        });
+
+        return {
+          ...sub,
+          trabajadoresCae: merged,
+          fechaActualizacion: new Date().toISOString(),
+        };
+      }),
+    );
+  };
+
+  const handleSetCaeWorkerAccess = (
+    subId: string,
+    workerId: string,
+    estadoAcceso: 'autorizado' | 'no_autorizado',
+  ) => {
+    setSubcontratistas(previous =>
+      previous.map(sub => {
+        if (sub.id !== subId) return sub;
+        return {
+          ...sub,
+          trabajadoresCae: (sub.trabajadoresCae || []).map(worker =>
+            worker.id === workerId
+              ? {
+                  ...worker,
+                  estadoAcceso,
+                  motivosNoAutorizado:
+                    estadoAcceso === 'autorizado' ? [] : worker.motivosNoAutorizado || [],
+                  confirmadoPorUsuario: true,
+                  accesoModificadoManualmente: true,
+                }
+              : worker,
+          ),
+          fechaActualizacion: new Date().toISOString(),
+        };
+      }),
+    );
+
+    onToast(
+      estadoAcceso === 'autorizado'
+        ? 'Trabajador autorizado para entrar en la obra.'
+        : 'Trabajador marcado como no autorizado para entrar en la obra.',
+      'success',
+    );
+  };
+
+  const handleStartAddCaeWorker = (subId: string) => {
+    setEditingCaeWorker({
+      subId,
+      isNew: true,
+      worker: {
+        id: `cae_manual_${crypto.randomUUID?.() || Date.now()}`,
+        nombreApellidos: '',
+        dni: '',
+        puestoTrabajo: '',
+        telefono: '',
+        numeroSeguridadSocial: '',
+        fechaAltaObra: '',
+        fechaBajaObra: '',
+        observaciones: '',
+        estadoAcceso: 'no_autorizado',
+        motivosNoAutorizado: [],
+        documentosAcreditados: [],
+        archivosOrigen: [],
+        confirmadoPorUsuario: true,
+        accesoModificadoManualmente: true,
+      },
+    });
+  };
+
+  const handleStartEditCaeWorker = (subId: string, worker: SubcontrataTrabajadorCAE) => {
+    setEditingCaeWorker({
+      subId,
+      isNew: false,
+      worker: {
+        ...worker,
+        motivosNoAutorizado: [...(worker.motivosNoAutorizado || [])],
+        documentosAcreditados: [...(worker.documentosAcreditados || [])],
+        archivosOrigen: [...(worker.archivosOrigen || [])],
+      },
+    });
+  };
+
+  const handleSaveCaeWorker = () => {
+    if (!editingCaeWorker) return;
+    const worker = editingCaeWorker.worker;
+
+    if (!worker.nombreApellidos.trim() || !worker.dni.trim() || !worker.puestoTrabajo.trim()) {
+      onToast('Indique nombre y apellidos, DNI/NIE y puesto de trabajo.', 'error');
+      return;
+    }
+
+    const cleanWorker: SubcontrataTrabajadorCAE = {
+      ...worker,
+      nombreApellidos: worker.nombreApellidos.trim(),
+      dni: worker.dni.trim().toUpperCase(),
+      puestoTrabajo: worker.puestoTrabajo.trim(),
+      telefono: worker.telefono?.trim() || '',
+      numeroSeguridadSocial: worker.numeroSeguridadSocial?.trim() || '',
+      observaciones: worker.observaciones?.trim() || '',
+      confirmadoPorUsuario: true,
+    };
+
+    setSubcontratistas(previous =>
+      previous.map(sub => {
+        if (sub.id !== editingCaeWorker.subId) return sub;
+
+        const current = sub.trabajadoresCae || [];
+        const duplicateDni = current.some(
+          item =>
+            item.id !== cleanWorker.id &&
+            normalizeCaeWorkerDni(item.dni) === normalizeCaeWorkerDni(cleanWorker.dni),
+        );
+        if (duplicateDni) return sub;
+
+        const exists = current.some(item => item.id === cleanWorker.id);
+        return {
+          ...sub,
+          trabajadoresCae: exists
+            ? current.map(item => (item.id === cleanWorker.id ? cleanWorker : item))
+            : [...current, cleanWorker],
+          fechaActualizacion: new Date().toISOString(),
+        };
+      }),
+    );
+
+    const currentSub = subcontratistas.find(sub => sub.id === editingCaeWorker.subId);
+    const duplicated = (currentSub?.trabajadoresCae || []).some(
+      item =>
+        item.id !== cleanWorker.id &&
+        normalizeCaeWorkerDni(item.dni) === normalizeCaeWorkerDni(cleanWorker.dni),
+    );
+    if (duplicated) {
+      onToast('Ya existe un trabajador de esta empresa con ese DNI/NIE.', 'error');
+      return;
+    }
+
+    setEditingCaeWorker(null);
+    onToast(
+      editingCaeWorker.isNew
+        ? 'Trabajador añadido a la empresa.'
+        : 'Datos del trabajador actualizados.',
+      'success',
+    );
+  };
+
+  const handleDeleteCaeWorker = (subId: string, worker: SubcontrataTrabajadorCAE) => {
+    if (
+      !window.confirm(
+        `¿Eliminar a "${worker.nombreApellidos || worker.dni}" de los trabajadores de esta empresa?`,
+      )
+    ) {
+      return;
+    }
+
+    setSubcontratistas(previous =>
+      previous.map(sub =>
+        sub.id === subId
+          ? {
+              ...sub,
+              trabajadoresCae: (sub.trabajadoresCae || []).filter(item => item.id !== worker.id),
+              fechaActualizacion: new Date().toISOString(),
+            }
+          : sub,
+      ),
+    );
+    onToast('Trabajador eliminado de la empresa.', 'success');
   };
 
   // Copy formal requirement text to clipboard
