@@ -349,18 +349,12 @@ export async function deleteSaeReport(
   report: Pick<SaeReport, "id" | "needId">,
 ): Promise<void> {
   await uid();
-  const [storedReports, linkedCandidates] = await Promise.all([
-    supabase.query("sae_reports", {
-      query: `select=id,storage_path&need_id=eq.${encodeURIComponent(report.needId)}&id=eq.${encodeURIComponent(report.id)}&limit=1`,
-    }),
-    supabase.query("sae_candidates", {
-      query: `select=id&source_report_id=eq.${encodeURIComponent(report.id)}&existing_worker_id=not.is.null&limit=1`,
-    }),
-  ]);
-  if (linkedCandidates?.length)
-    throw new Error(
-      "Este informe contiene candidatos con trabajadores o contrataciones vinculadas. Reviértalas antes de eliminarlo.",
-    );
+  const storedReports = await supabase.query("sae_reports", {
+    query: `select=id,storage_path&need_id=eq.${encodeURIComponent(report.needId)}&id=eq.${encodeURIComponent(report.id)}&limit=1`,
+  });
+  // El trabajador creado desde SAE es un registro independiente. Al borrar el
+  // informe se eliminan solo el documento y sus candidatos importados; los
+  // trabajadores ya registrados se conservan sin cambios.
   const stored = storedReports?.[0];
   if (!stored)
     throw new Error(
