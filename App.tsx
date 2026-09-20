@@ -2108,7 +2108,7 @@ function App() {
   const guidedActiveContext = GUIDED_VIEW_CONTEXT[activeView];
 
   return (
-    <div className={`min-h-screen bg-[#f0f7ff] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative overflow-x-clip selection:bg-[#00548E]/10 selection:text-[#00548E] dark:selection:bg-blue-600/20 dark:selection:text-blue-400 flex transition-colors duration-300 ${interfaceMode === 'guided' ? 'profea-guided-mode' : 'profea-full-mode'}`}>
+    <div className={`profea-app-shell min-h-screen bg-[#f0f7ff] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative overflow-x-clip selection:bg-[#00548E]/10 selection:text-[#00548E] dark:selection:bg-blue-600/20 dark:selection:text-blue-400 flex transition-colors duration-300 ${interfaceMode === 'guided' ? 'profea-guided-mode' : 'profea-full-mode'}`}>
       {/* Subtle background pattern */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.02] dark:opacity-[0.04] z-0">
         <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#00548E 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
@@ -2144,7 +2144,7 @@ function App() {
         </div>
       )}
 
-      <div className="profea-main-shell relative z-10 flex-1 transition-all duration-300 min-w-0">
+      <div className="profea-main-shell custom-scrollbar relative z-10 flex-1 transition-all duration-300 min-w-0">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-8 pb-12">
           <PrintHeader 
             title="SISTEMA DE CONTRATACIÓN Y GESTIÓN PROFEA" 
