@@ -494,7 +494,7 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
 
 export async function createSaeReport(
   needId: string,
-  report: Omit<SaeReport, "id" | "needId" | "status" | "createdAt">,
+  report: Omit<SaeReport, "id" | "needId" | "status" | "versions" | "createdAt">,
   candidates: Omit<SaeCandidate, "id" | "needId" | "reportId">[],
 ) {
   const ownerId = await uid();
