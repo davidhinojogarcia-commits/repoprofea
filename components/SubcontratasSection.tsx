@@ -25,6 +25,7 @@ import { PageHeader } from './ui/PageHeader';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../constants';
 import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/databaseService';
 import { loadSubcontrataSettings, saveSubcontrataSettings } from '../src/services/subcontrataSettingsService';
+import { useAuthShell } from './AuthGate';
 
 interface SubcontratasSectionProps {
   savedObras: string[];
@@ -41,6 +42,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   onToast,
   onUpdateSavedObras
 }) => {
+  const { supervisorName } = useAuthShell();
   // Selected obra filter
   const [selectedObra, setSelectedObra] = useState<string>('todas');
   // Selected subcontractor for details view
@@ -148,11 +150,15 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     email: '',
     actividadGremio: 'Albañilería y Revestimientos',
     fechaInicioPrevista: '',
-    supervisorResponsable: supervisoresDisponibles[0] || '',
+    supervisorResponsable: supervisorName,
     recursoPreventivo: '',
     numeroTrabajadoresPrevistos: 2,
     notas: ''
   });
+
+  useEffect(() => {
+    setNewForm(prev => prev.supervisorResponsable === supervisorName ? prev : ({ ...prev, supervisorResponsable: supervisorName }));
+  }, [supervisorName]);
 
   // Currently active subcontractor
   const activeSubcontrata = useMemo(() => {
@@ -272,8 +278,9 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       return;
     }
 
-    const created = createNewSubcontratista(newForm.obra, newForm.supervisorResponsable, {
+    const created = createNewSubcontratista(newForm.obra, supervisorName, {
       ...newForm,
+      supervisorResponsable: supervisorName,
       checklist: checklistTemplate.map(item => ({ ...item }))
     });
 
@@ -293,7 +300,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       email: '',
       actividadGremio: 'Albañilería y Revestimientos',
       fechaInicioPrevista: '',
-      supervisorResponsable: supervisoresDisponibles[0] || '',
+      supervisorResponsable: supervisorName,
       recursoPreventivo: '',
       numeroTrabajadoresPrevistos: 2,
       notas: ''
@@ -435,7 +442,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     const text = generateRequerimientoText(
       activeSubcontrata,
       activeSubcontrata.obra,
-      activeSubcontrata.supervisorResponsable || ''
+      supervisorName
     );
     navigator.clipboard.writeText(text);
     onToast('Texto de requerimiento formal copiado al portapapeles.', 'success');
@@ -447,7 +454,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     try {
       await generateSubcontrataReportPDF(
         activeSubcontrata,
-        activeSubcontrata.supervisorResponsable,
+        supervisorName,
         undefined,
         {
           tecnicoNombre: reporteConfig.tecnicoNombre,
@@ -636,7 +643,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     }
 
     try {
-      const supervisor = subsInObra[0]?.supervisorResponsable || supervisoresDisponibles[0] || 'David Hinojo García';
+      const supervisor = supervisorName;
       await generateObraConsolidatedReportPDF(targetObra, subsInObra, supervisor, {
         tecnicoNombre: reporteConfig.tecnicoNombre,
         coordinadorNombre: reporteConfig.coordinadorNombre,
@@ -1155,7 +1162,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   <div>
                     <span className="text-slate-400 dark:text-slate-500 block">Supervisor Obra:</span>
                     <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {activeSubcontrata.supervisorResponsable || 'No asignado'}
+                      {supervisorName || 'No asignado'}
                     </span>
                   </div>
                   <div>
@@ -1643,9 +1650,10 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej: David Hinojo García"
-                    value={newForm.supervisorResponsable}
-                    onChange={e => setNewForm({ ...newForm, supervisorResponsable: e.target.value })}
+                    placeholder="Nombre y apellidos de la cuenta"
+                    value={supervisorName}
+                    readOnly
+                    aria-readonly="true"
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                 </div>

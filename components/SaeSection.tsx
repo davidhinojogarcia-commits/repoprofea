@@ -44,6 +44,7 @@ import {
   updateSaeNeed,
 } from "../src/services/saeService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
+import { useAuthShell } from "./AuthGate";
 import {
   listAnnualHiringPeriods,
   type AnnualHiringPeriodsRecord,
@@ -114,6 +115,7 @@ const loadPdfLib = async () =>
   )) as any;
 
 export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
+  const { supervisorName } = useAuthShell();
   const [needs, setNeeds] = useState<SaeNeed[]>([]);
   const [selectedNeedId, setSelectedNeedId] = useState("");
   const [reports, setReports] = useState<SaeReport[]>([]);
@@ -664,7 +666,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       const worker = {
         id: workerId,
         fechaRegistro: new Date().toISOString(),
-        supervisorResponsable: previous?.supervisorResponsable || "",
+        supervisorResponsable: supervisorName,
         numOferta: candidate.offerNumber,
         obra: canonicalWork,
         categoria: canonicalCategory,

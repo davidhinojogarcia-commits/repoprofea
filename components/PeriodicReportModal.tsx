@@ -3,6 +3,7 @@ import { X, Calendar, Briefcase, Users, GraduationCap, Building2, Download, Sear
 import { Person } from '../types';
 import { generatePeriodicReportPDF, downloadPDF } from '../src/lib/exportUtils';
 import { PrintHeader } from './PrintHeader';
+import { useAuthShell } from './AuthGate';
 
 interface PeriodicReportModalProps {
   isOpen: boolean;
@@ -27,13 +28,12 @@ const MONTHS_SPANISH = [
 ];
 
 export const PeriodicReportModal: React.FC<PeriodicReportModalProps> = ({ isOpen, onClose, people }) => {
+  const { supervisorName } = useAuthShell();
   const [selectedYear, setSelectedYear] = useState<string>('Todos');
   const [selectedMonth, setSelectedMonth] = useState<string>('Todos');
   const [modalSearchTerm, setModalSearchTerm] = useState<string>('');
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [supervisor, setSupervisor] = useState<string>(() => {
-    return people.find(p => p.supervisorResponsable)?.supervisorResponsable || '';
-  });
+  const supervisor = supervisorName;
   const [zona, setZona] = useState<string>('Zona 6');
 
   // Extract all available years from the dataset
@@ -282,8 +282,9 @@ export const PeriodicReportModal: React.FC<PeriodicReportModalProps> = ({ isOpen
                 <input
                   type="text"
                   value={supervisor}
-                  onChange={(e) => setSupervisor(e.target.value)}
-                  placeholder="Escriba el nombre del supervisor..."
+                  readOnly
+                  aria-readonly="true"
+                  placeholder="Nombre y apellidos de la cuenta"
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-xs font-semibold text-slate-800 dark:text-slate-200"
                 />
               </div>

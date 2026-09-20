@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase, type SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, KeyRound, Loader2, LogIn } from 'lucide-react';
-import { authErrorMessage, getCurrentRole, signInWithEmail, signOutUser, subscribeToAuth, type AppRole } from '../src/lib/authService';
+import { authErrorMessage, getUserProfile, signInWithEmail, signOutUser, subscribeToAuth, type AppRole, type AuthProfile } from '../src/lib/authService';
 import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
 import { hydrateStoredPdfConfig } from '../src/lib/exportUtils';
 import { clearUserActivity, initializeUserActivity, useIdleTimeout } from '../src/hooks/useIdleTimeout';
@@ -12,6 +12,8 @@ interface AuthGateProps { children: React.ReactNode; }
 export interface AuthShellValue {
   user: SupabaseUser;
   role: AppRole;
+  profile: AuthProfile;
+  supervisorName: string;
   signingOut: boolean;
   signOut: () => Promise<void>;
 }
@@ -26,6 +28,7 @@ export function useAuthShell() {
 export function AuthGate({ children }: AuthGateProps) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,8 +60,10 @@ export function AuthGate({ children }: AuthGateProps) {
 
       setError('');
       try {
-        const currentRole = await getCurrentRole();
+        const currentProfile = await getUserProfile();
+        const currentRole = currentProfile?.role || null;
         if (validationId !== authValidationRef.current) return;
+        setProfile(currentProfile);
         if (currentRole) {
           await Promise.all([
             hydrateStoredSubcontratasPreferences().catch(err => console.warn('No se pudieron precargar preferencias de subcontratas:', err)),
@@ -74,6 +79,7 @@ export function AuthGate({ children }: AuthGateProps) {
       } catch {
         if (validationId !== authValidationRef.current) return;
         setRole(null);
+        setProfile(null);
         setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
         await signOutUser().catch(() => undefined);
       } finally {
@@ -86,6 +92,7 @@ export function AuthGate({ children }: AuthGateProps) {
         ++authValidationRef.current;
         setUser(null);
         setRole(null);
+        setProfile(null);
         setSigningOut(false);
         setLoading(false);
         if (explicitSignOutRef.current) {
@@ -102,6 +109,7 @@ export function AuthGate({ children }: AuthGateProps) {
         ++authValidationRef.current;
         setUser(currentUser);
         setRole(null);
+        setProfile(null);
         setPasswordRecovery(true);
         setError('');
         setNotice('');
@@ -180,6 +188,7 @@ export function AuthGate({ children }: AuthGateProps) {
       setPasswordRecovery(false);
       setUser(null);
       setRole(null);
+      setProfile(null);
       setNewPassword('');
       setConfirmPassword('');
       setShowNewPassword(false);
@@ -231,12 +240,17 @@ export function AuthGate({ children }: AuthGateProps) {
     );
   }
 
-  if (user && role) {
+  if (user && role && profile) {
+    const supervisorName = [profile.nombre, profile.apellidos]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
     const minutes = Math.floor(seconds / 60);
     const secs = String(seconds % 60).padStart(2, '0');
     return (
-      <AuthShellContext.Provider value={{ user, role, signingOut, signOut: handleSignOut }}>
+      <AuthShellContext.Provider value={{ user, role, profile, supervisorName, signingOut, signOut: handleSignOut }}>
         <div className="min-h-screen">{children}</div>
         {warningOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-title">

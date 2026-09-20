@@ -5,6 +5,7 @@ import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, normalizeIban, normalizeSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
 import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
+import { useAuthShell } from './AuthGate';
 
 interface RegistrationFormProps {
   onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>) => void;
@@ -112,6 +113,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   savedCategorias,
   people = []
 }) => {
+  const { supervisorName } = useAuthShell();
   const today = new Date();
   const nextHiringMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   const savedFortnight = typeof window !== 'undefined'
@@ -122,7 +124,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const defaultQYear = nextHiringMonth.getFullYear().toString();
 
   const [formData, setFormData] = useState({
-    supervisorResponsable: '',
+    supervisorResponsable: supervisorName,
     numOferta: '',
     obra: '',
     categoria: 'Peón',
@@ -150,6 +152,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [qMonth, setQMonth] = useState(defaultQMonth);
   const [qYear, setQYear] = useState(defaultQYear);
   const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
+
+  useEffect(() => {
+    setFormData(prev => prev.supervisorResponsable === supervisorName ? prev : ({ ...prev, supervisorResponsable: supervisorName }));
+  }, [supervisorName]);
 
   useEffect(() => {
     if (qType === '1ª' || qType === '2ª') {
@@ -349,7 +355,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           setFormData(prev => ({
             ...prev,
             dni: value,
-            supervisorResponsable: matchedPerson.supervisorResponsable || prev.supervisorResponsable,
+            supervisorResponsable: supervisorName,
             // Keep contract specific details for the new contract
             numOferta: prev.numOferta,
             obra: prev.obra,
@@ -453,7 +459,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     }
     
     // Clean up fields if medical checkup is not needed
-    const finalData = { ...formData };
+    const finalData = { ...formData, supervisorResponsable: supervisorName };
     if (finalData.necesitaReconocimiento === 'No') {
       finalData.citaDia = '';
       finalData.citaHora = '';
@@ -534,10 +540,11 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           <input
             type="text"
             name="supervisorResponsable"
-            value={formData.supervisorResponsable}
-            onChange={handleChange}
+            value={supervisorName}
+            readOnly
+            aria-readonly="true"
             required
-            placeholder="Nombre completo del supervisor"
+            placeholder="Nombre y apellidos de la cuenta"
             className="w-full p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/5 transition-all text-sm font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400"
           />
         </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Save, X, Briefcase, MapPin, AlertCircle, FileText, Award, HardHat, CheckCircle2, Pencil, Users } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuthShell } from './AuthGate';
 
 interface BulkEditModalProps {
   selectedPeople: Person[];
@@ -31,9 +32,10 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
   savedTelefonos,
   savedCategorias
 }) => {
+  const { supervisorName } = useAuthShell();
   // We keep track of which fields the user actually wants to update.
   const [fieldsToUpdate, setFieldsToUpdate] = useState<{ [key: string]: boolean }>({
-    supervisorResponsable: false,
+    supervisorResponsable: true,
     numOferta: false,
     obra: false,
     categoria: false,
@@ -48,7 +50,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
   });
 
   // State values for each potential field
-  const [supervisorResponsable, setSupervisorResponsable] = useState('');
+  const [supervisorResponsable, setSupervisorResponsable] = useState(supervisorName);
   const [numOferta, setNumOferta] = useState('');
   const [obra, setObra] = useState('');
   const [categoria, setCategoria] = useState('Peón');
@@ -96,7 +98,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
         return allSame ? firstVal : '';
       };
 
-      setSupervisorResponsable((getCommonValue('supervisorResponsable') as string) || '');
+      setSupervisorResponsable(supervisorName);
       setNumOferta((getCommonValue('numOferta') as string) || '');
       setObra((getCommonValue('obra') as string) || '');
       
@@ -151,7 +153,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
 
       // Reset checked states
       setFieldsToUpdate({
-        supervisorResponsable: false,
+        supervisorResponsable: true,
         numOferta: false,
         obra: false,
         categoria: false,
@@ -205,9 +207,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
     // Prepare updates payload
     const updates: Partial<Person> = {};
 
-    if (fieldsToUpdate.supervisorResponsable) {
-      updates.supervisorResponsable = supervisorResponsable;
-    }
+    updates.supervisorResponsable = supervisorName;
     if (fieldsToUpdate.numOferta) {
       updates.numOferta = numOferta;
     }
@@ -320,9 +320,10 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
                   <input 
                     type="checkbox"
                     id="chk_supervisor"
-                    checked={fieldsToUpdate.supervisorResponsable}
-                    onChange={() => handleToggleField('supervisorResponsable')}
-                    className="w-5 h-5 mt-1 rounded border-slate-300 text-brand-primary accent-[#00548E] cursor-pointer"
+                    checked
+                    disabled
+                    aria-label="Supervisor asignado por la cuenta"
+                    className="w-5 h-5 mt-1 rounded border-slate-300 text-brand-primary accent-[#00548E] cursor-not-allowed"
                   />
                   <div className="flex-1 min-w-0 space-y-2">
                     <label htmlFor="chk_supervisor" className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer select-none">
@@ -331,10 +332,11 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
                     {fieldsToUpdate.supervisorResponsable && (
                       <input
                         type="text"
-                        value={supervisorResponsable}
-                        onChange={(e) => setSupervisorResponsable(e.target.value)}
-                        required={fieldsToUpdate.supervisorResponsable}
-                        placeholder="Nombre del supervisor..."
+                        value={supervisorName}
+                        readOnly
+                        aria-readonly="true"
+                        required
+                        placeholder="Nombre y apellidos de la cuenta"
                         className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-[#00548E] text-sm text-slate-800 dark:text-slate-100"
                       />
                     )}
