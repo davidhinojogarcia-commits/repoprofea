@@ -201,7 +201,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
 
   return (
     <div
-      id="modal-review-ia-checklist-changes"
+      id="modal-review-checklist-changes"
       className="fixed inset-0 z-[130] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
       role="dialog"
       aria-modal="true"

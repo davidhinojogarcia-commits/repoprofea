@@ -988,7 +988,7 @@ export const generateSubcontrataReportPDF = async (
         `Caduca: ${formatDate(item.fechaCaducidad)}`;
     }
     if (item.detectadoPorIA) {
-      notasStr = (notasStr ? notasStr + " | " : "") + "✓ Verificado con IA";
+      notasStr = (notasStr ? notasStr + " | " : "") + "✓ Verificado";
     }
 
     return [
@@ -1965,7 +1965,7 @@ export const generateObraConsolidatedReportPDF = async (
           "⚠️ Documento no legible, solicitar reintento.";
       } else if (item.detectadoPorIA) {
         vigenciaObs =
-          (vigenciaObs ? vigenciaObs + " · " : "") + "✓ Verificado IA";
+          (vigenciaObs ? vigenciaObs + " · " : "") + "✓ Verificado";
       }
 
       table2Data.push([

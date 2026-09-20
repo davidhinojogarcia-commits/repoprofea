@@ -211,7 +211,7 @@ function deterministic(files: InputFile[], checklist: Checklist[]) {
       workerMap.set(dni, existing);
     }
   }
-  return { documents, workers: Array.from(workerMap.values()), summary: 'Identificación determinista por archivo, fechas y DNIs completada; se complementa con IA cuando está disponible.' };
+  return { documents, workers: Array.from(workerMap.values()), summary: 'Identificación automática por archivo, fechas y DNIs completada; se complementa con análisis avanzado cuando está disponible.' };
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {

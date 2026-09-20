@@ -58,7 +58,7 @@ async function startServer() {
   const getGeminiClient = () => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("La clave de la API de Gemini (GEMINI_API_KEY) no está configurada en el servidor.");
+      throw new Error("El servicio de análisis automático no está configurado en el servidor.");
     }
     return new GoogleGenAI({
       apiKey: apiKey,
@@ -148,7 +148,7 @@ async function startServer() {
       return recovered;
     }
 
-    throw new Error("La IA no devolvió un formato JSON válido.");
+    throw new Error("El servicio automático no devolvió un formato válido.");
   };
 
   // Resilient caller for Gemini API with automatic exponential backoff, jitter, and fallback models
@@ -218,11 +218,11 @@ async function startServer() {
     }
 
     // Format human-friendly error if all retries and fallback models failed
-    let userFriendlyMsg = "El servicio de Inteligencia Artificial de Google está experimentando alta demanda momentáneamente. Por favor, vuelva a intentarlo en unos segundos.";
+    let userFriendlyMsg = "El servicio de análisis automático está experimentando alta demanda momentáneamente. Por favor, vuelva a intentarlo en unos segundos.";
     const rawErrorString = lastError?.message || String(lastError);
 
     if (rawErrorString.includes("429") || rawErrorString.includes("RESOURCE_EXHAUSTED")) {
-      userFriendlyMsg = "Límite de solicitudes de IA alcanzado temporalmente. Por favor, espere unos instantes antes de volver a intentarlo.";
+      userFriendlyMsg = "Límite de solicitudes del servicio automático alcanzado temporalmente. Por favor, espere unos instantes antes de volver a intentarlo.";
     } else {
       try {
         const jsonMatch = rawErrorString.match(/\{[\s\S]*\}/);
@@ -230,9 +230,9 @@ async function startServer() {
           const parsed = JSON.parse(jsonMatch[0]);
           if (parsed?.error?.message) {
             if (parsed.error.code === 503 || parsed.error.status === "UNAVAILABLE" || parsed.error.message.includes("high demand")) {
-              userFriendlyMsg = "El servicio de Inteligencia Artificial de Google está experimentando alta demanda momentáneamente. Por favor, vuelva a intentarlo en unos segundos.";
+              userFriendlyMsg = "El servicio de análisis automático está experimentando alta demanda momentáneamente. Por favor, vuelva a intentarlo en unos segundos.";
             } else {
-              userFriendlyMsg = `Error del servicio IA: ${parsed.error.message}`;
+              userFriendlyMsg = `Error del servicio de análisis: ${parsed.error.message}`;
             }
           }
         }
@@ -256,7 +256,7 @@ async function startServer() {
 
       if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({ 
-          error: "La clave de la API de Gemini (GEMINI_API_KEY) no está configurada en el servidor." 
+          error: "El servicio de análisis automático no está configurado en el servidor." 
         });
       }
 
@@ -333,7 +333,7 @@ Devuelve la información estrictamente como un array JSON de objetos con estos c
       res.json({ success: true, workers });
     } catch (error: any) {
       console.error("Error recognizing workers:", error);
-      res.status(500).json({ error: error.message || "Error procesando el reconocimiento con IA." });
+      res.status(500).json({ error: error.message || "Error procesando el reconocimiento automático." });
     }
   });
 
@@ -347,7 +347,7 @@ Devuelve la información estrictamente como un array JSON de objetos con estos c
 
       if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({ 
-          error: "La clave de la API de Gemini (GEMINI_API_KEY) no está configurada en el servidor." 
+          error: "El servicio de análisis automático no está configurado en el servidor." 
         });
       }
 
@@ -430,7 +430,7 @@ Genera y devuelve la información de todos los trabajadores encontrados en el PD
       res.json({ success: true, workers });
     } catch (error: any) {
       console.error("Error parsing PDF workers:", error);
-      res.status(500).json({ error: error.message || "Error al procesar el PDF con IA." });
+      res.status(500).json({ error: error.message || "Error al procesar el PDF automáticamente." });
     }
   });
 
@@ -444,7 +444,7 @@ Genera y devuelve la información de todos los trabajadores encontrados en el PD
 
       if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({ 
-          error: "La clave de la API de Gemini (GEMINI_API_KEY) no está configurada en el servidor." 
+          error: "El servicio de análisis automático no está configurado en el servidor." 
         });
       }
 
@@ -460,7 +460,7 @@ Genera y devuelve la información de todos los trabajadores encontrados en el PD
       const currentYear = now.getFullYear();
 
       const promptText = `
-Eres un asistente de planificación de citas médicas con inteligencia artificial avanzada para el sistema de contratación PROFEA de la Diputación de Cádiz.
+Eres un asistente avanzado de planificación de citas médicas para el sistema de contratación PROFEA de la Diputación de Cádiz.
 Tu tarea es comprender, analizar y procesar una orden de planificación de citas médicas libre en lenguaje natural dada por el usuario, y generar una lista de citas médicas planificadas de manera óptima según sus instrucciones.
 
 Las citas médicas son ANÓNIMAS ya que aún no se ha contratado formalmente a los trabajadores (se les entrega el resguardo en blanco para rellenar a mano el día de la firma de su contrato). Por tanto, tu trabajo es calcular y distribuir la cantidad exacta de citas requeridas en la orden, con sus correspondientes fechas, horas escalonadas, número de obra/oferta y centro médico.
@@ -558,7 +558,7 @@ Retorna únicamente el array de objetos JSON que cumpla el formato requerido. No
       res.json({ success: true, schedule });
     } catch (error: any) {
       console.error("Error scheduling appointments with AI:", error);
-      res.status(500).json({ error: error.message || "Error al procesar la planificación con IA." });
+      res.status(500).json({ error: error.message || "Error al procesar la planificación automática." });
     }
   });
 
@@ -742,7 +742,7 @@ Retorna únicamente el array de objetos JSON que cumpla el formato requerido. No
 
       if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({ 
-          error: "La clave de la API de Gemini (GEMINI_API_KEY) no está configurada en el servidor." 
+          error: "El servicio de análisis automático no está configurado en el servidor." 
         });
       }
 
@@ -1049,7 +1049,7 @@ Devuelve única y estrictamente un array JSON estructurado conforme al esquema d
       });
     } catch (error: any) {
       console.error("Error parsing medical records PDF:", error);
-      res.status(500).json({ error: error.message || "Error al procesar los reconocimientos médicos del documento con IA." });
+      res.status(500).json({ error: error.message || "Error al procesar automáticamente los reconocimientos médicos del documento." });
     }
   });
 
@@ -1402,7 +1402,7 @@ Devuelve única y estrictamente un array JSON estructurado conforme al esquema d
               archivoOrigen: f.name,
               confianza: isBlurry ? 'baja' : 'media',
               esLegible: !isBlurry,
-              motivoIlegible: isBlurry ? 'Documento borroso o desenfocado, ilegible para la IA.' : undefined,
+              motivoIlegible: isBlurry ? 'Documento borroso o desenfocado, ilegible para el análisis automático.' : undefined,
               solicitarReintento: isBlurry
             });
           }

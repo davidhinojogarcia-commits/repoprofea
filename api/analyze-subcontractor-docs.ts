@@ -515,7 +515,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       } catch (error) {
         console.warn(`[CAE] OCR no disponible para ${file.name}:`, error instanceof Error ? error.message : 'error');
         const hasLocalText = normalizeText(nativeText).length >= 40;
-        ocr = normalizeOcr({ legible: hasLocalText, quality: hasLocalText ? 'media' : 'baja', pageCount: 1, plainText: nativeText, observations: hasLocalText ? 'Texto recuperado localmente; el servicio OCR/IA visual no respondió.' : 'Servicio OCR/IA visual no disponible para este archivo. No se infiere que el documento sea borroso.', dates: [], identifiers: [], workers: [], signatures: [], stamps: [] });
+        ocr = normalizeOcr({ legible: hasLocalText, quality: hasLocalText ? 'media' : 'baja', pageCount: 1, plainText: nativeText, observations: hasLocalText ? 'Texto recuperado localmente; el servicio de análisis visual no respondió.' : 'Servicio de análisis visual no disponible para este archivo. No se infiere que el documento sea borroso.', dates: [], identifiers: [], workers: [], signatures: [], stamps: [] });
         providers.add('deterministic');
       }
 
@@ -537,7 +537,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       allWorkers.push(...workers.map(worker => ({ ...worker, archivoOrigen: file.name })));
       const fileSummary = String(assessed?.summary || '').trim();
       if (fileSummary) summaries.push(fileSummary);
-      if (!ocr.legible && !String(ocr.observations || '').includes('Servicio OCR/IA visual no disponible')) {
+      if (!ocr.legible && !String(ocr.observations || '').includes('Servicio de análisis visual no disponible')) {
         documentosIlegibles.push({ archivo: file.name, motivo: ocr.observations || 'OCR insuficiente.', docRelacionado: validated[0]?.docId || '', confianza: ocr.quality });
       }
     }
