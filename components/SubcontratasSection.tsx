@@ -1486,6 +1486,227 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 </div>
               </div>
 
+              {/* Trabajadores de la empresa */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                {(() => {
+                  const companyWorkers = activeSubcontrata.trabajadoresCae || [];
+                  const authorizedCount = companyWorkers.filter(worker => worker.estadoAcceso === 'autorizado').length;
+                  const deniedCount = companyWorkers.length - authorizedCount;
+
+                  return (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shrink-0">
+                            <UserCheck className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-base font-black text-slate-900 dark:text-white">
+                              Trabajadores de la empresa
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                              Relación nominal del personal de la subcontrata y autorización individual de acceso a obra.
+                              Los trabajadores detectados en ITA/RNT/IDC se incorporan aquí al confirmar el cotejo.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleStartAddCaeWorker(activeSubcontrata.id)}
+                          className="ui-button-primary inline-flex items-center justify-center gap-2 shrink-0"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Añadir trabajador
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">
+                          Total: {companyWorkers.length}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-bold">
+                          Autorizados: {authorizedCount}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 font-bold">
+                          No autorizados: {deniedCount}
+                        </span>
+                      </div>
+
+                      {companyWorkers.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-6 text-center">
+                          <UserCheck className="w-9 h-9 mx-auto text-slate-400 mb-2" />
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                            Todavía no hay trabajadores asociados a esta empresa.
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Puede añadirlos manualmente o incorporarlos automáticamente al analizar y guardar ITA/RNT/IDC.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {companyWorkers.map(worker => (
+                            <div
+                              key={worker.id}
+                              className={`rounded-xl border p-4 ${
+                                worker.estadoAcceso === 'autorizado'
+                                  ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/35 dark:bg-emerald-950/10'
+                                  : 'border-rose-200 dark:border-rose-900/60 bg-rose-50/35 dark:bg-rose-950/10'
+                              }`}
+                            >
+                              <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                                      {worker.nombreApellidos || 'Nombre pendiente'}
+                                    </h4>
+                                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                      {worker.dni || 'DNI/NIE pendiente'}
+                                    </span>
+                                    {worker.confianza && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold">
+                                        Detección {worker.confianza}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3 text-xs">
+                                    <div>
+                                      <span className="block text-slate-400">Puesto de trabajo</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.puestoTrabajo || 'Pendiente'}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="block text-slate-400">Teléfono</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.telefono || 'No indicado'}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="block text-slate-400">Nº Seguridad Social</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.numeroSeguridadSocial || 'No indicado'}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="block text-slate-400">Periodo en obra</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.fechaAltaObra || worker.fechaBajaObra
+                                          ? `${worker.fechaAltaObra || '—'} → ${worker.fechaBajaObra || '—'}`
+                                          : 'No indicado'}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  {worker.documentosAcreditados?.length > 0 && (
+                                    <div className="mt-3">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                        Documentación acreditada
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5 mt-1">
+                                        {worker.documentosAcreditados.map(documento => (
+                                          <span
+                                            key={documento}
+                                            className="px-2 py-1 rounded-md text-[10px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                                          >
+                                            {formatCaePersonDocument(documento)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {worker.archivosOrigen?.length > 0 && (
+                                    <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                      <strong>Archivos origen:</strong> {worker.archivosOrigen.join(' · ')}
+                                    </p>
+                                  )}
+
+                                  {worker.estadoAcceso === 'no_autorizado' && (
+                                    <div className="mt-3 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white/70 dark:bg-rose-950/20 p-2.5">
+                                      <p className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                                        Motivo / incidencias
+                                      </p>
+                                      <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">
+                                        {worker.motivosNoAutorizado?.length
+                                          ? worker.motivosNoAutorizado.join(' · ')
+                                          : 'Sin motivo indicado. Puede añadirlo desde Editar datos.'}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {worker.observaciones && (
+                                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                                      <strong>Observaciones:</strong> {worker.observaciones}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="w-full xl:w-[290px] shrink-0 space-y-2">
+                                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                    Autorización para entrar en obra
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleSetCaeWorkerAccess(activeSubcontrata.id, worker.id, 'autorizado')
+                                      }
+                                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors ${
+                                        worker.estadoAcceso === 'autorizado'
+                                          ? 'bg-emerald-600 border-emerald-700 text-white shadow-sm'
+                                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      <ShieldCheck className="w-4 h-4" />
+                                      Autorizado
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleSetCaeWorkerAccess(activeSubcontrata.id, worker.id, 'no_autorizado')
+                                      }
+                                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors ${
+                                        worker.estadoAcceso === 'no_autorizado'
+                                          ? 'bg-rose-600 border-rose-700 text-white shadow-sm'
+                                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      <XCircle className="w-4 h-4" />
+                                      No autorizado
+                                    </button>
+                                  </div>
+
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditCaeWorker(activeSubcontrata.id, worker)}
+                                      className="flex-1 min-h-10 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 inline-flex items-center justify-center gap-1.5"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      Editar datos
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteCaeWorker(activeSubcontrata.id, worker)}
+                                      className="min-h-10 px-3 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400"
+                                      title="Eliminar trabajador"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
               {/* FileUploaderIA Component: Drag and drop PDFs, AI extraction against legal checklist, and red alert highlighting */}
               <FileUploaderIA
                 subcontrata={activeSubcontrata}
@@ -1504,6 +1725,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 onToast={onToast}
                 onFilterMissingInRed={() => setChecklistStatusFilter('rojos')}
                 onOpenRequerimiento={() => setIsRequerimientoModalOpen(true)}
+                onWorkersUpdate={workers => handleMergeCaeWorkers(activeSubcontrata.id, workers)}
               />
 
               {/* Checklist Legal Controls & Items */}
