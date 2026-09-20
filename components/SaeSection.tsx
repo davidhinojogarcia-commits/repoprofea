@@ -523,20 +523,9 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   };
 
   const removeReport = async (report: SaeReport) => {
-    const linked = candidates.filter(
-      (candidate) =>
-        candidate.reportId === report.id && candidate.linkedWorkerId,
-    );
-    if (linked.length) {
-      onToast(
-        `No se puede eliminar: ${linked.length} candidato(s) de este informe ya generaron una contratación. Reviértalas primero.`,
-        "error",
-      );
-      return;
-    }
     if (
       !window.confirm(
-        `¿Eliminar exclusivamente el informe “${report.fileName}” y sus candidatos importados? La solicitud de mano de obra se conservará.`,
+        `¿Eliminar exclusivamente el informe “${report.fileName}” y sus candidatos importados? La solicitud de mano de obra y los trabajadores ya registrados se conservarán sin cambios.`,
       )
     )
       return;
@@ -545,7 +534,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       await deleteSaeReport(report);
       await refresh(selectedNeedId);
       onToast(
-        "Informe SAE eliminado. La solicitud de mano de obra se conserva.",
+        "Informe SAE eliminado. La solicitud y los trabajadores registrados se conservan.",
         "success",
       );
     } catch (error: any) {
