@@ -88,6 +88,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const [qType, setQType] = useState(() => parsedQuincena.qType);
   const [qMonth, setQMonth] = useState(() => parsedQuincena.qMonth);
   const [qYear, setQYear] = useState(() => parsedQuincena.qYear);
+  const [hasManualQuincenaChange, setHasManualQuincenaChange] = useState(false);
   const [annualHiringPeriods, setAnnualHiringPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isManualCategory, setIsManualCategory] = useState(() => {
@@ -98,6 +99,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
   useEffect(() => {
     if (person) {
+      setHasManualQuincenaChange(false);
       const isPredefined = person.categoria === 'Peón' || person.categoria === 'Oficial de 1ª';
       setIsManualCategory(!isPredefined && !!person.categoria);
       const defaultNecesitaRec = person.necesitaReconocimiento || (person.citaDia || person.sitioReconocimiento ? 'Sí' : 'No');
@@ -155,14 +157,11 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     if (!formData) return;
 
     const selectedQuincena = `${qType} ${qMonth} ${qYear}`;
-    const originalQuincena = person?.quincena || '';
     const hasStoredContractDates = Boolean(person?.periodoInicio && person?.periodoFin);
-    const selectionChanged = selectedQuincena !== originalQuincena;
 
-    // Preserve historical/consolidated contracts. Auto-fill only pending contract
-    // dates or when the user deliberately changes the target fortnight.
-    if (hasStoredContractDates && !selectionChanged) {
-      setFormData(prev => prev ? ({ ...prev, quincena: selectedQuincena }) : null);
+    // Al abrir una ficha existente no recalculamos ni la quincena ni las fechas.
+    // Solo lo hacemos si el supervisor cambia expresamente la quincena.
+    if (hasStoredContractDates && !hasManualQuincenaChange) {
       return;
     }
 
@@ -187,7 +186,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       periodoInicio,
       periodoFin,
     }) : null);
-  }, [qType, qMonth, qYear, annualHiringPeriods, person]);
+  }, [qType, qMonth, qYear, annualHiringPeriods, person, hasManualQuincenaChange]);
 
 
 
@@ -244,6 +243,24 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const essentialExistingFields: Array<{ key: keyof Person; label: string }> = [
+      { key: 'apellidosNombre', label: 'Apellidos y nombre' },
+      { key: 'dni', label: 'DNI/NIE' },
+      { key: 'obra', label: 'Obra' },
+      { key: 'categoria', label: 'Categoría' },
+      { key: 'numOferta', label: 'Nº de oferta' },
+      { key: 'supervisorResponsable', label: 'Supervisor responsable' },
+      { key: 'periodoInicio', label: 'Fecha de inicio' },
+      { key: 'periodoFin', label: 'Fecha de fin' },
+    ];
+    const emptiedExistingField = essentialExistingFields.find(({ key }) =>
+      String(person?.[key] ?? '').trim() && !String(formData[key] ?? '').trim()
+    );
+    if (emptiedExistingField) {
+      alert(`⚠️ ${emptiedExistingField.label} ya constaba en la ficha y no puede dejarse vacío. Si necesitas corregirlo, introduce el nuevo valor.`);
+      return;
+    }
     if (formData.reconocimientoEstado === 'No Apto') {
       formData.documentacionCompleta = 'No';
     }
@@ -357,7 +374,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                     {isManualCategory && <div className="animate-in fade-in slide-in-from-top-2 duration-200"><input type="text" name="categoria" value={formData.categoria} onChange={handleChange} list="categoriasListEdit" placeholder="Especifique categoría..." className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-[#00548E] dark:focus:border-blue-500 transition-all text-sm text-slate-800 dark:text-slate-100" /><datalist id="categoriasListEdit">{cleanCategorias.filter(c => c !== 'Peón' && c !== 'Oficial de 1ª').map((cat, i) => <option key={i} value={cat} />)}</datalist></div>}
                   </div>
                 </div>
-                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Quincena</label><div className="flex gap-1.5"><select value={qType} onChange={(e) => setQType(e.target.value)} className="w-1/3 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-[10px] font-bold text-slate-800 dark:text-slate-100"><option value="1ª">1ª</option><option value="2ª">2ª</option><option value="Mes">Mes</option></select><select value={qMonth} onChange={(e) => setQMonth(e.target.value)} className="w-1/3 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-[10px] font-bold text-slate-800 dark:text-slate-100">{MONTHS.map(m => <option key={m} value={m}>{m.substring(0, 3)}</option>)}</select><input type="number" value={qYear} onChange={(e) => setQYear(e.target.value)} className="w-1/3 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-[10px] font-bold text-slate-800 dark:text-slate-100" /></div></div>
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Quincena</label><div className="flex gap-1.5"><select value={qType} onChange={(e) => { setHasManualQuincenaChange(true); setQType(e.target.value); }} className="w-1/3 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-[10px] font-bold text-slate-800 dark:text-slate-100"><option value="1ª">1ª</option><option value="2ª">2ª</option><option value="Mes">Mes</option></select><select value={qMonth} onChange={(e) => { setHasManualQuincenaChange(true); setQMonth(e.target.value); }} className="w-1/3 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-[10px] font-bold text-slate-800 dark:text-slate-100">{MONTHS.map(m => <option key={m} value={m}>{m.substring(0, 3)}</option>)}</select><input type="number" value={qYear} onChange={(e) => { setHasManualQuincenaChange(true); setQYear(e.target.value); }} className="w-1/3 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-[10px] font-bold text-slate-800 dark:text-slate-100" /></div></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Inicio</label><input type="date" name="periodoInicio" value={formData.periodoInicio} onChange={handleChange} className={`w-full p-2.5 bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none transition-all text-sm text-slate-800 dark:text-slate-200 ${isPeriodInvalid ? 'border-red-500 focus:border-red-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#00548E] dark:focus:border-blue-500'}`} /></div><div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Fin</label><input type="date" name="periodoFin" value={formData.periodoFin} onChange={handleChange} className={`w-full p-2.5 bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none transition-all text-sm text-slate-800 dark:text-slate-200 ${isPeriodInvalid ? 'border-red-500 focus:border-red-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#00548E] dark:focus:border-blue-500'}`} /></div></div>
               {isPeriodInvalid && <div className="flex items-center gap-1.5 text-xs text-red-600 font-semibold mt-1"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" /><span>La fecha de fin de contrato no puede ser anterior a la fecha de inicio.</span></div>}
