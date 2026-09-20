@@ -279,7 +279,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
             citaDia: item.citaDia,
             citaHora: item.citaHora,
             sitioReconocimiento: item.sitioReconocimiento,
-            supervisorResponsable: item.supervisorResponsable,
+            supervisorResponsable: supervisorName,
             telefono: item.telefonoSupervisor || '',
             diaComienzo: item.diaComienzo,
             workStartHour: workStartHour,
@@ -287,16 +287,9 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           };
         });
 
-        const supervisorPhones: { [key: string]: string } = {};
-        enrichedSchedule.forEach(item => {
-          if (item.supervisorResponsable) {
-            if (item.telefonoSupervisor) {
-              supervisorPhones[item.supervisorResponsable] = item.telefonoSupervisor;
-            } else if (!supervisorPhones[item.supervisorResponsable] && savedTelefonos[0]) {
-              supervisorPhones[item.supervisorResponsable] = savedTelefonos[0];
-            }
-          }
-        });
+        const supervisorPhones: { [key: string]: string } = {
+          [supervisorName]: accountSupervisorPhone || enrichedSchedule.find(item => item.telefonoSupervisor)?.telefonoSupervisor || savedTelefonos[0] || '',
+        };
 
         const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour);
         doc.save(filename);
@@ -373,14 +366,9 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       diaContratacion: item.diaContratacion
     }));
 
-    const supervisorPhones: { [key: string]: string } = {};
-    if (manualSupervisor) {
-      if (manualTelefonoSupervisor) {
-        supervisorPhones[manualSupervisor] = manualTelefonoSupervisor;
-      } else if (savedTelefonos[0]) {
-        supervisorPhones[manualSupervisor] = savedTelefonos[0];
-      }
-    }
+    const supervisorPhones: { [key: string]: string } = {
+      [supervisorName]: accountSupervisorPhone || manualTelefonoSupervisor || savedTelefonos[0] || '',
+    };
 
     const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour);
     doc.save(filename);
@@ -852,13 +840,14 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                   </div>
 
                   <div className="space-y-1.5 col-span-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Supervisor (Opcional)</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Supervisor responsable</label>
                     <input 
                       type="text"
-                      value={manualSupervisor}
-                      onChange={(e) => setManualSupervisor(e.target.value)}
-                      placeholder="Ej: Francisco Gómez"
-                      className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none"
+                      value={supervisorName}
+                      readOnly
+                      aria-readonly="true"
+                      placeholder="Nombre y apellidos de la cuenta"
+                      className="w-full p-2.5 text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 cursor-default"
                     />
                   </div>
 
