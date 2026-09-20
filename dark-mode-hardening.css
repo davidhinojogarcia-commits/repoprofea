@@ -945,3 +945,32 @@ html:not(.dark) #root .profea-renunciation-modal button.profea-renunciation-prim
   color: #fda4af !important;
   -webkit-text-fill-color: #fda4af !important;
 }
+
+
+/* Directorio · modo diurno: todos los iconos de acción en negro.
+ * Evita que utilidades/estados heredados dejen dibujos blancos sobre fondos claros. */
+html:not(.dark) #root .profea-worker-card-action {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action .profea-worker-card-action-icon,
+html:not(.dark) #root .profea-worker-card-action > svg {
+  color: #111827 !important;
+  stroke: #111827 !important;
+  fill: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html:not(.dark) #root .profea-worker-card-action .profea-worker-card-action-label {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
+
+/* Mantener también negro el icono de eliminar sobre su fondo rojo claro. */
+html:not(.dark) #root .profea-worker-card-action--delete .profea-worker-card-action-icon,
+html:not(.dark) #root .profea-worker-card-action--delete > svg {
+  color: #111827 !important;
+  stroke: #111827 !important;
+}
