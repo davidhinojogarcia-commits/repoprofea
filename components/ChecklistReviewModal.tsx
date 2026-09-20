@@ -202,13 +202,13 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
   return (
     <div
       id="modal-review-checklist-changes"
-      className="fixed inset-0 z-[130] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+      className="fixed inset-0 z-[130] bg-white dark:bg-slate-950 flex items-stretch justify-stretch p-0"
       role="dialog"
       aria-modal="true"
       aria-labelledby="cae-review-title"
     >
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-[1500px] h-[95dvh] flex flex-col overflow-hidden">
-        <div className="profea-cae-review-header bg-[var(--ui-gradient-brand)] p-4 sm:p-5 text-white shrink-0">
+      <div className="bg-white dark:bg-slate-900 w-screen h-[100dvh] max-w-none rounded-none shadow-none border-0 flex flex-col overflow-hidden">
+        <div className="profea-cae-review-header bg-[var(--ui-gradient-brand)] px-4 py-3 sm:px-5 sm:py-4 text-white shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <div className="p-2.5 bg-white/10 rounded-xl border border-white/20 shrink-0">
@@ -217,8 +217,11 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 id="cae-review-title" className="text-lg font-bold text-white">
-                    Revisión del análisis automático CAE
+                    Revisión documental CAE
                   </h3>
+                  <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wide bg-sky-400/20 border border-sky-200/30 rounded-full">
+                    Pantalla completa
+                  </span>
                   <span className="px-2 py-0.5 text-xs font-bold bg-white/15 border border-white/20 rounded-full">
                     Documento {activeIndex + 1} de {items.length}
                   </span>
@@ -240,7 +243,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-white/15 text-xs">
+          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/15 text-xs">
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 rounded-lg">
               <FileCheck className="w-4 h-4 text-blue-200" />
               <span>
@@ -281,7 +284,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
           esta revisión.
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(400px,0.75fr)] xl:grid-cols-[minmax(0,1.7fr)_minmax(440px,0.8fr)]">
           <section className="min-h-0 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 flex flex-col">
             <div className="shrink-0 px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -310,7 +313,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto bg-slate-100 dark:bg-slate-950 p-3">
+            <div className="flex-1 min-h-0 overflow-auto bg-slate-100 dark:bg-slate-950 p-2">
               {currentFile && previewUrl && currentFile.type.startsWith('image/') ? (
                 <img
                   src={previewUrl}
@@ -321,7 +324,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
                 <iframe
                   src={previewUrl}
                   title={currentFile.name}
-                  className="w-full h-full min-h-[420px] rounded-lg bg-white"
+                  className="w-full h-full min-h-[420px] bg-white"
                 />
               ) : currentText ? (
                 <div className="h-full min-h-[360px]">
