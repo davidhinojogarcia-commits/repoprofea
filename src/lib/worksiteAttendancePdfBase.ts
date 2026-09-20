@@ -202,8 +202,10 @@ const drawIdentityBlock = (
     23,
     h,
   );
-  const periodWidth = 108;
-  const offerWidth = 58;
+  // Una única fila alineada. Antes se repintaba esta línea desde otro módulo,
+  // generando cuadros fantasma superpuestos en el PDF.
+  const periodWidth = 137;
+  const offerWidth = 67;
   const companyWidth = full - periodWidth - offerWidth - gap * 2;
   field(doc, "Periodo contratado", period, x, startY + 7, periodWidth, 32, h);
   field(
