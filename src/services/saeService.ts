@@ -396,44 +396,49 @@ export async function updateSaeReportStatus(
   snapshot?: SaeReportVersionCandidate[],
 ): Promise<number | null> {
   const ownerId = await uid();
-  const body: Record<string, unknown> = {
-    processing_status: status,
-    updated_by: ownerId,
-  };
+  const rows = await supabase.query("sae_reports", {
+    query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
+  });
+  const legend =
+    rows?.[0]?.detected_legend &&
+    typeof rows[0].detected_legend === "object" &&
+    !Array.isArray(rows[0].detected_legend)
+      ? { ...rows[0].detected_legend }
+      : {};
 
+  const previousVersions = Array.isArray((legend as any).__finalized_versions)
+    ? (legend as any).__finalized_versions
+    : [];
   let versionNumber: number | null = null;
+  let nextVersions = previousVersions;
+
   if (status === "finalized" && snapshot) {
-    const rows = await supabase.query("sae_reports", {
-      query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
-    });
-    const legend =
-      rows?.[0]?.detected_legend &&
-      typeof rows[0].detected_legend === "object" &&
-      !Array.isArray(rows[0].detected_legend)
-        ? { ...rows[0].detected_legend }
-        : {};
-    const previousVersions = Array.isArray((legend as any).__finalized_versions)
-      ? (legend as any).__finalized_versions
-      : [];
     versionNumber = previousVersions.length + 1;
-    body.detected_legend = {
-      ...legend,
-      __finalized_versions: [
-        ...previousVersions,
-        {
-          version: versionNumber,
-          finalizedAt: new Date().toISOString(),
-          candidates: snapshot,
-        },
-      ],
-    };
+    nextVersions = [
+      ...previousVersions,
+      {
+        version: versionNumber,
+        finalizedAt: new Date().toISOString(),
+        candidates: snapshot,
+      },
+    ];
   }
 
+  // La tabla de producción restringe processing_status y no admite el valor
+  // funcional "finalized". Mantenemos el estado técnico existente y guardamos
+  // el estado de trabajo + histórico en detected_legend, que ya es JSON.
   await supabase.query("sae_reports", {
     method: "PATCH",
     prefer: "return=minimal",
     query: `id=eq.${encodeURIComponent(id)}`,
-    body,
+    body: {
+      detected_legend: {
+        ...legend,
+        __workflow_state: status,
+        __finalized_versions: nextVersions,
+      },
+      updated_by: ownerId,
+    },
   });
   return versionNumber;
 }
@@ -467,7 +472,11 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
           sample.fortnight == null ? null : Number(sample.fortnight),
         ),
         categoria: sample.category || "",
-        status: r.processing_status === "finalized" ? "finalized" : "review",
+        status:
+          r.detected_legend?.__workflow_state === "finalized" ||
+          r.processing_status === "finalized"
+            ? "finalized"
+            : "review",
         versions: Array.isArray(r.detected_legend?.__finalized_versions)
           ? r.detected_legend.__finalized_versions
               .map((version: any, index: number) => ({
