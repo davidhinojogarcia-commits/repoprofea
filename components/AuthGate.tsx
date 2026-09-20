@@ -241,11 +241,15 @@ export function AuthGate({ children }: AuthGateProps) {
   }
 
   if (user && role && profile) {
-    const supervisorName = [profile.nombre, profile.apellidos]
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const supervisorName =
+      [profile.nombre, profile.apellidos]
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim() ||
+      profile.email ||
+      user.email ||
+      'Supervisor';
     const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
     const minutes = Math.floor(seconds / 60);
     const secs = String(seconds % 60).padStart(2, '0');

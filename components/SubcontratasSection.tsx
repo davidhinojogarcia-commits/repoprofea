@@ -78,7 +78,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       void persistSubcontratas(previous, next);
       return next;
     });
-  }, []);
+  }, [supervisorName]);
 
   useEffect(() => {
     const unsubscribe = subscribeToDocuments<Subcontratista>('subcontratas', items => {
@@ -129,7 +129,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     let cancelled = false;
     loadSubcontrataSettings().then(settings => {
       if (cancelled) return;
-      if (settings.reporteConfig) setReporteConfig({ ...DEFAULT_REPORTE_TECNICO_CONFIG, ...settings.reporteConfig });
+      if (settings.reporteConfig) setReporteConfig({ ...DEFAULT_REPORTE_TECNICO_CONFIG, ...settings.reporteConfig, supervisorNombre: supervisorName });
       if (Array.isArray(settings.checklistTemplate) && settings.checklistTemplate.length > 0) setChecklistTemplate(settings.checklistTemplate);
       if (settings.obrasRecursos) setObrasRecursos(settings.obrasRecursos);
     }).catch(error => {
@@ -460,7 +460,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
           tecnicoNombre: reporteConfig.tecnicoNombre,
           coordinadorNombre: reporteConfig.coordinadorNombre,
           empresaCoordinacion: reporteConfig.empresaCoordinacion,
-          supervisorNombre: reporteConfig.supervisorNombre
+          supervisorNombre: supervisorName
         }
       );
       onToast('Informe oficial en PDF descargado correctamente.', 'success');
@@ -648,7 +648,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
         tecnicoNombre: reporteConfig.tecnicoNombre,
         coordinadorNombre: reporteConfig.coordinadorNombre,
         empresaCoordinacion: reporteConfig.empresaCoordinacion,
-        supervisorNombre: reporteConfig.supervisorNombre
+        supervisorNombre: supervisorName
       });
       onToast(`Informe consolidado de "${targetObra}" generado correctamente con diseño oficial de Diputación.`, 'success');
     } catch (err) {
@@ -1763,7 +1763,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 value={generateRequerimientoText(
                   activeSubcontrata,
                   activeSubcontrata.obra,
-                  activeSubcontrata.supervisorResponsable || 'Supervisor Responsable'
+                  supervisorName || 'Supervisor Responsable'
                 )}
                 className="w-full p-4 font-mono text-xs text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl leading-relaxed focus:outline-hidden select-all"
               />
@@ -2337,13 +2337,14 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={reporteConfig.supervisorNombre}
-                    onChange={(e) => setReporteConfig({ ...reporteConfig, supervisorNombre: e.target.value })}
-                    placeholder="Ej: David Hinojo García"
+                    value={supervisorName}
+                    readOnly
+                    aria-readonly="true"
+                    placeholder="Nombre y apellidos de la cuenta"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                    Si queda en blanco, la firma de Supervisor de obra no aparecerá en el PDF.
+                    Se asigna automáticamente desde el nombre y apellidos de la cuenta activa.
                   </p>
                 </div>
               </form>
@@ -2356,18 +2357,18 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                     Vista Previa de Firmas del Reporte Técnico PDF
                   </h3>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    {[reporteConfig.supervisorNombre, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].filter(value => value?.trim()).length} firmas configuradas
+                    {[supervisorName, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].filter(value => value?.trim()).length} firmas configuradas
                   </span>
                 </div>
 
-                {[reporteConfig.supervisorNombre, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].some(value => value?.trim()) ? (
+                {[supervisorName, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].some(value => value?.trim()) ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                    {reporteConfig.supervisorNombre?.trim() && (
+                    {supervisorName?.trim() && (
                       <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
                         <div className="bg-[#00548e] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">SUPERVISOR DE OBRA</div>
                         <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">[Espacio para Firma]</div>
                         <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">Fdo: {reporteConfig.supervisorNombre}</span>
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">Fdo: {supervisorName}</span>
                         </div>
                       </div>
                     )}

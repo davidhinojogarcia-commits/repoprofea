@@ -571,7 +571,7 @@ function App() {
       setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
-  }, []);
+  }, [authenticatedUser.id, supervisorName]);
 
   // La papelera también se lee automáticamente desde Supabase.
   useEffect(() => {

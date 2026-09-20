@@ -309,7 +309,7 @@ export const DEFAULT_REPORTE_TECNICO_CONFIG: ReporteTecnicoConfig = {
   coordinadorNombre: "David Hinojo García",
   empresaCoordinacion:
     "Área de Cooperación - Excma. Diputación Provincial de Cádiz",
-  supervisorNombre: "David Hinojo García",
+  supervisorNombre: "",
 };
 
 let reporteTecnicoConfigCache: ReporteTecnicoConfig = {
