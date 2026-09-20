@@ -2036,6 +2036,274 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
         </div>
       </div>
 
+      {editingCaeWorker && (
+        <div className="fixed inset-0 z-[145] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                  {editingCaeWorker.isNew ? 'Añadir trabajador de la empresa' : 'Editar trabajador de la empresa'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Datos del trabajador y situación individual de acceso a obra.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCaeWorker(null)}
+                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 max-h-[75dvh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Nombre y apellidos *</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.nombreApellidos}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, nombreApellidos: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">DNI / NIE *</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.dni}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, dni: event.target.value.toUpperCase() } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Puesto de trabajo *</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.puestoTrabajo}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, puestoTrabajo: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={editingCaeWorker.worker.telefono || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, telefono: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Nº Seguridad Social</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.numeroSeguridadSocial || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? { ...current, worker: { ...current.worker, numeroSeguridadSocial: event.target.value } }
+                          : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Alta / inicio en obra</label>
+                  <input
+                    type="date"
+                    value={editingCaeWorker.worker.fechaAltaObra || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, fechaAltaObra: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Baja / fin en obra</label>
+                  <input
+                    type="date"
+                    value={editingCaeWorker.worker.fechaBajaObra || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, fechaBajaObra: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2">
+                  Autorización para entrar en obra
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? {
+                              ...current,
+                              worker: {
+                                ...current.worker,
+                                estadoAcceso: 'autorizado',
+                                motivosNoAutorizado: [],
+                                accesoModificadoManualmente: true,
+                              },
+                            }
+                          : current
+                      )
+                    }
+                    className={`min-h-12 rounded-xl border text-xs font-black inline-flex items-center justify-center gap-2 ${
+                      editingCaeWorker.worker.estadoAcceso === 'autorizado'
+                        ? 'bg-emerald-600 border-emerald-700 text-white'
+                        : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    AUTORIZADO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? {
+                              ...current,
+                              worker: {
+                                ...current.worker,
+                                estadoAcceso: 'no_autorizado',
+                                accesoModificadoManualmente: true,
+                              },
+                            }
+                          : current
+                      )
+                    }
+                    className={`min-h-12 rounded-xl border text-xs font-black inline-flex items-center justify-center gap-2 ${
+                      editingCaeWorker.worker.estadoAcceso === 'no_autorizado'
+                        ? 'bg-rose-600 border-rose-700 text-white'
+                        : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <XCircle className="w-4 h-4" />
+                    NO AUTORIZADO
+                  </button>
+                </div>
+              </div>
+
+              {editingCaeWorker.worker.estadoAcceso === 'no_autorizado' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                    Motivo de no autorización
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={(editingCaeWorker.worker.motivosNoAutorizado || []).join('\n')}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? {
+                              ...current,
+                              worker: {
+                                ...current.worker,
+                                motivosNoAutorizado: event.target.value
+                                  .split('\n')
+                                  .map(value => value.trim())
+                                  .filter(Boolean),
+                              },
+                            }
+                          : current
+                      )
+                    }
+                    placeholder="Una incidencia por línea…"
+                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Observaciones</label>
+                <textarea
+                  rows={3}
+                  value={editingCaeWorker.worker.observaciones || ''}
+                  onChange={event =>
+                    setEditingCaeWorker(current =>
+                      current ? { ...current, worker: { ...current.worker, observaciones: event.target.value } } : current
+                    )
+                  }
+                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                />
+              </div>
+
+              {editingCaeWorker.worker.documentosAcreditados?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                    Documentación acreditada por el análisis
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {editingCaeWorker.worker.documentosAcreditados.map(documento => (
+                      <span
+                        key={documento}
+                        className="px-2 py-1 rounded-md text-[10px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                      >
+                        {formatCaePersonDocument(documento)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingCaeWorker(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCaeWorker}
+                className="ui-button-primary inline-flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Guardar trabajador
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Nueva Subcontrata */}
       {isNewModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
