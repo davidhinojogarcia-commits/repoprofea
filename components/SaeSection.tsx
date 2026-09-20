@@ -42,6 +42,7 @@ import {
   monthNumber,
   updateSaeCandidate,
   updateSaeNeed,
+  updateSaeReportStatus,
 } from "../src/services/saeService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
 import { useAuthShell } from "./AuthGate";
@@ -93,6 +94,14 @@ const normalizeSaeCategory = (value: string) => {
   if (/\bpeon(?:es)?\b/.test(n)) return "Peón";
   return String(value || "").trim();
 };
+const saeReportPeriodLabel = (report: SaeReport) => {
+  if (report.quincena) return report.quincena;
+  const category = norm(report.categoria);
+  if (category && !/\bpeon(?:es)?\b/.test(category)) return "Mensual";
+  return "Periodo por confirmar";
+};
+const saeReportPeriodOrder = (label: string) =>
+  label.startsWith("1") ? 1 : label.startsWith("2") ? 2 : label === "Mensual" ? 3 : 4;
 const dataUrlToBytes = (dataUrl: string) => {
   const raw = atob(dataUrl.split(",")[1] || "");
   const bytes = new Uint8Array(raw.length);
@@ -119,6 +128,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [needs, setNeeds] = useState<SaeNeed[]>([]);
   const [selectedNeedId, setSelectedNeedId] = useState("");
   const [reports, setReports] = useState<SaeReport[]>([]);
+  const [selectedReportId, setSelectedReportId] = useState("");
   const [candidates, setCandidates] = useState<SaeCandidate[]>([]);
   const [needForm, setNeedForm] = useState<NeedForm>(emptyNeed);
   const [pendingImportedNeeds, setPendingImportedNeeds] = useState<NeedForm[]>(
@@ -136,6 +146,15 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [previewOffsetY, setPreviewOffsetY] = useState(0);
   const [annualPeriods, setAnnualPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
   const selectedNeed = needs.find((n) => n.id === selectedNeedId) || null;
+  const selectedReport = reports.find((report) => report.id === selectedReportId) || null;
+  const activeCandidates = useMemo(
+    () =>
+      selectedReportId
+        ? candidates.filter((candidate) => candidate.reportId === selectedReportId)
+        : [],
+    [candidates, selectedReportId],
+  );
+  const selectedReportLocked = selectedReport?.status === "finalized";
   const currentYear = new Date().getFullYear();
   const currentAnnualPeriods = annualPeriods.find((record) => record.year === currentYear) || null;
   const annualPeriodsDone = Boolean(
@@ -181,6 +200,29 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       );
   }, [needs]);
 
+  const groupedReports = useMemo(() => {
+    const groups = new Map<string, { label: string; order: number; reports: SaeReport[] }>();
+    for (const report of reports) {
+      const label = saeReportPeriodLabel(report);
+      const current = groups.get(label);
+      if (current) current.reports.push(report);
+      else
+        groups.set(label, {
+          label,
+          order: saeReportPeriodOrder(label),
+          reports: [report],
+        });
+    }
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        reports: [...group.reports].sort((a, b) =>
+          String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+        ),
+      }))
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, "es"));
+  }, [reports]);
+
   const monthKeyForNeed = (need: SaeNeed) =>
     `${need.ano || 0}-${monthNumber(need.mes) || 0}-${norm(need.mes)}`;
 
@@ -210,6 +252,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     ]);
     setReports(r);
     setCandidates(c);
+    setSelectedReportId((current) =>
+      current && r.some((report) => report.id === current)
+        ? current
+        : r[0]?.id || "",
+    );
   };
   useEffect(() => {
     void refresh().catch((e) =>
@@ -243,6 +290,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       .then(([r, c]) => {
         setReports(r);
         setCandidates(c);
+        setSelectedReportId((current) =>
+          current && r.some((report) => report.id === current)
+            ? current
+            : r[0]?.id || "",
+        );
       })
       .catch((e) =>
         onToast(e.message || "No se pudo cargar la solicitud de mano de obra.", "error"),
@@ -269,8 +321,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
 
   const stats = useMemo(
     () => ({
-      candidates: candidates.length,
-      selected: candidates.filter((c) =>
+      candidates: activeCandidates.length,
+      selected: activeCandidates.filter((c) =>
         [
           "Preseleccionado",
           "1ª Quincena",
@@ -278,15 +330,15 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           "Contratado",
         ].includes(c.estado),
       ).length,
-      contracted: candidates.filter((c) => c.estado === "Contratado").length,
-      pending: candidates.filter((c) => !c.resultCode).length,
+      contracted: activeCandidates.filter((c) => c.estado === "Contratado").length,
+      pending: activeCandidates.filter((c) => !c.resultCode).length,
     }),
-    [candidates],
+    [activeCandidates],
   );
   const categoryStats = useMemo(
     () =>
       (selectedNeed?.categorias || []).map((req) => {
-        const pool = candidates.filter(
+        const pool = activeCandidates.filter(
           (c) =>
             norm(c.categoria).includes(norm(req.categoria)) ||
             norm(req.categoria).includes(norm(c.categoria)),
@@ -298,7 +350,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             .length,
         };
       }),
-    [selectedNeed, candidates],
+    [selectedNeed, activeCandidates],
   );
   const stepLabels = [
     "Solicitud de mano de obra",
@@ -344,7 +396,9 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         .every((c) => Boolean(c.linkedWorkerId));
     const returnComplete =
       reports.length > 0 &&
-      reports.every((r) => returnedReportIds.includes(r.id));
+      reports.every(
+        (r) => r.status === "finalized" || returnedReportIds.includes(r.id),
+      );
     return [
       Boolean(selectedNeed),
       reports.length > 0,
@@ -575,7 +629,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           `El informe corresponde a ${parsed.mes}, pero la solicitud de mano de obra es de ${selectedNeed.mes}.`,
         );
       const fileBase64 = await fileToDataUrl(file);
-      await createSaeReport(
+      const createdReportId = await createSaeReport(
         selectedNeed.id,
         {
           fileName: file.name,
@@ -611,8 +665,9 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         })),
       );
       await refresh(selectedNeed.id);
+      setSelectedReportId(createdReportId);
       onToast(
-        `${parsed.candidates.length} candidatos SAE reconocidos.`,
+        `${parsed.candidates.length} candidatos SAE reconocidos y aislados en su informe.`,
         "success",
       );
     } catch (e: any) {
@@ -624,8 +679,14 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   };
 
   const registerWorker = async (candidate: SaeCandidate) => {
-    if (!candidate.quincena)
-      return onToast("Asigne primero una quincena.", "error");
+    const reportForCandidate = reports.find((report) => report.id === candidate.reportId) || null;
+    const resolvedPeriod =
+      candidate.quincena ||
+      (reportForCandidate && saeReportPeriodLabel(reportForCandidate) === "Mensual"
+        ? "Mensual"
+        : "");
+    if (!resolvedPeriod)
+      return onToast("Confirme primero el periodo del informe.", "error");
     const previous = people.find(
       (p) => norm(p.apellidosNombre) === norm(candidate.normalizedName),
     );
@@ -659,7 +720,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         numOferta: candidate.offerNumber,
         obra: canonicalWork,
         categoria: canonicalCategory,
-        quincena: candidate.quincena,
+        quincena: resolvedPeriod,
         apellidosNombre: candidate.normalizedName,
         dni: previous?.dni || "",
         fechaNacimiento: previous?.fechaNacimiento || "",
@@ -812,10 +873,16 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await updateSaeReportStatus(report.id, "finalized");
+      setReports((previous) =>
+        previous.map((item) =>
+          item.id === report.id ? { ...item, status: "finalized" } : item,
+        ),
+      );
       setReturnedReportIds((prev) =>
         prev.includes(report.id) ? prev : [...prev, report.id],
       );
-      onToast("Documento SAE generado sobre el original.", "success");
+      onToast("Documento SAE generado y archivado como finalizado.", "success");
     } catch (e: any) {
       onToast(e.message || "No se pudo generar el documento.", "error");
     } finally {
@@ -823,6 +890,22 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       setProgress("");
     }
   };
+  const reopenReport = async (report: SaeReport) => {
+    try {
+      await updateSaeReportStatus(report.id, "review");
+      setReports((previous) =>
+        previous.map((item) =>
+          item.id === report.id ? { ...item, status: "review" } : item,
+        ),
+      );
+      setReturnedReportIds((previous) => previous.filter((id) => id !== report.id));
+      setSelectedReportId(report.id);
+      onToast("Informe reabierto para revisión y modificación.", "success");
+    } catch (error: any) {
+      onToast(error.message || "No se pudo reabrir el informe SAE.", "error");
+    }
+  };
+
   const refreshPreview = async (report: SaeReport, x: number, y: number) => {
     const bytes = await buildReturnPdfBytes(report, x, y, false);
     const url = URL.createObjectURL(bytesToBlob(bytes));
@@ -1348,46 +1431,84 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
               </div>
               {!!reports.length && (
                 <div className="ui-surface p-5">
-                  <h3 className="font-black mb-3">Informes SAE</h3>
-                  <div className="space-y-2">
-                    {reports.map((r) => (
-                      <div
-                        key={r.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border rounded-xl p-3"
-                      >
-                        <div>
-                          <div className="font-bold text-sm">{r.fileName}</div>
-                          <div className="text-xs text-slate-500">
-                            Oferta {r.offerNumber || "—"} ·{" "}
-                            {r.quincena || r.mes || "Periodo no detectado"} ·{" "}
-                            {
-                              candidates.filter((c) => c.reportId === r.id)
-                                .length
-                            }{" "}
-                            candidatos
+                  <div className="mb-4">
+                    <h3 className="font-black">Informes SAE por periodo</h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Cada informe mantiene sus candidatos aislados. Seleccione un informe para trabajar únicamente con sus trabajadores.
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    {groupedReports.map((group) => (
+                      <div key={group.label} className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+                          <div className="font-black text-sm">{group.label}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {group.reports.length} {group.reports.length === 1 ? "informe" : "informes"}
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => void openPreview(r)}
-                            className="px-3 py-2 rounded-lg border font-bold text-xs"
-                          >
-                            Vista previa / ajustar
-                          </button>
-                          <button
-                            onClick={() => void generateReturnPdf(r)}
-                            className="px-3 py-2 rounded-lg border font-bold text-xs inline-flex gap-1 items-center"
-                          >
-                            <Download className="w-4 h-4" />
-                            Descargar devolución
-                          </button>
-                          <button
-                            onClick={() => void removeReport(r)}
-                            className="px-3 py-2 rounded-lg border border-rose-300 text-rose-700 font-bold text-xs inline-flex gap-1 items-center"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Eliminar informe
-                          </button>
+                        <div className="p-2 space-y-2">
+                          {group.reports.map((r) => {
+                            const reportCandidates = candidates.filter((candidate) => candidate.reportId === r.id);
+                            const isSelected = selectedReportId === r.id;
+                            const isFinalized = r.status === "finalized";
+                            return (
+                              <div
+                                key={r.id}
+                                className={`rounded-xl border p-3 ${isSelected ? "border-[#00548E] bg-blue-50/70 dark:border-blue-700 dark:bg-blue-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedReportId(r.id)}
+                                  className="w-full text-left"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <div className="font-bold text-sm">{r.fileName}</div>
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isFinalized ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"}`}>
+                                      {isFinalized ? "Finalizado" : "En revisión"}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-500">
+                                    Oferta {r.offerNumber || "—"} · {reportCandidates.length} candidatos · {r.categoria || "Categoría no detectada"}
+                                  </div>
+                                </button>
+                                <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedReportId(r.id);
+                                      void openPreview(r);
+                                    }}
+                                    className="px-3 py-2 rounded-lg border font-bold text-xs"
+                                  >
+                                    Consultar / ajustar
+                                  </button>
+                                  {isFinalized ? (
+                                    <button
+                                      onClick={() => void reopenReport(r)}
+                                      className="px-3 py-2 rounded-lg border border-amber-300 text-amber-700 font-bold text-xs inline-flex gap-1 items-center"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                      Reabrir para modificar
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => void generateReturnPdf(r)}
+                                      className="px-3 py-2 rounded-lg border font-bold text-xs inline-flex gap-1 items-center"
+                                    >
+                                      <Download className="w-4 h-4" />
+                                      Finalizar y descargar
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => void removeReport(r)}
+                                    className="px-3 py-2 rounded-lg border border-rose-300 text-rose-700 font-bold text-xs inline-flex gap-1 items-center"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    Eliminar informe
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -1397,21 +1518,33 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
               <div className="ui-surface p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="font-black text-lg">Candidatos SAE</h3>
+                    <h3 className="font-black text-lg">
+                      {selectedReport ? `Trabajadores del informe · ${selectedReport.fileName}` : "Trabajadores del informe"}
+                    </h3>
                     <p className="text-xs text-slate-500">
-                      Una contratación registrada puede revertirse y volver a
-                      editarse.
+                      {selectedReport
+                        ? `${saeReportPeriodLabel(selectedReport)} · ${activeCandidates.length} candidato(s). Esta lista pertenece exclusivamente a este informe.`
+                        : "Seleccione un informe SAE para consultar sus trabajadores sin mezclarlos con otros informes."}
                     </p>
                   </div>
                   <Users className="w-5 h-5" />
                 </div>
-                {!candidates.length ? (
+                {!selectedReport ? (
                   <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">
-                    Suba un informe SAE.
+                    Seleccione un informe SAE.
+                  </div>
+                ) : !activeCandidates.length ? (
+                  <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">
+                    Este informe no contiene candidatos.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {candidates.map((c) => (
+                    {selectedReportLocked && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">
+                        Informe finalizado y archivado. Use “Reabrir para modificar” si necesita realizar cambios.
+                      </div>
+                    )}
+                    {activeCandidates.map((c) => (
                       <div key={c.id} className="rounded-2xl border p-4">
                         <div className="flex flex-col xl:flex-row xl:items-center gap-3">
                           <div className="flex-1">
@@ -1434,7 +1567,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             {["", "1ª Quincena", "2ª Quincena"].map((q) => (
                               <button
                                 key={q || "none"}
-                                disabled={c.estado === "Contratado"}
+                                disabled={c.estado === "Contratado" || selectedReportLocked}
                                 onClick={() =>
                                   void patchCandidate(c, {
                                     quincena: q,
@@ -1452,7 +1585,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                           <div className="grid sm:grid-cols-2 gap-2">
                             <input
                               value={c.apellidos}
-                              disabled={c.estado === "Contratado"}
+                              disabled={c.estado === "Contratado" || selectedReportLocked}
                               onChange={(e) =>
                                 setCandidates((p) =>
                                   p.map((x) =>
@@ -1478,7 +1611,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             />
                             <input
                               value={c.nombre}
-                              disabled={c.estado === "Contratado"}
+                              disabled={c.estado === "Contratado" || selectedReportLocked}
                               onChange={(e) =>
                                 setCandidates((p) =>
                                   p.map((x) =>
@@ -1507,7 +1640,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             {c.estado !== "Contratado" ? (
                               <button
                                 onClick={() => void registerWorker(c)}
-                                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex gap-1 items-center"
+                                disabled={selectedReportLocked}
+                                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex gap-1 items-center disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <UserCheck className="w-4 h-4" />
                                 Registrar trabajador
@@ -1520,7 +1654,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                 </span>
                                 <button
                                   onClick={() => void revertWorker(c)}
-                                  className="px-3 py-2 rounded-lg border border-amber-300 text-amber-700 text-xs font-bold inline-flex gap-1 items-center"
+                                  disabled={selectedReportLocked}
+                                  className="px-3 py-2 rounded-lg border border-amber-300 text-amber-700 text-xs font-bold inline-flex gap-1 items-center disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   <RotateCcw className="w-4 h-4" />
                                   Revertir contratación
@@ -1529,7 +1664,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             )}
                             <select
                               value={c.resultCode}
-                              disabled={c.estado === "Contratado"}
+                              disabled={c.estado === "Contratado" || selectedReportLocked}
                               onChange={(e) =>
                                 void patchCandidate(c, {
                                   resultCode: e.target.value,

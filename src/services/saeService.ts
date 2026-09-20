@@ -26,6 +26,7 @@ export type SaeReport = {
   mes: string;
   quincena: string;
   categoria: string;
+  status: "review" | "finalized";
   createdAt?: string;
 };
 
@@ -373,6 +374,22 @@ export async function deleteSaeReport(
   await deleteSaeFile(stored.storage_path || "");
 }
 
+export async function updateSaeReportStatus(
+  id: string,
+  status: "review" | "finalized",
+): Promise<void> {
+  const ownerId = await uid();
+  await supabase.query("sae_reports", {
+    method: "PATCH",
+    prefer: "return=minimal",
+    query: `id=eq.${encodeURIComponent(id)}`,
+    body: {
+      processing_status: status,
+      updated_by: ownerId,
+    },
+  });
+}
+
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
   await uid();
   const reportQuery = `select=*${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}&order=created_at.desc`;
@@ -402,6 +419,7 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
           sample.fortnight == null ? null : Number(sample.fortnight),
         ),
         categoria: sample.category || "",
+        status: r.processing_status === "finalized" ? "finalized" : "review",
         createdAt: r.created_at,
       } as SaeReport;
     }),
@@ -410,7 +428,7 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
 
 export async function createSaeReport(
   needId: string,
-  report: Omit<SaeReport, "id" | "needId" | "createdAt">,
+  report: Omit<SaeReport, "id" | "needId" | "status" | "createdAt">,
   candidates: Omit<SaeCandidate, "id" | "needId" | "reportId">[],
 ) {
   const ownerId = await uid();
