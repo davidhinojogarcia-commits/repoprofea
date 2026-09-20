@@ -4,6 +4,7 @@ import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
 import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
+import { useAuthShell } from './AuthGate';
 
 interface EditPersonModalProps {
   person: Person | null;
@@ -52,6 +53,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   savedCategorias,
   allPeople
 }) => {
+  const { supervisorName } = useAuthShell();
   const automaticHiringTarget = useMemo(() => {
     const today = new Date();
     const target = new Date(today.getFullYear(), today.getMonth() + 1, 1);
@@ -74,13 +76,14 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       return { qType: parts[0], qMonth: parts[1], qYear: parts[2] };
     }
     return automaticHiringTarget;
-  }, [person, automaticHiringTarget]);
+  }, [person, automaticHiringTarget, supervisorName]);
 
   const [formData, setFormData] = useState<Person | null>(() => {
     if (!person) return null;
     const defaultNecesitaRec = person.necesitaReconocimiento || (person.citaDia || person.sitioReconocimiento ? 'Sí' : 'No');
     return {
       ...person,
+      supervisorResponsable: supervisorName,
       categoria: person.categoria || 'Peón',
       necesitaReconocimiento: defaultNecesitaRec
     };
@@ -105,6 +108,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       const defaultNecesitaRec = person.necesitaReconocimiento || (person.citaDia || person.sitioReconocimiento ? 'Sí' : 'No');
       setFormData({
         ...person,
+        supervisorResponsable: supervisorName,
         categoria: person.categoria || 'Peón',
         necesitaReconocimiento: defaultNecesitaRec
       });
@@ -123,7 +127,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     } else {
       setFormData(null);
     }
-  }, [person, automaticHiringTarget]);
+  }, [person, automaticHiringTarget, supervisorName]);
 
   useEffect(() => {
     if (qType === '1ª' || qType === '2ª') {
@@ -296,7 +300,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       alert('⚠️ El número de teléfono no es válido. Debe tener 9 dígitos y empezar por 6, 7, 8 o 9.');
       return;
     }
-    const finalData = { ...formData };
+    const finalData = { ...formData, supervisorResponsable: supervisorName };
     if (finalData.necesitaReconocimiento === 'No') {
       finalData.citaDia = '';
       finalData.citaHora = '';
@@ -352,7 +356,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
               <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                 Supervisor Responsable
               </label>
-              <input type="text" name="supervisorResponsable" value={formData.supervisorResponsable} onChange={handleChange} className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-[#00548E] dark:focus:border-blue-500 focus:ring-4 focus:ring-[#00548E]/5 transition-all text-sm font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400" />
+              <input type="text" name="supervisorResponsable" value={supervisorName} readOnly aria-readonly="true" className="w-full p-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 cursor-default" />
             </div>
 
             <div className="space-y-6">

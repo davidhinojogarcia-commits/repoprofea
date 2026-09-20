@@ -7,7 +7,7 @@ import {
   AlertCircle, Phone, Mail, Check, X, Info, BarChart3, SlidersHorizontal,
   FileSignature, Eye, Briefcase
 } from 'lucide-react';
-import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, ReporteTecnicoConfig } from '../types';
+import { Subcontratista, SubcontrataDocItem, SubcontrataDocEstado, SubcontrataEstadoExpediente, SubcontrataTrabajadorCAE, ReporteTecnicoConfig } from '../types';
 import { 
   createNewSubcontratista, 
   getSubcontrataCompliance, 
@@ -25,6 +25,7 @@ import { PageHeader } from './ui/PageHeader';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../constants';
 import { createDocument, deleteDocument, updateDocument, subscribeToDocuments } from '../src/services/databaseService';
 import { loadSubcontrataSettings, saveSubcontrataSettings } from '../src/services/subcontrataSettingsService';
+import { useAuthShell } from './AuthGate';
 
 interface SubcontratasSectionProps {
   savedObras: string[];
@@ -35,12 +36,25 @@ interface SubcontratasSectionProps {
 
 const STORAGE_KEY = 'profea_subcontratas_v1';
 
+const CAE_PERSON_DOC_LABELS: Record<string, string> = {
+  altas_ss: 'Alta / ITA / RNT / IDC',
+  dni_nie: 'DNI / NIE',
+  aptitud_medica: 'Aptitud médica',
+  formacion_prl: 'Formación PRL',
+  entrega_epis: 'Entrega de EPIs',
+  autorizacion_maquinaria: 'Autorización de maquinaria',
+};
+
+const formatCaePersonDocument = (value: string) =>
+  CAE_PERSON_DOC_LABELS[value] || value.replace(/_/g, ' ');
+
 export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   savedObras,
   supervisoresDisponibles = [],
   onToast,
   onUpdateSavedObras
 }) => {
+  const { supervisorName } = useAuthShell();
   // Selected obra filter
   const [selectedObra, setSelectedObra] = useState<string>('todas');
   // Selected subcontractor for details view
@@ -103,6 +117,11 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [checklistCategoryFilter, setChecklistCategoryFilter] = useState<'todos' | 'empresa' | 'trabajadores' | 'maquinaria'>('todos');
   const [checklistStatusFilter, setChecklistStatusFilter] = useState<'todos' | 'rojos' | 'entregados'>('todos');
+  const [editingCaeWorker, setEditingCaeWorker] = useState<{
+    subId: string;
+    worker: SubcontrataTrabajadorCAE;
+    isNew: boolean;
+  } | null>(null);
 
   // Obra Management States
   const [isManageObrasModalOpen, setIsManageObrasModalOpen] = useState(false);
@@ -127,7 +146,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     let cancelled = false;
     loadSubcontrataSettings().then(settings => {
       if (cancelled) return;
-      if (settings.reporteConfig) setReporteConfig({ ...DEFAULT_REPORTE_TECNICO_CONFIG, ...settings.reporteConfig });
+      if (settings.reporteConfig) setReporteConfig({ ...DEFAULT_REPORTE_TECNICO_CONFIG, ...settings.reporteConfig, supervisorNombre: supervisorName });
       if (Array.isArray(settings.checklistTemplate) && settings.checklistTemplate.length > 0) setChecklistTemplate(settings.checklistTemplate);
       if (settings.obrasRecursos) setObrasRecursos(settings.obrasRecursos);
     }).catch(error => {
@@ -135,7 +154,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       onToast('No se pudo cargar la configuración de subcontratas desde Supabase.', 'error');
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [supervisorName]);
 
   // Form states for new subcontrata
   const [newForm, setNewForm] = useState({
@@ -148,11 +167,15 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     email: '',
     actividadGremio: 'Albañilería y Revestimientos',
     fechaInicioPrevista: '',
-    supervisorResponsable: supervisoresDisponibles[0] || '',
+    supervisorResponsable: supervisorName,
     recursoPreventivo: '',
     numeroTrabajadoresPrevistos: 2,
     notas: ''
   });
+
+  useEffect(() => {
+    setNewForm(prev => prev.supervisorResponsable === supervisorName ? prev : ({ ...prev, supervisorResponsable: supervisorName }));
+  }, [supervisorName]);
 
   // Currently active subcontractor
   const activeSubcontrata = useMemo(() => {
@@ -272,8 +295,9 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       return;
     }
 
-    const created = createNewSubcontratista(newForm.obra, newForm.supervisorResponsable, {
+    const created = createNewSubcontratista(newForm.obra, supervisorName, {
       ...newForm,
+      supervisorResponsable: supervisorName,
       checklist: checklistTemplate.map(item => ({ ...item }))
     });
 
@@ -293,7 +317,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       email: '',
       actividadGremio: 'Albañilería y Revestimientos',
       fechaInicioPrevista: '',
-      supervisorResponsable: supervisoresDisponibles[0] || '',
+      supervisorResponsable: supervisorName,
       recursoPreventivo: '',
       numeroTrabajadoresPrevistos: 2,
       notas: ''
@@ -429,13 +453,250 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     }));
   };
 
+  const normalizeCaeWorkerDni = (value: string) =>
+    String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const handleMergeCaeWorkers = (
+    subId: string,
+    detectedWorkers: SubcontrataTrabajadorCAE[],
+  ) => {
+    setSubcontratistas(previous =>
+      previous.map(sub => {
+        if (sub.id !== subId) return sub;
+
+        const currentWorkers = Array.isArray(sub.trabajadoresCae) ? sub.trabajadoresCae : [];
+        const merged = [...currentWorkers];
+
+        detectedWorkers.forEach(detected => {
+          const detectedDni = normalizeCaeWorkerDni(detected.dni);
+          const index = merged.findIndex(existing => {
+            const existingDni = normalizeCaeWorkerDni(existing.dni);
+            return (
+              (detectedDni && existingDni === detectedDni) ||
+              (!detectedDni && existing.id === detected.id)
+            );
+          });
+
+          if (index < 0) {
+            merged.push({
+              ...detected,
+              confirmadoPorUsuario: true,
+              accesoModificadoManualmente: false,
+            });
+            return;
+          }
+
+          const existing = merged[index];
+          const preserveManualAccess = existing.accesoModificadoManualmente === true;
+
+          merged[index] = {
+            ...existing,
+            ...detected,
+            id: existing.id,
+            nombreApellidos:
+              existing.confirmadoPorUsuario && existing.nombreApellidos
+                ? existing.nombreApellidos
+                : detected.nombreApellidos || existing.nombreApellidos,
+            dni: detected.dni || existing.dni,
+            puestoTrabajo:
+              existing.confirmadoPorUsuario && existing.puestoTrabajo
+                ? existing.puestoTrabajo
+                : detected.puestoTrabajo || existing.puestoTrabajo,
+            telefono: existing.telefono || detected.telefono || '',
+            numeroSeguridadSocial:
+              existing.numeroSeguridadSocial || detected.numeroSeguridadSocial || '',
+            documentosAcreditados: Array.from(
+              new Set([
+                ...(existing.documentosAcreditados || []),
+                ...(detected.documentosAcreditados || []),
+              ]),
+            ),
+            archivosOrigen: Array.from(
+              new Set([...(existing.archivosOrigen || []), ...(detected.archivosOrigen || [])]),
+            ),
+            estadoAcceso: preserveManualAccess ? existing.estadoAcceso : detected.estadoAcceso,
+            motivosNoAutorizado: preserveManualAccess
+              ? existing.motivosNoAutorizado || []
+              : detected.motivosNoAutorizado || [],
+            confirmadoPorUsuario: true,
+            accesoModificadoManualmente: preserveManualAccess,
+          };
+        });
+
+        return {
+          ...sub,
+          trabajadoresCae: merged,
+          fechaActualizacion: new Date().toISOString(),
+        };
+      }),
+    );
+  };
+
+  const handleSetCaeWorkerAccess = (
+    subId: string,
+    workerId: string,
+    estadoAcceso: 'autorizado' | 'no_autorizado',
+  ) => {
+    setSubcontratistas(previous =>
+      previous.map(sub => {
+        if (sub.id !== subId) return sub;
+        return {
+          ...sub,
+          trabajadoresCae: (sub.trabajadoresCae || []).map(worker =>
+            worker.id === workerId
+              ? {
+                  ...worker,
+                  estadoAcceso,
+                  motivosNoAutorizado:
+                    estadoAcceso === 'autorizado' ? [] : worker.motivosNoAutorizado || [],
+                  confirmadoPorUsuario: true,
+                  accesoModificadoManualmente: true,
+                }
+              : worker,
+          ),
+          fechaActualizacion: new Date().toISOString(),
+        };
+      }),
+    );
+
+    onToast(
+      estadoAcceso === 'autorizado'
+        ? 'Trabajador autorizado para entrar en la obra.'
+        : 'Trabajador marcado como no autorizado para entrar en la obra.',
+      'success',
+    );
+  };
+
+  const handleStartAddCaeWorker = (subId: string) => {
+    setEditingCaeWorker({
+      subId,
+      isNew: true,
+      worker: {
+        id: `cae_manual_${crypto.randomUUID?.() || Date.now()}`,
+        nombreApellidos: '',
+        dni: '',
+        puestoTrabajo: '',
+        telefono: '',
+        numeroSeguridadSocial: '',
+        fechaAltaObra: '',
+        fechaBajaObra: '',
+        observaciones: '',
+        estadoAcceso: 'no_autorizado',
+        motivosNoAutorizado: [],
+        documentosAcreditados: [],
+        archivosOrigen: [],
+        confirmadoPorUsuario: true,
+        accesoModificadoManualmente: true,
+      },
+    });
+  };
+
+  const handleStartEditCaeWorker = (subId: string, worker: SubcontrataTrabajadorCAE) => {
+    setEditingCaeWorker({
+      subId,
+      isNew: false,
+      worker: {
+        ...worker,
+        motivosNoAutorizado: [...(worker.motivosNoAutorizado || [])],
+        documentosAcreditados: [...(worker.documentosAcreditados || [])],
+        archivosOrigen: [...(worker.archivosOrigen || [])],
+      },
+    });
+  };
+
+  const handleSaveCaeWorker = () => {
+    if (!editingCaeWorker) return;
+    const worker = editingCaeWorker.worker;
+
+    if (!worker.nombreApellidos.trim() || !worker.dni.trim() || !worker.puestoTrabajo.trim()) {
+      onToast('Indique nombre y apellidos, DNI/NIE y puesto de trabajo.', 'error');
+      return;
+    }
+
+    const cleanWorker: SubcontrataTrabajadorCAE = {
+      ...worker,
+      nombreApellidos: worker.nombreApellidos.trim(),
+      dni: worker.dni.trim().toUpperCase(),
+      puestoTrabajo: worker.puestoTrabajo.trim(),
+      telefono: worker.telefono?.trim() || '',
+      numeroSeguridadSocial: worker.numeroSeguridadSocial?.trim() || '',
+      observaciones: worker.observaciones?.trim() || '',
+      confirmadoPorUsuario: true,
+    };
+
+    setSubcontratistas(previous =>
+      previous.map(sub => {
+        if (sub.id !== editingCaeWorker.subId) return sub;
+
+        const current = sub.trabajadoresCae || [];
+        const duplicateDni = current.some(
+          item =>
+            item.id !== cleanWorker.id &&
+            normalizeCaeWorkerDni(item.dni) === normalizeCaeWorkerDni(cleanWorker.dni),
+        );
+        if (duplicateDni) return sub;
+
+        const exists = current.some(item => item.id === cleanWorker.id);
+        return {
+          ...sub,
+          trabajadoresCae: exists
+            ? current.map(item => (item.id === cleanWorker.id ? cleanWorker : item))
+            : [...current, cleanWorker],
+          fechaActualizacion: new Date().toISOString(),
+        };
+      }),
+    );
+
+    const currentSub = subcontratistas.find(sub => sub.id === editingCaeWorker.subId);
+    const duplicated = (currentSub?.trabajadoresCae || []).some(
+      item =>
+        item.id !== cleanWorker.id &&
+        normalizeCaeWorkerDni(item.dni) === normalizeCaeWorkerDni(cleanWorker.dni),
+    );
+    if (duplicated) {
+      onToast('Ya existe un trabajador de esta empresa con ese DNI/NIE.', 'error');
+      return;
+    }
+
+    setEditingCaeWorker(null);
+    onToast(
+      editingCaeWorker.isNew
+        ? 'Trabajador añadido a la empresa.'
+        : 'Datos del trabajador actualizados.',
+      'success',
+    );
+  };
+
+  const handleDeleteCaeWorker = (subId: string, worker: SubcontrataTrabajadorCAE) => {
+    if (
+      !window.confirm(
+        `¿Eliminar a "${worker.nombreApellidos || worker.dni}" de los trabajadores de esta empresa?`,
+      )
+    ) {
+      return;
+    }
+
+    setSubcontratistas(previous =>
+      previous.map(sub =>
+        sub.id === subId
+          ? {
+              ...sub,
+              trabajadoresCae: (sub.trabajadoresCae || []).filter(item => item.id !== worker.id),
+              fechaActualizacion: new Date().toISOString(),
+            }
+          : sub,
+      ),
+    );
+    onToast('Trabajador eliminado de la empresa.', 'success');
+  };
+
   // Copy formal requirement text to clipboard
   const handleCopyRequerimiento = () => {
     if (!activeSubcontrata) return;
     const text = generateRequerimientoText(
       activeSubcontrata,
       activeSubcontrata.obra,
-      activeSubcontrata.supervisorResponsable || ''
+      supervisorName
     );
     navigator.clipboard.writeText(text);
     onToast('Texto de requerimiento formal copiado al portapapeles.', 'success');
@@ -447,13 +708,13 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     try {
       await generateSubcontrataReportPDF(
         activeSubcontrata,
-        activeSubcontrata.supervisorResponsable,
+        supervisorName,
         undefined,
         {
           tecnicoNombre: reporteConfig.tecnicoNombre,
           coordinadorNombre: reporteConfig.coordinadorNombre,
           empresaCoordinacion: reporteConfig.empresaCoordinacion,
-          supervisorNombre: reporteConfig.supervisorNombre
+          supervisorNombre: supervisorName
         }
       );
       onToast('Informe oficial en PDF descargado correctamente.', 'success');
@@ -636,12 +897,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     }
 
     try {
-      const supervisor = subsInObra[0]?.supervisorResponsable || supervisoresDisponibles[0] || 'David Hinojo García';
+      const supervisor = supervisorName;
       await generateObraConsolidatedReportPDF(targetObra, subsInObra, supervisor, {
         tecnicoNombre: reporteConfig.tecnicoNombre,
         coordinadorNombre: reporteConfig.coordinadorNombre,
         empresaCoordinacion: reporteConfig.empresaCoordinacion,
-        supervisorNombre: reporteConfig.supervisorNombre
+        supervisorNombre: supervisorName
       });
       onToast(`Informe consolidado de "${targetObra}" generado correctamente con diseño oficial de Diputación.`, 'success');
     } catch (err) {
@@ -1155,7 +1416,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   <div>
                     <span className="text-slate-400 dark:text-slate-500 block">Supervisor Obra:</span>
                     <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {activeSubcontrata.supervisorResponsable || 'No asignado'}
+                      {supervisorName || 'No asignado'}
                     </span>
                   </div>
                   <div>
@@ -1225,6 +1486,227 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 </div>
               </div>
 
+              {/* Trabajadores de la empresa */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                {(() => {
+                  const companyWorkers = activeSubcontrata.trabajadoresCae || [];
+                  const authorizedCount = companyWorkers.filter(worker => worker.estadoAcceso === 'autorizado').length;
+                  const deniedCount = companyWorkers.length - authorizedCount;
+
+                  return (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shrink-0">
+                            <UserCheck className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-base font-black text-slate-900 dark:text-white">
+                              Trabajadores de la empresa
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                              Relación nominal del personal de la subcontrata y autorización individual de acceso a obra.
+                              Los trabajadores detectados en ITA/RNT/IDC se incorporan aquí al confirmar el cotejo.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleStartAddCaeWorker(activeSubcontrata.id)}
+                          className="ui-button-primary inline-flex items-center justify-center gap-2 shrink-0"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Añadir trabajador
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">
+                          Total: {companyWorkers.length}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-bold">
+                          Autorizados: {authorizedCount}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 font-bold">
+                          No autorizados: {deniedCount}
+                        </span>
+                      </div>
+
+                      {companyWorkers.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-6 text-center">
+                          <UserCheck className="w-9 h-9 mx-auto text-slate-400 mb-2" />
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                            Todavía no hay trabajadores asociados a esta empresa.
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Puede añadirlos manualmente o incorporarlos automáticamente al analizar y guardar ITA/RNT/IDC.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {companyWorkers.map(worker => (
+                            <div
+                              key={worker.id}
+                              className={`rounded-xl border p-4 ${
+                                worker.estadoAcceso === 'autorizado'
+                                  ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/35 dark:bg-emerald-950/10'
+                                  : 'border-rose-200 dark:border-rose-900/60 bg-rose-50/35 dark:bg-rose-950/10'
+                              }`}
+                            >
+                              <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                                      {worker.nombreApellidos || 'Nombre pendiente'}
+                                    </h4>
+                                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                      {worker.dni || 'DNI/NIE pendiente'}
+                                    </span>
+                                    {worker.confianza && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold">
+                                        Detección {worker.confianza}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3 text-xs">
+                                    <div>
+                                      <span className="block text-slate-400">Puesto de trabajo</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.puestoTrabajo || 'Pendiente'}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="block text-slate-400">Teléfono</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.telefono || 'No indicado'}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="block text-slate-400">Nº Seguridad Social</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.numeroSeguridadSocial || 'No indicado'}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="block text-slate-400">Periodo en obra</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {worker.fechaAltaObra || worker.fechaBajaObra
+                                          ? `${worker.fechaAltaObra || '—'} → ${worker.fechaBajaObra || '—'}`
+                                          : 'No indicado'}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  {worker.documentosAcreditados?.length > 0 && (
+                                    <div className="mt-3">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                        Documentación acreditada
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5 mt-1">
+                                        {worker.documentosAcreditados.map(documento => (
+                                          <span
+                                            key={documento}
+                                            className="px-2 py-1 rounded-md text-[10px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                                          >
+                                            {formatCaePersonDocument(documento)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {worker.archivosOrigen?.length > 0 && (
+                                    <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                      <strong>Archivos origen:</strong> {worker.archivosOrigen.join(' · ')}
+                                    </p>
+                                  )}
+
+                                  {worker.estadoAcceso === 'no_autorizado' && (
+                                    <div className="mt-3 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white/70 dark:bg-rose-950/20 p-2.5">
+                                      <p className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                                        Motivo / incidencias
+                                      </p>
+                                      <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">
+                                        {worker.motivosNoAutorizado?.length
+                                          ? worker.motivosNoAutorizado.join(' · ')
+                                          : 'Sin motivo indicado. Puede añadirlo desde Editar datos.'}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {worker.observaciones && (
+                                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                                      <strong>Observaciones:</strong> {worker.observaciones}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="w-full xl:w-[290px] shrink-0 space-y-2">
+                                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                    Autorización para entrar en obra
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleSetCaeWorkerAccess(activeSubcontrata.id, worker.id, 'autorizado')
+                                      }
+                                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors ${
+                                        worker.estadoAcceso === 'autorizado'
+                                          ? 'bg-emerald-600 border-emerald-700 text-white shadow-sm'
+                                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      <ShieldCheck className="w-4 h-4" />
+                                      Autorizado
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleSetCaeWorkerAccess(activeSubcontrata.id, worker.id, 'no_autorizado')
+                                      }
+                                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors ${
+                                        worker.estadoAcceso === 'no_autorizado'
+                                          ? 'bg-rose-600 border-rose-700 text-white shadow-sm'
+                                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      <XCircle className="w-4 h-4" />
+                                      No autorizado
+                                    </button>
+                                  </div>
+
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditCaeWorker(activeSubcontrata.id, worker)}
+                                      className="flex-1 min-h-10 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 inline-flex items-center justify-center gap-1.5"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      Editar datos
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteCaeWorker(activeSubcontrata.id, worker)}
+                                      className="min-h-10 px-3 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400"
+                                      title="Eliminar trabajador"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
               {/* FileUploaderIA Component: Drag and drop PDFs, AI extraction against legal checklist, and red alert highlighting */}
               <FileUploaderIA
                 subcontrata={activeSubcontrata}
@@ -1243,6 +1725,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 onToast={onToast}
                 onFilterMissingInRed={() => setChecklistStatusFilter('rojos')}
                 onOpenRequerimiento={() => setIsRequerimientoModalOpen(true)}
+                onWorkersUpdate={workers => handleMergeCaeWorkers(activeSubcontrata.id, workers)}
               />
 
               {/* Checklist Legal Controls & Items */}
@@ -1553,6 +2036,274 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
         </div>
       </div>
 
+      {editingCaeWorker && (
+        <div className="fixed inset-0 z-[145] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                  {editingCaeWorker.isNew ? 'Añadir trabajador de la empresa' : 'Editar trabajador de la empresa'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Datos del trabajador y situación individual de acceso a obra.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCaeWorker(null)}
+                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 max-h-[75dvh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Nombre y apellidos *</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.nombreApellidos}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, nombreApellidos: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">DNI / NIE *</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.dni}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, dni: event.target.value.toUpperCase() } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Puesto de trabajo *</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.puestoTrabajo}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, puestoTrabajo: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={editingCaeWorker.worker.telefono || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, telefono: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Nº Seguridad Social</label>
+                  <input
+                    type="text"
+                    value={editingCaeWorker.worker.numeroSeguridadSocial || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? { ...current, worker: { ...current.worker, numeroSeguridadSocial: event.target.value } }
+                          : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Alta / inicio en obra</label>
+                  <input
+                    type="date"
+                    value={editingCaeWorker.worker.fechaAltaObra || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, fechaAltaObra: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Baja / fin en obra</label>
+                  <input
+                    type="date"
+                    value={editingCaeWorker.worker.fechaBajaObra || ''}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current ? { ...current, worker: { ...current.worker, fechaBajaObra: event.target.value } } : current
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2">
+                  Autorización para entrar en obra
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? {
+                              ...current,
+                              worker: {
+                                ...current.worker,
+                                estadoAcceso: 'autorizado',
+                                motivosNoAutorizado: [],
+                                accesoModificadoManualmente: true,
+                              },
+                            }
+                          : current
+                      )
+                    }
+                    className={`min-h-12 rounded-xl border text-xs font-black inline-flex items-center justify-center gap-2 ${
+                      editingCaeWorker.worker.estadoAcceso === 'autorizado'
+                        ? 'bg-emerald-600 border-emerald-700 text-white'
+                        : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    AUTORIZADO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? {
+                              ...current,
+                              worker: {
+                                ...current.worker,
+                                estadoAcceso: 'no_autorizado',
+                                accesoModificadoManualmente: true,
+                              },
+                            }
+                          : current
+                      )
+                    }
+                    className={`min-h-12 rounded-xl border text-xs font-black inline-flex items-center justify-center gap-2 ${
+                      editingCaeWorker.worker.estadoAcceso === 'no_autorizado'
+                        ? 'bg-rose-600 border-rose-700 text-white'
+                        : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <XCircle className="w-4 h-4" />
+                    NO AUTORIZADO
+                  </button>
+                </div>
+              </div>
+
+              {editingCaeWorker.worker.estadoAcceso === 'no_autorizado' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                    Motivo de no autorización
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={(editingCaeWorker.worker.motivosNoAutorizado || []).join('\n')}
+                    onChange={event =>
+                      setEditingCaeWorker(current =>
+                        current
+                          ? {
+                              ...current,
+                              worker: {
+                                ...current.worker,
+                                motivosNoAutorizado: event.target.value
+                                  .split('\n')
+                                  .map(value => value.trim())
+                                  .filter(Boolean),
+                              },
+                            }
+                          : current
+                      )
+                    }
+                    placeholder="Una incidencia por línea…"
+                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Observaciones</label>
+                <textarea
+                  rows={3}
+                  value={editingCaeWorker.worker.observaciones || ''}
+                  onChange={event =>
+                    setEditingCaeWorker(current =>
+                      current ? { ...current, worker: { ...current.worker, observaciones: event.target.value } } : current
+                    )
+                  }
+                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                />
+              </div>
+
+              {editingCaeWorker.worker.documentosAcreditados?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                    Documentación acreditada por el análisis
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {editingCaeWorker.worker.documentosAcreditados.map(documento => (
+                      <span
+                        key={documento}
+                        className="px-2 py-1 rounded-md text-[10px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                      >
+                        {formatCaePersonDocument(documento)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingCaeWorker(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCaeWorker}
+                className="ui-button-primary inline-flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Guardar trabajador
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Nueva Subcontrata */}
       {isNewModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -1643,9 +2394,10 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej: David Hinojo García"
-                    value={newForm.supervisorResponsable}
-                    onChange={e => setNewForm({ ...newForm, supervisorResponsable: e.target.value })}
+                    placeholder="Nombre y apellidos de la cuenta"
+                    value={supervisorName}
+                    readOnly
+                    aria-readonly="true"
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                 </div>
@@ -1755,7 +2507,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 value={generateRequerimientoText(
                   activeSubcontrata,
                   activeSubcontrata.obra,
-                  activeSubcontrata.supervisorResponsable || 'Supervisor Responsable'
+                  supervisorName || 'Supervisor Responsable'
                 )}
                 className="w-full p-4 font-mono text-xs text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl leading-relaxed focus:outline-hidden select-all"
               />
@@ -2329,13 +3081,14 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={reporteConfig.supervisorNombre}
-                    onChange={(e) => setReporteConfig({ ...reporteConfig, supervisorNombre: e.target.value })}
-                    placeholder="Ej: David Hinojo García"
+                    value={supervisorName}
+                    readOnly
+                    aria-readonly="true"
+                    placeholder="Nombre y apellidos de la cuenta"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                    Si queda en blanco, la firma de Supervisor de obra no aparecerá en el PDF.
+                    Se asigna automáticamente desde el nombre y apellidos de la cuenta activa.
                   </p>
                 </div>
               </form>
@@ -2348,18 +3101,18 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                     Vista Previa de Firmas del Reporte Técnico PDF
                   </h3>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    {[reporteConfig.supervisorNombre, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].filter(value => value?.trim()).length} firmas configuradas
+                    {[supervisorName, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].filter(value => value?.trim()).length} firmas configuradas
                   </span>
                 </div>
 
-                {[reporteConfig.supervisorNombre, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].some(value => value?.trim()) ? (
+                {[supervisorName, reporteConfig.tecnicoNombre, reporteConfig.coordinadorNombre].some(value => value?.trim()) ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-100/70 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                    {reporteConfig.supervisorNombre?.trim() && (
+                    {supervisorName?.trim() && (
                       <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col justify-between shadow-2xs">
                         <div className="bg-[#00548e] text-white text-[10px] font-extrabold px-2 py-1 text-center tracking-wider uppercase">SUPERVISOR DE OBRA</div>
                         <div className="h-14 flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs italic">[Espacio para Firma]</div>
                         <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/30">
-                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">Fdo: {reporteConfig.supervisorNombre}</span>
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">Fdo: {supervisorName}</span>
                         </div>
                       </div>
                     )}

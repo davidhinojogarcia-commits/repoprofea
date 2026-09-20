@@ -9,6 +9,7 @@ import {
   undoActionHistory,
 } from './src/lib/actionHistory';
 import { Header } from './components/Header';
+import { useAuthShell } from './components/AuthGate';
 import { GuidedHome } from './components/GuidedHome';
 import { PrintHeader } from './components/PrintHeader';
 import { Sidebar, ViewMode } from './components/Sidebar';
@@ -131,6 +132,8 @@ const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: strin
 };
 
 function App() {
+  const { user: authenticatedUser, supervisorName } = useAuthShell();
+
   useEffect(() => {
     document.title = 'Sistema Gestión Contratación PFEA';
   }, []);
@@ -411,18 +414,10 @@ function App() {
     return { missingDataCount, pendingMedicalCount, pendingDocumentationCount };
   }, [people]);
 
-  const supervisoresDisponibles = useMemo(() => {
-    const set = new Set<string>();
-    people.forEach(p => {
-      if (p.supervisorResponsable && p.supervisorResponsable.trim()) {
-        set.add(p.supervisorResponsable.trim());
-      }
-    });
-    if (set.size === 0) {
-      set.add('David Hinojo García');
-    }
-    return Array.from(set);
-  }, [people]);
+  const supervisoresDisponibles = useMemo(
+    () => supervisorName ? [supervisorName] : [],
+    [supervisorName],
+  );
 
   useEffect(() => {
     localStorage.setItem('personasPROFEA_autoSaveToDrive', String(autoSaveToDrive));
@@ -563,13 +558,20 @@ function App() {
   useEffect(() => {
     if (!auth.currentUser?.uid) return;
     const unsubscribe = subscribeToDocuments<Person>('trabajadores', workers => {
-      setPeople(workers.map(worker => ({ ...worker, sincronizadoEnNube: true })));
+      setPeople(workers.map(worker => ({
+        ...worker,
+        supervisorResponsable:
+          (!worker.ownerId || worker.ownerId === authenticatedUser.id) && supervisorName
+            ? supervisorName
+            : worker.supervisorResponsable,
+        sincronizadoEnNube: true,
+      })));
     }, { includeShared: true }, error => {
       console.error('Error leyendo trabajadores de Supabase:', error);
       setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
-  }, []);
+  }, [authenticatedUser.id, supervisorName]);
 
   // La papelera también se lee automáticamente desde Supabase.
   useEffect(() => {
@@ -957,7 +959,10 @@ function App() {
       return match && (p.formacion === 'No' || p.formacion === 'Sin formación' || !p.formacion);
     });
 
-    const finalPersonData = hadPreviousNoFormacion ? { ...personData, formacion: 'Sí' } : personData;
+    const finalPersonData = {
+      ...(hadPreviousNoFormacion ? { ...personData, formacion: 'Sí' } : personData),
+      supervisorResponsable: supervisorName,
+    };
     const newPerson: Person = {
       ...finalPersonData,
       id: Date.now() + Math.floor(Math.random() * 100000) + 1,
@@ -993,7 +998,10 @@ function App() {
         return match && (p.formacion === 'No' || p.formacion === 'Sin formación' || !p.formacion);
       });
 
-      const updatedW = hadPreviousNoFormacion ? { ...w, formacion: 'Sí' } : w;
+      const updatedW = {
+        ...(hadPreviousNoFormacion ? { ...w, formacion: 'Sí' } : w),
+        supervisorResponsable: supervisorName,
+      };
 
       const person: Person = {
         ...updatedW,
@@ -1576,7 +1584,7 @@ function App() {
             newPeople.push({
               id: Number(item.id) || (Date.now() + Math.random()),
               fechaRegistro: item.fechaRegistro || new Date().toISOString(),
-              supervisorResponsable: item.supervisorResponsable || '',
+              supervisorResponsable: supervisorName,
               numOferta: item.numOferta || '',
               obra: item.obra || '',
               categoria: item.categoria || '',
@@ -1636,7 +1644,7 @@ function App() {
               newPeople.push({
                 id: Number(item.id) || (Date.now() + Math.random()),
                 fechaRegistro: item.fechaRegistro || new Date().toISOString(),
-                supervisorResponsable: item.supervisorResponsable || '',
+                supervisorResponsable: supervisorName,
                 numOferta: item.numOferta || '',
                 obra: item.obra || '',
                 categoria: item.categoria || '',
@@ -1680,7 +1688,7 @@ function App() {
               newPeople.push({
                 id: Date.now() + idx + Math.random(),
                 fechaRegistro: new Date().toISOString(),
-                supervisorResponsable: '',
+                supervisorResponsable: supervisorName,
                 numOferta: '',
                 obra: 'BORNOS',
                 categoria: 'Peón',
@@ -1718,7 +1726,7 @@ function App() {
           if (worksheet) {
             const supervisorCell = worksheet.getCell('G1').text || worksheet.getCell('E1').text || '';
             const supervisorMatch = supervisorCell.match(/SUPERVISOR RESPONSABLE:\s*(.+)/i);
-            const supervisorResponsable = supervisorMatch ? supervisorMatch[1].trim() : '';
+            const supervisorResponsable = supervisorName;
 
             const parseDate = (cellValue: any): string => {
               if (!cellValue || cellValue === '-') return '';
@@ -1913,7 +1921,7 @@ function App() {
                   newPeople.push({
                     id: Number(item.id) || (Date.now() + Math.random()),
                     fechaRegistro: item.fechaRegistro || new Date().toISOString(),
-                    supervisorResponsable: item.supervisorResponsable || '',
+                    supervisorResponsable: supervisorName,
                     numOferta: item.numOferta || '',
                     obra: item.obra || '',
                     categoria: item.categoria || '',
@@ -1988,7 +1996,7 @@ function App() {
                     newPeople.push({
                       id: Date.now() + i + Math.random(),
                       fechaRegistro: new Date().toISOString(),
-                      supervisorResponsable: '',
+                      supervisorResponsable: supervisorName,
                       numOferta: '',
                       obra: obraIdx >= 0 ? getVal(obraIdx, 'BORNOS') : getVal(2, 'BORNOS'),
                       categoria: catIdx >= 0 ? getVal(catIdx, 'Peón') : getVal(3, 'Peón'),

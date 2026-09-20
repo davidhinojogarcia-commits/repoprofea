@@ -213,9 +213,14 @@ const getCopyrightText = () => `© ${new Date().getFullYear()} ${COPYRIGHT_OWNER
 
 export const applyPdfCopyrightStamp = (doc: jsPDF) => {
   const marker = '__gestionProfeaCopyrightStamped';
-  if ((doc as any)[marker]) return;
   const totalPages = (doc as any).internal.getNumberOfPages ? (doc as any).internal.getNumberOfPages() : 1;
-  for (let page = 1; page <= totalPages; page++) {
+  const previousMarker = (doc as any)[marker];
+  const stampedPages = previousMarker === true ? totalPages : Number(previousMarker || 0);
+
+  // Permite volver a ejecutar el sello si después se han añadido anexos/páginas.
+  if (stampedPages >= totalPages) return;
+
+  for (let page = Math.max(1, stampedPages + 1); page <= totalPages; page++) {
     doc.setPage(page);
     const pageSize = doc.internal.pageSize;
     const pageHeight = pageSize.height || pageSize.getHeight();
@@ -225,7 +230,7 @@ export const applyPdfCopyrightStamp = (doc: jsPDF) => {
     doc.setTextColor(125, 135, 145);
     doc.text(getCopyrightText(), pageWidth / 2, pageHeight - 2.8, { align: 'center' });
   }
-  (doc as any)[marker] = true;
+  (doc as any)[marker] = totalPages;
 };
 
 
@@ -2857,6 +2862,7 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
 
   const filename = `NOTIFICACIONES_CITAS_PROFEA_${new Date().toISOString().slice(0, 10)}.pdf`;
   applyInstitutionalPdfStandard(doc);
+  applyPdfCopyrightStamp(doc);
   return { doc, filename };
 };
 

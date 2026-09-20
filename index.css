@@ -375,7 +375,6 @@ body.profea-modal-open {
   }
 }
 
-
 /* Documentación de obra: pestañas móviles siempre legibles.
    La anchura se fija aquí (y no solo con utilidades) para impedir que cualquier
    regla global de botones o flex las comprima hasta mostrar el texto letra a letra. */
@@ -411,7 +410,6 @@ body.profea-modal-open {
     flex: 0 0 auto !important;
   }
 }
-
 
 /* Documentación de obra · carrusel táctil móvil.
  * La regla global #root .flex { min-width:0 } anulaba min-w-max del track y en
@@ -450,3 +448,4 @@ body.profea-modal-open {
     touch-action: pan-x !important;
   }
 }
+

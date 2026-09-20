@@ -106,12 +106,18 @@ export interface SubcontrataTrabajadorCAE {
   nombreApellidos: string;
   dni: string;
   puestoTrabajo: string;
+  telefono?: string;
+  numeroSeguridadSocial?: string;
+  fechaAltaObra?: string;
+  fechaBajaObra?: string;
+  observaciones?: string;
   estadoAcceso: SubcontrataTrabajadorEstadoAcceso;
   motivosNoAutorizado: string[];
   documentosAcreditados: string[];
   archivosOrigen?: string[];
   confianza?: 'alta' | 'media' | 'baja';
   confirmadoPorUsuario?: boolean;
+  accesoModificadoManualmente?: boolean;
 }
 
 export interface SubcontrataDocItem {
