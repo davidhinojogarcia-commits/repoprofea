@@ -611,7 +611,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       throw new Error("No se han reconocido candidatos.");
     const workKey = (v: string) => {
       const s = norm(v).replace(/[.\s_\-/:]+/g, "");
-      const code = s.match(/(\\d{5})/)?.[1] || "";
+      const code = s.match(/(\d{5})/)?.[1] || "";
       const type = s.includes("gr") ? "gr" : s.includes("ee") ? "ee" : "";
       return code && type ? `${code}${type}` : s;
     };
