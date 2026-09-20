@@ -553,17 +553,18 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">
-              Motor de aptitud médica
+              Importación de resultados de reconocimientos médicos
             </h1>
             <p className="text-sm text-slate-500 mt-1 max-w-3xl">
-              Extracción de texto + OCR local. Identifica trabajadores
-              registrados y aplica Apto, Apto con limitaciones o No apto sin
-              depender de proveedores de IA.
+              Importa los informes o resultados emitidos por el servicio médico.
+              GestionProfea identifica automáticamente a cada trabajador y asigna
+              a su ficha el resultado que le corresponde, dejando actualizado su
+              estado como Apto, Apto con limitaciones o No apto.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 shrink-0">
             <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00548E] text-white font-bold text-sm cursor-pointer">
-              <FileUp className="w-4 h-4" /> Analizar documentos
+              <FileUp className="w-4 h-4" /> Importar resultados
               <input
                 ref={inputRef}
                 type="file"
