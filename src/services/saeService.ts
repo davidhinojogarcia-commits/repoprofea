@@ -13,6 +13,21 @@ export type SaeNeed = {
   createdAt?: string;
 };
 
+export type SaeReportVersionCandidate = {
+  id: string;
+  orderNumber: number;
+  resultCode: string;
+  pageNumber: number;
+  overlayX: number;
+  overlayY: number;
+};
+
+export type SaeReportVersion = {
+  version: number;
+  finalizedAt: string;
+  candidates: SaeReportVersionCandidate[];
+};
+
 export type SaeReport = {
   id: string;
   needId: string;
@@ -27,6 +42,7 @@ export type SaeReport = {
   quincena: string;
   categoria: string;
   status: "review" | "finalized";
+  versions: SaeReportVersion[];
   createdAt?: string;
 };
 
@@ -377,17 +393,49 @@ export async function deleteSaeReport(
 export async function updateSaeReportStatus(
   id: string,
   status: "review" | "finalized",
-): Promise<void> {
+  snapshot?: SaeReportVersionCandidate[],
+): Promise<number | null> {
   const ownerId = await uid();
+  const body: Record<string, unknown> = {
+    processing_status: status,
+    updated_by: ownerId,
+  };
+
+  let versionNumber: number | null = null;
+  if (status === "finalized" && snapshot) {
+    const rows = await supabase.query("sae_reports", {
+      query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
+    });
+    const legend =
+      rows?.[0]?.detected_legend &&
+      typeof rows[0].detected_legend === "object" &&
+      !Array.isArray(rows[0].detected_legend)
+        ? { ...rows[0].detected_legend }
+        : {};
+    const previousVersions = Array.isArray((legend as any).__finalized_versions)
+      ? (legend as any).__finalized_versions
+      : [];
+    versionNumber = previousVersions.length + 1;
+    body.detected_legend = {
+      ...legend,
+      __finalized_versions: [
+        ...previousVersions,
+        {
+          version: versionNumber,
+          finalizedAt: new Date().toISOString(),
+          candidates: snapshot,
+        },
+      ],
+    };
+  }
+
   await supabase.query("sae_reports", {
     method: "PATCH",
     prefer: "return=minimal",
     query: `id=eq.${encodeURIComponent(id)}`,
-    body: {
-      processing_status: status,
-      updated_by: ownerId,
-    },
+    body,
   });
+  return versionNumber;
 }
 
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
@@ -420,6 +468,24 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
         ),
         categoria: sample.category || "",
         status: r.processing_status === "finalized" ? "finalized" : "review",
+        versions: Array.isArray(r.detected_legend?.__finalized_versions)
+          ? r.detected_legend.__finalized_versions
+              .map((version: any, index: number) => ({
+                version: Number(version?.version || index + 1),
+                finalizedAt: String(version?.finalizedAt || ""),
+                candidates: Array.isArray(version?.candidates)
+                  ? version.candidates.map((candidate: any) => ({
+                      id: String(candidate?.id || ""),
+                      orderNumber: Number(candidate?.orderNumber || 0),
+                      resultCode: String(candidate?.resultCode || ""),
+                      pageNumber: Math.max(1, Number(candidate?.pageNumber || 1)),
+                      overlayX: Number(candidate?.overlayX ?? 184),
+                      overlayY: Number(candidate?.overlayY ?? 50),
+                    }))
+                  : [],
+              }))
+              .filter((version: SaeReportVersion) => version.candidates.length > 0)
+          : [],
         createdAt: r.created_at,
       } as SaeReport;
     }),
@@ -428,7 +494,7 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
 
 export async function createSaeReport(
   needId: string,
-  report: Omit<SaeReport, "id" | "needId" | "status" | "createdAt">,
+  report: Omit<SaeReport, "id" | "needId" | "status" | "versions" | "createdAt">,
   candidates: Omit<SaeCandidate, "id" | "needId" | "reportId">[],
 ) {
   const ownerId = await uid();

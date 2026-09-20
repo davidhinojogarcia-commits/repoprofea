@@ -32,6 +32,7 @@ import {
   SaeCandidate,
   SaeNeed,
   SaeReport,
+  SaeReportVersion,
   createSaeNeed,
   createSaeReport,
   deleteSaeNeed,
@@ -598,80 +599,150 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
   };
 
-  const handleReportFile = async (file?: File) => {
-    if (!file || !selectedNeed) return;
+  const processReportFile = async (
+    file: File,
+    targetNeed: SaeNeed,
+    progressPrefix = "",
+  ) => {
+    const parsed = await parseSaeReportFile(file, (message) =>
+      setProgress(`${progressPrefix}${message}`),
+    );
+    if (!parsed.candidates.length)
+      throw new Error("No se han reconocido candidatos.");
+    const workKey = (v: string) => {
+      const s = norm(v).replace(/[.\s_\-/:]+/g, "");
+      const code = s.match(/(\d{5})/)?.[1] || "";
+      const type = s.includes("gr") ? "gr" : s.includes("ee") ? "ee" : "";
+      return code && type ? `${code}${type}` : s;
+    };
+    if (
+      workKey(targetNeed.codigoObra) &&
+      workKey(parsed.codigoObra) &&
+      workKey(targetNeed.codigoObra) !== workKey(parsed.codigoObra)
+    )
+      throw new Error(
+        `El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${targetNeed.codigoObra}.`,
+      );
+    if (
+      targetNeed.mes &&
+      parsed.mes &&
+      norm(targetNeed.mes) !== norm(parsed.mes)
+    )
+      throw new Error(
+        `El informe corresponde a ${parsed.mes}, pero la solicitud de mano de obra es de ${targetNeed.mes}.`,
+      );
+
+    const fileBase64 = await fileToDataUrl(file);
+    const createdReportId = await createSaeReport(
+      targetNeed.id,
+      {
+        fileName: file.name,
+        fileBase64,
+        extractedText: parsed.sourceText,
+        extractionSource: parsed.source,
+        offerNumber: parsed.offerNumber,
+        obra: parsed.obra || targetNeed.obra,
+        codigoObra: parsed.codigoObra || targetNeed.codigoObra,
+        mes: parsed.mes || targetNeed.mes,
+        quincena: parsed.quincena,
+        categoria: parsed.categoria,
+      },
+      parsed.candidates.map((candidate) => ({
+        orderNumber: candidate.orderNumber,
+        fullNameOriginal: candidate.fullNameOriginal,
+        normalizedName: candidate.normalizedName,
+        apellidos: candidate.apellidos,
+        nombre: candidate.nombre,
+        categoria: parsed.categoria,
+        obra: parsed.obra || targetNeed.obra,
+        codigoObra: parsed.codigoObra || targetNeed.codigoObra,
+        offerNumber: parsed.offerNumber,
+        mes: parsed.mes || targetNeed.mes,
+        quincena: "",
+        estado: "Sin asignar",
+        resultCode: "",
+        linkedWorkerId: null,
+        pageNumber: candidate.pageNumber,
+        overlayX: candidate.overlayX,
+        overlayY: candidate.overlayY,
+        confidence: candidate.confidence,
+      })),
+    );
+
+    const period =
+      parsed.quincena ||
+      (parsed.categoria && !/\bpeon(?:es)?\b/i.test(normalizeSaeTextForPeriod(parsed.categoria))
+        ? "Mensual"
+        : "Periodo por confirmar");
+
+    return {
+      id: createdReportId,
+      fileName: file.name,
+      candidateCount: parsed.candidates.length,
+      period,
+    };
+  };
+
+  const normalizeSaeTextForPeriod = (value: string) =>
+    norm(value).replace(/[^a-z0-9ñáéíóúü ]/gi, " ");
+
+  const handleReportFiles = async (files?: FileList | File[]) => {
+    const selectedFiles = Array.from(files || []);
+    const targetNeed = selectedNeed;
+    if (!selectedFiles.length || !targetNeed) return;
+
     setBusy(true);
-    setProgress("Leyendo informe SAE…");
+    const imported: {
+      id: string;
+      fileName: string;
+      candidateCount: number;
+      period: string;
+    }[] = [];
+    const failed: { fileName: string; message: string }[] = [];
+
     try {
-      const parsed = await parseSaeReportFile(file, setProgress);
-      if (!parsed.candidates.length)
-        throw new Error("No se han reconocido candidatos.");
-      const workKey = (v: string) => {
-        const s = norm(v).replace(/[.\s_\-/:]+/g, "");
-        const code = s.match(/(\d{5})/)?.[1] || "";
-        const type = s.includes("gr") ? "gr" : s.includes("ee") ? "ee" : "";
-        return code && type ? `${code}${type}` : s;
-      };
-      if (
-        workKey(selectedNeed.codigoObra) &&
-        workKey(parsed.codigoObra) &&
-        workKey(selectedNeed.codigoObra) !== workKey(parsed.codigoObra)
-      )
-        throw new Error(
-          `El informe corresponde a la obra ${parsed.codigoObra}, pero está seleccionada ${selectedNeed.codigoObra}.`,
+      for (let index = 0; index < selectedFiles.length; index += 1) {
+        const file = selectedFiles[index];
+        const prefix =
+          selectedFiles.length > 1
+            ? `Informe ${index + 1}/${selectedFiles.length} · ${file.name} · `
+            : "";
+        setProgress(`${prefix}Leyendo informe SAE…`);
+        try {
+          imported.push(await processReportFile(file, targetNeed, prefix));
+        } catch (error: any) {
+          failed.push({
+            fileName: file.name,
+            message: error?.message || "No se pudo analizar el informe.",
+          });
+        }
+      }
+
+      if (imported.length) {
+        await refresh(targetNeed.id);
+        setSelectedReportId(imported[imported.length - 1].id);
+        const candidatesTotal = imported.reduce(
+          (total, item) => total + item.candidateCount,
+          0,
         );
-      if (
-        selectedNeed.mes &&
-        parsed.mes &&
-        norm(selectedNeed.mes) !== norm(parsed.mes)
-      )
-        throw new Error(
-          `El informe corresponde a ${parsed.mes}, pero la solicitud de mano de obra es de ${selectedNeed.mes}.`,
+        onToast(
+          imported.length === 1
+            ? `${candidatesTotal} candidatos SAE reconocidos. El informe se ha clasificado y archivado por periodo.`
+            : `${imported.length} informes SAE importados y clasificados por periodo · ${candidatesTotal} candidatos reconocidos.`,
+          "success",
         );
-      const fileBase64 = await fileToDataUrl(file);
-      const createdReportId = await createSaeReport(
-        selectedNeed.id,
-        {
-          fileName: file.name,
-          fileBase64,
-          extractedText: parsed.sourceText,
-          extractionSource: parsed.source,
-          offerNumber: parsed.offerNumber,
-          obra: parsed.obra || selectedNeed.obra,
-          codigoObra: parsed.codigoObra || selectedNeed.codigoObra,
-          mes: parsed.mes || selectedNeed.mes,
-          quincena: parsed.quincena,
-          categoria: parsed.categoria,
-        },
-        parsed.candidates.map((c) => ({
-          orderNumber: c.orderNumber,
-          fullNameOriginal: c.fullNameOriginal,
-          normalizedName: c.normalizedName,
-          apellidos: c.apellidos,
-          nombre: c.nombre,
-          categoria: parsed.categoria,
-          obra: parsed.obra || selectedNeed.obra,
-          codigoObra: parsed.codigoObra || selectedNeed.codigoObra,
-          offerNumber: parsed.offerNumber,
-          mes: parsed.mes || selectedNeed.mes,
-          quincena: "",
-          estado: "Sin asignar",
-          resultCode: "",
-          linkedWorkerId: null,
-          pageNumber: c.pageNumber,
-          overlayX: c.overlayX,
-          overlayY: c.overlayY,
-          confidence: c.confidence,
-        })),
-      );
-      await refresh(selectedNeed.id);
-      setSelectedReportId(createdReportId);
-      onToast(
-        `${parsed.candidates.length} candidatos SAE reconocidos y aislados en su informe.`,
-        "success",
-      );
-    } catch (e: any) {
-      onToast(e.message || "No se pudo analizar el informe SAE.", "error");
+      }
+
+      if (failed.length) {
+        const detail = failed
+          .slice(0, 3)
+          .map((item) => `${item.fileName}: ${item.message}`)
+          .join(" · ");
+        onToast(
+          `${failed.length} informe(s) no se pudieron importar. ${detail}`,
+          "error",
+        );
+      }
     } finally {
       setBusy(false);
       setProgress("");
@@ -830,8 +901,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     offsetX = 0,
     offsetY = 0,
     requireComplete = true,
+    archivedVersion?: SaeReportVersion,
   ): Promise<Uint8Array> => {
-    const rows = candidates.filter((c) => c.reportId === report.id);
+    const rows = archivedVersion?.candidates?.length
+      ? archivedVersion.candidates
+      : candidates.filter((c) => c.reportId === report.id);
     if (!rows.length)
       throw new Error("No hay candidatos asociados al informe.");
     if (requireComplete) {
@@ -873,16 +947,44 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      await updateSaeReportStatus(report.id, "finalized");
+      const reportRows = candidates.filter((candidate) => candidate.reportId === report.id);
+      const snapshot = reportRows.map((candidate) => ({
+        id: candidate.id,
+        orderNumber: candidate.orderNumber,
+        resultCode: candidate.resultCode,
+        pageNumber: candidate.pageNumber,
+        overlayX: candidate.overlayX,
+        overlayY: candidate.overlayY,
+      }));
+      const finalizedAt = new Date().toISOString();
+      const versionNumber =
+        (await updateSaeReportStatus(report.id, "finalized", snapshot)) ||
+        (report.versions?.length || 0) + 1;
       setReports((previous) =>
         previous.map((item) =>
-          item.id === report.id ? { ...item, status: "finalized" } : item,
+          item.id === report.id
+            ? {
+                ...item,
+                status: "finalized",
+                versions: [
+                  ...(item.versions || []),
+                  {
+                    version: versionNumber,
+                    finalizedAt,
+                    candidates: snapshot,
+                  },
+                ],
+              }
+            : item,
         ),
       );
       setReturnedReportIds((prev) =>
         prev.includes(report.id) ? prev : [...prev, report.id],
       );
-      onToast("Documento SAE generado y archivado como finalizado.", "success");
+      onToast(
+        `Documento SAE generado y archivado como versión ${versionNumber}.`,
+        "success",
+      );
     } catch (e: any) {
       onToast(e.message || "No se pudo generar el documento.", "error");
     } finally {
@@ -890,6 +992,37 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       setProgress("");
     }
   };
+  const downloadArchivedVersion = async (
+    report: SaeReport,
+    version: SaeReportVersion,
+  ) => {
+    setBusy(true);
+    setProgress(`Recuperando versión ${version.version} del informe SAE…`);
+    try {
+      const bytes = await buildReturnPdfBytes(report, 0, 0, true, version);
+      const url = URL.createObjectURL(bytesToBlob(bytes));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SAE_FINAL_${report.offerNumber || report.id}_V${version.version}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      onToast(
+        `Versión ${version.version} del informe SAE recuperada correctamente.`,
+        "success",
+      );
+    } catch (error: any) {
+      onToast(
+        error.message || "No se pudo recuperar la versión archivada.",
+        "error",
+      );
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
   const reopenReport = async (report: SaeReport) => {
     try {
       await updateSaeReportStatus(report.id, "review");
@@ -1132,19 +1265,24 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                       title={selectedNeed ? "Importar informe SAE para la solicitud seleccionada" : "Selecciona primero una solicitud"}
                     >
                       <FileText className="w-4 h-4" />
-                      Añadir informe SAE
+                      Añadir informes SAE
                       <input
                         type="file"
                         accept=".pdf,image/*"
                         className="hidden"
+                        multiple
                         disabled={!selectedNeed || busy}
                         onChange={(event) => {
-                          void handleReportFile(event.target.files?.[0]);
+                          void handleReportFiles(event.target.files || undefined);
                           event.currentTarget.value = "";
                         }}
                       />
                     </label>
-                    {!selectedNeed && (
+                    {selectedNeed ? (
+                      <div className="mt-1.5 text-[10px] text-slate-500">
+                        Puede seleccionar varios informes a la vez. Se analizarán por separado y se archivarán en esta obra según su periodo.
+                      </div>
+                    ) : (
                       <div className="mt-1.5 text-[10px] text-slate-500">
                         Selecciona primero una solicitud del Paso 1.
                       </div>
@@ -1469,6 +1607,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                   </div>
                                   <div className="mt-1 text-xs text-slate-500">
                                     Oferta {r.offerNumber || "—"} · {reportCandidates.length} candidatos · {r.categoria || "Categoría no detectada"}
+                                    {r.versions?.length ? ` · ${r.versions.length} versión(es) finalizada(s)` : ""}
                                   </div>
                                 </button>
                                 <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
@@ -1505,6 +1644,22 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                     <Trash2 className="w-4 h-4" />
                                     Eliminar informe
                                   </button>
+                                  {(r.versions || []).map((version) => (
+                                    <button
+                                      key={`${r.id}-version-${version.version}`}
+                                      type="button"
+                                      onClick={() => void downloadArchivedVersion(r, version)}
+                                      className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs inline-flex gap-1 items-center"
+                                      title={
+                                        version.finalizedAt
+                                          ? `Finalizada el ${new Date(version.finalizedAt).toLocaleString("es-ES")}`
+                                          : `Versión ${version.version}`
+                                      }
+                                    >
+                                      <Download className="w-4 h-4" />
+                                      Versión {version.version}
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
                             );
