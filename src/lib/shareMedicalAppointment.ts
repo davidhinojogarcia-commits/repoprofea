@@ -1,5 +1,5 @@
 import type { Person } from '../../types';
-import { generateMedicalTicketsPDF } from './exportUtils';
+import { applyPdfCopyrightStamp, generateMedicalTicketsPDF } from './exportUtils';
 
 let reservedWhatsAppWindow: Window | null = null;
 
@@ -260,6 +260,9 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
 
   overlayWorkerIdentity(doc, person);
   appendPrlTrainingSchedule(doc, person);
+  // La citación base ya se sella en su generador. Si se añade la página PRL,
+  // esta segunda pasada incorpora el mismo copyright a la nueva página.
+  applyPdfCopyrightStamp(doc);
   const safeName = (person.apellidosNombre || 'trabajador').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_');
   const filename = `CITACION_RECONOCIMIENTO_${safeName}_${formatDate(person.citaDia).replace(/\//g, '-')}.pdf`;
   const blob = doc.output('blob');
