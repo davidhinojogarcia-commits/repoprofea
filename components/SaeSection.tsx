@@ -789,6 +789,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     if (!resolvedPeriod)
       return onToast("Confirme primero el periodo del informe.", "error");
     const { periodoInicio, periodoFin } = resolveAnnualPeriodDates(candidate, resolvedPeriod);
+    const reportForWorker = reports.find((report) => report.id === candidate.reportId) || null;
+    const hiringMonth = reportForWorker?.mes || candidate.mes || selectedNeed?.mes || "";
+    const hiringYear = Number(selectedNeed?.ano || 0) || new Date().getFullYear();
+    const workerFortnight = resolvedPeriod === "Mensual"
+      ? `Mes ${hiringMonth} ${hiringYear}`.trim()
+      : `${resolvedPeriod.replace(" Quincena", "")} ${hiringMonth} ${hiringYear}`.trim();
     const previous = people.find(
       (p) => norm(p.apellidosNombre) === norm(candidate.normalizedName),
     );
@@ -822,7 +828,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         numOferta: candidate.offerNumber,
         obra: canonicalWork,
         categoria: canonicalCategory,
-        quincena: resolvedPeriod,
+        quincena: workerFortnight,
         apellidosNombre: candidate.normalizedName,
         dni: previous?.dni || "",
         fechaNacimiento: previous?.fechaNacimiento || "",
@@ -1747,6 +1753,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             <div className="text-xs text-slate-500 mt-1">
                               {c.categoria || "Categoría pendiente"} · Oferta{" "}
                               {c.offerNumber || "—"}
+                              {c.quincena ? ` · Quincena: ${c.quincena}` : ""}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
