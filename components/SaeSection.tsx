@@ -788,6 +788,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   };
 
   const registerWorker = async (candidate: SaeCandidate) => {
+    const selectedResultCode = String(candidate.resultCode || "").trim() || "2001";
     const reportForCandidate = reports.find((report) => report.id === candidate.reportId) || null;
     const resolvedPeriod =
       candidate.quincena ||
@@ -857,7 +858,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       await createDocument("trabajadores", workerId, worker as any);
       await patchCandidate(candidate, {
         estado: "Contratado",
-        resultCode: "2001",
+        resultCode: selectedResultCode,
         linkedWorkerId: workerId,
       });
       window.sessionStorage.setItem("profea-sae-selected-need", candidate.needId || selectedNeedId);
@@ -869,7 +870,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         }),
       );
       onToast(
-        `Trabajador registrado en ${canonicalWork}${canonicalCategory ? ` como ${canonicalCategory}` : ""} y contratación SAE confirmada (2001). Complete ahora su ficha en Directorio.`,
+        `Trabajador registrado en ${canonicalWork}${canonicalCategory ? ` como ${canonicalCategory}` : ""} y contratación SAE confirmada con código ${selectedResultCode}. Complete ahora su ficha en Directorio.`,
         "success",
       );
     } catch (e: any) {
@@ -1859,7 +1860,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               <>
                                 <span className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold inline-flex gap-1 items-center">
                                   <CheckCircle2 className="w-4 h-4" />
-                                  Contratado · 2001
+                                  Contratado · {c.resultCode || "2001"}
                                 </span>
                                 <button
                                   onClick={() => void revertWorker(c)}
