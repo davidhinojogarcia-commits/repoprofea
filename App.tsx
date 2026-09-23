@@ -610,6 +610,20 @@ function App() {
   const visibleDeletedPeople = deletedPeople;
 
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+
+  useEffect(() => {
+    const handleSaeWorkerRegistered = (event: Event) => {
+      const detail = (event as CustomEvent<{ workerId?: number; worker?: Person }>).detail || {};
+      if (!detail.workerId || !detail.worker) return;
+
+      setActiveView('directorio');
+      setEditingPerson(detail.worker);
+      window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'directorio' } }));
+    };
+
+    window.addEventListener('profea:sae-worker-registered', handleSaeWorkerRegistered as EventListener);
+    return () => window.removeEventListener('profea:sae-worker-registered', handleSaeWorkerRegistered as EventListener);
+  }, []);
   const [bulkEditingPeople, setBulkEditingPeople] = useState<Person[] | null>(null);
   const [savedObras, setSavedObras] = useState<string[]>([]);
   
@@ -1145,6 +1159,14 @@ function App() {
       setPeople(prev => prev.map(person => person.id === savedPerson.id ? savedPerson : person));
       updateAutocompleteLists(savedPerson);
       setEditingPerson(null);
+
+      const saeReturnWorkerId = window.sessionStorage.getItem('profea-sae-return-worker-id');
+      const shouldReturnToSae = saeReturnWorkerId === String(savedPerson.id);
+      if (shouldReturnToSae) {
+        window.sessionStorage.removeItem('profea-sae-return-worker-id');
+        setActiveView('sae');
+        window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'sae' } }));
+      }
 
       const queuedOffline = Boolean((persisted as any)?.__offlinePending);
       setToast({
