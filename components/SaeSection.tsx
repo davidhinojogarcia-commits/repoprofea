@@ -749,6 +749,36 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
   };
 
+  const resolveAnnualPeriodDates = (candidate: SaeCandidate, resolvedPeriod: string) => {
+    const reportForCandidate = reports.find((report) => report.id === candidate.reportId) || null;
+    const year = Number(selectedNeed?.ano || 0) || new Date().getFullYear();
+    const monthLabel = reportForCandidate?.mes || candidate.mes || selectedNeed?.mes || "";
+    const month = monthNumber(monthLabel);
+    const annuality = annualPeriods.find((record) => record.year === year);
+    const monthPeriods = annuality?.months.find((item) => item.month === month);
+
+    if (!monthPeriods) return { periodoInicio: "", periodoFin: "" };
+
+    if (resolvedPeriod.startsWith("2")) {
+      return {
+        periodoInicio: monthPeriods.period2Start || "",
+        periodoFin: monthPeriods.period2End || "",
+      };
+    }
+
+    if (resolvedPeriod === "Mensual") {
+      return {
+        periodoInicio: monthPeriods.period1Start || monthPeriods.period2Start || "",
+        periodoFin: monthPeriods.period2End || monthPeriods.period1End || "",
+      };
+    }
+
+    return {
+      periodoInicio: monthPeriods.period1Start || "",
+      periodoFin: monthPeriods.period1End || "",
+    };
+  };
+
   const registerWorker = async (candidate: SaeCandidate) => {
     const reportForCandidate = reports.find((report) => report.id === candidate.reportId) || null;
     const resolvedPeriod =
@@ -758,6 +788,13 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         : "");
     if (!resolvedPeriod)
       return onToast("Confirme primero el periodo del informe.", "error");
+    const { periodoInicio, periodoFin } = resolveAnnualPeriodDates(candidate, resolvedPeriod);
+    const reportForWorker = reports.find((report) => report.id === candidate.reportId) || null;
+    const hiringMonth = reportForWorker?.mes || candidate.mes || selectedNeed?.mes || "";
+    const hiringYear = Number(selectedNeed?.ano || 0) || new Date().getFullYear();
+    const workerFortnight = resolvedPeriod === "Mensual"
+      ? `Mes ${hiringMonth} ${hiringYear}`.trim()
+      : `${resolvedPeriod.replace(" Quincena", "")} ${hiringMonth} ${hiringYear}`.trim();
     const previous = people.find(
       (p) => norm(p.apellidosNombre) === norm(candidate.normalizedName),
     );
@@ -791,12 +828,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         numOferta: candidate.offerNumber,
         obra: canonicalWork,
         categoria: canonicalCategory,
-        quincena: resolvedPeriod,
+        quincena: workerFortnight,
         apellidosNombre: candidate.normalizedName,
         dni: previous?.dni || "",
         fechaNacimiento: previous?.fechaNacimiento || "",
-        periodoInicio: "",
-        periodoFin: "",
+        periodoInicio,
+        periodoFin,
         telefono: previous?.telefono || "",
         calzado: previous?.calzado || "",
         formacion: previous?.formacion || "No",
@@ -1716,6 +1753,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             <div className="text-xs text-slate-500 mt-1">
                               {c.categoria || "Categoría pendiente"} · Oferta{" "}
                               {c.offerNumber || "—"}
+                              {c.quincena ? ` · Quincena: ${c.quincena}` : ""}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
