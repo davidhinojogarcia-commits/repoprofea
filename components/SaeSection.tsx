@@ -127,9 +127,17 @@ const loadPdfLib = async () =>
 export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const { supervisorName } = useAuthShell();
   const [needs, setNeeds] = useState<SaeNeed[]>([]);
-  const [selectedNeedId, setSelectedNeedId] = useState("");
+  const [selectedNeedId, setSelectedNeedId] = useState(() =>
+    typeof window !== "undefined"
+      ? window.sessionStorage.getItem("profea-sae-selected-need") || ""
+      : "",
+  );
   const [reports, setReports] = useState<SaeReport[]>([]);
-  const [selectedReportId, setSelectedReportId] = useState("");
+  const [selectedReportId, setSelectedReportId] = useState(() =>
+    typeof window !== "undefined"
+      ? window.sessionStorage.getItem("profea-sae-selected-report") || ""
+      : "",
+  );
   const [candidates, setCandidates] = useState<SaeCandidate[]>([]);
   const [needForm, setNeedForm] = useState<NeedForm>(emptyNeed);
   const [pendingImportedNeeds, setPendingImportedNeeds] = useState<NeedForm[]>(
@@ -852,8 +860,16 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         resultCode: "2001",
         linkedWorkerId: workerId,
       });
+      window.sessionStorage.setItem("profea-sae-selected-need", candidate.needId || selectedNeedId);
+      window.sessionStorage.setItem("profea-sae-selected-report", candidate.reportId || selectedReportId);
+      window.sessionStorage.setItem("profea-sae-return-worker-id", String(workerId));
+      window.dispatchEvent(
+        new CustomEvent("profea:sae-worker-registered", {
+          detail: { workerId, worker },
+        }),
+      );
       onToast(
-        `Trabajador registrado en ${canonicalWork}${canonicalCategory ? ` como ${canonicalCategory}` : ""} y contratación SAE confirmada (2001).`,
+        `Trabajador registrado en ${canonicalWork}${canonicalCategory ? ` como ${canonicalCategory}` : ""} y contratación SAE confirmada (2001). Complete ahora su ficha en Directorio.`,
         "success",
       );
     } catch (e: any) {
