@@ -94,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'Sigue estos pasos',
       items: [
-        { id: 'dashboard', label: 'Resumen', subtitle: 'Vuelve aquí si tienes dudas', icon: LayoutDashboard },
+        { id: 'dashboard', label: 'Menú inicial', subtitle: 'Vuelve aquí si tienes dudas', icon: LayoutDashboard },
         { id: 'sae', label: '1. Selección SAE', subtitle: 'Empieza aquí para contratar', icon: BriefcaseBusiness },
         { id: 'directorio', label: '2. Trabajadores', subtitle: 'Revisa datos y documentos', icon: Users },
         { id: 'citas', label: '3. Reconocimientos', subtitle: 'Citas y aptitud médica', icon: Calendar },
