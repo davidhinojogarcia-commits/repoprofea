@@ -527,6 +527,34 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       </div>
     </details>
 
+    <div className="ui-surface p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="min-w-0">
+        <div className="font-black text-sm">Carga masiva de herramientas y maquinaria</div>
+        <div className="text-xs text-slate-500 mt-1">Reconoce automáticamente los datos del Excel, crea equipos nuevos y actualiza coincidencias sin duplicarlas.</div>
+        {excelImportNotice && <div className="mt-2 text-xs font-semibold text-blue-700 dark:text-blue-300">{excelImportNotice}</div>}
+      </div>
+      <div className="shrink-0">
+        <input
+          ref={excelImportRef}
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          className="hidden"
+          onChange={event => {
+            const file = event.target.files?.[0];
+            if (file) void importInventoryExcel(file);
+          }}
+        />
+        <button
+          type="button"
+          disabled={excelImportBusy || !park}
+          onClick={() => excelImportRef.current?.click()}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-2.5 text-sm font-black disabled:opacity-60"
+        >
+          {excelImportBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          {excelImportBusy ? 'Analizando Excel…' : 'Importar Excel'}
+        </button>
+      </div>
+    </div>
     <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur overflow-x-auto"><div className="flex gap-2 min-w-max">{([
       ['resumen', 'Resumen', ClipboardList], ['inventario', 'Inventario', Boxes], ['movimientos', 'Movimientos', History], ['mantenimiento', 'Mantenimiento', Stethoscope], ['documentacion', 'Documentos', FileCheck2], ['trazabilidad', 'Trazabilidad', MapPinned],
     ] as [Tab, string, React.ElementType][]).map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold border ${tab === id ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}><Icon className="w-4 h-4" />{label}</button>)}</div></div>
