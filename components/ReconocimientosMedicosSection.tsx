@@ -125,6 +125,18 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
   const [pendingPdfGenerating, setPendingPdfGenerating] = useState(false);
   const [pendingPdfError, setPendingPdfError] = useState("");
   const pendingPdfReturnRef = useRef(false);
+
+  useEffect(() => {
+    const focusWorkerId = Number(sessionStorage.getItem("profea-medical-focus-worker-id") || "");
+    if (!Number.isFinite(focusWorkerId)) return;
+    const person = people.find((item) => item.id === focusWorkerId);
+    if (!person) return;
+    setSearch(person.dni || person.apellidosNombre || "");
+    sessionStorage.removeItem("profea-medical-focus-worker-id");
+    window.setTimeout(() => {
+      document.getElementById(`medical-worker-${person.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+  }, [people]);
   const pendingPdfGeneratingRef = useRef(false);
 
   const stats = useMemo(
@@ -944,7 +956,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
                     ? "bg-red-100 text-red-700"
                     : "bg-slate-100 text-slate-600";
             return (
-              <div
+              <div id={`medical-worker-${person.id}`}
                 key={person.id}
                 className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 flex flex-col sm:flex-row sm:items-center gap-2 justify-between"
               >
