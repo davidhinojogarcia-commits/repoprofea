@@ -800,7 +800,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
     { customLogo: config.customLogo },
   );
 
-  const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "CONF.", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];
+  const tableColumn = ["QUINCENA", "OBRA", "CATEGORÍA", "TRABAJADOR / DNI / NAC.", "TELÉFONO", "CITA (DÍA / HORA)", "ESTADO\nCITA", "SITIO RECONOCIMIENTO", "APTITUD / LIMITACIONES"];
   const tableRows = dataToExport.map(p => {
     const { estado, limitaciones, validez } = getAptitudMedicaInfo(p);
     let aptitudCell = 'PENDIENTE';
@@ -841,11 +841,17 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
       3: { cellWidth: 43 },
       4: { cellWidth: 20 },
       5: { cellWidth: 24 },
-      6: { cellWidth: 10, halign: 'center' as const },
-      7: { cellWidth: 40 },
-      8: { cellWidth: 66 }
+      6: { cellWidth: 14, halign: 'center' as const },
+      7: { cellWidth: 38 },
+      8: { cellWidth: 64 }
     },
     didParseCell: (data) => {
+      if (data.section === 'head' && data.column.index === 6) {
+        data.cell.styles.halign = 'center';
+        data.cell.styles.valign = 'middle';
+        data.cell.styles.fontSize = 6.6;
+        data.cell.styles.cellPadding = 1.6;
+      }
       if (data.section === 'body' && data.column.index === 6) {
         data.cell.styles.halign = 'center';
         data.cell.styles.valign = 'middle';
