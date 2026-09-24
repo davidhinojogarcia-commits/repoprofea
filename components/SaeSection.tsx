@@ -46,6 +46,7 @@ import {
   updateSaeReportStatus,
 } from "../src/services/saeService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
+import { supabase } from "../src/lib/supabase";
 import { useAuthShell } from "./AuthGate";
 import {
   listAnnualHiringPeriods,
@@ -826,6 +827,56 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         .sort((a, b) =>
           String(b.fechaRegistro || "").localeCompare(String(a.fechaRegistro || "")),
         )[0];
+
+    let previousMedicalLimitations =
+      previous?.reconocimientoLimitaciones ||
+      previous?.limitacionesAptitud ||
+      "";
+    let previousMedicalObservations = previous?.reconocimientoObservaciones || "";
+    let previousMedicalDate = previous?.reconocimientoFecha || "";
+    let previousMedicalValidity = previous?.reconocimientoValidez || "";
+    const previousMedicalState =
+      previous?.aptitudMedica || previous?.reconocimientoEstado || "";
+    const needsHistoricalLimitations =
+      norm(previousMedicalState).includes("limitaci") &&
+      !String(previousMedicalLimitations || "").trim();
+
+    if (previous && needsHistoricalLimitations) {
+      try {
+        const workerRows = await supabase.query("reconocimientos", {
+          query: `select=*&trabajador_id=eq.${encodeURIComponent(String(previous.id))}&order=fecha_reconocimiento.desc&limit=1`,
+        });
+        let recognition = workerRows?.[0];
+        if (!recognition && previous.dni) {
+          const dni = String(previous.dni).replace(/[\\s-]/g, "").toUpperCase();
+          const dniRows = await supabase.query("reconocimientos", {
+            query: `select=*&dni=eq.${encodeURIComponent(dni)}&order=fecha_reconocimiento.desc&limit=1`,
+          });
+          recognition = dniRows?.[0];
+        }
+        if (recognition) {
+          previousMedicalLimitations =
+            recognition.limitaciones ||
+            recognition.data?.limitaciones ||
+            previousMedicalLimitations;
+          previousMedicalObservations =
+            recognition.observaciones ||
+            recognition.data?.observaciones ||
+            previousMedicalObservations;
+          previousMedicalDate =
+            recognition.fecha_reconocimiento ||
+            recognition.data?.fechaReconocimiento ||
+            previousMedicalDate;
+          previousMedicalValidity =
+            recognition.validez ||
+            recognition.data?.validez ||
+            previousMedicalValidity;
+        }
+      } catch (error) {
+        console.warn("No se pudieron recuperar las limitaciones médicas históricas:", error);
+      }
+    }
+
     const workerId = Date.now() + Math.floor(Math.random() * 900000);
     try {
       const settings = await loadAppBusinessSettings();
@@ -873,12 +924,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         observaciones: `Contratación SAE · Oferta ${candidate.offerNumber} · Orden ${candidate.orderNumber}. Obra normalizada: ${canonicalWork}.`,
         necesitaReconocimiento: previous?.necesitaReconocimiento || "No",
         aptitudMedica: previous?.aptitudMedica || previous?.reconocimientoEstado || "Pendiente",
-        limitacionesAptitud: previous?.limitacionesAptitud || previous?.reconocimientoLimitaciones || "",
+        limitacionesAptitud: previousMedicalLimitations,
         reconocimientoEstado: previous?.reconocimientoEstado || previous?.aptitudMedica || "Pendiente",
-        reconocimientoFecha: previous?.reconocimientoFecha || "",
-        reconocimientoValidez: previous?.reconocimientoValidez || "",
-        reconocimientoLimitaciones: previous?.reconocimientoLimitaciones || previous?.limitacionesAptitud || "",
-        reconocimientoObservaciones: previous?.reconocimientoObservaciones || "",
+        reconocimientoFecha: previousMedicalDate,
+        reconocimientoValidez: previousMedicalValidity,
+        reconocimientoLimitaciones: previousMedicalLimitations,
+        reconocimientoObservaciones: previousMedicalObservations,
         sincronizadoEnNube: true,
       };
       await createDocument("trabajadores", workerId, worker as any);
