@@ -438,6 +438,19 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       document.getElementById('iban-input')?.focus();
       return;
     }
+    const currentDniForIban = formData.dni.replace(/[\s-]/g, '').toUpperCase();
+    const conflictingIban = ibanCheck?.valid && (people || []).some(p => {
+      if (!p.iban) return false;
+      const candidateCheck = validateIban(p.iban);
+      return candidateCheck.valid &&
+        candidateCheck.normalized === ibanCheck.normalized &&
+        p.dni.replace(/[\s-]/g, '').toUpperCase() !== currentDniForIban;
+    });
+    if (conflictingIban) {
+      alert('⚠️ Esta cuenta bancaria ya está asociada a otro trabajador con un DNI/NIE distinto. Revisa los datos antes de continuar.');
+      document.getElementById('iban-input')?.focus();
+      return;
+    }
     if (nussCheck?.valid) formData.numeroSeguridadSocial = nussCheck.normalized;
     if (ibanCheck?.valid) formData.iban = ibanCheck.normalized;
 
@@ -503,6 +516,25 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
   const nussAnalysis = useMemo(() => formData.numeroSeguridadSocial ? validateSpanishSocialSecurityNumber(formData.numeroSeguridadSocial) : null, [formData.numeroSeguridadSocial]);
   const ibanAnalysis = useMemo(() => formData.iban ? validateIban(formData.iban) : null, [formData.iban]);
+
+  const nussMatches = useMemo(() => {
+    if (!nussAnalysis?.valid || !nussAnalysis.normalized) return [];
+    return (people || []).filter((candidate) =>
+      normalizeSpanishSocialSecurityNumber(candidate.numeroSeguridadSocial) === nussAnalysis.normalized
+    );
+  }, [nussAnalysis?.valid, nussAnalysis?.normalized, people]);
+
+  const ibanMatches = useMemo(() => {
+    if (!ibanAnalysis?.valid || !ibanAnalysis.normalized) return [];
+    return (people || []).filter((candidate) => {
+      if (!candidate.iban) return false;
+      const check = validateIban(candidate.iban);
+      return check.valid && check.normalized === ibanAnalysis.normalized;
+    });
+  }, [ibanAnalysis?.valid, ibanAnalysis?.normalized, people]);
+
+  const repeatedAdministrativeDataLabel = (matches: Person[]) =>
+    Array.from(new Set(matches.map((candidate) => candidate.apellidosNombre).filter(Boolean))).join(' · ');
 
   const isPeriodInvalid = useMemo(() => {
     if (!formData.periodoInicio || !formData.periodoFin) return false;
@@ -763,11 +795,13 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Nº Seguridad Social <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
               <input id="nuss-input" type="text" name="numeroSeguridadSocial" value={formData.numeroSeguridadSocial || ''} onChange={handleChange} placeholder="11/12345678/90" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${nussAnalysis ? (nussAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
               {nussAnalysis && <p className={`text-[11px] font-semibold ${nussAnalysis.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{nussAnalysis.valid ? `✓ Número válido · ${formatSpanishSocialSecurityNumber(nussAnalysis.normalized)}` : `✕ ${nussAnalysis.error}`}</p>}
+              {nussMatches.length > 0 && <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">⚠ Ya registrado en: {repeatedAdministrativeDataLabel(nussMatches)}.</p>}
             </div>
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">IBAN / Cuenta bancaria <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
               <input id="iban-input" type="text" name="iban" value={formData.iban || ''} onChange={handleChange} placeholder="ES00 0000 0000 0000 0000 0000" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${ibanAnalysis ? (ibanAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
               {ibanAnalysis && <p className={`text-[11px] font-semibold ${ibanAnalysis.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{ibanAnalysis.valid ? `✓ IBAN válido · ${formatIban(ibanAnalysis.normalized)}` : `✕ ${ibanAnalysis.error}`}</p>}
+              {ibanMatches.length > 0 && <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">⚠ Ya registrado en: {repeatedAdministrativeDataLabel(ibanMatches)}.</p>}
               <p className="text-[10px] text-slate-400">También puedes capturarlos desde Escáner → Seguridad Social / IBAN.</p>
             </div>
           </div>
