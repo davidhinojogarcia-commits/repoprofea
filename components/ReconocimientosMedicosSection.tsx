@@ -226,6 +226,23 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
     } catch {}
   };
 
+  const returnToSaeAfterMedicalShare = (personId: number) => {
+    try {
+      const returnWorkerId = sessionStorage.getItem(
+        "profea-medical-return-to-sae-worker-id",
+      );
+      if (returnWorkerId !== String(personId)) return false;
+      sessionStorage.removeItem("profea-medical-return-to-sae-worker-id");
+      sessionStorage.removeItem("profea-medical-focus-worker-id");
+      window.dispatchEvent(
+        new CustomEvent("profea:navigate", { detail: { view: "sae" } }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     const recoverPending = () => {
       if (pendingPdfPerson) return;
@@ -345,21 +362,25 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         file,
       );
       if (result === "shared") {
+        const sharedPerson = pendingPdfPerson;
         const now = new Date().toISOString();
-        try {
-          await updateDocument("trabajadores", pendingPdfPerson.id, {
-            ...pendingPdfPerson,
-            confirmacionCitaDocumentoCompartidoFecha: now,
-            confirmacionCitaDocumentoNombre: file.name,
-          } as any);
-        } catch (error) {
+
+        // La trazabilidad del envío se guarda en segundo plano para no frenar
+        // el paso al siguiente candidato.
+        void updateDocument("trabajadores", sharedPerson.id, {
+          ...sharedPerson,
+          confirmacionCitaDocumentoCompartidoFecha: now,
+          confirmacionCitaDocumentoNombre: file.name,
+        } as any).catch((error) => {
           console.warn("[medical-pdf-share] No se pudo registrar la acción de compartir", error);
-        }
+        });
+
         onToast(
-          `PDF compartido desde el dispositivo. La cita seguirá pendiente hasta que ${pendingPdfPerson.apellidosNombre} confirme su asistencia.`,
+          `PDF compartido desde el dispositivo. Volviendo a Gestión SAE para continuar con el siguiente candidato.`,
           "success",
         );
         clearPendingPdf();
+        returnToSaeAfterMedicalShare(sharedPerson.id);
       } else if (result === "downloaded") {
         onToast(
           "Este dispositivo no permite compartir el PDF directamente. Se ha descargado para que puedas adjuntarlo manualmente.",
