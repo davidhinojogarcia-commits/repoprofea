@@ -175,6 +175,9 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [coordinatorEmail, setCoordinatorEmail] = useState('');
   const [parkSaving, setParkSaving] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [excelImportBusy, setExcelImportBusy] = useState(false);
+  const [excelImportNotice, setExcelImportNotice] = useState('');
+  const excelImportRef = useRef<HTMLInputElement>(null);
 
   const loadParkData = async (selected: InventoryPark) => {
     setPark(selected); setParkName(selected.nombre); setParkZone(selected.zona); setCoordinatorEmail(selected.coordinatorEmail || '');
