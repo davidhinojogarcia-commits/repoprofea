@@ -48,6 +48,7 @@ import {
 import { loadAppBusinessSettings, saveAppBusinessSettings } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
+import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
 import {
   getStoredReporteTecnicoConfig,
   saveStoredReporteTecnicoConfig,
@@ -2070,6 +2071,37 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
               </div>
             </div>
           )}
+
+          <div className="mt-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-primary dark:text-blue-400">Información de la aplicación</p>
+                  <h2 className="text-lg font-black text-slate-900 dark:text-slate-100 mt-1">GestionProfea · v{APP_VERSION}</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Actualizada: {APP_RELEASE_DATE} · Build: {APP_BUILD}
+                  </p>
+                </div>
+                <span className="inline-flex items-center self-start sm:self-auto rounded-full border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                  Versión estable
+                </span>
+              </div>
+            </div>
+            <div className="p-5 sm:p-6">
+              <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 mb-3">Novedades de esta versión</h3>
+              <ul className="space-y-2">
+                {APP_RELEASE_NOTES.map((note) => (
+                  <li key={note} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                    <span>{note}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-4">
+                El número de versión cambiará con cada mejora publicada para identificar exactamente qué edición de GestionProfea estás utilizando.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
