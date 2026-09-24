@@ -23,7 +23,6 @@ import { CameraScannerModal } from './components/CameraScannerModal';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
-import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
 
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
@@ -71,6 +70,7 @@ const SubcontratasSection = lazy(() => import('./components/SubcontratasSection'
 const SaeSection = lazy(() => import('./components/SaeSection').then(module => ({ default: module.SaeSection })));
 const InventorySection = lazy(() => import('./components/InventorySection').then(module => ({ default: module.InventorySection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
+const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 
 let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
 const loadPdfJs = async () => {
@@ -2331,7 +2331,9 @@ function App() {
           )}
 
           {activeView === 'documentacion_obra' && (
-            <WorksiteDocumentationPortal />
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <WorksiteDocumentationPortal />
+            </Suspense>
           )}
 
           {activeView === 'inventario' && (
