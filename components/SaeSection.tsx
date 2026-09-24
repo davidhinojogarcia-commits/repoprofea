@@ -804,9 +804,28 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     const workerFortnight = resolvedPeriod === "Mensual"
       ? `Mes ${hiringMonth} ${hiringYear}`.trim()
       : `${resolvedPeriod.replace(" Quincena", "")} ${hiringMonth} ${hiringYear}`.trim();
-    const previous = people.find(
+    const previousCandidates = people.filter(
       (p) => norm(p.apellidosNombre) === norm(candidate.normalizedName),
     );
+    const hasMedicalData = (p: any) =>
+      Boolean(
+        String(p?.aptitudMedica || "").trim() ||
+        String(p?.reconocimientoEstado || "").trim() ||
+        String(p?.reconocimientoFecha || "").trim() ||
+        String(p?.reconocimientoValidez || "").trim(),
+      );
+    const previous =
+      previousCandidates
+        .filter(hasMedicalData)
+        .sort((a, b) =>
+          String(b.reconocimientoFecha || b.fechaRegistro || "").localeCompare(
+            String(a.reconocimientoFecha || a.fechaRegistro || ""),
+          ),
+        )[0] ||
+      previousCandidates
+        .sort((a, b) =>
+          String(b.fechaRegistro || "").localeCompare(String(a.fechaRegistro || "")),
+        )[0];
     const workerId = Date.now() + Math.floor(Math.random() * 900000);
     try {
       const settings = await loadAppBusinessSettings();
@@ -853,6 +872,13 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         documentacionCompleta: "No",
         observaciones: `Contratación SAE · Oferta ${candidate.offerNumber} · Orden ${candidate.orderNumber}. Obra normalizada: ${canonicalWork}.`,
         necesitaReconocimiento: previous?.necesitaReconocimiento || "No",
+        aptitudMedica: previous?.aptitudMedica || previous?.reconocimientoEstado || "Pendiente",
+        limitacionesAptitud: previous?.limitacionesAptitud || previous?.reconocimientoLimitaciones || "",
+        reconocimientoEstado: previous?.reconocimientoEstado || previous?.aptitudMedica || "Pendiente",
+        reconocimientoFecha: previous?.reconocimientoFecha || "",
+        reconocimientoValidez: previous?.reconocimientoValidez || "",
+        reconocimientoLimitaciones: previous?.reconocimientoLimitaciones || previous?.limitacionesAptitud || "",
+        reconocimientoObservaciones: previous?.reconocimientoObservaciones || "",
         sincronizadoEnNube: true,
       };
       await createDocument("trabajadores", workerId, worker as any);
