@@ -1198,7 +1198,7 @@ function App() {
       setToast({
         message: queuedOffline
           ? `Cambios guardados en la ficha de ${savedPerson.apellidosNombre}. Se sincronizarán cuando vuelva la conexión.`
-          : needsMedicalAppointment
+          : needsMedicalFlow
             ? `Cambios guardados. ${savedPerson.apellidosNombre} continúa en Reconocimientos médicos.`
             : `Cambios guardados correctamente en la ficha de ${savedPerson.apellidosNombre}.`,
         type: 'success'
