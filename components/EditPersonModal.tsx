@@ -41,6 +41,22 @@ const isValidPhone = (phone: string): boolean => {
   return /^[6789]\d{8}$/.test(cleanPhone);
 };
 
+const normalizeDniForAnnualHiring = (value: unknown): string =>
+  String(value || '').replace(/[\s-]/g, '').trim().toUpperCase();
+
+const resolveHiringYear = (person: Partial<Person> | null | undefined): number => {
+  if (!person) return new Date().getFullYear();
+  const periodStart = String(person.periodoInicio || '').trim();
+  const periodYear = periodStart.match(/^(\d{4})-/)?.[1];
+  if (periodYear) return Number(periodYear);
+  const fortnight = String(person.quincena || '').trim();
+  const fortnightYear = fortnight.match(/(?:^|\s)(20\d{2})(?:$|\s)/)?.[1];
+  if (fortnightYear) return Number(fortnightYear);
+  const registered = String(person.fechaRegistro || '').trim();
+  const registeredYear = registered.match(/^(\d{4})-/)?.[1];
+  return registeredYear ? Number(registeredYear) : new Date().getFullYear();
+};
+
 export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   person,
   isOpen,
@@ -54,6 +70,25 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   allPeople
 }) => {
   const { supervisorName } = useAuthShell();
+  const isHiringEdit = useMemo(() => {
+    if (!person || typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('profea-sae-return-worker-id') === String(person.id);
+  }, [person, isOpen]);
+
+  const isSameAnnualityRepeater = useMemo(() => {
+    if (!person) return false;
+    if ((person as any).esRepetidorAnual === true || Number((person as any).numeroContratacionAnual || 0) > 1) {
+      return true;
+    }
+    const dni = normalizeDniForAnnualHiring(person.dni);
+    if (!dni) return false;
+    const targetYear = resolveHiringYear(person);
+    return allPeople.some((candidate) =>
+      candidate.id !== person.id &&
+      normalizeDniForAnnualHiring(candidate.dni) === dni &&
+      resolveHiringYear(candidate) === targetYear
+    );
+  }, [person, allPeople, isOpen]);
   const automaticHiringTarget = useMemo(() => {
     const today = new Date();
     const target = new Date(today.getFullYear(), today.getMonth() + 1, 1);
@@ -76,13 +111,21 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       return { qType: parts[0], qMonth: parts[1], qYear: parts[2] };
     }
     return automaticHiringTarget;
-  }, [person, automaticHiringTarget, supervisorName]);
+  }, [person, automaticHiringTarget, supervisorName, isHiringEdit, isSameAnnualityRepeater]);
 
   const [formData, setFormData] = useState<Person | null>(() => {
     if (!person) return null;
     const defaultNecesitaRec = person.necesitaReconocimiento || (person.citaDia || person.sitioReconocimiento ? 'Sí' : 'No');
+    const hiringDefaults = isHiringEdit
+      ? {
+          documentacionCompleta:
+            person.reconocimientoEstado === 'No Apto' ? 'No' : 'Sí',
+          ...(isSameAnnualityRepeater ? { calzado: 'No', formacion: 'Sí' } : {}),
+        }
+      : {};
     return {
       ...person,
+      ...hiringDefaults,
       supervisorResponsable: supervisorName,
       categoria: person.categoria || 'Peón',
       necesitaReconocimiento: defaultNecesitaRec
@@ -106,8 +149,16 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       const isPredefined = person.categoria === 'Peón' || person.categoria === 'Oficial de 1ª';
       setIsManualCategory(!isPredefined && !!person.categoria);
       const defaultNecesitaRec = person.necesitaReconocimiento || (person.citaDia || person.sitioReconocimiento ? 'Sí' : 'No');
+      const hiringDefaults = isHiringEdit
+        ? {
+            documentacionCompleta:
+              person.reconocimientoEstado === 'No Apto' ? 'No' : 'Sí',
+            ...(isSameAnnualityRepeater ? { calzado: 'No', formacion: 'Sí' } : {}),
+          }
+        : {};
       setFormData({
         ...person,
+        ...hiringDefaults,
         supervisorResponsable: supervisorName,
         categoria: person.categoria || 'Peón',
         necesitaReconocimiento: defaultNecesitaRec
@@ -301,6 +352,13 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       return;
     }
     const finalData = { ...formData, supervisorResponsable: supervisorName };
+    if (isHiringEdit && finalData.reconocimientoEstado !== 'No Apto') {
+      finalData.documentacionCompleta = 'Sí';
+    }
+    if (isHiringEdit && isSameAnnualityRepeater) {
+      finalData.calzado = 'No';
+      finalData.formacion = 'Sí';
+    }
     if (finalData.necesitaReconocimiento === 'No') {
       finalData.citaDia = '';
       finalData.citaHora = '';
