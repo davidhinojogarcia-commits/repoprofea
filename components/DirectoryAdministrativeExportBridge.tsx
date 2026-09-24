@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
 import { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } from '../src/lib/administrativeRelationExport';
@@ -47,6 +47,8 @@ const normalizeLabel = (value: string) => value
   .toUpperCase();
 
 export const DirectoryAdministrativeExportBridge: React.FC = () => {
+  const exportScopeIdsRef = useRef<number[] | null>(null);
+
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
@@ -57,11 +59,23 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
     `;
     document.head.appendChild(style);
 
+    const handleExportScope = (event: Event) => {
+      const detail = (event as CustomEvent<{ ids?: unknown }>).detail;
+      const ids = Array.isArray(detail?.ids)
+        ? detail.ids.map(Number).filter(Number.isFinite)
+        : [];
+      exportScopeIdsRef.current = Array.from(new Set(ids));
+    };
+    window.addEventListener('profea:directory-export-scope', handleExportScope as EventListener);
+
     const exportData = async (format: 'pdf' | 'excel') => {
       try {
         const all = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
-        const ids = getCurrentExportIds();
-        const data = ids.length ? ids.map(id => all.find(p => Number(p.id) === id)).filter(Boolean) as Person[] : all;
+        const scopedIds = exportScopeIdsRef.current;
+        const ids = scopedIds !== null ? scopedIds : getCurrentExportIds();
+        const data = ids
+          .map(id => all.find(p => Number(p.id) === id))
+          .filter(Boolean) as Person[];
         if (!data.length) return window.alert('No hay trabajadores filtrados para exportar.');
         if (format === 'pdf') {
           const { doc, filename } = prepareAdministrativeRelationPDF(data);
@@ -116,7 +130,11 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
     ensureRowsAndLabels();
     const observer = new MutationObserver(ensureRowsAndLabels);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); style.remove(); };
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('profea:directory-export-scope', handleExportScope as EventListener);
+      style.remove();
+    };
   }, []);
   return null;
 };
