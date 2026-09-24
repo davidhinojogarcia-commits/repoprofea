@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Trash2,
   Plus,
@@ -125,6 +125,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "sitios"
     | "telefonos"
     | "categorias"
+    | "cuentas"
+    | "seguridad_social"
     | "horario"
     | "backup"
   >("lugares");
