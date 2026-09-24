@@ -30,6 +30,7 @@ import {
   X,
   Building2,
   UserCheck,
+  Clock,
 } from "lucide-react";
 import { Person, DeletedPerson } from "../types";
 import {
@@ -44,7 +45,7 @@ import {
   getDocuments,
   updateDocument,
 } from "../src/services/databaseService";
-import { loadAppBusinessSettings } from "../src/services/appSettingsService";
+import { loadAppBusinessSettings, saveAppBusinessSettings } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
 import {
@@ -124,6 +125,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "sitios"
     | "telefonos"
     | "categorias"
+    | "horario"
     | "backup"
   >("lugares");
 
@@ -796,6 +798,30 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           <button
             onClick={() => {
+              setActiveTab("horario");
+              setSearchTerm("");
+              setNewItem("");
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+              ${
+                activeTab === "horario"
+                  ? "profea-sidebar-item--active text-white"
+                  : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
+              }
+            `}
+          >
+            <Clock
+              className={`w-5 h-5 ${activeTab === "horario" ? "text-white" : "text-slate-400 dark:text-slate-500"}`}
+            />
+            Horario de jornal
+          </button>
+
+          <button
+            onClick={() => {
               setActiveTab("backup");
               setSearchTerm("");
               setNewItem("");
@@ -821,7 +847,75 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          {activeTab === "backup" ? (
+          {activeTab === "horario" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Clock className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Horario de jornal
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                  Define la hora oficial de entrada y salida. Los informes y documentos que hagan referencia al horario de trabajo utilizarán estos valores.
+                </p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <label className="space-y-2">
+                    <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">Hora de entrada</span>
+                    <input
+                      type="time"
+                      value={workStartHour}
+                      onChange={(e) => setWorkStartHour(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-base font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">Hora de salida</span>
+                    <input
+                      type="time"
+                      value={workEndHour}
+                      onChange={(e) => setWorkEndHour(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-base font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                    />
+                  </label>
+                </div>
+                <div className="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4">
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                    Jornada configurada: {workStartHour || "--:--"} – {workEndHour || "--:--"}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Esta configuración se guarda para tu cuenta y se incluye en las copias de seguridad.
+                  </p>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!workStartHour || !workEndHour) {
+                        setToast?.({ message: "Indica la hora de entrada y la hora de salida.", type: "error" });
+                        return;
+                      }
+                      if (workEndHour <= workStartHour) {
+                        setToast?.({ message: "La hora de salida debe ser posterior a la hora de entrada.", type: "error" });
+                        return;
+                      }
+                      try {
+                        await saveAppBusinessSettings({ workStartHour, workEndHour });
+                        setToast?.({ message: `Horario de jornal guardado: ${workStartHour} – ${workEndHour}`, type: "success" });
+                      } catch (error) {
+                        console.error("No se pudo guardar el horario de jornal:", error);
+                        setToast?.({ message: "No se pudo guardar el horario de jornal.", type: "error" });
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#00436f] transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    Guardar horario
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "backup" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 font-bold">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">

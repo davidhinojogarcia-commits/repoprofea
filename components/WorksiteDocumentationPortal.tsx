@@ -174,6 +174,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [manualAttendanceIds, setManualAttendanceIds] = useState<string[]>([]);
   const [attendanceOverrides, setAttendanceOverrides] = useState<Record<string, AttendanceOverride>>({});
   const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [workStartHour, setWorkStartHour] = useState("08:00");
+  const [workEndHour, setWorkEndHour] = useState("15:00");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>(storedDocumentationView);
 
@@ -195,6 +197,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       setWorkers(people || []);
       setWorkRows((obras || []) as WorkRow[]);
       setConfiguredWorks((settings.savedObras || []).map(safe).filter(Boolean));
+      setWorkStartHour(settings.workStartHour || "08:00");
+      setWorkEndHour(settings.workEndHour || "15:00");
     } catch (error) {
       console.error("No se pudo cargar Documentación de obra:", error);
       showToast("No se han podido cargar las obras y trabajadores.", "error");
@@ -420,7 +424,9 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     duracionFormacion: trainingDuration,
     epis: epiSelection,
     maquinariaPorTrabajador: machineryByWorker,
-  }), [selectedWork, workRows, empresa, cif, recursoPreventivo, documentDate, selectedPeriod, trainingAction, trainingDuration, epiSelection, machineryByWorker]);
+    workStartHour,
+    workEndHour,
+  }), [selectedWork, workRows, empresa, cif, recursoPreventivo, documentDate, selectedPeriod, trainingAction, trainingDuration, epiSelection, machineryByWorker, workStartHour, workEndHour]);
 
   const exportEpis = () => {
     if (!ensureReady()) return;

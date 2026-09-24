@@ -283,7 +283,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
             telefono: item.telefonoSupervisor || '',
             diaComienzo: item.diaComienzo,
             workStartHour: workStartHour,
-            diaContratacion: item.diaContratacion || ''
+      workEndHour,
+      diaContratacion: item.diaContratacion || ''
           };
         });
 
@@ -291,7 +292,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           [supervisorName]: accountSupervisorPhone || enrichedSchedule.find(item => item.telefonoSupervisor)?.telefonoSupervisor || savedTelefonos[0] || '',
         };
 
-        const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour);
+        const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour, workEndHour);
         doc.save(filename);
 
         onToast(`Planificación completada. Se han generado ${schedule.length} citas médicas y se ha descargado el PDF de tickets.`, "success");
@@ -363,6 +364,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       diaComienzo: item.diaComienzo,
       diaFinContrato: item.diaFinContrato,
       workStartHour: workStartHour,
+      workEndHour,
       diaContratacion: item.diaContratacion
     }));
 
@@ -370,7 +372,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       [supervisorName]: accountSupervisorPhone || manualTelefonoSupervisor || savedTelefonos[0] || '',
     };
 
-    const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour);
+    const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour, workEndHour);
     doc.save(filename);
 
     onToast(`Se han generado manualmente ${manualCount} citas anónimas escalonadas y se ha descargado el PDF.`, "success");
@@ -412,6 +414,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       diaComienzo: item.diaComienzo,
       diaFinContrato: item.diaFinContrato,
       workStartHour,
+      workEndHour,
       diaContratacion: item.diaContratacion
     }));
 
@@ -426,7 +429,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       }
     });
 
-    const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour);
+    const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour, workEndHour);
     doc.save(filename);
     onToast(`Se ha descargado el documento PDF con las ${latestGeneratedCitas.length} citas médicas.`, "success");
   };

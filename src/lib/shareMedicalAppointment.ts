@@ -1,5 +1,6 @@
 import type { Person } from '../../types';
 import { applyPdfCopyrightStamp, generateMedicalTicketsPDF } from './exportUtils';
+import { loadAppBusinessSettings } from '../services/appSettingsService';
 
 let reservedWhatsAppWindow: Window | null = null;
 
@@ -239,6 +240,10 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
     ? `${person.sitioReconocimiento || '-'}\nOBSERVACIONES / INDICACIONES PARTICULARES: ${observations}`
     : (person.sitioReconocimiento || '-');
 
+  const settings = await loadAppBusinessSettings().catch(() => ({
+    workStartHour: '08:00',
+    workEndHour: '15:00',
+  }));
   const { doc } = await generateMedicalTicketsPDF([
     {
       id: person.id,
@@ -254,9 +259,11 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
       supervisorResponsable: person.supervisorResponsable,
       diaComienzo: person.periodoInicio,
       diaFinContrato: person.periodoFin,
+      workStartHour: settings.workStartHour,
+      workEndHour: settings.workEndHour,
       diaContratacion: person.fechaRegistro?.slice(0, 10),
     },
-  ], {}, '08:00');
+  ], {}, settings.workStartHour, settings.workEndHour);
 
   overlayWorkerIdentity(doc, person);
   appendPrlTrainingSchedule(doc, person);

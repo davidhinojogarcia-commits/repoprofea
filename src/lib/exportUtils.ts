@@ -2612,13 +2612,15 @@ export interface TicketData {
   diaComienzo?: string;
   diaFinContrato?: string;
   workStartHour?: string;
+  workEndHour?: string;
   diaContratacion?: string;
 }
 
 export const generateMedicalTicketsPDF = async (
   workers: TicketData[],
   supervisorPhones: { [supervisor: string]: string },
-  workStartHourDefault: string = '08:00'
+  workStartHourDefault: string = '08:00',
+  workEndHourDefault: string = '15:00'
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   for (let i = 0; i < workers.length; i++) {
@@ -2629,6 +2631,7 @@ export const generateMedicalTicketsPDF = async (
     const p = workers[i];
     const supervisorPhone = p.supervisorResponsable ? (supervisorPhones[p.supervisorResponsable] || p.telefono || '-') : '-';
     const workStartHourVal = p.workStartHour || workStartHourDefault;
+    const workEndHourVal = p.workEndHour || workEndHourDefault;
 
     const numOferta = p.numOferta || '11002GR';
     const obraVal = p.obra || 'BORNOS';
@@ -2661,7 +2664,7 @@ export const generateMedicalTicketsPDF = async (
     
     const quincenaStr = p.quincena ? ` perteneciente a la ${p.quincena.toUpperCase()},` : '';
     const finContratoText = p.diaFinContrato ? ` hasta el ${diaFinContratoFormatted}` : '';
-    const par1Text = `El trabajador ${workerName} con DNI ${workerDni} de la obra nº ${numOferta} de la localidad de ${localidad.toUpperCase()},${quincenaStr} cuyo periodo de contratación es del ${diaComienzoFormatted}${finContratoText} (hora de entrada a las ${workStartHourVal} h), está citado/a el día ${citaDiaFormatted} a las ${citaHoraFormatted} horas en el/a ${sitio.toUpperCase()}, para la realización del reconocimiento médico en cumplimiento del Convenio Colectivo para la Construcción de Cádiz en vigor.`;
+    const par1Text = `El trabajador ${workerName} con DNI ${workerDni} de la obra nº ${numOferta} de la localidad de ${localidad.toUpperCase()},${quincenaStr} cuyo periodo de contratación es del ${diaComienzoFormatted}${finContratoText} (jornada prevista de ${workStartHourVal} h a ${workEndHourVal} h), está citado/a el día ${citaDiaFormatted} a las ${citaHoraFormatted} horas en el/a ${sitio.toUpperCase()}, para la realización del reconocimiento médico en cumplimiento del Convenio Colectivo para la Construcción de Cádiz en vigor.`;
     const par1Wrapped = doc.splitTextToSize(par1Text, 174);
     doc.text(par1Text, 18, 70, { maxWidth: 174, align: 'justify' });
     
@@ -2725,7 +2728,7 @@ export const generateMedicalTicketsPDF = async (
     printGridItem('HORA CITA:', `${citaHoraFormatted} H`, 65, currentY + 26, 30);
     printGridItem('QUINCENA / PERIODO:', p.quincena ? p.quincena.toUpperCase() : 'NO ESPECIFICADA', 108, currentY + 26, 75);
 
-    printGridItem('INICIO OBRA:', `${diaComienzoFormatted} - ${workStartHourVal} H`, 24, currentY + 38, 75);
+    printGridItem('INICIO OBRA / JORNADA:', `${diaComienzoFormatted} · ${workStartHourVal}–${workEndHourVal} H`, 24, currentY + 38, 75);
     printGridItem('FIN CONTRATO:', diaFinContratoFormatted, 108, currentY + 38, 75);
 
     // --- ANNEX / JUSTIFICANTE PAGE ---
@@ -2803,7 +2806,7 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
     printAnnexGridItem('HORA CITA:', `${citaHoraFormatted} H`, 65, annexY + 26, 25);
     printAnnexGridItem('QUINCENA / PERIODO:', p.quincena ? p.quincena.toUpperCase() : 'NO ESPECIFICADA', 115, annexY + 26, 70);
 
-    printAnnexGridItem('INICIO TRABAJO:', `${diaComienzoFormatted} - ${workStartHourVal} H`, 24, annexY + 38, 85);
+    printAnnexGridItem('INICIO TRABAJO / JORNADA:', `${diaComienzoFormatted} · ${workStartHourVal}–${workEndHourVal} H`, 24, annexY + 38, 85);
 
     annexY += 54;
 
