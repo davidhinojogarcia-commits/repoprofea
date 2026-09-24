@@ -11,5 +11,6 @@ export const APP_RELEASE_NOTES = [
   'Detección de cuentas bancarias y números de Seguridad Social repetidos.',
   'Mejora del flujo SAE → Directorio → Reconocimientos → SAE.',
   'Mejoras de PDFs y exportaciones de reconocimientos médicos.',
-  'Refuerzo de legibilidad y contraste en modo diurno y nocturno.\n  'Renovación visual global de la interfaz y Menú inicial en Vista guiada.'',
+  'Refuerzo de legibilidad y contraste en modo diurno y nocturno.',
+  'Renovación visual global de la interfaz y Menú inicial en Vista guiada.',
 ] as const;
