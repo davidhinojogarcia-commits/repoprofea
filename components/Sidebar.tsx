@@ -1,6 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files, Wrench } from 'lucide-react';
 import { useAuthShell } from './AuthGate';
+import { APP_BUILD, APP_VERSION } from '../src/lib/appVersion';
 
 export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'inventario' | 'administracion';
 
@@ -258,6 +259,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {signingOut ? <Loader2 className="w-5 h-5 animate-spin shrink-0" /> : <LogOut className="w-5 h-5 shrink-0" />}
             <span className={`${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`}>{signingOut ? 'Cerrando…' : 'Cerrar sesión'}</span>
           </button>
+        </div>
+
+        <div className={`px-4 pb-2 text-[9px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`} title={`Build ${APP_BUILD}`}>
+          GestionProfea · v{APP_VERSION}
         </div>
 
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
