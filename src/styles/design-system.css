@@ -739,3 +739,381 @@ body,
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+
+/* ============================================================
+   GestionProfea · Visual Refresh v1.9 Preview
+   Cosmetic-only layer: no workflow or data logic changes.
+   ============================================================ */
+
+:root {
+  --visual-page-max: 1640px;
+  --visual-card-radius: 1.15rem;
+  --visual-card-radius-lg: 1.4rem;
+  --visual-card-border: rgba(148, 163, 184, .22);
+  --visual-card-shadow: 0 10px 30px rgba(15, 23, 42, .055);
+  --visual-card-shadow-hover: 0 18px 42px rgba(15, 23, 42, .085);
+  --visual-header-glow: 0 1px 0 rgba(255,255,255,.75) inset;
+  --visual-accent-soft: rgba(0, 84, 142, .08);
+  --visual-accent-soft-strong: rgba(0, 84, 142, .13);
+}
+
+.dark {
+  --visual-card-border: rgba(148, 163, 184, .12);
+  --visual-card-shadow: 0 12px 34px rgba(0, 0, 0, .18);
+  --visual-card-shadow-hover: 0 20px 48px rgba(0, 0, 0, .26);
+  --visual-header-glow: 0 1px 0 rgba(255,255,255,.035) inset;
+  --visual-accent-soft: rgba(82, 162, 201, .085);
+  --visual-accent-soft-strong: rgba(82, 162, 201, .15);
+}
+
+/* Softer, more dimensional page background */
+html,
+body {
+  background:
+    radial-gradient(circle at 10% -10%, rgba(0, 105, 168, .11), transparent 29rem),
+    radial-gradient(circle at 92% 8%, rgba(56, 189, 248, .065), transparent 24rem),
+    linear-gradient(180deg, #f7fafc 0%, #f2f6f9 44%, #eef3f7 100%);
+  background-attachment: fixed;
+}
+
+.dark body {
+  background:
+    radial-gradient(circle at 10% -10%, rgba(22, 125, 172, .14), transparent 29rem),
+    radial-gradient(circle at 92% 8%, rgba(14, 165, 233, .07), transparent 24rem),
+    linear-gradient(180deg, #07111d 0%, #091522 48%, #07111d 100%);
+}
+
+/* Main content gets more breathing room without wasting space */
+#root main {
+  position: relative;
+}
+
+#root main > div {
+  max-width: var(--visual-page-max);
+  margin-inline: auto;
+}
+
+@media (min-width: 1024px) {
+  #root main {
+    padding-top: .35rem;
+  }
+}
+
+/* Unified card language */
+#root .ui-surface,
+#root .bg-white[class*="rounded-2xl"][class*="border"],
+#root .dark\:bg-slate-900[class*="rounded-2xl"][class*="border"] {
+  border-color: var(--visual-card-border) !important;
+  border-radius: var(--visual-card-radius) !important;
+  box-shadow: var(--visual-card-shadow);
+}
+
+#root .ui-surface {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.955)),
+    var(--ui-surface);
+}
+
+.dark #root .ui-surface {
+  background:
+    linear-gradient(180deg, rgba(15,28,42,.975), rgba(12,24,37,.965)),
+    var(--ui-surface);
+}
+
+#root button.ui-surface,
+#root .guided-step-card,
+#root .guided-secondary-action {
+  transition:
+    transform 160ms var(--ui-ease),
+    box-shadow 160ms var(--ui-ease),
+    border-color 160ms var(--ui-ease),
+    background-color 160ms var(--ui-ease);
+}
+
+#root button.ui-surface:hover,
+#root .guided-step-card:hover,
+#root .guided-secondary-action:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--visual-card-shadow-hover);
+  border-color: rgba(0, 84, 142, .22) !important;
+}
+
+.dark #root button.ui-surface:hover,
+.dark #root .guided-step-card:hover,
+.dark #root .guided-secondary-action:hover {
+  border-color: rgba(82, 162, 201, .25) !important;
+}
+
+/* Premium sidebar: subtle translucent panel with stronger active state */
+.profea-sidebar-shell {
+  border-right-color: rgba(148,163,184,.18) !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.94), rgba(248,251,253,.965)),
+    var(--ui-surface) !important;
+  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: 14px 0 42px rgba(23, 50, 77, .06);
+}
+
+.dark .profea-sidebar-shell {
+  border-right-color: rgba(148,163,184,.08) !important;
+  background:
+    linear-gradient(180deg, rgba(13,27,41,.975), rgba(8,19,30,.99)) !important;
+  box-shadow: 14px 0 42px rgba(0,0,0,.22);
+}
+
+.profea-sidebar-group-label {
+  letter-spacing: .18em;
+  opacity: .88;
+}
+
+.profea-sidebar-item {
+  border-radius: .95rem !important;
+  min-height: 3rem;
+}
+
+.profea-sidebar-item:not(.profea-sidebar-item--active):hover {
+  background:
+    linear-gradient(135deg, rgba(238,247,251,.9), rgba(216,237,247,.55)) !important;
+  border-color: rgba(0,84,142,.08) !important;
+}
+
+.dark .profea-sidebar-item:not(.profea-sidebar-item--active):hover {
+  background:
+    linear-gradient(135deg, rgba(22,125,172,.12), rgba(22,125,172,.055)) !important;
+  border-color: rgba(82,162,201,.14) !important;
+}
+
+.profea-sidebar-item--active {
+  background:
+    linear-gradient(135deg, #0069a8 0%, #00548e 52%, #004477 100%) !important;
+  box-shadow:
+    0 6px 18px rgba(0,84,142,.21),
+    inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+
+.profea-sidebar-item--active::before {
+  content: "";
+  position: absolute;
+  left: .35rem;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 99px;
+  background: rgba(255,255,255,.82);
+}
+
+/* Header polish */
+#root header,
+#root [class*="sticky"][class*="top-0"] {
+  backdrop-filter: blur(16px) saturate(135%);
+}
+
+#root header[class*="border"],
+#root [class*="sticky"][class*="top-0"][class*="border"] {
+  border-color: rgba(148,163,184,.16) !important;
+}
+
+/* Page headings: stronger hierarchy and cleaner supporting copy */
+#root h1 {
+  letter-spacing: -.025em;
+}
+
+#root h2 {
+  letter-spacing: -.016em;
+}
+
+#root .text-slate-500,
+#root .dark\:text-slate-400 {
+  text-wrap: pretty;
+}
+
+/* Primary actions: cleaner depth, less toy-like 3D */
+#root .ui-button-primary,
+#root button[class*="bg-[#00548E]"],
+#root button[class*="bg-brand-primary"] {
+  border-radius: .9rem !important;
+  box-shadow:
+    0 8px 18px rgba(0,84,142,.18),
+    inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+
+#root .ui-button-primary:hover,
+#root button[class*="bg-[#00548E]"]:hover,
+#root button[class*="bg-brand-primary"]:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 11px 24px rgba(0,84,142,.22),
+    inset 0 1px 0 rgba(255,255,255,.2) !important;
+}
+
+#root .ui-button-secondary {
+  border-radius: .9rem !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(238,247,251,.92));
+}
+
+.dark #root .ui-button-secondary {
+  background:
+    linear-gradient(180deg, rgba(19,34,49,.96), rgba(14,28,42,.96));
+}
+
+/* Inputs and selects: less boxed-in, slightly more refined */
+#root input:not([type="checkbox"]):not([type="radio"]),
+#root select,
+#root textarea {
+  border-radius: .85rem !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+.dark #root input:not([type="checkbox"]):not([type="radio"]),
+.dark #root select,
+.dark #root textarea {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+/* Tables: calm header, lighter separators, better row hover */
+#root table thead {
+  background: rgba(248,250,252,.92);
+}
+
+.dark #root table thead {
+  background: rgba(15,28,42,.92);
+}
+
+#root table th {
+  font-size: .72rem;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+#root table td,
+#root table th {
+  border-color: rgba(148,163,184,.16) !important;
+}
+
+#root table tbody tr {
+  transition: background-color 120ms ease;
+}
+
+#root table tbody tr:hover {
+  background: rgba(0,84,142,.028);
+}
+
+.dark #root table tbody tr:hover {
+  background: rgba(82,162,201,.045);
+}
+
+/* Guided view: make the hero feel intentional without becoming flashy */
+.guided-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.98), rgba(238,247,251,.96)) !important;
+}
+
+.guided-hero::after {
+  content: "";
+  position: absolute;
+  width: 17rem;
+  height: 17rem;
+  right: -4rem;
+  top: -8rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,105,168,.13), rgba(0,105,168,0) 67%);
+  pointer-events: none;
+}
+
+.dark .guided-hero {
+  background:
+    linear-gradient(135deg, rgba(15,28,42,.98), rgba(10,31,48,.96)) !important;
+}
+
+.dark .guided-hero::after {
+  background: radial-gradient(circle, rgba(82,162,201,.12), rgba(82,162,201,0) 67%);
+}
+
+.guided-today-card {
+  border-top: 3px solid rgba(0,84,142,.72) !important;
+}
+
+.guided-recommendation {
+  box-shadow: 0 12px 30px rgba(0,84,142,.08);
+  border-width: 1px !important;
+}
+
+.dark .guided-recommendation {
+  box-shadow: 0 14px 32px rgba(0,0,0,.16);
+}
+
+.guided-step-card .guided-action-icon,
+.guided-secondary-action > span:first-child {
+  box-shadow: inset 0 0 0 1px rgba(0,84,142,.06);
+}
+
+/* Stat/dashboard panels look more like a coherent executive dashboard */
+#root [class*="grid-cols-"][class*="gap-"] > .ui-surface,
+#root [class*="grid-cols-"][class*="gap-"] > div[class*="rounded-2xl"][class*="border"] {
+  position: relative;
+  overflow: hidden;
+}
+
+#root [class*="grid-cols-"][class*="gap-"] > .ui-surface::before,
+#root [class*="grid-cols-"][class*="gap-"] > div[class*="rounded-2xl"][class*="border"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.88), transparent);
+  pointer-events: none;
+}
+
+.dark #root [class*="grid-cols-"][class*="gap-"] > .ui-surface::before,
+.dark #root [class*="grid-cols-"][class*="gap-"] > div[class*="rounded-2xl"][class*="border"]::before {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+}
+
+/* Status badges: slightly quieter */
+#root [class*="rounded-full"][class*="text-"][class*="bg-"] {
+  box-shadow: inset 0 0 0 1px rgba(15,23,42,.035);
+}
+
+.dark #root [class*="rounded-full"][class*="text-"][class*="bg-"] {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
+}
+
+/* Desktop visual rhythm */
+@media (min-width: 1024px) {
+  #root .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1.35rem;
+  }
+
+  #root .space-y-8 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1.7rem;
+  }
+}
+
+/* Mobile keeps the polish without losing density or usability */
+@media (max-width: 640px) {
+  :root {
+    --visual-card-radius: 1rem;
+    --visual-card-radius-lg: 1.1rem;
+  }
+
+  #root .ui-surface {
+    box-shadow: 0 6px 18px rgba(15,23,42,.05);
+  }
+
+  .profea-sidebar-shell {
+    box-shadow: 18px 0 42px rgba(15,23,42,.14);
+  }
+
+  .guided-hero::after {
+    width: 11rem;
+    height: 11rem;
+    right: -4rem;
+    top: -5rem;
+  }
+}
