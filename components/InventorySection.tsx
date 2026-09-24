@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Boxes,
@@ -29,6 +29,7 @@ import {
 import QRCode from 'qrcode';
 import { PageHeader } from './ui/PageHeader';
 import { exportInventoryStatusPdf } from '../src/lib/inventoryPdf';
+import { analyzeInventoryExcel, applyInventoryImportPlan, buildInventoryImportPlan } from '../src/lib/inventoryExcelImport';
 import {
   INVENTORY_ZONES,
   MACHINE_DOCUMENT_TYPES,
