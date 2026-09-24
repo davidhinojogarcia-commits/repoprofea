@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Boxes,
@@ -29,6 +29,7 @@ import {
 import QRCode from 'qrcode';
 import { PageHeader } from './ui/PageHeader';
 import { exportInventoryStatusPdf } from '../src/lib/inventoryPdf';
+import { analyzeInventoryExcel, applyInventoryImportPlan, buildInventoryImportPlan } from '../src/lib/inventoryExcelImport';
 import {
   INVENTORY_ZONES,
   MACHINE_DOCUMENT_TYPES,
@@ -174,6 +175,9 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [coordinatorEmail, setCoordinatorEmail] = useState('');
   const [parkSaving, setParkSaving] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [excelImportBusy, setExcelImportBusy] = useState(false);
+  const [excelImportNotice, setExcelImportNotice] = useState('');
+  const excelImportRef = useRef<HTMLInputElement>(null);
 
   const loadParkData = async (selected: InventoryPark) => {
     setPark(selected); setParkName(selected.nombre); setParkZone(selected.zona); setCoordinatorEmail(selected.coordinatorEmail || '');
@@ -260,6 +264,38 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     }
   };
 
+  const importInventoryExcel = async (file: File) => {
+    if (!park) return;
+    setExcelImportBusy(true);
+    setExcelImportNotice('');
+    try {
+      const detected = await analyzeInventoryExcel(file);
+      if (!detected.length) throw new Error('No se reconocieron máquinas o herramientas en el Excel.');
+      const plan = buildInventoryImportPlan(detected, items);
+      const confirmed = window.confirm(
+        'Se han reconocido ' + plan.rows.length + ' equipos en el Excel.\n\n' +
+        '• Nuevos: ' + plan.creates + '\n' +
+        '• Coincidencias que se actualizarán: ' + plan.updates + '\n\n' +
+        'Las coincidencias se identifican por matrícula, número de serie, código o, si no existen, por nombre + marca + modelo + categoría.\n\n¿Continuar con la importación?'
+      );
+      if (!confirmed) {
+        setExcelImportNotice('Importación cancelada antes de modificar el inventario.');
+        return;
+      }
+      const result = await applyInventoryImportPlan(park.id, baseLocation, plan.rows);
+      await reload(park.id);
+      setExcelImportNotice(
+        'Importación completada: ' + result.created + ' nuevos · ' + result.updated + ' actualizados' +
+        (result.failed ? ' · ' + result.failed + ' con error' : '') + '.'
+      );
+    } catch (error: any) {
+      console.error('[inventory-excel-import]', error);
+      setExcelImportNotice(error?.message || 'No se pudo importar el inventario desde Excel.');
+    } finally {
+      setExcelImportBusy(false);
+      if (excelImportRef.current) excelImportRef.current.value = '';
+    }
+  };
   const saveParkConfig = async () => {
     if (!park) return;
     setParkSaving(true);
@@ -491,6 +527,34 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       </div>
     </details>
 
+    <div className="ui-surface p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="min-w-0">
+        <div className="font-black text-sm">Carga masiva de herramientas y maquinaria</div>
+        <div className="text-xs text-slate-500 mt-1">Reconoce automáticamente los datos del Excel, crea equipos nuevos y actualiza coincidencias sin duplicarlas.</div>
+        {excelImportNotice && <div className="mt-2 text-xs font-semibold text-blue-700 dark:text-blue-300">{excelImportNotice}</div>}
+      </div>
+      <div className="shrink-0">
+        <input
+          ref={excelImportRef}
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          className="hidden"
+          onChange={event => {
+            const file = event.target.files?.[0];
+            if (file) void importInventoryExcel(file);
+          }}
+        />
+        <button
+          type="button"
+          disabled={excelImportBusy || !park}
+          onClick={() => excelImportRef.current?.click()}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-2.5 text-sm font-black disabled:opacity-60"
+        >
+          {excelImportBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          {excelImportBusy ? 'Analizando Excel…' : 'Importar Excel'}
+        </button>
+      </div>
+    </div>
     <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur overflow-x-auto"><div className="flex gap-2 min-w-max">{([
       ['resumen', 'Resumen', ClipboardList], ['inventario', 'Inventario', Boxes], ['movimientos', 'Movimientos', History], ['mantenimiento', 'Mantenimiento', Stethoscope], ['documentacion', 'Documentos', FileCheck2], ['trazabilidad', 'Trazabilidad', MapPinned],
     ] as [Tab, string, React.ElementType][]).map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold border ${tab === id ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}><Icon className="w-4 h-4" />{label}</button>)}</div></div>
