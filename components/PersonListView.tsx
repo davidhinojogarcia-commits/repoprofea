@@ -419,6 +419,17 @@ export const PersonList: React.FC<PersonListProps> = ({
     ? people.filter(p => selectedIds.includes(p.id))
     : filteredPeople;
 
+  const administrativeExportScopeIds = useMemo(
+    () => peopleToExport.map(person => person.id),
+    [peopleToExport],
+  );
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('profea:directory-export-scope', {
+      detail: { ids: administrativeExportScopeIds },
+    }));
+  }, [administrativeExportScopeIds]);
+
   const visibleSelectedCount = filteredPeople.filter(p => selectedIds.includes(p.id)).length;
   const isAllVisibleSelected = filteredPeople.length > 0 && visibleSelectedCount === filteredPeople.length;
   const isSomeVisibleSelected = visibleSelectedCount > 0 && visibleSelectedCount < filteredPeople.length;
