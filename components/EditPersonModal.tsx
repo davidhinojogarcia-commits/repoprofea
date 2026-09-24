@@ -262,6 +262,33 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     return allPeople.some(p => p.id !== person?.id && p.dni.replace(/[\s-]/g, '').toUpperCase() === cleanDni);
   }, [formData?.dni, allPeople, person?.id]);
 
+  const repeatedSocialSecurityMatches = useMemo(() => {
+    if (!formData?.numeroSeguridadSocial) return [];
+    const check = validateSpanishSocialSecurityNumber(formData.numeroSeguridadSocial);
+    if (!check.valid || !check.normalized) return [];
+    return allPeople.filter((candidate) => {
+      if (candidate.id === person?.id || !candidate.numeroSeguridadSocial) return false;
+      const candidateCheck = validateSpanishSocialSecurityNumber(candidate.numeroSeguridadSocial);
+      return candidateCheck.valid && candidateCheck.normalized === check.normalized;
+    });
+  }, [formData?.numeroSeguridadSocial, allPeople, person?.id]);
+
+  const repeatedBankAccountMatches = useMemo(() => {
+    if (!formData?.iban) return [];
+    const check = validateIban(formData.iban);
+    if (!check.valid || !check.normalized) return [];
+    return allPeople.filter((candidate) => {
+      if (candidate.id === person?.id || !candidate.iban) return false;
+      const candidateCheck = validateIban(candidate.iban);
+      return candidateCheck.valid && candidateCheck.normalized === check.normalized;
+    });
+  }, [formData?.iban, allPeople, person?.id]);
+
+  const repeatedDataLabel = (matches: Person[]) => {
+    const names = Array.from(new Set(matches.map((candidate) => candidate.apellidosNombre).filter(Boolean)));
+    return names.join(' · ');
+  };
+
   if (!isOpen || !formData) return null;
 
   const handleCategoryTab = (cat: string) => {
@@ -340,6 +367,18 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       const check = validateIban(formData.iban);
       if (!check.valid) { alert(`⚠️ IBAN no válido. ${check.error || ''}`); return; }
       formData.iban = check.normalized;
+      const currentDniForIban = formData.dni.replace(/[\s-]/g, '').toUpperCase();
+      const conflictingIban = allPeople.some(p => {
+        if (p.id === formData.id || !p.iban) return false;
+        const candidateCheck = validateIban(p.iban);
+        return candidateCheck.valid &&
+          candidateCheck.normalized === check.normalized &&
+          p.dni.replace(/[\s-]/g, '').toUpperCase() !== currentDniForIban;
+      });
+      if (conflictingIban) {
+        alert('⚠️ Esta cuenta bancaria ya está asociada a otro trabajador con un DNI/NIE distinto.');
+        return;
+      }
     }
     // Un DNI repetido representa una nueva contratación del mismo trabajador.
     // No se bloquea el guardado; el historial y contador anual se gestionan por registro.
@@ -458,11 +497,13 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Nº Seguridad Social <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
                   <input type="text" name="numeroSeguridadSocial" value={formData.numeroSeguridadSocial || ''} onChange={handleChange} placeholder="11/12345678/90" className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-[#00548E] dark:focus:border-blue-500 transition-all text-sm font-mono text-slate-800 dark:text-slate-100" />
                   {formData.numeroSeguridadSocial && (() => { const check = validateSpanishSocialSecurityNumber(formData.numeroSeguridadSocial); return <p className={`text-[11px] font-semibold ${check.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{check.valid ? `✓ Número válido · ${formatSpanishSocialSecurityNumber(check.normalized)}` : `✕ ${check.error}`}</p>; })()}
+                  {repeatedSocialSecurityMatches.length > 0 && <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">⚠ Este número ya figura en otra ficha: {repeatedDataLabel(repeatedSocialSecurityMatches)}.</p>}
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">IBAN / Cuenta bancaria <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
                   <input type="text" name="iban" value={formData.iban || ''} onChange={handleChange} placeholder="ES00 0000 0000 0000 0000 0000" className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-[#00548E] dark:focus:border-blue-500 transition-all text-sm font-mono text-slate-800 dark:text-slate-100" />
                   {formData.iban && (() => { const check = validateIban(formData.iban); return <p className={`text-[11px] font-semibold ${check.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{check.valid ? `✓ IBAN válido · ${formatIban(check.normalized)}` : `✕ ${check.error}`}</p>; })()}
+                  {repeatedBankAccountMatches.length > 0 && <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">⚠ Esta cuenta ya figura en otra ficha: {repeatedDataLabel(repeatedBankAccountMatches)}.</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

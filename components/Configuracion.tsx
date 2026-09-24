@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Trash2,
   Plus,
@@ -125,6 +125,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "sitios"
     | "telefonos"
     | "categorias"
+    | "cuentas"
+    | "seguridad_social"
     | "horario"
     | "backup"
   >("lugares");
@@ -462,6 +464,45 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
+  const bankAccountCatalog = useMemo(() => {
+    const rows = new Map<string, string[]>();
+    people.forEach((person) => {
+      const normalized = String(person.iban || "").replace(/\s+/g, "").toUpperCase();
+      if (!normalized) return;
+      const names = rows.get(normalized) || [];
+      if (person.apellidosNombre && !names.includes(person.apellidosNombre)) names.push(person.apellidosNombre);
+      rows.set(normalized, names);
+    });
+    return Array.from(rows.entries())
+      .map(([value, names]) => {
+        const masked = value.length > 8
+          ? value.slice(0, 4) + " •••• •••• •••• " + value.slice(-4)
+          : "•••• " + value.slice(-4);
+        return masked + (names.length ? " · " + names.join(" · ") : "");
+      })
+      .sort((a, b) => a.localeCompare(b, "es"));
+  }, [people]);
+
+  const socialSecurityCatalog = useMemo(() => {
+    const rows = new Map<string, string[]>();
+    people.forEach((person) => {
+      const normalized = String(person.numeroSeguridadSocial || "").replace(/[^0-9]/g, "");
+      if (!normalized) return;
+      const names = rows.get(normalized) || [];
+      if (person.apellidosNombre && !names.includes(person.apellidosNombre)) names.push(person.apellidosNombre);
+      rows.set(normalized, names);
+    });
+    return Array.from(rows.entries())
+      .map(([value, names]) => {
+        const masked = value.length > 4 ? "••••••••" + value.slice(-4) : value;
+        return masked + (names.length ? " · " + names.join(" · ") : "");
+      })
+      .sort((a, b) => a.localeCompare(b, "es"));
+  }, [people]);
+
+  const isReadOnlyAdministrativeCatalog =
+    activeTab === "cuentas" || activeTab === "seguridad_social";
+
   const tabs = [
     {
       id: "obras",
@@ -497,6 +538,20 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       icon: Briefcase,
       list: savedCategorias,
       setter: setSavedCategorias,
+    },
+    {
+      id: "cuentas",
+      label: "Cuentas bancarias",
+      icon: Database,
+      list: bankAccountCatalog,
+      setter: setSavedTelefonos,
+    },
+    {
+      id: "seguridad_social",
+      label: "Seguridad Social",
+      icon: UserCheck,
+      list: socialSecurityCatalog,
+      setter: setSavedTelefonos,
     },
   ] as const;
 
@@ -1804,7 +1859,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                     {currentTab?.label}
                   </h2>
 
-                  <form
+                  {!isReadOnlyAdministrativeCatalog && <form
                     onSubmit={handleAddItem}
                     className="flex w-full sm:w-auto gap-2"
                   >
@@ -1826,7 +1881,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                     >
                       <Plus className="w-5 h-5" />
                     </button>
-                  </form>
+                  </form>}
                 </div>
               </div>
 
@@ -1844,7 +1899,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   />
                 </div>
 
-                {currentTab && currentTab.list.length > 0 && (
+                {currentTab && currentTab.list.length > 0 && !isReadOnlyAdministrativeCatalog && (
                   <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-850 p-4 rounded-2xl mb-6">
                     <div className="flex items-center gap-3">
                       <input
@@ -1967,31 +2022,35 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                           </div>
                         ) : (
                           <>
-                            <div className="flex items-center gap-3 truncate pr-4">
-                              <input
-                                type="checkbox"
-                                checked={selectedItems.includes(item)}
-                                onChange={() => {
-                                  setSelectedItems((prev) =>
-                                    prev.includes(item)
-                                      ? prev.filter((i) => i !== item)
-                                      : [...prev, item],
-                                  );
-                                  setShowBulkConfirm(false);
-                                }}
-                                className="w-4 h-4 rounded text-brand-primary focus:ring-brand-primary/20 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all cursor-pointer"
-                              />
+                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                              {!isReadOnlyAdministrativeCatalog && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedItems.includes(item)}
+                                  onChange={() => {
+                                    setSelectedItems((prev) =>
+                                      prev.includes(item)
+                                        ? prev.filter((i) => i !== item)
+                                        : [...prev, item],
+                                    );
+                                    setShowBulkConfirm(false);
+                                  }}
+                                  className="w-4 h-4 rounded text-brand-primary focus:ring-brand-primary/20 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all cursor-pointer"
+                                />
+                              )}
                               <span className="text-sm text-slate-700 dark:text-slate-200 font-medium truncate">
                                 {item}
                               </span>
                             </div>
-                            <button
-                              onClick={() => setDeletingItem(item)}
-                              className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all lg:opacity-0 group-hover:opacity-100"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {!isReadOnlyAdministrativeCatalog && (
+                              <button
+                                onClick={() => setDeletingItem(item)}
+                                className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all lg:opacity-0 group-hover:opacity-100"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
@@ -2003,9 +2062,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
               <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-100 dark:border-amber-900/40 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                  <strong>Nota:</strong> Eliminar un elemento de esta lista no
-                  afectará a los registros ya guardados. Simplemente dejará de
-                  aparecer como sugerencia en los formularios.
+                  <strong>Nota:</strong>{" "}
+                  {isReadOnlyAdministrativeCatalog
+                    ? "Estos datos se obtienen automáticamente de las fichas de trabajadores guardadas. Se muestran de forma parcialmente oculta y no se duplican en otro almacén."
+                    : "Eliminar un elemento de esta lista no afectará a los registros ya guardados. Simplemente dejará de aparecer como sugerencia en los formularios."}
                 </p>
               </div>
             </div>
