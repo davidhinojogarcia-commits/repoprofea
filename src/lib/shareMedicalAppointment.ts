@@ -1,6 +1,7 @@
 import type { Person } from '../../types';
 import { applyPdfCopyrightStamp, generateMedicalTicketsPDF } from './exportUtils';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
+import { supabase } from '../lib/supabase';
 
 let reservedWhatsAppWindow: Window | null = null;
 
@@ -62,6 +63,48 @@ const getPrlSchedule = (person: Person) => ({
   time: String((person as any).horaFormacionPrl || '').trim(),
   place: String(person.lugarFormacion || '').trim(),
 });
+
+const normalizeWorkToken = (value: unknown): string =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[._\-/:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+
+const resolveAppointmentLocalidad = async (person: Person): Promise<string> => {
+  try {
+    const obraId = String((person as any).obraId || '').trim();
+    if (obraId) {
+      const rows = await supabase.query('obras', {
+        query: `select=id,codigo,nombre,municipio&id=eq.${encodeURIComponent(obraId)}&limit=1`,
+      });
+      const municipio = String(rows?.[0]?.municipio || '').trim();
+      if (municipio) return municipio;
+    }
+
+    const rows = await supabase.query('obras', { query: 'select=id,codigo,nombre,municipio' });
+    const workerWork = normalizeWorkToken(person.obra);
+    const workerCode = workerWork.match(/\b\d{4,6}\b/)?.[0] || '';
+    const match = (rows || []).find((row: any) => {
+      const code = normalizeWorkToken(row.codigo);
+      const name = normalizeWorkToken(row.nombre);
+      return (
+        (workerCode && code && code.includes(workerCode)) ||
+        (workerWork && name === workerWork) ||
+        (workerWork && code === workerWork)
+      );
+    });
+    const municipio = String(match?.municipio || '').trim();
+    if (municipio) return municipio;
+  } catch (error) {
+    console.warn('No se pudo resolver la localidad de la obra para la citación médica:', error);
+  }
+
+  const fallback = String((person as any).municipio || (person as any).localidad || '').trim();
+  return fallback || '-';
+};
 
 export type MedicalConfirmationLinks = { confirm: string; decline: string };
 
@@ -235,10 +278,8 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
     }
   }
 
-  const observations = String(person.observaciones || '').trim();
-  const site = observations
-    ? `${person.sitioReconocimiento || '-'}\nOBSERVACIONES / INDICACIONES PARTICULARES: ${observations}`
-    : (person.sitioReconocimiento || '-');
+  const site = person.sitioReconocimiento || '-';
+  const localidad = await resolveAppointmentLocalidad(person);
 
   const settings = await loadAppBusinessSettings().catch(() => ({
     workStartHour: '08:00',
@@ -250,6 +291,7 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
       apellidosNombre: person.apellidosNombre,
       dni: person.dni,
       obra: person.obra,
+      localidad,
       numOferta: person.numOferta,
       categoria: person.categoria,
       quincena: person.quincena,
