@@ -1156,7 +1156,7 @@ function App() {
 
   const handleUpdatePerson = async (updatedPerson: Person) => {
     try {
-      const persisted = await updateDocument<Person>('trabajadores', updatedPerson.id, updatedPerson as any);
+      const persisted = await updateDocument<Person>('trabajadores', updatedPerson.id, updatedPerson as any, { current: updatedPerson });
       const savedPerson = persisted && typeof persisted === 'object'
         ? ({ ...updatedPerson, ...persisted, id: updatedPerson.id } as Person)
         : updatedPerson;
