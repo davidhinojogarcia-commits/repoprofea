@@ -739,3 +739,212 @@ body,
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+
+/* Button contrast hardening v2
+   Covers strong backgrounds and nested text/icon utilities that can override
+   the button's inherited foreground color. */
+#root button[class*="bg-blue-5"],
+#root button[class*="bg-blue-6"],
+#root button[class*="bg-blue-7"],
+#root button[class*="bg-blue-8"],
+#root button[class*="bg-blue-9"],
+#root button[class*="bg-sky-5"],
+#root button[class*="bg-sky-6"],
+#root button[class*="bg-sky-7"],
+#root button[class*="bg-cyan-5"],
+#root button[class*="bg-cyan-6"],
+#root button[class*="bg-cyan-7"],
+#root button[class*="bg-emerald-5"],
+#root button[class*="bg-emerald-6"],
+#root button[class*="bg-emerald-7"],
+#root button[class*="bg-green-5"],
+#root button[class*="bg-green-6"],
+#root button[class*="bg-green-7"],
+#root button[class*="bg-red-5"],
+#root button[class*="bg-red-6"],
+#root button[class*="bg-red-7"],
+#root button[class*="bg-rose-5"],
+#root button[class*="bg-rose-6"],
+#root button[class*="bg-rose-7"],
+#root button[class*="bg-orange-5"],
+#root button[class*="bg-orange-6"],
+#root button[class*="bg-orange-7"],
+#root button[class*="bg-amber-5"],
+#root button[class*="bg-amber-6"],
+#root button[class*="bg-violet-5"],
+#root button[class*="bg-violet-6"],
+#root button[class*="bg-violet-7"],
+#root button[class*="bg-purple-5"],
+#root button[class*="bg-purple-6"],
+#root button[class*="bg-purple-7"],
+#root button[class*="bg-indigo-5"],
+#root button[class*="bg-indigo-6"],
+#root button[class*="bg-indigo-7"],
+#root button[class*="bg-slate-6"],
+#root button[class*="bg-slate-7"],
+#root button[class*="bg-slate-8"],
+#root button[class*="bg-slate-9"],
+#root button[class*="bg-gray-6"],
+#root button[class*="bg-gray-7"],
+#root button[class*="bg-gray-8"],
+#root button[class*="bg-gray-9"],
+#root button[class*="bg-black"],
+#root button[class*="bg-[#0"],
+#root button[class*="bg-[#1"],
+#root button[class*="bg-[#2"],
+#root button[class*="bg-[#3"],
+#root button[class*="bg-[#4"],
+#root button[class*="bg-[#5"],
+#root button[class*="bg-[#6"],
+#root button[class*="bg-[#7"] {
+  color: #ffffff !important;
+}
+
+#root button[class*="bg-blue-5"] *,
+#root button[class*="bg-blue-6"] *,
+#root button[class*="bg-blue-7"] *,
+#root button[class*="bg-blue-8"] *,
+#root button[class*="bg-blue-9"] *,
+#root button[class*="bg-sky-5"] *,
+#root button[class*="bg-sky-6"] *,
+#root button[class*="bg-cyan-5"] *,
+#root button[class*="bg-cyan-6"] *,
+#root button[class*="bg-emerald-5"] *,
+#root button[class*="bg-emerald-6"] *,
+#root button[class*="bg-green-5"] *,
+#root button[class*="bg-green-6"] *,
+#root button[class*="bg-red-5"] *,
+#root button[class*="bg-red-6"] *,
+#root button[class*="bg-rose-5"] *,
+#root button[class*="bg-rose-6"] *,
+#root button[class*="bg-orange-5"] *,
+#root button[class*="bg-orange-6"] *,
+#root button[class*="bg-violet-5"] *,
+#root button[class*="bg-violet-6"] *,
+#root button[class*="bg-purple-5"] *,
+#root button[class*="bg-purple-6"] *,
+#root button[class*="bg-indigo-5"] *,
+#root button[class*="bg-indigo-6"] *,
+#root button[class*="bg-slate-6"] *,
+#root button[class*="bg-slate-7"] *,
+#root button[class*="bg-slate-8"] *,
+#root button[class*="bg-slate-9"] *,
+#root button[class*="bg-gray-6"] *,
+#root button[class*="bg-gray-7"] *,
+#root button[class*="bg-gray-8"] *,
+#root button[class*="bg-gray-9"] *,
+#root button[class*="bg-black"] * {
+  color: inherit !important;
+}
+
+/* Light mode: pale/white buttons always get a dark readable foreground,
+   including nested spans and icons with legacy text utilities. */
+:root:not(.dark) #root button[class*="bg-white"] *,
+:root:not(.dark) #root button[class*="bg-slate-50"] *,
+:root:not(.dark) #root button[class*="bg-slate-100"] *,
+:root:not(.dark) #root button[class*="bg-gray-50"] *,
+:root:not(.dark) #root button[class*="bg-gray-100"] *,
+:root:not(.dark) #root button[class*="bg-blue-50"] *,
+:root:not(.dark) #root button[class*="bg-blue-100"] *,
+:root:not(.dark) #root button[class*="bg-sky-50"] *,
+:root:not(.dark) #root button[class*="bg-sky-100"] *,
+:root:not(.dark) #root button[class*="bg-cyan-50"] *,
+:root:not(.dark) #root button[class*="bg-cyan-100"] *,
+:root:not(.dark) #root button[class*="bg-emerald-50"] *,
+:root:not(.dark) #root button[class*="bg-emerald-100"] *,
+:root:not(.dark) #root button[class*="bg-green-50"] *,
+:root:not(.dark) #root button[class*="bg-green-100"] *,
+:root:not(.dark) #root button[class*="bg-amber-50"] *,
+:root:not(.dark) #root button[class*="bg-amber-100"] *,
+:root:not(.dark) #root button[class*="bg-yellow-50"] *,
+:root:not(.dark) #root button[class*="bg-yellow-100"] *,
+:root:not(.dark) #root button[class*="bg-orange-50"] *,
+:root:not(.dark) #root button[class*="bg-orange-100"] *,
+:root:not(.dark) #root button[class*="bg-red-50"] *,
+:root:not(.dark) #root button[class*="bg-red-100"] *,
+:root:not(.dark) #root button[class*="bg-rose-50"] *,
+:root:not(.dark) #root button[class*="bg-rose-100"] *,
+:root:not(.dark) #root button[class*="bg-violet-50"] *,
+:root:not(.dark) #root button[class*="bg-violet-100"] *,
+:root:not(.dark) #root button[class*="bg-purple-50"] *,
+:root:not(.dark) #root button[class*="bg-purple-100"] * {
+  color: inherit !important;
+}
+
+/* Dark mode: light accent buttons need a dark foreground; dark accent buttons
+   need a light foreground. This fixes legacy combinations such as
+   dark:bg-blue-100 + dark:text-blue-100 and similar. */
+.dark #root button[class*="dark:bg-white"],
+.dark #root button[class*="dark:bg-slate-50"],
+.dark #root button[class*="dark:bg-slate-100"],
+.dark #root button[class*="dark:bg-gray-50"],
+.dark #root button[class*="dark:bg-gray-100"],
+.dark #root button[class*="dark:bg-blue-50"],
+.dark #root button[class*="dark:bg-blue-100"],
+.dark #root button[class*="dark:bg-sky-50"],
+.dark #root button[class*="dark:bg-sky-100"],
+.dark #root button[class*="dark:bg-emerald-50"],
+.dark #root button[class*="dark:bg-emerald-100"],
+.dark #root button[class*="dark:bg-green-50"],
+.dark #root button[class*="dark:bg-green-100"],
+.dark #root button[class*="dark:bg-amber-50"],
+.dark #root button[class*="dark:bg-amber-100"],
+.dark #root button[class*="dark:bg-red-50"],
+.dark #root button[class*="dark:bg-red-100"],
+.dark #root button[class*="dark:bg-rose-50"],
+.dark #root button[class*="dark:bg-rose-100"] {
+  color: #0f172a !important;
+}
+
+.dark #root button[class*="dark:bg-white"] *,
+.dark #root button[class*="dark:bg-slate-50"] *,
+.dark #root button[class*="dark:bg-slate-100"] *,
+.dark #root button[class*="dark:bg-gray-50"] *,
+.dark #root button[class*="dark:bg-gray-100"] *,
+.dark #root button[class*="dark:bg-blue-50"] *,
+.dark #root button[class*="dark:bg-blue-100"] *,
+.dark #root button[class*="dark:bg-sky-50"] *,
+.dark #root button[class*="dark:bg-sky-100"] *,
+.dark #root button[class*="dark:bg-emerald-50"] *,
+.dark #root button[class*="dark:bg-emerald-100"] *,
+.dark #root button[class*="dark:bg-green-50"] *,
+.dark #root button[class*="dark:bg-green-100"] *,
+.dark #root button[class*="dark:bg-amber-50"] *,
+.dark #root button[class*="dark:bg-amber-100"] *,
+.dark #root button[class*="dark:bg-red-50"] *,
+.dark #root button[class*="dark:bg-red-100"] *,
+.dark #root button[class*="dark:bg-rose-50"] *,
+.dark #root button[class*="dark:bg-rose-100"] * {
+  color: inherit !important;
+}
+
+/* Semantic buttons are always readable regardless of legacy nested text classes. */
+#root .ui-button-primary,
+#root .ui-button-primary * {
+  color: #ffffff !important;
+}
+
+:root:not(.dark) #root .ui-button-secondary,
+:root:not(.dark) #root .ui-button-secondary * {
+  color: var(--ui-brand-800) !important;
+}
+
+.dark #root .ui-button-secondary,
+.dark #root .ui-button-secondary * {
+  color: #dff2fb !important;
+  background-color: rgba(22, 125, 172, .16);
+}
+
+/* Inputs/selects also keep readable text in both themes. */
+:root:not(.dark) #root input:not([type="checkbox"]):not([type="radio"]),
+:root:not(.dark) #root select,
+:root:not(.dark) #root textarea {
+  color: #172033;
+}
+
+.dark #root input:not([type="checkbox"]):not([type="radio"]),
+.dark #root select,
+.dark #root textarea {
+  color: #f1f5f9;
+}
