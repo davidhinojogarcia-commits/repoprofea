@@ -1169,8 +1169,21 @@ function App() {
 
       const saeReturnWorkerId = window.sessionStorage.getItem('profea-sae-return-worker-id');
       const shouldReturnToSae = saeReturnWorkerId === String(savedPerson.id);
+      const medicalState = String(savedPerson.aptitudMedica || savedPerson.reconocimientoEstado || 'Pendiente').trim().toLowerCase();
+      const needsMedicalAppointment =
+        savedPerson.necesitaReconocimiento === 'Sí' &&
+        !String(savedPerson.citaDia || '').trim() &&
+        (medicalState === 'pendiente' || !medicalState);
+
       if (shouldReturnToSae) {
         window.sessionStorage.removeItem('profea-sae-return-worker-id');
+      }
+
+      if (needsMedicalAppointment) {
+        window.sessionStorage.setItem('profea-medical-focus-worker-id', String(savedPerson.id));
+        setActiveView('citas');
+        window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'citas' } }));
+      } else if (shouldReturnToSae) {
         setActiveView('sae');
         window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'sae' } }));
       }
@@ -1179,7 +1192,9 @@ function App() {
       setToast({
         message: queuedOffline
           ? `Cambios guardados en la ficha de ${savedPerson.apellidosNombre}. Se sincronizarán cuando vuelva la conexión.`
-          : `Cambios guardados correctamente en la ficha de ${savedPerson.apellidosNombre}.`,
+          : needsMedicalAppointment
+            ? `Cambios guardados. ${savedPerson.apellidosNombre} necesita cita de reconocimiento médico.`
+            : `Cambios guardados correctamente en la ficha de ${savedPerson.apellidosNombre}.`,
         type: 'success'
       });
     } catch (error) {
