@@ -34,6 +34,8 @@ export type AttendancePeriod = {
 type AttendanceContext = WorksiteDocumentContext & {
   codigoObra?: string;
   municipio?: string;
+  workStartHour?: string;
+  workEndHour?: string;
 };
 
 const parseYmd = (value: unknown): Ymd | null => {
@@ -271,14 +273,21 @@ const drawIdentityBlock = (
   return startY + 28.5;
 };
 
-const drawDailyTable = (doc: jsPDF, days: Ymd[], startY: number) => {
+const drawDailyTable = (
+  doc: jsPDF,
+  days: Ymd[],
+  startY: number,
+  context: AttendanceContext,
+) => {
   const compact = days.length > 20;
+  const startHour = safe(context.workStartHour);
+  const endHour = safe(context.workEndHour);
   const body = days.map((day, index) => [
     String(index + 1),
     fmtDateParts(day.year, day.month, day.day),
+    startHour,
     "",
-    "",
-    "",
+    endHour,
     "",
     "",
     "",
@@ -419,7 +428,7 @@ const drawWorkerContractPages = (
       parts.length > 1 ? `Parte ${index + 1} de ${parts.length}` : undefined;
     const startY = drawInstitutionalHeader(doc, context, worker, partLabel);
     const tableY = drawIdentityBlock(doc, worker, context, startY);
-    const endY = drawDailyTable(doc, days, tableY);
+    const endY = drawDailyTable(doc, days, tableY, context);
     drawSummary(doc, context, endY);
     addPageBefore = true;
   });
