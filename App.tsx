@@ -2178,6 +2178,10 @@ function App() {
         onOpenScanner={() => setIsScannerOpen(true)}
         guidedMode={interfaceMode === 'guided'}
       />
+      <div
+        aria-hidden="true"
+        className={`hidden lg:block shrink-0 transition-[width] duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}
+      />
 
       <WatermarkLogo />
       
