@@ -384,10 +384,11 @@ export async function updateDocument<T extends DatabaseRecord>(
   collectionName: string,
   id: string | number,
   patch: Partial<T>,
+  options: { current?: T } = {},
 ): Promise<T> {
   const user = await requireUser();
   const table = canonicalTable(collectionName);
-  const current = await getDocument<T>(collectionName, id);
+  const current = options.current ?? await getDocument<T>(collectionName, id);
   if (!current)
     throw new Error("El registro ya no existe o no tienes permiso para verlo.");
   const merged = { ...current, ...patch, id } as DatabaseRecord;
