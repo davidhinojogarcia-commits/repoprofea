@@ -264,6 +264,38 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     }
   };
 
+  const importInventoryExcel = async (file: File) => {
+    if (!park) return;
+    setExcelImportBusy(true);
+    setExcelImportNotice('');
+    try {
+      const detected = await analyzeInventoryExcel(file);
+      if (!detected.length) throw new Error('No se reconocieron máquinas o herramientas en el Excel.');
+      const plan = buildInventoryImportPlan(detected, items);
+      const confirmed = window.confirm(
+        'Se han reconocido ' + plan.rows.length + ' equipos en el Excel.\n\n' +
+        '• Nuevos: ' + plan.creates + '\n' +
+        '• Coincidencias que se actualizarán: ' + plan.updates + '\n\n' +
+        'Las coincidencias se identifican por matrícula, número de serie, código o, si no existen, por nombre + marca + modelo + categoría.\n\n¿Continuar con la importación?'
+      );
+      if (!confirmed) {
+        setExcelImportNotice('Importación cancelada antes de modificar el inventario.');
+        return;
+      }
+      const result = await applyInventoryImportPlan(park.id, baseLocation, plan.rows);
+      await reload(park.id);
+      setExcelImportNotice(
+        'Importación completada: ' + result.created + ' nuevos · ' + result.updated + ' actualizados' +
+        (result.failed ? ' · ' + result.failed + ' con error' : '') + '.'
+      );
+    } catch (error: any) {
+      console.error('[inventory-excel-import]', error);
+      setExcelImportNotice(error?.message || 'No se pudo importar el inventario desde Excel.');
+    } finally {
+      setExcelImportBusy(false);
+      if (excelImportRef.current) excelImportRef.current.value = '';
+    }
+  };
   const saveParkConfig = async () => {
     if (!park) return;
     setParkSaving(true);
