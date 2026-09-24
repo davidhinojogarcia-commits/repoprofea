@@ -607,3 +607,135 @@ body,
     transition-duration: .01ms !important;
   }
 }
+
+
+/* Global contrast hardening · light + dark modes
+   Prevents legacy Tailwind combinations from leaving low-contrast text/icons
+   on pale buttons, while preserving deliberate primary/danger actions. */
+:root:not(.dark) #root button[class*="bg-white"],
+:root:not(.dark) #root button[class*="bg-slate-50"],
+:root:not(.dark) #root button[class*="bg-slate-100"],
+:root:not(.dark) #root button[class*="bg-gray-50"],
+:root:not(.dark) #root button[class*="bg-gray-100"],
+:root:not(.dark) #root button[class*="bg-blue-50"],
+:root:not(.dark) #root button[class*="bg-blue-100"],
+:root:not(.dark) #root button[class*="bg-sky-50"],
+:root:not(.dark) #root button[class*="bg-sky-100"],
+:root:not(.dark) #root button[class*="bg-cyan-50"],
+:root:not(.dark) #root button[class*="bg-cyan-100"],
+:root:not(.dark) #root button[class*="bg-emerald-50"],
+:root:not(.dark) #root button[class*="bg-emerald-100"],
+:root:not(.dark) #root button[class*="bg-green-50"],
+:root:not(.dark) #root button[class*="bg-green-100"],
+:root:not(.dark) #root button[class*="bg-amber-50"],
+:root:not(.dark) #root button[class*="bg-amber-100"],
+:root:not(.dark) #root button[class*="bg-yellow-50"],
+:root:not(.dark) #root button[class*="bg-yellow-100"],
+:root:not(.dark) #root button[class*="bg-orange-50"],
+:root:not(.dark) #root button[class*="bg-orange-100"],
+:root:not(.dark) #root button[class*="bg-red-50"],
+:root:not(.dark) #root button[class*="bg-red-100"],
+:root:not(.dark) #root button[class*="bg-rose-50"],
+:root:not(.dark) #root button[class*="bg-rose-100"],
+:root:not(.dark) #root button[class*="bg-violet-50"],
+:root:not(.dark) #root button[class*="bg-violet-100"],
+:root:not(.dark) #root button[class*="bg-purple-50"],
+:root:not(.dark) #root button[class*="bg-purple-100"] {
+  color: #17324d !important;
+}
+
+:root:not(.dark) #root button[class*="bg-blue-50"],
+:root:not(.dark) #root button[class*="bg-blue-100"],
+:root:not(.dark) #root button[class*="bg-sky-50"],
+:root:not(.dark) #root button[class*="bg-sky-100"],
+:root:not(.dark) #root button[class*="bg-cyan-50"],
+:root:not(.dark) #root button[class*="bg-cyan-100"] {
+  color: #003f6b !important;
+}
+
+:root:not(.dark) #root button[class*="bg-emerald-50"],
+:root:not(.dark) #root button[class*="bg-emerald-100"],
+:root:not(.dark) #root button[class*="bg-green-50"],
+:root:not(.dark) #root button[class*="bg-green-100"] {
+  color: #075d52 !important;
+}
+
+:root:not(.dark) #root button[class*="bg-amber-50"],
+:root:not(.dark) #root button[class*="bg-amber-100"],
+:root:not(.dark) #root button[class*="bg-yellow-50"],
+:root:not(.dark) #root button[class*="bg-yellow-100"],
+:root:not(.dark) #root button[class*="bg-orange-50"],
+:root:not(.dark) #root button[class*="bg-orange-100"] {
+  color: #7c3f00 !important;
+}
+
+:root:not(.dark) #root button[class*="bg-red-50"],
+:root:not(.dark) #root button[class*="bg-red-100"],
+:root:not(.dark) #root button[class*="bg-rose-50"],
+:root:not(.dark) #root button[class*="bg-rose-100"] {
+  color: #8f2034 !important;
+}
+
+:root:not(.dark) #root button[class*="bg-violet-50"],
+:root:not(.dark) #root button[class*="bg-violet-100"],
+:root:not(.dark) #root button[class*="bg-purple-50"],
+:root:not(.dark) #root button[class*="bg-purple-100"] {
+  color: #5b2a86 !important;
+}
+
+/* Icons inside pale buttons follow the corrected label color. */
+:root:not(.dark) #root button[class*="bg-white"] svg,
+:root:not(.dark) #root button[class*="bg-slate-50"] svg,
+:root:not(.dark) #root button[class*="bg-slate-100"] svg,
+:root:not(.dark) #root button[class*="bg-gray-50"] svg,
+:root:not(.dark) #root button[class*="bg-gray-100"] svg,
+:root:not(.dark) #root button[class*="bg-blue-50"] svg,
+:root:not(.dark) #root button[class*="bg-blue-100"] svg,
+:root:not(.dark) #root button[class*="bg-sky-50"] svg,
+:root:not(.dark) #root button[class*="bg-sky-100"] svg,
+:root:not(.dark) #root button[class*="bg-emerald-50"] svg,
+:root:not(.dark) #root button[class*="bg-emerald-100"] svg,
+:root:not(.dark) #root button[class*="bg-green-50"] svg,
+:root:not(.dark) #root button[class*="bg-green-100"] svg,
+:root:not(.dark) #root button[class*="bg-amber-50"] svg,
+:root:not(.dark) #root button[class*="bg-amber-100"] svg,
+:root:not(.dark) #root button[class*="bg-red-50"] svg,
+:root:not(.dark) #root button[class*="bg-red-100"] svg,
+:root:not(.dark) #root button[class*="bg-rose-50"] svg,
+:root:not(.dark) #root button[class*="bg-rose-100"] svg {
+  color: currentColor !important;
+}
+
+/* Dark mode: keep labels and icons readable on the common dark surfaces. */
+.dark #root button[class*="bg-slate-700"],
+.dark #root button[class*="bg-slate-800"],
+.dark #root button[class*="bg-slate-900"],
+.dark #root button[class*="bg-gray-700"],
+.dark #root button[class*="bg-gray-800"],
+.dark #root button[class*="bg-gray-900"],
+.dark #root button[class*="dark:bg-slate-700"],
+.dark #root button[class*="dark:bg-slate-800"],
+.dark #root button[class*="dark:bg-slate-900"] {
+  color: #f8fafc !important;
+}
+
+.dark #root button[class*="bg-slate-700"] svg,
+.dark #root button[class*="bg-slate-800"] svg,
+.dark #root button[class*="bg-slate-900"] svg,
+.dark #root button[class*="dark:bg-slate-700"] svg,
+.dark #root button[class*="dark:bg-slate-800"] svg,
+.dark #root button[class*="dark:bg-slate-900"] svg {
+  color: currentColor !important;
+}
+
+/* Disabled controls remain visibly disabled without becoming unreadable. */
+#root button:disabled,
+#root input[type="button"]:disabled,
+#root input[type="submit"]:disabled {
+  opacity: .68 !important;
+}
+
+#root button {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
