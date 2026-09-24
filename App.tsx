@@ -24,20 +24,13 @@ import { ImportDuplicateModal } from './components/ImportDuplicateModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
 import { WorksiteDocumentationPortal } from './components/WorksiteDocumentationPortal';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  // Empaquetado por Vite: evita depender de un CDN externo para previsualizar PDFs.
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-}
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
-import ExcelJS from 'exceljs';
 import { CheckCircle, AlertTriangle, Cloud, RefreshCw, Home } from 'lucide-react';
 import { 
   preparePRLExcelData, 
@@ -78,6 +71,20 @@ const SubcontratasSection = lazy(() => import('./components/SubcontratasSection'
 const SaeSection = lazy(() => import('./components/SaeSection').then(module => ({ default: module.SaeSection })));
 const InventorySection = lazy(() => import('./components/InventorySection').then(module => ({ default: module.InventorySection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
+
+let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
+const loadPdfJs = async () => {
+  if (!pdfJsPromise) {
+    pdfJsPromise = import('pdfjs-dist').then(async (pdfjsLib) => {
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        const workerModule = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+      }
+      return pdfjsLib;
+    });
+  }
+  return pdfJsPromise;
+};
 
 const ViewLoadingFallback = () => (
   <div className="ui-surface p-8 min-h-48 flex items-center justify-center">
@@ -1694,6 +1701,7 @@ function App() {
           // Client-side PDF text parsing fallback using pdfjs
           try {
             const arrayBuffer = await file.arrayBuffer();
+            const pdfjsLib = await loadPdfJs();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             let fullText = '';
             for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -1741,6 +1749,7 @@ function App() {
         let parsedWithExcel = false;
         try {
           const arrayBuffer = await file.arrayBuffer();
+          const ExcelJS = (await import('exceljs')).default;
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(arrayBuffer);
           const worksheet = workbook.getWorksheet(1);
