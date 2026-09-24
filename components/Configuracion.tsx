@@ -464,6 +464,45 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
+  const bankAccountCatalog = useMemo(() => {
+    const rows = new Map<string, string[]>();
+    people.forEach((person) => {
+      const normalized = String(person.iban || "").replace(/\s+/g, "").toUpperCase();
+      if (!normalized) return;
+      const names = rows.get(normalized) || [];
+      if (person.apellidosNombre && !names.includes(person.apellidosNombre)) names.push(person.apellidosNombre);
+      rows.set(normalized, names);
+    });
+    return Array.from(rows.entries())
+      .map(([value, names]) => {
+        const masked = value.length > 8
+          ? value.slice(0, 4) + " •••• •••• •••• " + value.slice(-4)
+          : "•••• " + value.slice(-4);
+        return masked + (names.length ? " · " + names.join(" · ") : "");
+      })
+      .sort((a, b) => a.localeCompare(b, "es"));
+  }, [people]);
+
+  const socialSecurityCatalog = useMemo(() => {
+    const rows = new Map<string, string[]>();
+    people.forEach((person) => {
+      const normalized = String(person.numeroSeguridadSocial || "").replace(/[^0-9]/g, "");
+      if (!normalized) return;
+      const names = rows.get(normalized) || [];
+      if (person.apellidosNombre && !names.includes(person.apellidosNombre)) names.push(person.apellidosNombre);
+      rows.set(normalized, names);
+    });
+    return Array.from(rows.entries())
+      .map(([value, names]) => {
+        const masked = value.length > 4 ? "••••••••" + value.slice(-4) : value;
+        return masked + (names.length ? " · " + names.join(" · ") : "");
+      })
+      .sort((a, b) => a.localeCompare(b, "es"));
+  }, [people]);
+
+  const isReadOnlyAdministrativeCatalog =
+    activeTab === "cuentas" || activeTab === "seguridad_social";
+
   const tabs = [
     {
       id: "obras",
@@ -499,6 +538,20 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       icon: Briefcase,
       list: savedCategorias,
       setter: setSavedCategorias,
+    },
+    {
+      id: "cuentas",
+      label: "Cuentas bancarias",
+      icon: Database,
+      list: bankAccountCatalog,
+      setter: setSavedTelefonos,
+    },
+    {
+      id: "seguridad_social",
+      label: "Seguridad Social",
+      icon: UserCheck,
+      list: socialSecurityCatalog,
+      setter: setSavedTelefonos,
     },
   ] as const;
 
