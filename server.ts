@@ -434,6 +434,115 @@ Genera y devuelve la información de todos los trabajadores encontrados en el PD
     }
   });
 
+  // API endpoint to analyze inventory Excel files and normalize equipment records
+  app.post("/api/inventory/analyze-excel", async (req, res) => {
+    try {
+      const { fileBase64, filename } = req.body || {};
+      if (!fileBase64 || !filename) {
+        return res.status(400).json({ error: "No se proporcionó un archivo Excel válido." });
+      }
+      if (!/\.xlsx?$/i.test(String(filename))) {
+        return res.status(400).json({ error: "El archivo debe estar en formato Excel (.xlsx o .xls)." });
+      }
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "El servicio de análisis automático no está configurado en el servidor." });
+      }
+
+      const cleanBase64 = String(fileBase64).replace(/^data:.*;base64,/, "");
+      const buffer = Buffer.from(cleanBase64, "base64");
+      const extractedText = await extractTextFromOfficeBuffer(buffer, String(filename));
+      if (!extractedText.trim()) {
+        return res.status(400).json({ error: "No se pudo leer contenido utilizable del Excel." });
+      }
+
+      const ai = getGeminiClient();
+      const response = await callGeminiWithRetry(ai, {
+        preferredModel: "gemini-flash-latest",
+        contents: {
+          parts: [{
+            text: `Analiza el contenido de este Excel de inventario de herramientas y maquinaria.
+Debes detectar TODAS las filas que representen una máquina, herramienta, equipo o lote real, aunque los encabezados cambien de nombre, haya varias hojas o existan columnas sin título.
+
+Devuelve un array JSON, un objeto por equipo, con estos campos:
+- codigo: código interno, referencia, número de inventario o identificador visible.
+- categoria: categoría o familia del equipo.
+- nombre: nombre claro del equipo. OBLIGATORIO.
+- marca: marca/fabricante.
+- modelo: modelo.
+- numeroSerie: número de serie.
+- matricula: matrícula si existe.
+- cantidad: cantidad numérica; por defecto 1.
+- tipoGestion: "individual" o "lote". Usa "lote" si la fila representa varias unidades indistinguibles; si no, "individual".
+- estado: uno de "Disponible", "Asignada a obra", "En traslado", "Averiada", "En reparación", "Pendiente de revisión", "Fuera de servicio", "Baja". Si no consta, usa "Disponible".
+- ubicacionActual: ubicación, nave, almacén, obra o destino actual si aparece.
+- observaciones: notas útiles no encajadas en otros campos.
+- detalles: objeto JSON con cualquier dato técnico adicional relevante del Excel que no encaje en los campos anteriores.
+
+Reglas:
+1. No inventes números de serie, matrículas, marcas, modelos ni códigos.
+2. No generes filas de títulos, totales, subtotales, separadores o cabeceras.
+3. Conserva todos los equipos detectados; no agrupes equipos distintos.
+4. Si dos filas del Excel son claramente el mismo equipo repetido, devuelve una sola versión con los datos más completos.
+5. Limpia espacios y saltos innecesarios.
+6. Devuelve únicamente JSON válido.
+
+CONTENIDO EXTRAÍDO DEL EXCEL:
+${extractedText.slice(0, 120000)}`
+          }]
+        },
+        config: {
+          maxOutputTokens: 65536,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                codigo: { type: Type.STRING },
+                categoria: { type: Type.STRING },
+                nombre: { type: Type.STRING },
+                marca: { type: Type.STRING },
+                modelo: { type: Type.STRING },
+                numeroSerie: { type: Type.STRING },
+                matricula: { type: Type.STRING },
+                cantidad: { type: Type.NUMBER },
+                tipoGestion: { type: Type.STRING },
+                estado: { type: Type.STRING },
+                ubicacionActual: { type: Type.STRING },
+                observaciones: { type: Type.STRING },
+                detalles: { type: Type.OBJECT }
+              },
+              required: ["nombre"]
+            }
+          }
+        }
+      });
+
+      const items = robustParseJsonArray(response.text || "[]")
+        .filter((item: any) => item && String(item.nombre || "").trim())
+        .map((item: any) => ({
+          codigo: String(item.codigo || "").trim(),
+          categoria: String(item.categoria || "OTROS").trim() || "OTROS",
+          nombre: String(item.nombre || "").trim(),
+          marca: String(item.marca || "").trim(),
+          modelo: String(item.modelo || "").trim(),
+          numeroSerie: String(item.numeroSerie || "").trim(),
+          matricula: String(item.matricula || "").trim(),
+          cantidad: Math.max(1, Number(item.cantidad || 1)),
+          tipoGestion: item.tipoGestion === "lote" ? "lote" : "individual",
+          estado: String(item.estado || "Disponible").trim() || "Disponible",
+          ubicacionActual: String(item.ubicacionActual || "").trim(),
+          observaciones: String(item.observaciones || "").trim(),
+          detalles: item.detalles && typeof item.detalles === "object" ? item.detalles : {}
+        }));
+
+      res.json({ success: true, items, count: items.length });
+    } catch (error: any) {
+      console.error("Error analyzing inventory Excel:", error);
+      res.status(500).json({ error: error?.message || "No se pudo analizar automáticamente el inventario Excel." });
+    }
+  });
+
   // API endpoint to schedule medical appointments using AI
   app.post("/api/schedule-appointments-ai", async (req, res) => {
     try {
