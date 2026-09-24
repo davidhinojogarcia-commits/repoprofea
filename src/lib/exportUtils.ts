@@ -2601,6 +2601,7 @@ export interface TicketData {
   apellidosNombre?: string;
   dni?: string;
   obra?: string;
+  localidad?: string;
   numOferta?: string;
   categoria?: string;
   quincena?: string;
@@ -2630,9 +2631,9 @@ export const generateMedicalTicketsPDF = async (
     const supervisorPhone = p.supervisorResponsable ? (supervisorPhones[p.supervisorResponsable] || p.telefono || '-') : '-';
     const workStartHourVal = p.workStartHour || workStartHourDefault;
 
-    const numOferta = p.numOferta || '11002GR';
-    const obraVal = p.obra || 'BORNOS';
-    const localidad = getLocalidadFromObra(obraVal);
+    const numOferta = p.numOferta || '-';
+    const obraVal = p.obra || '';
+    const localidad = String(p.localidad || '').trim() || getLocalidadFromObra(obraVal);
     const citaDiaFormatted = p.citaDia ? formatDate(p.citaDia) : '13-02-2026';
     const citaHoraFormatted = p.citaHora || '08:10';
     const diaComienzoFormatted = p.diaComienzo ? formatDate(p.diaComienzo) : '___/___/______';
