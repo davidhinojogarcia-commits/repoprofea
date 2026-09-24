@@ -133,7 +133,7 @@ export const GuidedHome: React.FC<GuidedHomeProps> = ({
       </section>
 
       <section aria-labelledby="guided-help-title" className="guided-help-panel ui-surface p-5 sm:p-6">
-        <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /><div><h2 id="guided-help-title" className="text-lg font-black text-slate-900 dark:text-white">Si te pierdes, vuelve a Resumen</h2><p className="mt-1 text-base leading-6 text-slate-600 dark:text-slate-300">Cuando entres en otro apartado tendrás siempre un botón visible para volver aquí.</p></div></div>
+        <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /><div><h2 id="guided-help-title" className="text-lg font-black text-slate-900 dark:text-white">Si te pierdes, vuelve al Menú inicial</h2><p className="mt-1 text-base leading-6 text-slate-600 dark:text-slate-300">Cuando entres en otro apartado tendrás siempre un botón visible para volver aquí.</p></div></div>
       </section>
 
       <section aria-labelledby="guided-other-title">
