@@ -30,6 +30,7 @@ import {
   X,
   Building2,
   UserCheck,
+  Users,
   Clock,
 } from "lucide-react";
 import { Person, DeletedPerson } from "../types";
@@ -50,6 +51,7 @@ import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
 import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
+import { buildWorkerMasterRecords, maskWorkerIban, maskWorkerNuss } from "../src/lib/workerMaster";
 import {
   getStoredReporteTecnicoConfig,
   saveStoredReporteTecnicoConfig,
@@ -130,10 +132,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "obras"
     | "lugares"
     | "sitios"
-    | "telefonos"
+    | "trabajadores"
     | "categorias"
-    | "cuentas"
-    | "seguridad_social"
     | "supervisor"
     | "technician"
     | "horario"
@@ -502,6 +502,23 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
+  const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
+  const filteredWorkerMasterRecords = useMemo(() => {
+    const q = searchTerm.trim().toLocaleLowerCase("es");
+    if (!q) return workerMasterRecords;
+    return workerMasterRecords.filter((worker) =>
+      [
+        worker.apellidosNombre,
+        worker.dni,
+        worker.fechaNacimiento,
+        worker.telefono,
+        worker.numeroSeguridadSocial,
+        worker.iban,
+        worker.calzado,
+      ].some((value) => String(value || "").toLocaleLowerCase("es").includes(q))
+    );
+  }, [workerMasterRecords, searchTerm]);
+
   const bankAccountCatalog = useMemo(() => {
     const rows = new Map<string, string[]>();
     people.forEach((person) => {
@@ -538,8 +555,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       .sort((a, b) => a.localeCompare(b, "es"));
   }, [people]);
 
-  const isReadOnlyAdministrativeCatalog =
-    activeTab === "cuentas" || activeTab === "seguridad_social";
+  const isReadOnlyAdministrativeCatalog = false;
 
   const tabs = [
     {
@@ -564,10 +580,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       setter: setSavedSitios,
     },
     {
-      id: "telefonos",
-      label: "Teléfonos",
-      icon: Phone,
-      list: savedTelefonos,
+      id: "trabajadores",
+      label: "Trabajadores",
+      icon: Users,
+      list: workerMasterRecords.map(worker => worker.apellidosNombre || worker.dni),
       setter: setSavedTelefonos,
     },
     {
@@ -576,20 +592,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       icon: Briefcase,
       list: savedCategorias,
       setter: setSavedCategorias,
-    },
-    {
-      id: "cuentas",
-      label: "Cuentas bancarias",
-      icon: Database,
-      list: bankAccountCatalog,
-      setter: setSavedTelefonos,
-    },
-    {
-      id: "seguridad_social",
-      label: "Seguridad Social",
-      icon: UserCheck,
-      list: socialSecurityCatalog,
-      setter: setSavedTelefonos,
     },
   ] as const;
 
@@ -980,7 +982,70 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          {activeTab === "supervisor" ? (
+          {activeTab === "trabajadores" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Users className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Ficha maestra de trabajadores
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-3xl">
+                  Una persona mantiene una sola identidad. Aquí se consolidan sus datos personales permanentes; obra, categoría, periodos, SAE y aptitud médica siguen perteneciendo a cada contratación o historial.
+                </p>
+              </div>
+
+              <div className="p-6">
+                <div className="relative mb-5">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar por nombre, DNI/NIE, teléfono, Seguridad Social, IBAN o talla..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                  />
+                </div>
+
+                <div className="mb-5 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4">
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{workerMasterRecords.length} personas únicas memorizadas</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Los datos proceden del Directorio existente. No se crea una segunda base duplicada: al volver a contratar a una persona, GestionProfea recupera estos datos y solo pide los datos de la nueva contratación.
+                  </p>
+                </div>
+
+                <div className="space-y-3 max-h-[650px] overflow-y-auto pr-1">
+                  {filteredWorkerMasterRecords.map((worker) => (
+                    <div key={worker.key} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                        <div>
+                          <p className="font-black text-slate-900 dark:text-white">{worker.apellidosNombre || "Trabajador sin nombre"}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">DNI/NIE: <span className="font-bold text-slate-700 dark:text-slate-200">{worker.dni || "-"}</span></p>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <p className="text-[11px] font-bold text-[#00548E] dark:text-blue-300">{worker.contratos} contratación{worker.contratos === 1 ? "" : "es"}</p>
+                          {worker.ultimaContratacion && <p className="text-[10px] text-slate-400">Última: {worker.ultimaContratacion.split("-").reverse().join("/")}</p>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 mt-4 text-xs">
+                        <p><span className="text-slate-400">Fecha nacimiento:</span> <strong className="text-slate-700 dark:text-slate-200">{worker.fechaNacimiento ? worker.fechaNacimiento.split("-").reverse().join("/") : "-"}</strong></p>
+                        <p><span className="text-slate-400">Teléfono:</span> <strong className="text-slate-700 dark:text-slate-200">{worker.telefono || "-"}</strong></p>
+                        <p><span className="text-slate-400">Talla calzado:</span> <strong className="text-slate-700 dark:text-slate-200">{worker.calzado || "-"}</strong></p>
+                        <p><span className="text-slate-400">Seguridad Social:</span> <strong className="text-slate-700 dark:text-slate-200">{maskWorkerNuss(worker.numeroSeguridadSocial)}</strong></p>
+                        <p className="sm:col-span-2"><span className="text-slate-400">Cuenta bancaria:</span> <strong className="text-slate-700 dark:text-slate-200">{maskWorkerIban(worker.iban)}</strong></p>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredWorkerMasterRecords.length === 0 && (
+                    <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">No se han encontrado trabajadores con ese criterio.</div>
+                  )}
+                </div>
+
+                <p className="mt-5 text-[11px] text-slate-400">
+                  Por seguridad, la cuenta bancaria y el número de Seguridad Social se muestran parcialmente ocultos en este listado. La edición completa sigue realizándose desde la ficha del trabajador en el Directorio.
+                </p>
+              </div>
+            </div>
+          ) : activeTab === "supervisor" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
