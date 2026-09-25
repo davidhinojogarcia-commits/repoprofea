@@ -35,13 +35,29 @@ const readFileAsDataUrl = (file: File): Promise<string> =>
 export const analyzeInventoryExcel = async (file: File): Promise<ImportedInventoryItem[]> => {
   if (!/\.xlsx?$/i.test(file.name)) throw new Error('El archivo debe estar en formato Excel (.xlsx o .xls).');
   const fileBase64 = await readFileAsDataUrl(file);
-  const response = await fetch('/api/inventory/analyze-excel', {
+  const requestBody = JSON.stringify({ fileBase64, filename: file.name });
+  let response = await fetch('/api/inventory-analyze-excel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fileBase64, filename: file.name }),
+    body: requestBody,
   });
+
+  // En desarrollo local antiguo mantenemos compatibilidad con el endpoint Express.
+  if (response.status === 404) {
+    response = await fetch('/api/inventory/analyze-excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: requestBody,
+    });
+  }
+
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.error || 'No se pudo analizar el Excel.');
+  if (!response.ok) {
+    const detail = payload?.error || (response.status === 413
+      ? 'El Excel es demasiado grande para enviarlo al servidor.'
+      : 'No se pudo analizar el Excel.');
+    throw new Error(detail);
+  }
 
   const validStates = new Set([
     'Disponible', 'Asignada a obra', 'En traslado', 'Averiada', 'En reparación',
