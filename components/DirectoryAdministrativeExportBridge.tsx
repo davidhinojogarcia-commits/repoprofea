@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
 import { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } from '../src/lib/administrativeRelationExport';
+import { sendDirectoryPdfByEmail, sendEncargadosPdfByWhatsApp } from '../src/lib/directoryCommunications';
 
 const workerIdFromNode = (node: Element | null): number | null => {
   if (!node) return null;
@@ -52,10 +53,10 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
-      #directorio-section .directorio-export-row{display:grid!important;grid-template-columns:minmax(210px,210px) 112px 112px!important;align-items:center!important;gap:8px!important;width:450px!important;max-width:100%!important}
-      #directorio-section .directorio-export-row>span{width:210px!important;margin-right:0!important;text-align:right!important;justify-content:flex-end!important;white-space:normal!important;line-height:1.15!important}
-      #directorio-section .directorio-export-row>button{width:112px!important;min-width:112px!important;height:36px!important;padding-top:6px!important;padding-bottom:6px!important}
-      @media(max-width:640px){#directorio-section .directorio-export-row{grid-template-columns:minmax(130px,1fr) 96px 96px!important;width:100%!important}#directorio-section .directorio-export-row>span{width:auto!important;font-size:9px!important;text-align:left!important;justify-content:flex-start!important}#directorio-section .directorio-export-row>button{width:96px!important;min-width:96px!important}}
+      #directorio-section .directorio-export-row{display:grid!important;grid-template-columns:minmax(190px,190px) 92px 92px 92px!important;align-items:center!important;gap:6px!important;width:490px!important;max-width:100%!important}
+      #directorio-section .directorio-export-row>span{width:190px!important;margin-right:0!important;text-align:right!important;justify-content:flex-end!important;white-space:normal!important;line-height:1.15!important}
+      #directorio-section .directorio-export-row>button{width:92px!important;min-width:92px!important;height:34px!important;padding:5px 8px!important}
+      @media(max-width:640px){#directorio-section .directorio-export-row{grid-template-columns:minmax(125px,1fr) 80px 80px 80px!important;width:100%!important;gap:4px!important}#directorio-section .directorio-export-row>span{width:auto!important;font-size:9px!important;text-align:left!important;justify-content:flex-start!important}#directorio-section .directorio-export-row>button{width:80px!important;min-width:80px!important;padding:5px 4px!important}}
     `;
     document.head.appendChild(style);
 
@@ -68,19 +69,22 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
     };
     window.addEventListener('profea:directory-export-scope', handleExportScope as EventListener);
 
+    const getScopedData = async () => {
+      const all = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
+      const liveScope = (window as any).__profeaDirectoryExportScope as { ids?: unknown[] } | undefined;
+      const liveIds = Array.isArray(liveScope?.ids)
+        ? liveScope!.ids!.map(Number).filter(Number.isFinite)
+        : null;
+      const scopedIds = liveIds !== null ? Array.from(new Set(liveIds)) : exportScopeIdsRef.current;
+      const ids = scopedIds !== null ? scopedIds : getCurrentExportIds();
+      const byId = new Map(all.map(person => [Number(person.id), person]));
+      return ids.map(id => byId.get(Number(id))).filter(Boolean) as Person[];
+    };
+
     const exportData = async (format: 'pdf' | 'excel') => {
       try {
-        const all = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
-        const liveScope = (window as any).__profeaDirectoryExportScope as { ids?: unknown[] } | undefined;
-        const liveIds = Array.isArray(liveScope?.ids)
-          ? liveScope!.ids!.map(Number).filter(Number.isFinite)
-          : null;
-        const scopedIds = liveIds !== null ? Array.from(new Set(liveIds)) : exportScopeIdsRef.current;
-        const ids = scopedIds !== null ? scopedIds : getCurrentExportIds();
-        const byId = new Map(all.map(person => [Number(person.id), person]));
-        const data = ids
-          .map(id => byId.get(Number(id)))
-          .filter(Boolean) as Person[];
+        const data = await getScopedData();
+
         if (!data.length) return window.alert('No hay trabajadores dentro de los filtros actuales para exportar.');
         if (format === 'pdf') {
           const { doc, filename } = prepareAdministrativeRelationPDF(data);
@@ -92,6 +96,58 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       } catch (e: any) {
         window.alert(e?.message || 'No se pudo generar la relación administrativa.');
       }
+    };
+
+    const handleDirectedSend = async (kind: 'encargados' | 'administrative' | 'medical' | 'footwear' | 'training') => {
+      try {
+        const data = await getScopedData();
+        if (!data.length) return window.alert('No hay trabajadores dentro de los filtros actuales para enviar.');
+        if (kind === 'encargados') {
+          await sendEncargadosPdfByWhatsApp(data);
+          window.alert('PDF preparado y chat de WhatsApp abierto con el recurso preventivo configurado. Adjunte el PDF descargado.');
+          return;
+        }
+        const result = await sendDirectoryPdfByEmail(kind, data);
+        if (result === 'prepared') {
+          window.alert('PDF preparado y correo abierto con el destinatario configurado. Adjunte el PDF descargado antes de enviar.');
+        }
+      } catch (e: any) {
+        window.alert(e?.message || 'No se pudo preparar el envío.');
+      }
+    };
+
+    const addSendButtons = (group: HTMLElement) => {
+      group.querySelectorAll<HTMLElement>('.directorio-export-row').forEach(row => {
+        if (row.querySelector('[data-directed-send]')) return;
+        const label = normalizeLabel(row.querySelector('span')?.textContent || '');
+        let kind: 'encargados' | 'administrative' | 'medical' | 'footwear' | 'training' | null = null;
+        let caption = 'Mail';
+
+        if (label.includes('ENCARGADOS')) {
+          kind = 'encargados';
+          caption = 'WhatsApp';
+        } else if (label.includes('ADMINISTRATIVA')) {
+          kind = 'administrative';
+        } else if (label.includes('RECONOCIMIENTOS MEDICOS')) {
+          kind = 'medical';
+        } else if (label.includes('CALZADO')) {
+          kind = 'footwear';
+        } else if (label.includes('FORMACION PRL')) {
+          kind = 'training';
+        }
+        if (!kind) return;
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.directedSend = kind;
+        button.className = 'directorio-send-button flex-none flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 dark:text-blue-300 dark:border-blue-800/80 rounded-lg transition-colors font-bold shadow-sm border';
+        button.textContent = caption;
+        button.title = kind === 'encargados'
+          ? 'Preparar PDF y abrir WhatsApp del recurso preventivo configurado'
+          : 'Preparar PDF y correo al contacto configurado';
+        button.addEventListener('click', () => void handleDirectedSend(kind!));
+        row.appendChild(button);
+      });
     };
 
     const ensureRowsAndLabels = () => {
@@ -117,7 +173,11 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       }
 
       const group = document.querySelector<HTMLElement>('#directorio-section .directorio-export-groups .flex.flex-col.gap-2');
-      if (!group || group.querySelector('[data-admin-relation-row="1"]')) return;
+      if (!group) return;
+      if (group.querySelector('[data-admin-relation-row="1"]')) {
+        addSendButtons(group);
+        return;
+      }
       const row = document.createElement('div');
       row.dataset.adminRelationRow = '1';
       row.className = 'directorio-export-row flex items-center justify-end gap-2';
@@ -130,6 +190,7 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       const encargadosRow = group.querySelector('[data-encargados-relation-row="1"]');
       if (encargadosRow) encargadosRow.after(row);
       else group.prepend(row);
+      addSendButtons(group);
     };
 
     ensureRowsAndLabels();
