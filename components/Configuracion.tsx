@@ -88,8 +88,8 @@ const ConfigurationContactPanel: React.FC<{
   title: string;
   description: string;
   icon: React.ReactNode;
-  form: Record<string, string>;
-  setForm: React.Dispatch<React.SetStateAction<any>>;
+  form: any;
+  setForm: any;
   fields: ContactField[];
   loaded: boolean;
   saveLabel: string;
@@ -805,10 +805,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       trimmedObra,
       trimmedRecurso,
       newObraCategoria,
+      newObraRecursoTelefono,
     );
     setObrasRecursos(getStoredObrasRecursosPreventivos());
     setNewItem("");
     setNewObraRecurso("");
+    setNewObraRecursoTelefono("");
     setNewObraMunicipio("");
     setNewObraCategoria("Encargado de Obra");
     if (setToast) {
@@ -822,7 +824,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const handleSaveEditObraRecurso = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingObraRecurso) return;
-    const { obra, nombre, recurso, categoria } = editingObraRecurso;
+    const { obra, nombre, recurso, categoria, telefono } = editingObraRecurso;
     const trimmedNombre = nombre.trim();
     if (!trimmedNombre) {
       if (setToast)
@@ -894,6 +896,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       trimmedNombre,
       recurso.trim(),
       categoria.trim(),
+      telefono.trim(),
     );
     setObrasRecursos(getStoredObrasRecursosPreventivos());
     setEditingObraRecurso(null);
@@ -1050,6 +1053,37 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
             <Briefcase className={`w-5 h-5 ${activeTab === "technician" ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
             Técnico responsable
           </button>
+
+          {[
+            { id: "administrative", label: "Administrativo/a", icon: Users },
+            { id: "medicalCompany", label: "Empresa reconocimientos", icon: Stethoscope },
+            { id: "shoeProvider", label: "Proveedor de calzado", icon: HardHat },
+            { id: "trainingCompany", label: "Empresa de formación", icon: GraduationCap },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id as any);
+                  setSearchTerm("");
+                  setNewItem("");
+                  setDeletingItem(null);
+                  setSelectedItems([]);
+                  setShowBulkConfirm(false);
+                }}
+                className={`
+                  w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+                  ${activeTab === item.id
+                    ? "profea-sidebar-item--active text-white"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"}
+                `}
+              >
+                <Icon className={`w-5 h-5 ${activeTab === item.id ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+                {item.label}
+              </button>
+            );
+          })}
 
           <button
             onClick={() => {
@@ -1332,6 +1366,108 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                 </div>
               </div>
             </div>
+          ) : activeTab === "administrative" ? (
+            <ConfigurationContactPanel
+              title="Datos del administrativo/a"
+              description="Datos de contacto del personal administrativo de referencia para comunicaciones, documentación y gestiones del programa."
+              icon={<Users className="w-6 h-6 text-[#00548E] dark:text-blue-400" />}
+              form={administrativeForm}
+              setForm={setAdministrativeForm}
+              loaded={contactsLoaded}
+              saveLabel="Guardar administrativo/a"
+              fields={[
+                { key: "nombreApellidos", label: "Nombre y apellidos", placeholder: "Nombre completo" },
+                { key: "telefono", label: "Teléfono de contacto", placeholder: "Ej: 600 123 456", type: "tel" },
+                { key: "email", label: "Correo electrónico", placeholder: "correo@dipucadiz.es", type: "email" },
+                { key: "numeroTrabajador", label: "Nº trabajador / empleado", placeholder: "Opcional" },
+              ]}
+              onSave={async () => {
+                if (!administrativeForm.nombreApellidos.trim()) {
+                  setToast?.({ message: "Indica el nombre y apellidos del administrativo/a.", type: "error" });
+                  return;
+                }
+                try {
+                  await saveAppBusinessSettings({ administrative: administrativeForm });
+                  setToast?.({ message: "Datos del administrativo/a guardados correctamente.", type: "success" });
+                } catch (error) {
+                  console.error("No se pudieron guardar los datos del administrativo/a:", error);
+                  setToast?.({ message: "No se pudieron guardar los datos del administrativo/a.", type: "error" });
+                }
+              }}
+            />
+          ) : activeTab === "medicalCompany" ? (
+            <ConfigurationContactPanel
+              title="Empresa de reconocimientos médicos"
+              description="Empresa y persona responsable de contacto para la gestión de citas, incidencias y coordinación de reconocimientos médicos."
+              icon={<Stethoscope className="w-6 h-6 text-[#00548E] dark:text-blue-400" />}
+              form={medicalCompanyForm}
+              setForm={setMedicalCompanyForm}
+              loaded={contactsLoaded}
+              saveLabel="Guardar empresa médica"
+              fields={[
+                { key: "empresa", label: "Empresa", placeholder: "Nombre de la empresa" },
+                { key: "nombreContacto", label: "Nombre y apellidos contacto responsable", placeholder: "Persona responsable" },
+                { key: "telefono", label: "Teléfono de contacto", placeholder: "Ej: 600 123 456", type: "tel" },
+                { key: "email", label: "Correo electrónico", placeholder: "correo@empresa.es", type: "email" },
+              ]}
+              onSave={async () => {
+                try {
+                  await saveAppBusinessSettings({ medicalCompany: medicalCompanyForm });
+                  setToast?.({ message: "Datos de la empresa de reconocimientos guardados.", type: "success" });
+                } catch (error) {
+                  console.error("No se pudo guardar la empresa de reconocimientos:", error);
+                  setToast?.({ message: "No se pudieron guardar los datos de la empresa de reconocimientos.", type: "error" });
+                }
+              }}
+            />
+          ) : activeTab === "shoeProvider" ? (
+            <ConfigurationContactPanel
+              title="Proveedor de calzado"
+              description="Contacto responsable del proveedor de calzado para pedidos, incidencias y coordinación de tallas."
+              icon={<HardHat className="w-6 h-6 text-[#00548E] dark:text-blue-400" />}
+              form={shoeProviderForm}
+              setForm={setShoeProviderForm}
+              loaded={contactsLoaded}
+              saveLabel="Guardar proveedor"
+              fields={[
+                { key: "nombreContacto", label: "Nombre y apellidos contacto responsable", placeholder: "Persona responsable" },
+                { key: "telefono", label: "Teléfono de contacto", placeholder: "Ej: 600 123 456", type: "tel" },
+                { key: "email", label: "Correo electrónico", placeholder: "correo@proveedor.es", type: "email" },
+              ]}
+              onSave={async () => {
+                try {
+                  await saveAppBusinessSettings({ shoeProvider: shoeProviderForm });
+                  setToast?.({ message: "Datos del proveedor de calzado guardados.", type: "success" });
+                } catch (error) {
+                  console.error("No se pudo guardar el proveedor de calzado:", error);
+                  setToast?.({ message: "No se pudieron guardar los datos del proveedor de calzado.", type: "error" });
+                }
+              }}
+            />
+          ) : activeTab === "trainingCompany" ? (
+            <ConfigurationContactPanel
+              title="Empresa de formación"
+              description="Empresa y persona responsable para coordinar cursos, horarios, convocatorias e incidencias de formación."
+              icon={<GraduationCap className="w-6 h-6 text-[#00548E] dark:text-blue-400" />}
+              form={trainingCompanyForm}
+              setForm={setTrainingCompanyForm}
+              loaded={contactsLoaded}
+              saveLabel="Guardar empresa de formación"
+              fields={[
+                { key: "empresa", label: "Nombre de la empresa", placeholder: "Empresa de formación" },
+                { key: "nombreContacto", label: "Contacto responsable", placeholder: "Nombre y apellidos" },
+                { key: "telefono", label: "Teléfono de contacto", placeholder: "Ej: 600 123 456", type: "tel" },
+                { key: "email", label: "Correo electrónico", placeholder: "correo@empresa.es", type: "email" },
+              ]}
+              onSave={async () => {
+                try {
+                  await saveAppBusinessSettings({ trainingCompany: trainingCompanyForm });
+                  setToast?.({ message: "Datos de la empresa de formación guardados.", type: "success" });
+                } catch (error) {
+                  console.error("No se pudo guardar la empresa de formación:", error);
+                  setToast?.({ message: "No se pudieron guardar los datos de la empresa de formación.", type: "error" });
+                }
+              }}
           ) : activeTab === "horario" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
@@ -1773,6 +1909,18 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
                       />
                     </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Teléfono Recurso Preventivo
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="Ej: 600 123 456"
+                        value={newObraRecursoTelefono}
+                        onChange={(e) => setNewObraRecursoTelefono(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
+                      />
+                    </div>
                     <div className="sm:col-span-5">
                       <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                         Categoría del Puesto
@@ -2047,6 +2195,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                           {recursoData.recursoPreventivoCategoria ||
                                             "Encargado de Obra"}
                                         </span>
+                                        {recursoData.recursoPreventivoTelefono && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                            <Phone className="w-3 h-3" />
+                                            {recursoData.recursoPreventivoTelefono}
+                                          </span>
+                                        )}
                                       </>
                                     ) : (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
@@ -2078,6 +2232,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                       categoria:
                                         recursoData?.recursoPreventivoCategoria ||
                                         "Encargado de Obra",
+                                      telefono:
+                                        recursoData?.recursoPreventivoTelefono ||
+                                        "",
                                     })
                                   }
                                   className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors cursor-pointer"
@@ -2216,6 +2373,24 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                             })
                           }
                           placeholder="Ej: Manuel Gómez Serrano"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          Teléfono del Recurso Preventivo
+                        </label>
+                        <input
+                          type="tel"
+                          value={editingObraRecurso.telefono}
+                          onChange={(e) =>
+                            setEditingObraRecurso({
+                              ...editingObraRecurso,
+                              telefono: e.target.value,
+                            })
+                          }
+                          placeholder="Ej: 600 123 456"
                           className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
                         />
                       </div>
