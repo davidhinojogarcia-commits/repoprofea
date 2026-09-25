@@ -16,6 +16,12 @@ export interface Person {
   calzado: string;
   formacion: string;
   lugarFormacion?: string;
+  telefonoEncargado?: string;
+  lugarIncorporacion?: string;
+  municipioObra?: string;
+  encargadoObra?: string;
+  informacionContratacionGeneradaFecha?: string;
+  informacionContratacionCompartidaFecha?: string;
   citaDia: string;
   citaHora: string;
   sitioReconocimiento: string;

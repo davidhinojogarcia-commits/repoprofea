@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert } from 'lucide-react';
+import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert, MessageCircle, Share2, Download, Phone } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
 import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 import { useAuthShell } from './AuthGate';
+import {
+  downloadWorkerHiringInformationPdf,
+  openWorkerHiringWhatsApp,
+  shareWorkerHiringInformationPdf,
+} from '../src/lib/workerHiringInformation';
 
 interface EditPersonModalProps {
   person: Person | null;
@@ -69,7 +74,8 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   savedCategorias,
   allPeople
 }) => {
-  const { supervisorName } = useAuthShell();
+  const { supervisorName, supervisorSettings } = useAuthShell();
+  const [isHiringInfoBusy, setIsHiringInfoBusy] = useState<'' | 'whatsapp' | 'share' | 'download'>('');
   const isHiringEdit = useMemo(() => {
     if (!person || typeof window === 'undefined') return false;
     return window.sessionStorage.getItem('profea-sae-return-worker-id') === String(person.id);
@@ -429,6 +435,69 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     }
   };
 
+  const prepareHiringInfoPerson = (): Person => ({
+    ...formData,
+    supervisorResponsable: supervisorName,
+  });
+
+  const handleHiringInfoWhatsApp = async () => {
+    let reserved: Window | null = null;
+    try {
+      reserved = window.open('about:blank', '_blank');
+      if (reserved) reserved.opener = null;
+    } catch {}
+    setIsHiringInfoBusy('whatsapp');
+    try {
+      await openWorkerHiringWhatsApp(prepareHiringInfoPerson(), reserved);
+      setFormData(current => current ? ({
+        ...current,
+        informacionContratacionCompartidaFecha: new Date().toISOString(),
+      }) : current);
+    } catch (error: any) {
+      try { reserved?.close(); } catch {}
+      alert(error?.message || 'No se pudo preparar el mensaje de contratación.');
+    } finally {
+      setIsHiringInfoBusy('');
+    }
+  };
+
+  const handleHiringInfoSharePdf = async () => {
+    setIsHiringInfoBusy('share');
+    try {
+      const result = await shareWorkerHiringInformationPdf(prepareHiringInfoPerson());
+      if (result !== 'cancelled') {
+        const now = new Date().toISOString();
+        setFormData(current => current ? ({
+          ...current,
+          informacionContratacionGeneradaFecha: now,
+          ...(result === 'shared' ? { informacionContratacionCompartidaFecha: now } : {}),
+        }) : current);
+      }
+      if (result === 'downloaded') {
+        alert('El PDF se ha descargado. En este dispositivo debes adjuntarlo manualmente en WhatsApp.');
+      }
+    } catch (error: any) {
+      alert(error?.message || 'No se pudo preparar el PDF de contratación.');
+    } finally {
+      setIsHiringInfoBusy('');
+    }
+  };
+
+  const handleHiringInfoDownload = async () => {
+    setIsHiringInfoBusy('download');
+    try {
+      await downloadWorkerHiringInformationPdf(prepareHiringInfoPerson());
+      setFormData(current => current ? ({
+        ...current,
+        informacionContratacionGeneradaFecha: new Date().toISOString(),
+      }) : current);
+    } catch (error: any) {
+      alert(error?.message || 'No se pudo generar el PDF de contratación.');
+    } finally {
+      setIsHiringInfoBusy('');
+    }
+  };
+
   const isDniInvalid = formData.dni.replace(/[\s-]/g, '').length >= 9 && !isValidDNI(formData.dni);
   const isDniValid = formData.dni.replace(/[\s-]/g, '').length >= 9 && isValidDNI(formData.dni);
 
@@ -519,6 +588,109 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 {formData.necesitaReconocimiento === 'Sí' && <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4 animate-in fade-in slide-in-from-top-2"><div className="flex items-center gap-2 mb-2"><AlertCircle className="w-3 h-3 text-[#00548E] dark:text-blue-400" /><span className="text-[10px] font-bold text-[#00548E] dark:text-blue-400 uppercase tracking-wider">Cita Reconocimiento</span></div><div className="grid grid-cols-2 gap-3"><input type="date" name="citaDia" value={formData.citaDia} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none text-xs text-slate-800 dark:text-slate-100" /><input type="time" name="citaHora" value={formData.citaHora} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none text-xs text-slate-800 dark:text-slate-100" /></div><input type="text" name="sitioReconocimiento" value={formData.sitioReconocimiento} onChange={handleChange} list="sitiosListEdit" className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none text-xs text-slate-800 dark:text-slate-100" /><datalist id="sitiosListEdit">{cleanSitios.map((s, i) => <option key={i} value={s} />)}</datalist></div>}
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><Activity className="w-3.5 h-3.5 text-[#00548E] dark:text-blue-400" /><span className="text-[11px] font-bold text-[#00548E] dark:text-blue-400 uppercase tracking-wider">Aptitud Reconocimiento Médico</span></div></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><div className="space-y-1"><label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Resultado / Aptitud</label><select name="reconocimientoEstado" value={formData.reconocimientoEstado || 'Pendiente'} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-xs text-slate-800 dark:text-slate-100 font-medium"><option value="Pendiente">Pendiente</option><option value="Apto">Apto</option><option value="Apto con Limitación">Apto con Limitación</option><option value="No Apto">No Apto</option></select></div><div className="space-y-1"><label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Año Validez</label><input type="text" name="reconocimientoValidez" value={formData.reconocimientoValidez || new Date().getFullYear().toString()} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-xs text-slate-800 dark:text-slate-100" /></div><div className="space-y-1"><label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Fecha Realización</label><input type="date" name="reconocimientoFecha" value={formData.reconocimientoFecha || ''} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-xs text-slate-800 dark:text-slate-100" /></div></div>{formData.reconocimientoEstado === 'Apto con Limitación' && <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/10 border border-amber-300 dark:border-amber-700/50"><div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300"><ShieldAlert className="w-4 h-4" /><span>Limitaciones y Restricciones Médicas del Trabajador</span></div><textarea name="reconocimientoLimitaciones" value={formData.reconocimientoLimitaciones || ''} onChange={handleChange} rows={2} className="w-full p-2 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700/50 rounded-lg focus:outline-none text-xs text-slate-800 dark:text-slate-100 resize-none font-medium" /></div>}<div className="space-y-1"><label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">Observaciones o Anotaciones Médicas</label><input type="text" name="reconocimientoObservaciones" value={formData.reconocimientoObservaciones || ''} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none text-xs text-slate-800 dark:text-slate-100" /></div></div>
               </div>
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 p-4 sm:p-5">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#00548E] dark:text-blue-400" />
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">Información para el trabajador</h3>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                    Genera una comunicación profesional de contratación con obra, localidad, periodo, horario, formación si procede, incorporación y teléfonos de encargado y supervisor.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider rounded-full bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 px-2.5 py-1 text-[#00548E] dark:text-blue-300">
+                  {formData.formacion === 'No' ? 'Contratación + formación' : 'Información de contratación'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Teléfono del encargado / recurso preventivo
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      name="telefonoEncargado"
+                      value={formData.telefonoEncargado || ''}
+                      onChange={handleChange}
+                      placeholder="Ej.: 600 000 000"
+                      className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Lugar concreto de incorporación
+                  </label>
+                  <input
+                    type="text"
+                    name="lugarIncorporacion"
+                    value={formData.lugarIncorporacion || ''}
+                    onChange={handleChange}
+                    placeholder="Opcional. Si se deja vacío se usará obra + localidad"
+                    className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              {formData.formacion === 'No' && (
+                <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs text-amber-900 dark:text-amber-200">
+                  <div className="font-black">Formación pendiente</div>
+                  <div className="mt-1">
+                    Se calcularán automáticamente los tres primeros días laborables del contrato: día 1 y 2 de 08:00 a 15:00; día 3 de 08:00 a 14:00. La incorporación a la obra será el siguiente día laborable.
+                  </div>
+                  <div className="mt-1 font-semibold">Lugar configurado: {formData.lugarFormacion || 'PENDIENTE DE INDICAR'}</div>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 p-3 text-xs">
+                <div className="font-bold text-slate-700 dark:text-slate-200">Contactos que aparecerán</div>
+                <div className="mt-1 text-slate-500 dark:text-slate-400">
+                  Encargado: se toma de la obra seleccionada · Teléfono: {formData.telefonoEncargado || 'pendiente'}
+                </div>
+                <div className="text-slate-500 dark:text-slate-400">
+                  Supervisor: {supervisorName || 'pendiente'} · Teléfono: {supervisorSettings.telefono || 'pendiente'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleHiringInfoWhatsApp()}
+                  disabled={Boolean(isHiringInfoBusy)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-3 text-xs font-black disabled:opacity-50"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  {isHiringInfoBusy === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleHiringInfoSharePdf()}
+                  disabled={Boolean(isHiringInfoBusy)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white px-3 py-3 text-xs font-black disabled:opacity-50"
+                >
+                  <Share2 className="w-4 h-4" />
+                  {isHiringInfoBusy === 'share' ? 'Preparando…' : 'Compartir PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleHiringInfoDownload()}
+                  disabled={Boolean(isHiringInfoBusy)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3 text-xs font-black disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  {isHiringInfoBusy === 'download' ? 'Generando…' : 'Descargar PDF'}
+                </button>
+              </div>
+
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                El WhatsApp se mantiene breve y operativo. El PDF contiene el detalle completo. No se incluyen IBAN, Seguridad Social ni información médica.
+              </p>
             </div>
 
             <div className="space-y-4"><h3 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center"><FileText className="w-3 h-3 mr-2" /> Documentación</h3>{formData.reconocimientoEstado === 'No Apto' && <div className="p-3 bg-red-100/90 dark:bg-red-950/60 border border-red-300 dark:border-red-800 rounded-xl flex items-center gap-2.5 text-xs text-red-900 dark:text-red-200"><ShieldAlert className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" /><span><strong>Bloqueo por Reconocimiento No Apto:</strong> la documentación se marca automáticamente en No.</span></div>}<select name="documentacionCompleta" value={formData.documentacionCompleta} onChange={handleChange} className={`w-full p-3 border rounded-xl focus:outline-none transition-all text-sm font-medium ${formData.documentacionCompleta === 'No' ? 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900 text-red-600 dark:text-red-400' : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-100'}`}><option value="Sí">Sí - Todo entregado</option><option value="No">No - Falta documentación</option></select></div>
