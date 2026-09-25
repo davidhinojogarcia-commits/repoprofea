@@ -21,6 +21,33 @@ export interface TechnicianSettings {
   usarPorDefecto: boolean;
 }
 
+export interface AdministrativeSettings {
+  nombreApellidos: string;
+  telefono: string;
+  email: string;
+  numeroTrabajador: string;
+}
+
+export interface MedicalCompanySettings {
+  empresa: string;
+  nombreContacto: string;
+  telefono: string;
+  email: string;
+}
+
+export interface ShoeProviderSettings {
+  nombreContacto: string;
+  telefono: string;
+  email: string;
+}
+
+export interface TrainingCompanySettings {
+  empresa: string;
+  nombreContacto: string;
+  telefono: string;
+  email: string;
+}
+
 export interface AppBusinessSettings {
   savedObras: string[];
   savedLugares: string[];
@@ -31,6 +58,10 @@ export interface AppBusinessSettings {
   workEndHour: string;
   supervisor: SupervisorSettings;
   technician: TechnicianSettings;
+  administrative: AdministrativeSettings;
+  medicalCompany: MedicalCompanySettings;
+  shoeProvider: ShoeProviderSettings;
+  trainingCompany: TrainingCompanySettings;
 }
 
 export const DEFAULT_TECHNICIAN_SETTINGS: TechnicianSettings = {
@@ -42,6 +73,33 @@ export const DEFAULT_TECHNICIAN_SETTINGS: TechnicianSettings = {
   numeroTrabajador: '',
   titulacion: '',
   usarPorDefecto: true,
+};
+
+export const DEFAULT_ADMINISTRATIVE_SETTINGS: AdministrativeSettings = {
+  nombreApellidos: '',
+  telefono: '',
+  email: '',
+  numeroTrabajador: '',
+};
+
+export const DEFAULT_MEDICAL_COMPANY_SETTINGS: MedicalCompanySettings = {
+  empresa: '',
+  nombreContacto: '',
+  telefono: '',
+  email: '',
+};
+
+export const DEFAULT_SHOE_PROVIDER_SETTINGS: ShoeProviderSettings = {
+  nombreContacto: '',
+  telefono: '',
+  email: '',
+};
+
+export const DEFAULT_TRAINING_COMPANY_SETTINGS: TrainingCompanySettings = {
+  empresa: '',
+  nombreContacto: '',
+  telefono: '',
+  email: '',
 };
 
 export const DEFAULT_SUPERVISOR_SETTINGS: SupervisorSettings = {
@@ -70,6 +128,10 @@ const DEFAULTS: AppBusinessSettings = {
   workEndHour: '15:00',
   supervisor: DEFAULT_SUPERVISOR_SETTINGS,
   technician: DEFAULT_TECHNICIAN_SETTINGS,
+  administrative: DEFAULT_ADMINISTRATIVE_SETTINGS,
+  medicalCompany: DEFAULT_MEDICAL_COMPANY_SETTINGS,
+  shoeProvider: DEFAULT_SHOE_PROVIDER_SETTINGS,
+  trainingCompany: DEFAULT_TRAINING_COMPANY_SETTINGS,
 };
 
 const cleanList = (value: unknown, fallback: string[] = []): string[] => {
@@ -86,6 +148,33 @@ const cleanTechnician = (value: any): TechnicianSettings => ({
   numeroTrabajador: String(value?.numeroTrabajador || '').trim(),
   titulacion: String(value?.titulacion || '').trim(),
   usarPorDefecto: value?.usarPorDefecto !== false,
+});
+
+const cleanAdministrative = (value: any): AdministrativeSettings => ({
+  nombreApellidos: String(value?.nombreApellidos || '').trim(),
+  telefono: String(value?.telefono || '').trim(),
+  email: String(value?.email || '').trim(),
+  numeroTrabajador: String(value?.numeroTrabajador || '').trim(),
+});
+
+const cleanMedicalCompany = (value: any): MedicalCompanySettings => ({
+  empresa: String(value?.empresa || '').trim(),
+  nombreContacto: String(value?.nombreContacto || '').trim(),
+  telefono: String(value?.telefono || '').trim(),
+  email: String(value?.email || '').trim(),
+});
+
+const cleanShoeProvider = (value: any): ShoeProviderSettings => ({
+  nombreContacto: String(value?.nombreContacto || '').trim(),
+  telefono: String(value?.telefono || '').trim(),
+  email: String(value?.email || '').trim(),
+});
+
+const cleanTrainingCompany = (value: any): TrainingCompanySettings => ({
+  empresa: String(value?.empresa || '').trim(),
+  nombreContacto: String(value?.nombreContacto || '').trim(),
+  telefono: String(value?.telefono || '').trim(),
+  email: String(value?.email || '').trim(),
 });
 
 const cleanSupervisor = (value: any): SupervisorSettings => ({
@@ -108,6 +197,10 @@ const normalize = (value: any): AppBusinessSettings => ({
   workEndHour: String(value?.workEndHour || DEFAULTS.workEndHour),
   supervisor: cleanSupervisor(value?.supervisor),
   technician: cleanTechnician(value?.technician),
+  administrative: cleanAdministrative(value?.administrative),
+  medicalCompany: cleanMedicalCompany(value?.medicalCompany),
+  shoeProvider: cleanShoeProvider(value?.shoeProvider),
+  trainingCompany: cleanTrainingCompany(value?.trainingCompany),
 });
 
 async function requireUser() {
@@ -149,7 +242,28 @@ export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings
   const mergedTechnician = patch.technician
     ? { ...(existingRaw?.technician || DEFAULT_TECHNICIAN_SETTINGS), ...patch.technician }
     : existingRaw?.technician;
-  const next = normalize({ ...existingRaw, ...patch, supervisor: mergedSupervisor, technician: mergedTechnician });
+  const mergedAdministrative = patch.administrative
+    ? { ...(existingRaw?.administrative || DEFAULT_ADMINISTRATIVE_SETTINGS), ...patch.administrative }
+    : existingRaw?.administrative;
+  const mergedMedicalCompany = patch.medicalCompany
+    ? { ...(existingRaw?.medicalCompany || DEFAULT_MEDICAL_COMPANY_SETTINGS), ...patch.medicalCompany }
+    : existingRaw?.medicalCompany;
+  const mergedShoeProvider = patch.shoeProvider
+    ? { ...(existingRaw?.shoeProvider || DEFAULT_SHOE_PROVIDER_SETTINGS), ...patch.shoeProvider }
+    : existingRaw?.shoeProvider;
+  const mergedTrainingCompany = patch.trainingCompany
+    ? { ...(existingRaw?.trainingCompany || DEFAULT_TRAINING_COMPANY_SETTINGS), ...patch.trainingCompany }
+    : existingRaw?.trainingCompany;
+  const next = normalize({
+    ...existingRaw,
+    ...patch,
+    supervisor: mergedSupervisor,
+    technician: mergedTechnician,
+    administrative: mergedAdministrative,
+    medicalCompany: mergedMedicalCompany,
+    shoeProvider: mergedShoeProvider,
+    trainingCompany: mergedTrainingCompany,
+  });
 
   await supabase.rpc('patch_user_settings', {
     p_patch: { app: next },
