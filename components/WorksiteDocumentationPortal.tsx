@@ -282,16 +282,17 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [periodWorkers]);
 
   const automaticAttendanceWorkers = useMemo(() => {
-    if (!attendanceRange.start || !attendanceRange.end) return periodWorkers;
-    const candidates = selectedWorkWorkers.filter((person) => overlaps(person, attendanceRange.start, attendanceRange.end));
+    // El control horario automático debe respetar estrictamente los filtros
+    // superiores (obra + periodo). Antes se ampliaba por solape de fechas y
+    // podían entrar trabajadores de otros periodos de la misma obra.
     const byDni = new Map<string, Person>();
-    candidates.forEach((person) => {
+    periodWorkers.forEach((person) => {
       const key = cleanDni(person) || workerKey(person);
       const previous = byDni.get(key);
       if (!previous || iso(person.periodoFin) > iso(previous.periodoFin)) byDni.set(key, person);
     });
     return Array.from(byDni.values());
-  }, [attendanceRange, periodWorkers, selectedWorkWorkers]);
+  }, [periodWorkers]);
 
   const automaticAttendanceIds = useMemo(
     () => new Set(automaticAttendanceWorkers.map(workerKey)),
@@ -323,6 +324,15 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       })
       .sort((a, b) => safe(a.apellidosNombre).localeCompare(safe(b.apellidosNombre), "es"));
   }, [selectedWorkWorkers, automaticAttendanceIds, attendanceSearch]);
+
+  const attendanceFilterSummary = useMemo(
+    () => ({
+      automatic: automaticAttendanceWorkers.length,
+      manual: manualAttendanceWorkers.length,
+      total: attendanceWorkers.length,
+    }),
+    [automaticAttendanceWorkers.length, manualAttendanceWorkers.length, attendanceWorkers.length],
+  );
 
   useEffect(() => {
     setManualAttendanceIds([]);
