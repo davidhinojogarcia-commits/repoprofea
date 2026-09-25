@@ -192,6 +192,9 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         savedCategorias: mergeList(current.savedCategorias, config.categorias),
         workStartHour: current.workStartHour,
         workEndHour: current.workEndHour,
+        supervisor: config.supervisor && typeof config.supervisor === 'object'
+          ? { ...current.supervisor, ...config.supervisor }
+          : current.supervisor,
       } : {
         savedObras: Array.isArray(config.obras) ? config.obras : [],
         savedLugares: Array.isArray(config.lugares) ? config.lugares : [],
@@ -200,6 +203,9 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         savedCategorias: Array.isArray(config.categorias) ? config.categorias : current.savedCategorias,
         workStartHour: config.workStartHour || '08:00',
         workEndHour: config.workEndHour || '15:00',
+        supervisor: config.supervisor && typeof config.supervisor === 'object'
+          ? { ...current.supervisor, ...config.supervisor }
+          : current.supervisor,
       };
   if (!restoredFullSettings) await saveAppBusinessSettings(settings);
 
