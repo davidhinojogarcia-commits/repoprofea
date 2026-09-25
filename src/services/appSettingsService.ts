@@ -21,6 +21,20 @@ export interface TechnicianSettings {
   usarPorDefecto: boolean;
 }
 
+export interface AdministrativeSettings {
+  nombreApellidos: string;
+  telefono: string;
+  email: string;
+  numeroTrabajador: string;
+}
+
+export interface ProviderContactSettings {
+  empresa: string;
+  nombreApellidos: string;
+  telefono: string;
+  email: string;
+}
+
 export interface AppBusinessSettings {
   savedObras: string[];
   savedLugares: string[];
@@ -31,6 +45,10 @@ export interface AppBusinessSettings {
   workEndHour: string;
   supervisor: SupervisorSettings;
   technician: TechnicianSettings;
+  administrative: AdministrativeSettings;
+  medicalCompany: ProviderContactSettings;
+  footwearProvider: ProviderContactSettings;
+  trainingCompany: ProviderContactSettings;
 }
 
 export const DEFAULT_TECHNICIAN_SETTINGS: TechnicianSettings = {
@@ -42,6 +60,20 @@ export const DEFAULT_TECHNICIAN_SETTINGS: TechnicianSettings = {
   numeroTrabajador: '',
   titulacion: '',
   usarPorDefecto: true,
+};
+
+export const DEFAULT_ADMINISTRATIVE_SETTINGS: AdministrativeSettings = {
+  nombreApellidos: '',
+  telefono: '',
+  email: '',
+  numeroTrabajador: '',
+};
+
+export const DEFAULT_PROVIDER_CONTACT_SETTINGS: ProviderContactSettings = {
+  empresa: '',
+  nombreApellidos: '',
+  telefono: '',
+  email: '',
 };
 
 export const DEFAULT_SUPERVISOR_SETTINGS: SupervisorSettings = {
@@ -70,6 +102,10 @@ const DEFAULTS: AppBusinessSettings = {
   workEndHour: '15:00',
   supervisor: DEFAULT_SUPERVISOR_SETTINGS,
   technician: DEFAULT_TECHNICIAN_SETTINGS,
+  administrative: DEFAULT_ADMINISTRATIVE_SETTINGS,
+  medicalCompany: DEFAULT_PROVIDER_CONTACT_SETTINGS,
+  footwearProvider: DEFAULT_PROVIDER_CONTACT_SETTINGS,
+  trainingCompany: DEFAULT_PROVIDER_CONTACT_SETTINGS,
 };
 
 const cleanList = (value: unknown, fallback: string[] = []): string[] => {
@@ -86,6 +122,20 @@ const cleanTechnician = (value: any): TechnicianSettings => ({
   numeroTrabajador: String(value?.numeroTrabajador || '').trim(),
   titulacion: String(value?.titulacion || '').trim(),
   usarPorDefecto: value?.usarPorDefecto !== false,
+});
+
+const cleanAdministrative = (value: any): AdministrativeSettings => ({
+  nombreApellidos: String(value?.nombreApellidos || '').trim(),
+  telefono: String(value?.telefono || '').trim(),
+  email: String(value?.email || '').trim(),
+  numeroTrabajador: String(value?.numeroTrabajador || '').trim(),
+});
+
+const cleanProviderContact = (value: any): ProviderContactSettings => ({
+  empresa: String(value?.empresa || '').trim(),
+  nombreApellidos: String(value?.nombreApellidos || '').trim(),
+  telefono: String(value?.telefono || '').trim(),
+  email: String(value?.email || '').trim(),
 });
 
 const cleanSupervisor = (value: any): SupervisorSettings => ({
@@ -108,6 +158,10 @@ const normalize = (value: any): AppBusinessSettings => ({
   workEndHour: String(value?.workEndHour || DEFAULTS.workEndHour),
   supervisor: cleanSupervisor(value?.supervisor),
   technician: cleanTechnician(value?.technician),
+  administrative: cleanAdministrative(value?.administrative),
+  medicalCompany: cleanProviderContact(value?.medicalCompany),
+  footwearProvider: cleanProviderContact(value?.footwearProvider),
+  trainingCompany: cleanProviderContact(value?.trainingCompany),
 });
 
 async function requireUser() {
@@ -149,7 +203,28 @@ export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings
   const mergedTechnician = patch.technician
     ? { ...(existingRaw?.technician || DEFAULT_TECHNICIAN_SETTINGS), ...patch.technician }
     : existingRaw?.technician;
-  const next = normalize({ ...existingRaw, ...patch, supervisor: mergedSupervisor, technician: mergedTechnician });
+  const mergedAdministrative = patch.administrative
+    ? { ...(existingRaw?.administrative || DEFAULT_ADMINISTRATIVE_SETTINGS), ...patch.administrative }
+    : existingRaw?.administrative;
+  const mergedMedicalCompany = patch.medicalCompany
+    ? { ...(existingRaw?.medicalCompany || DEFAULT_PROVIDER_CONTACT_SETTINGS), ...patch.medicalCompany }
+    : existingRaw?.medicalCompany;
+  const mergedFootwearProvider = patch.footwearProvider
+    ? { ...(existingRaw?.footwearProvider || DEFAULT_PROVIDER_CONTACT_SETTINGS), ...patch.footwearProvider }
+    : existingRaw?.footwearProvider;
+  const mergedTrainingCompany = patch.trainingCompany
+    ? { ...(existingRaw?.trainingCompany || DEFAULT_PROVIDER_CONTACT_SETTINGS), ...patch.trainingCompany }
+    : existingRaw?.trainingCompany;
+  const next = normalize({
+    ...existingRaw,
+    ...patch,
+    supervisor: mergedSupervisor,
+    technician: mergedTechnician,
+    administrative: mergedAdministrative,
+    medicalCompany: mergedMedicalCompany,
+    footwearProvider: mergedFootwearProvider,
+    trainingCompany: mergedTrainingCompany,
+  });
 
   await supabase.rpc('patch_user_settings', {
     p_patch: { app: next },
