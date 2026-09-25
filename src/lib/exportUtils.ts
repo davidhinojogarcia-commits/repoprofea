@@ -7,7 +7,7 @@ import { Person, PdfCustomConfig, getAptitudMedicaInfo } from '../../types';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
 import { ensureWorkerQrShare } from '../services/workerQrShareService';
-import { loadAppBusinessSettings } from '../services/appSettingsService';
+import { getCachedSupervisorSettings, loadAppBusinessSettings } from '../services/appSettingsService';
 export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
@@ -247,6 +247,18 @@ export const renderInstitutionalReportHeader = (
   options: { subtitle?: string; generatedLabel?: string; customLogo?: string } = {},
 ) => {
   const config = getStoredPdfConfig();
+  const configuredSupervisorForHeader = getCachedSupervisorSettings();
+  const supervisorHeaderParts = configuredSupervisorForHeader.usarPorDefecto && configuredSupervisorForHeader.nombreApellidos
+    ? [
+        `SUPERVISOR: ${configuredSupervisorForHeader.nombreApellidos}`,
+        configuredSupervisorForHeader.telefono ? `TEL.: ${configuredSupervisorForHeader.telefono}` : '',
+        configuredSupervisorForHeader.zona ? `ZONA: ${configuredSupervisorForHeader.zona}` : '',
+      ].filter(Boolean)
+    : [];
+  let effectiveMetaLine = String(metaLine || '').trim();
+  if (supervisorHeaderParts.length && !/SUPERVISOR:/i.test(effectiveMetaLine)) {
+    effectiveMetaLine = [effectiveMetaLine, supervisorHeaderParts.join(' · ')].filter(Boolean).join('   |   ');
+  }
   const pageSize = doc.internal.pageSize;
   const pageWidth = pageSize.width || pageSize.getWidth();
   const margin = INSTITUTIONAL_PDF_THEME.margin;
@@ -301,11 +313,11 @@ export const renderInstitutionalReportHeader = (
     `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
   doc.text(issued, margin, 32.3, { maxWidth: pageWidth * 0.48 });
 
-  if (metaLine?.trim()) {
+  if (effectiveMetaLine) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
     doc.setTextColor(240, 249, 255);
-    doc.text(metaLine.toUpperCase(), right, 32.3, {
+    doc.text(effectiveMetaLine.toUpperCase(), right, 32.3, {
       align: 'right',
       maxWidth: Math.max(80, pageWidth * 0.45),
     });
