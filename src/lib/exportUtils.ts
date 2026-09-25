@@ -7,7 +7,7 @@ import { Person, PdfCustomConfig, getAptitudMedicaInfo } from '../../types';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
 import { ensureWorkerQrShare } from '../services/workerQrShareService';
-import { getCachedSupervisorSettings, loadAppBusinessSettings } from '../services/appSettingsService';
+import { getCachedSupervisorSettings, getCachedTechnicianSettings, loadAppBusinessSettings } from '../services/appSettingsService';
 export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
@@ -248,6 +248,7 @@ export const renderInstitutionalReportHeader = (
 ) => {
   const config = getStoredPdfConfig();
   const configuredSupervisorForHeader = getCachedSupervisorSettings();
+  const configuredTechnicianForHeader = getCachedTechnicianSettings();
   const supervisorHeaderParts = configuredSupervisorForHeader.usarPorDefecto && configuredSupervisorForHeader.nombreApellidos
     ? [
         `SUPERVISOR: ${configuredSupervisorForHeader.nombreApellidos}`,
@@ -255,9 +256,18 @@ export const renderInstitutionalReportHeader = (
         configuredSupervisorForHeader.zona ? `ZONA: ${configuredSupervisorForHeader.zona}` : '',
       ].filter(Boolean)
     : [];
+  const technicianHeaderParts = configuredTechnicianForHeader.usarPorDefecto && configuredTechnicianForHeader.nombreApellidos
+    ? [
+        `TÉCNICO: ${configuredTechnicianForHeader.nombreApellidos}`,
+        configuredTechnicianForHeader.numeroTrabajador ? `Nº TRAB.: ${configuredTechnicianForHeader.numeroTrabajador}` : '',
+      ].filter(Boolean)
+    : [];
   let effectiveMetaLine = String(metaLine || '').trim();
   if (supervisorHeaderParts.length && !/SUPERVISOR:/i.test(effectiveMetaLine)) {
     effectiveMetaLine = [effectiveMetaLine, supervisorHeaderParts.join(' · ')].filter(Boolean).join('   |   ');
+  }
+  if (/TÉCNIC[OA]|RESPONSABLE TÉCNICO/i.test(effectiveMetaLine) && technicianHeaderParts.length && !/TÉCNICO:/i.test(effectiveMetaLine)) {
+    effectiveMetaLine = [effectiveMetaLine, technicianHeaderParts.join(' · ')].filter(Boolean).join('   |   ');
   }
   const pageSize = doc.internal.pageSize;
   const pageWidth = pageSize.width || pageSize.getWidth();
@@ -3291,12 +3301,31 @@ export const generateStatsSummaryPDF = async ({
   doc.text('RESPONSABLE TÉCNICO / SUPERVISOR', 22, sigBoxY + 4);
   doc.line(22, sigBoxY + 5.4, 96, sigBoxY + 5.4);
 
+  const technicianSignature = getCachedTechnicianSettings();
+  const technicianSignatureName = technicianSignature.usarPorDefecto ? technicianSignature.nombreApellidos : '';
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('Firma:', 22, sigBoxY + 10.5);
-  doc.line(36, sigBoxY + 11, 96, sigBoxY + 11);
-  doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 18);
+  if (technicianSignatureName) {
+    doc.text('Técnico:', 22, sigBoxY + 9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(doc.splitTextToSize(technicianSignatureName.toUpperCase(), 56).slice(0, 1), 38, sigBoxY + 9.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    const technicianExtra = [
+      technicianSignature.numeroTrabajador ? `Nº ${technicianSignature.numeroTrabajador}` : '',
+      technicianSignature.zona ? technicianSignature.zona : '',
+    ].filter(Boolean).join(' · ');
+    if (technicianExtra) doc.text(technicianExtra, 22, sigBoxY + 13.5, { maxWidth: 74 });
+    doc.text('Firma:', 22, sigBoxY + 17);
+    doc.line(36, sigBoxY + 17.5, 96, sigBoxY + 17.5);
+    doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 20);
+  } else {
+    doc.text('Firma:', 22, sigBoxY + 10.5);
+    doc.line(36, sigBoxY + 11, 96, sigBoxY + 11);
+    doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 18);
+  }
 
   // Signature box 2
   doc.roundedRect(110, sigBoxY, 82, compactSignatureH, 2, 2, 'S');
