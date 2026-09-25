@@ -45,7 +45,7 @@ import {
   getDocuments,
   updateDocument,
 } from "../src/services/databaseService";
-import { DEFAULT_SUPERVISOR_SETTINGS, loadAppBusinessSettings, saveAppBusinessSettings, type SupervisorSettings } from "../src/services/appSettingsService";
+import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, saveAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
 import { useAuthShell } from "./AuthGate";
@@ -123,7 +123,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 }) => {
   const { supervisorName, profile, user } = useAuthShell();
   const [supervisorForm, setSupervisorForm] = useState<SupervisorSettings>(DEFAULT_SUPERVISOR_SETTINGS);
+  const [technicianForm, setTechnicianForm] = useState<TechnicianSettings>(DEFAULT_TECHNICIAN_SETTINGS);
   const [supervisorLoaded, setSupervisorLoaded] = useState(false);
+  const [technicianLoaded, setTechnicianLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | "obras"
     | "lugares"
@@ -133,6 +135,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "cuentas"
     | "seguridad_social"
     | "supervisor"
+    | "technician"
     | "horario"
     | "backup"
   >("lugares");
@@ -203,10 +206,17 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
           nombreApellidos: configured.nombreApellidos || supervisorName || "",
           email: configured.email || profile?.email || user?.email || "",
         });
+        setTechnicianForm({
+          ...DEFAULT_TECHNICIAN_SETTINGS,
+          ...(settings.technician || {}),
+        });
       })
       .catch((error) => console.error("No se pudo cargar la configuración del supervisor:", error))
       .finally(() => {
-        if (active) setSupervisorLoaded(true);
+        if (active) {
+          setSupervisorLoaded(true);
+          setTechnicianLoaded(true);
+        }
       });
     return () => { active = false; };
   }, [supervisorName, profile?.email, user?.email]);
@@ -261,6 +271,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         workStartHour: appSettings.workStartHour,
         workEndHour: appSettings.workEndHour,
         supervisor: appSettings.supervisor,
+        technician: appSettings.technician,
         // Backward compatibility for backups created before v3.
         subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
@@ -900,6 +911,26 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           <button
             onClick={() => {
+              setActiveTab("technician");
+              setSearchTerm("");
+              setNewItem("");
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+              ${activeTab === "technician"
+                ? "profea-sidebar-item--active text-white"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"}
+            `}
+          >
+            <Briefcase className={`w-5 h-5 ${activeTab === "technician" ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+            Técnico responsable
+          </button>
+
+          <button
+            onClick={() => {
               setActiveTab("horario");
               setSearchTerm("");
               setNewItem("");
@@ -1027,6 +1058,91 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   >
                     <Save className="w-4 h-4" />
                     Guardar supervisor
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "technician" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Briefcase className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Datos del técnico responsable
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                  Se utilizarán automáticamente en los informes y campos donde corresponda identificar al técnico responsable.
+                </p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    ["nombreApellidos", "Nombre y apellidos", "Nombre completo", "text"],
+                    ["telefono", "Teléfono", "Ej: 600 123 456", "tel"],
+                    ["zona", "Zona / ámbito territorial", "Ej: Sierra de Cádiz", "text"],
+                    ["cargo", "Cargo / puesto", "Ej: Técnico responsable", "text"],
+                    ["email", "Correo electrónico profesional", "correo@dipucadiz.es", "email"],
+                    ["numeroTrabajador", "Nº de trabajador / empleado", "Opcional", "text"],
+                    ["titulacion", "Titulación / especialidad", "Ej: Arquitecto técnico / Ingeniero técnico", "text"],
+                  ].map(([key, label, placeholder, type]) => (
+                    <label key={key} className="space-y-2">
+                      <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">{label}</span>
+                      <input
+                        type={type}
+                        value={String((technicianForm as any)[key] || "")}
+                        onChange={(e) => setTechnicianForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <label className="flex items-start gap-3 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={technicianForm.usarPorDefecto}
+                    onChange={(e) => setTechnicianForm((prev) => ({ ...prev, usarPorDefecto: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#00548E]"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Usar como técnico responsable por defecto</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">Los datos se reutilizarán automáticamente en los informes y apartados que tengan un campo de técnico responsable.</span>
+                  </span>
+                </label>
+
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00548E] dark:text-blue-300">Previsualización</p>
+                  <p className="mt-2 text-base font-black text-slate-900 dark:text-white">{technicianForm.nombreApellidos || "Técnico responsable"}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{technicianForm.cargo || "Técnico responsable"}</p>
+                  {technicianForm.titulacion && <p className="text-sm text-slate-600 dark:text-slate-300">{technicianForm.titulacion}</p>}
+                  {technicianForm.zona && <p className="text-sm text-slate-600 dark:text-slate-300">Zona: {technicianForm.zona}</p>}
+                  {technicianForm.telefono && <p className="text-sm text-slate-600 dark:text-slate-300">Tel.: {technicianForm.telefono}</p>}
+                  {technicianForm.email && <p className="text-sm text-slate-600 dark:text-slate-300">{technicianForm.email}</p>}
+                  {technicianForm.numeroTrabajador && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Nº trabajador: {technicianForm.numeroTrabajador}</p>}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!technicianLoaded}
+                    onClick={async () => {
+                      if (!technicianForm.nombreApellidos.trim()) {
+                        setToast?.({ message: "Indica el nombre y apellidos del técnico responsable.", type: "error" });
+                        return;
+                      }
+                      try {
+                        await saveAppBusinessSettings({ technician: technicianForm });
+                        window.dispatchEvent(new CustomEvent("profea:technician-settings-updated"));
+                        setToast?.({ message: "Datos del técnico guardados y disponibles para los informes.", type: "success" });
+                      } catch (error) {
+                        console.error("No se pudieron guardar los datos del técnico:", error);
+                        setToast?.({ message: "No se pudieron guardar los datos del técnico.", type: "error" });
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#00436f] transition-colors disabled:opacity-60"
+                  >
+                    <Save className="w-4 h-4" />
+                    Guardar técnico
                   </button>
                 </div>
               </div>
