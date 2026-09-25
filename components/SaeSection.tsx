@@ -274,6 +274,38 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     );
   }, []);
   useEffect(() => {
+    let shouldFocus = false;
+    try {
+      shouldFocus = window.sessionStorage.getItem("profea-sae-focus-candidates") === "1";
+    } catch {}
+    if (!shouldFocus) return;
+
+    const focusCandidates = () => {
+      const target = document.getElementById("sae-candidate-selection");
+      if (!target) return false;
+      try {
+        window.sessionStorage.removeItem("profea-sae-focus-candidates");
+      } catch {}
+      window.setTimeout(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        target.classList.add("ring-2", "ring-[#00548E]/30");
+        window.setTimeout(() => target.classList.remove("ring-2", "ring-[#00548E]/30"), 1800);
+      }, 120);
+      onToast("Citación completada. Seleccione el siguiente candidato SAE.", "success");
+      return true;
+    };
+
+    if (focusCandidates()) return;
+    const timer = window.setInterval(() => {
+      if (focusCandidates()) window.clearInterval(timer);
+    }, 150);
+    const timeout = window.setTimeout(() => window.clearInterval(timer), 5000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(timeout);
+    };
+  }, [selectedNeedId, selectedReportId, activeCandidates.length]);
+  useEffect(() => {
     let cancelled = false;
     const loadAnnualPeriods = async () => {
       try {
@@ -1801,7 +1833,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
                 </div>
               )}
-              <div className="ui-surface p-4 sm:p-5">
+              <div id="sae-candidate-selection" className="ui-surface p-4 sm:p-5 scroll-mt-24 transition-shadow duration-300">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-black text-lg">
