@@ -212,7 +212,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         body: JSON.stringify({
           workers: [], // Tickets are anonymous, no system workers needed
           instructions: aiPrompt,
-          savedSitios: savedSitios.length > 0 ? savedSitios : [selectedDefaultSite],
+          savedSitios,
+          defaultSite: selectedDefaultSite,
           workStartHour,
           workEndHour
         })
@@ -299,7 +300,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         const { doc, filename } = await generateMedicalTicketsPDF(ticketsData, supervisorPhones, workStartHour, workEndHour);
         doc.save(filename);
 
-        onToast(`Planificación completada. Se han generado ${schedule.length} citas médicas y se ha descargado el PDF de tickets.`, "success");
+        onToast(`Instrucción interpretada correctamente. Se han generado ${schedule.length} citas médicas y se ha descargado el PDF.`, "success");
         setAiPrompt('');
       } else {
         throw new Error("No se pudo procesar la orden de planificación.");
@@ -621,7 +622,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                   <Info className="w-5 h-5 text-[#00548E] dark:text-blue-400 shrink-0 mt-0.5" />
                   <div className="space-y-1 text-xs text-slate-600 dark:text-slate-350">
                     <p className="font-semibold text-[#00548E] dark:text-blue-400">¿Cómo dar una orden al asistente?</p>
-                    <p>El asistente interpretará sus instrucciones. Puede indicar el número de trabajadores, el día, la hora de inicio, el centro médico e incluso el día de comienzo de la obra. El sistema calculará los horarios escalonados automáticamente.</p>
+                    <p>Escriba la orden con lenguaje normal. Puede indicar cantidad, fecha, hora, agrupación (por ejemplo, de 2 en 2), intervalo, centro médico, obra/oferta y fechas de comienzo. El asistente interpreta la orden y genera automáticamente todas las citas.</p>
                   </div>
                 </div>
 
@@ -698,7 +699,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4" />
-                        Organizar e imprimir
+                        Interpretar y generar citas
                       </>
                     )}
                   </button>
