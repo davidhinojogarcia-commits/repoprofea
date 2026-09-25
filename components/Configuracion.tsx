@@ -49,6 +49,7 @@ import {
 import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, saveAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
+import { CommunicationContactSettings } from "./CommunicationContactSettings";
 import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
 import { buildWorkerMasterRecords, maskWorkerIban, maskWorkerNuss } from "../src/lib/workerMaster";
@@ -136,6 +137,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "categorias"
     | "supervisor"
     | "technician"
+    | "administrative"
+    | "medicalCompany"
+    | "footwearProvider"
+    | "trainingCompany"
     | "horario"
     | "backup"
   >("lugares");
@@ -152,6 +157,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     Record<string, ObraRecursoPreventivo>
   >(() => getStoredObrasRecursosPreventivos());
   const [newObraRecurso, setNewObraRecurso] = useState("");
+  const [newObraRecursoTelefono, setNewObraRecursoTelefono] = useState("");
   const [newObraMunicipio, setNewObraMunicipio] = useState("");
   const [obrasMaestras, setObrasMaestras] = useState<any[]>([]);
   const [newObraCategoria, setNewObraCategoria] = useState("Encargado de Obra");
@@ -160,6 +166,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     nombre: string;
     recurso: string;
     categoria: string;
+    telefono: string;
     municipio: string;
     id?: string;
   } | null>(null);
@@ -177,6 +184,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                 recursoPreventivoNombre: row.recursoPreventivo || "",
                 recursoPreventivoCategoria:
                   row.recursoPreventivoCategoria || "Encargado de Obra",
+                recursoPreventivoTelefono:
+                  getStoredObrasRecursosPreventivos()[row.nombre]?.recursoPreventivoTelefono || "",
               },
             ]),
           ),
@@ -272,6 +281,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         workEndHour: appSettings.workEndHour,
         supervisor: appSettings.supervisor,
         technician: appSettings.technician,
+        administrative: appSettings.administrative,
+        medicalCompany: appSettings.medicalCompany,
+        footwearProvider: appSettings.footwearProvider,
+        trainingCompany: appSettings.trainingCompany,
         // Backward compatibility for backups created before v3.
         subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
@@ -685,10 +698,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       trimmedObra,
       trimmedRecurso,
       newObraCategoria,
+      newObraRecursoTelefono,
     );
     setObrasRecursos(getStoredObrasRecursosPreventivos());
     setNewItem("");
     setNewObraRecurso("");
+    setNewObraRecursoTelefono("");
     setNewObraMunicipio("");
     setNewObraCategoria("Encargado de Obra");
     if (setToast) {
@@ -702,7 +717,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const handleSaveEditObraRecurso = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingObraRecurso) return;
-    const { obra, nombre, recurso, categoria } = editingObraRecurso;
+    const { obra, nombre, recurso, categoria, telefono } = editingObraRecurso;
     const trimmedNombre = nombre.trim();
     if (!trimmedNombre) {
       if (setToast)
@@ -774,6 +789,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       trimmedNombre,
       recurso.trim(),
       categoria.trim(),
+      telefono.trim(),
     );
     setObrasRecursos(getStoredObrasRecursosPreventivos());
     setEditingObraRecurso(null);
@@ -930,6 +946,29 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
             <Briefcase className={`w-5 h-5 ${activeTab === "technician" ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
             Técnico responsable
           </button>
+
+          {([
+            ["administrative", "Administrativo/a", UserCheck],
+            ["medicalCompany", "Empresa reconocimientos médicos", Stethoscope],
+            ["footwearProvider", "Proveedor calzado", Briefcase],
+            ["trainingCompany", "Empresa formación", GraduationCap],
+          ] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => {
+                setActiveTab(id);
+                setSearchTerm("");
+                setNewItem("");
+                setDeletingItem(null);
+                setSelectedItems([]);
+                setShowBulkConfirm(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold ${activeTab === id ? "profea-sidebar-item--active text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"}`}
+            >
+              <Icon className={`w-5 h-5 ${activeTab === id ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+              {label}
+            </button>
+          ))}
 
           <button
             onClick={() => {
@@ -1212,6 +1251,14 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                 </div>
               </div>
             </div>
+          ) : activeTab === "administrative" ? (
+            <CommunicationContactSettings kind="administrative" onToast={setToast} />
+          ) : activeTab === "medicalCompany" ? (
+            <CommunicationContactSettings kind="medicalCompany" onToast={setToast} />
+          ) : activeTab === "footwearProvider" ? (
+            <CommunicationContactSettings kind="footwearProvider" onToast={setToast} />
+          ) : activeTab === "trainingCompany" ? (
+            <CommunicationContactSettings kind="trainingCompany" onToast={setToast} />
           ) : activeTab === "horario" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
@@ -1653,6 +1700,18 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
                       />
                     </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Teléfono del Recurso Preventivo
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="Ej: 600 123 456"
+                        value={newObraRecursoTelefono}
+                        onChange={(e) => setNewObraRecursoTelefono(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-brand-primary"
+                      />
+                    </div>
                     <div className="sm:col-span-5">
                       <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                         Categoría del Puesto
@@ -1927,6 +1986,12 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                           {recursoData.recursoPreventivoCategoria ||
                                             "Encargado de Obra"}
                                         </span>
+                                        {recursoData.recursoPreventivoTelefono && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                                            <Phone className="w-3 h-3" />
+                                            {recursoData.recursoPreventivoTelefono}
+                                          </span>
+                                        )}
                                       </>
                                     ) : (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
@@ -1958,6 +2023,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                       categoria:
                                         recursoData?.recursoPreventivoCategoria ||
                                         "Encargado de Obra",
+                                      telefono:
+                                        recursoData?.recursoPreventivoTelefono || "",
                                     })
                                   }
                                   className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors cursor-pointer"
@@ -2096,6 +2163,23 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                             })
                           }
                           placeholder="Ej: Manuel Gómez Serrano"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          Teléfono del Recurso Preventivo
+                        </label>
+                        <input
+                          type="tel"
+                          value={editingObraRecurso.telefono}
+                          onChange={(e) =>
+                            setEditingObraRecurso({
+                              ...editingObraRecurso,
+                              telefono: e.target.value,
+                            })
+                          }
+                          placeholder="Ej: 600 123 456"
                           className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
                         />
                       </div>
