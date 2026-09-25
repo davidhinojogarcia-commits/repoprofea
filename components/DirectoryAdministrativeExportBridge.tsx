@@ -71,12 +71,17 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
     const exportData = async (format: 'pdf' | 'excel') => {
       try {
         const all = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
-        const scopedIds = exportScopeIdsRef.current;
+        const liveScope = (window as any).__profeaDirectoryExportScope as { ids?: unknown[] } | undefined;
+        const liveIds = Array.isArray(liveScope?.ids)
+          ? liveScope!.ids!.map(Number).filter(Number.isFinite)
+          : null;
+        const scopedIds = liveIds !== null ? Array.from(new Set(liveIds)) : exportScopeIdsRef.current;
         const ids = scopedIds !== null ? scopedIds : getCurrentExportIds();
+        const byId = new Map(all.map(person => [Number(person.id), person]));
         const data = ids
-          .map(id => all.find(p => Number(p.id) === id))
+          .map(id => byId.get(Number(id)))
           .filter(Boolean) as Person[];
-        if (!data.length) return window.alert('No hay trabajadores filtrados para exportar.');
+        if (!data.length) return window.alert('No hay trabajadores dentro de los filtros actuales para exportar.');
         if (format === 'pdf') {
           const { doc, filename } = prepareAdministrativeRelationPDF(data);
           downloadBlob(doc.output('blob'), filename);
