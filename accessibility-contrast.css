@@ -1,0 +1,138 @@
+/* PROFEA · Contraste final de accesibilidad
+ * Última capa visual para asegurar texto legible en modo diurno y nocturno.
+ * Mantiene los colores semánticos, pero eleva contraste de textos, campos,
+ * botones secundarios, tablas y superficies.
+ */
+
+html:not(.dark) #root {
+  color: #0f172a;
+}
+
+html:not(.dark) #root .ui-surface,
+html:not(.dark) #root .ui-surface-soft {
+  color: #0f172a;
+}
+
+html:not(.dark) #root .text-slate-400,
+html:not(.dark) #root .text-gray-400,
+html:not(.dark) #root .text-zinc-400 {
+  color: #526173 !important;
+}
+
+html:not(.dark) #root .text-slate-500,
+html:not(.dark) #root .text-gray-500,
+html:not(.dark) #root .text-zinc-500 {
+  color: #425166 !important;
+}
+
+html:not(.dark) #root .text-slate-600,
+html:not(.dark) #root .text-gray-600,
+html:not(.dark) #root .text-zinc-600 {
+  color: #334155 !important;
+}
+
+html:not(.dark) #root .text-slate-700,
+html:not(.dark) #root .text-gray-700,
+html:not(.dark) #root .text-zinc-700 {
+  color: #1e293b !important;
+}
+
+html:not(.dark) #root input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html:not(.dark) #root select,
+html:not(.dark) #root textarea {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+  border-color: #b8c4d0 !important;
+}
+
+html:not(.dark) #root input::placeholder,
+html:not(.dark) #root textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root button[class*='bg-slate-50'],
+html:not(.dark) #root button[class*='bg-slate-100'],
+html:not(.dark) #root button[class*='bg-white'] {
+  color: #1e293b;
+}
+
+html:not(.dark) #root table {
+  color: #172033;
+}
+
+html:not(.dark) #root thead {
+  color: #172033;
+}
+
+html:not(.dark) #root [class*='bg-blue-50'] .text-slate-500,
+html:not(.dark) #root [class*='bg-emerald-50'] .text-slate-500,
+html:not(.dark) #root [class*='bg-amber-50'] .text-slate-500,
+html:not(.dark) #root [class*='bg-red-50'] .text-slate-500 {
+  color: #334155 !important;
+}
+
+.dark #root .text-slate-400,
+.dark #root .text-gray-400,
+.dark #root .text-zinc-400 {
+  color: #aebfcb !important;
+}
+
+.dark #root .text-slate-500,
+.dark #root .text-gray-500,
+.dark #root .text-zinc-500 {
+  color: #bdcbd5 !important;
+}
+
+.dark #root .text-slate-600,
+.dark #root .text-gray-600,
+.dark #root .text-zinc-600 {
+  color: #cbd7df !important;
+}
+
+.dark #root .text-slate-700,
+.dark #root .text-gray-700,
+.dark #root .text-zinc-700 {
+  color: #dce6ec !important;
+}
+
+.dark #root input::placeholder,
+.dark #root textarea::placeholder {
+  color: #9db0bd !important;
+  opacity: 1 !important;
+}
+
+.dark #root button:not(.text-white)[class*='border-slate'],
+.dark #root button:not(.text-white)[class*='bg-slate'],
+.dark #root button:not(.text-white)[class*='bg-white'] {
+  color: #eef6fb !important;
+}
+
+#root button:disabled,
+#root input:disabled,
+#root select:disabled,
+#root textarea:disabled {
+  opacity: .68 !important;
+}
+
+/* Directory communications: compact, aligned, readable controls. */
+#directorio-section .directorio-export-row > span {
+  color: #334155 !important;
+  font-weight: 800 !important;
+}
+.dark #directorio-section .directorio-export-row > span {
+  color: #d4e0e7 !important;
+}
+
+/* SAE: selection must look like an action rather than plain card text. */
+html:not(.dark) #root .sae-report-selector:not([aria-pressed='true']) {
+  color: #0f172a !important;
+  background: #ffffff !important;
+}
+.dark #root .sae-report-selector:not([aria-pressed='true']) {
+  color: #f1f5f9 !important;
+  background: #172433 !important;
+}
+#root .sae-report-selector[aria-pressed='true'] {
+  color: #ffffff !important;
+}
