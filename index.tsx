@@ -28,6 +28,7 @@ import './institutional-polish.css';
 import './dark-mode-hardening.css';
 import './medical-citations-contrast.css';
 import './guided-mobile-accessibility.css';
+import './accessibility-contrast.css';
 
 applyPlugin(jsPDF);
 (jsPDF as any).autoTableSetDefaults?.({
