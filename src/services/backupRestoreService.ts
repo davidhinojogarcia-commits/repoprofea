@@ -198,6 +198,30 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         technician: config.technician && typeof config.technician === 'object'
           ? { ...current.technician, ...config.technician }
           : current.technician,
+        administrative: config.administrative && typeof config.administrative === 'object'
+          ? { ...current.administrative, ...config.administrative }
+          : current.administrative,
+        medicalCompany: config.medicalCompany && typeof config.medicalCompany === 'object'
+          ? { ...current.medicalCompany, ...config.medicalCompany }
+          : current.medicalCompany,
+        footwearProvider: config.footwearProvider && typeof config.footwearProvider === 'object'
+          ? { ...current.footwearProvider, ...config.footwearProvider }
+          : current.footwearProvider,
+        trainingCompany: config.trainingCompany && typeof config.trainingCompany === 'object'
+          ? { ...current.trainingCompany, ...config.trainingCompany }
+          : current.trainingCompany,
+        administrative: config.administrative && typeof config.administrative === 'object'
+          ? { ...current.administrative, ...config.administrative }
+          : current.administrative,
+        medicalCompany: config.medicalCompany && typeof config.medicalCompany === 'object'
+          ? { ...current.medicalCompany, ...config.medicalCompany }
+          : current.medicalCompany,
+        footwearProvider: config.footwearProvider && typeof config.footwearProvider === 'object'
+          ? { ...current.footwearProvider, ...config.footwearProvider }
+          : current.footwearProvider,
+        trainingCompany: config.trainingCompany && typeof config.trainingCompany === 'object'
+          ? { ...current.trainingCompany, ...config.trainingCompany }
+          : current.trainingCompany,
       } : {
         savedObras: Array.isArray(config.obras) ? config.obras : [],
         savedLugares: Array.isArray(config.lugares) ? config.lugares : [],
