@@ -14,4 +14,5 @@ export const APP_RELEASE_NOTES = [
   'Refuerzo de legibilidad y contraste en modo diurno y nocturno.',
   'Renovación visual global de la interfaz y Menú inicial en Vista guiada.',
   'Configuración central del supervisor y corrección de la citación médica.',
+  'Configuración central del técnico responsable y autocompletado en informes.',
 ] as const;
