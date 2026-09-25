@@ -52,6 +52,7 @@ import { PageHeader } from "./ui/PageHeader";
 import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
 import { buildWorkerMasterRecords, maskWorkerIban, maskWorkerNuss } from "../src/lib/workerMaster";
+import { downloadWorkerMasterExcel, downloadWorkerMasterPdf, workerRecordIsComplete, workerRecordYear } from "../src/lib/workerMasterExport";
 import {
   getStoredReporteTecnicoConfig,
   saveStoredReporteTecnicoConfig,
@@ -142,6 +143,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
   const [newItem, setNewItem] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [workerExportYear, setWorkerExportYear] = useState("all");
+  const [workerExportDataFilter, setWorkerExportDataFilter] = useState("all");
+  const [workerExportSelectedKeys, setWorkerExportSelectedKeys] = useState<string[]>([]);
+  const [workerExportBusy, setWorkerExportBusy] = useState<"" | "excel" | "pdf">("");
 
   const [deletingItem, setDeletingItem] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -503,11 +508,14 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   };
 
   const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
+  const workerExportYears = useMemo(
+    () => Array.from(new Set(workerMasterRecords.map(workerRecordYear).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    [workerMasterRecords],
+  );
   const filteredWorkerMasterRecords = useMemo(() => {
     const q = searchTerm.trim().toLocaleLowerCase("es");
-    if (!q) return workerMasterRecords;
-    return workerMasterRecords.filter((worker) =>
-      [
+    return workerMasterRecords.filter((worker) => {
+      const matchesSearch = !q || [
         worker.apellidosNombre,
         worker.dni,
         worker.fechaNacimiento,
@@ -515,9 +523,72 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         worker.numeroSeguridadSocial,
         worker.iban,
         worker.calzado,
-      ].some((value) => String(value || "").toLocaleLowerCase("es").includes(q))
+      ].some((value) => String(value || "").toLocaleLowerCase("es").includes(q));
+
+      const matchesYear =
+        workerExportYear === "all" || workerRecordYear(worker) === workerExportYear;
+
+      const matchesData =
+        workerExportDataFilter === "all" ||
+        (workerExportDataFilter === "complete" && workerRecordIsComplete(worker)) ||
+        (workerExportDataFilter === "incomplete" && !workerRecordIsComplete(worker)) ||
+        (workerExportDataFilter === "missing-phone" && !worker.telefono) ||
+        (workerExportDataFilter === "missing-nuss" && !worker.numeroSeguridadSocial) ||
+        (workerExportDataFilter === "missing-iban" && !worker.iban);
+
+      return matchesSearch && matchesYear && matchesData;
+    });
+  }, [workerMasterRecords, searchTerm, workerExportYear, workerExportDataFilter]);
+
+  const workerExportVisibleKeys = useMemo(
+    () => new Set(filteredWorkerMasterRecords.map(worker => worker.key)),
+    [filteredWorkerMasterRecords],
+  );
+  const workerExportSelectedVisible = useMemo(
+    () => filteredWorkerMasterRecords.filter(worker => workerExportSelectedKeys.includes(worker.key)),
+    [filteredWorkerMasterRecords, workerExportSelectedKeys],
+  );
+  const workerExportRows = workerExportSelectedVisible.length
+    ? workerExportSelectedVisible
+    : filteredWorkerMasterRecords;
+
+  const toggleWorkerExportSelection = (key: string) => {
+    setWorkerExportSelectedKeys(current =>
+      current.includes(key) ? current.filter(item => item !== key) : [...current, key],
     );
-  }, [workerMasterRecords, searchTerm]);
+  };
+
+  const selectAllFilteredWorkers = () => {
+    setWorkerExportSelectedKeys(current =>
+      Array.from(new Set([...current.filter(key => !workerExportVisibleKeys.has(key)), ...filteredWorkerMasterRecords.map(worker => worker.key)])),
+    );
+  };
+
+  const clearWorkerExportSelection = () => setWorkerExportSelectedKeys([]);
+
+  const exportWorkers = async (format: "excel" | "pdf") => {
+    if (!workerExportRows.length) {
+      setToast?.({ message: "No hay trabajadores dentro de los filtros actuales para exportar.", type: "error" });
+      return;
+    }
+    setWorkerExportBusy(format);
+    try {
+      if (format === "excel") await downloadWorkerMasterExcel(workerExportRows);
+      else await downloadWorkerMasterPdf(workerExportRows, supervisorName);
+      setToast?.({
+        message: `${workerExportRows.length} trabajador${workerExportRows.length === 1 ? "" : "es"} exportado${workerExportRows.length === 1 ? "" : "s"} en ${format === "excel" ? "Excel" : "PDF"}.`,
+        type: "success",
+      });
+    } catch (error: any) {
+      console.error("[worker-master-export]", error);
+      setToast?.({
+        message: error?.message || `No se pudo generar la exportación ${format === "excel" ? "Excel" : "PDF"}.`,
+        type: "error",
+      });
+    } finally {
+      setWorkerExportBusy("");
+    }
+  };
 
   const bankAccountCatalog = useMemo(() => {
     const rows = new Map<string, string[]>();
@@ -995,15 +1066,93 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
               </div>
 
               <div className="p-6">
-                <div className="relative mb-5">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="search"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Buscar por nombre, DNI/NIE, teléfono, Seguridad Social, IBAN o talla..."
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
-                  />
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_220px] gap-3 mb-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="search"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Buscar por nombre, DNI/NIE, teléfono, Seguridad Social, IBAN o talla..."
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                    />
+                  </div>
+
+                  <select
+                    value={workerExportYear}
+                    onChange={(e) => setWorkerExportYear(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100"
+                    title="Filtrar por año de la última contratación registrada"
+                  >
+                    <option value="all">Todos los años</option>
+                    {workerExportYears.map(year => <option key={year} value={year}>Última contratación {year}</option>)}
+                  </select>
+
+                  <select
+                    value={workerExportDataFilter}
+                    onChange={(e) => setWorkerExportDataFilter(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100"
+                    title="Filtrar según los datos personales disponibles"
+                  >
+                    <option value="all">Todos los datos</option>
+                    <option value="complete">Ficha personal completa</option>
+                    <option value="incomplete">Ficha personal incompleta</option>
+                    <option value="missing-phone">Sin teléfono</option>
+                    <option value="missing-nuss">Sin Seguridad Social</option>
+                    <option value="missing-iban">Sin cuenta bancaria</option>
+                  </select>
+                </div>
+
+                <div className="mb-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/40 p-4">
+                  <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-800 dark:text-slate-100">
+                        {filteredWorkerMasterRecords.length} visibles · {workerExportSelectedVisible.length} seleccionados
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Si seleccionas trabajadores, se exportarán solo los seleccionados dentro de los filtros actuales. Si no seleccionas ninguno, se exportarán todos los visibles.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllFilteredWorkers}
+                        disabled={!filteredWorkerMasterRecords.length}
+                        className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold disabled:opacity-50"
+                      >
+                        Seleccionar filtrados
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearWorkerExportSelection}
+                        disabled={!workerExportSelectedKeys.length}
+                        className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold disabled:opacity-50"
+                      >
+                        Limpiar selección
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void exportWorkers("excel")}
+                        disabled={!workerExportRows.length || Boolean(workerExportBusy)}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black inline-flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <Download className="w-4 h-4" />
+                        {workerExportBusy === "excel" ? "Generando…" : "Exportar Excel"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void exportWorkers("pdf")}
+                        disabled={!workerExportRows.length || Boolean(workerExportBusy)}
+                        className="px-4 py-2 rounded-xl bg-[#00548E] hover:bg-[#004270] text-white text-xs font-black inline-flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <FileText className="w-4 h-4" />
+                        {workerExportBusy === "pdf" ? "Generando…" : "Exportar PDF"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-[10px] text-amber-700 dark:text-amber-300">
+                    Las exportaciones incluyen los datos personales completos, incluido Nº de Seguridad Social e IBAN. Utilícelas únicamente para la gestión administrativa autorizada.
+                  </div>
                 </div>
 
                 <div className="mb-5 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4">
@@ -1015,11 +1164,20 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
                 <div className="space-y-3 max-h-[650px] overflow-y-auto pr-1">
                   {filteredWorkerMasterRecords.map((worker) => (
-                    <div key={worker.key} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-4">
+                    <div key={worker.key} className={`rounded-2xl border p-4 transition-colors ${workerExportSelectedKeys.includes(worker.key) ? "border-[#00548E] bg-blue-50/70 dark:border-blue-700 dark:bg-blue-950/20" : "border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30"}`}>
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                        <div>
+                        <div className="flex items-start gap-3 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={workerExportSelectedKeys.includes(worker.key)}
+                            onChange={() => toggleWorkerExportSelection(worker.key)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-[#00548E] shrink-0"
+                            aria-label={`Seleccionar ${worker.apellidosNombre || worker.dni || "trabajador"} para exportar`}
+                          />
+                          <div className="min-w-0">
                           <p className="font-black text-slate-900 dark:text-white">{worker.apellidosNombre || "Trabajador sin nombre"}</p>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">DNI/NIE: <span className="font-bold text-slate-700 dark:text-slate-200">{worker.dni || "-"}</span></p>
+                          </div>
                         </div>
                         <div className="text-left sm:text-right">
                           <p className="text-[11px] font-bold text-[#00548E] dark:text-blue-300">{worker.contratos} contratación{worker.contratos === 1 ? "" : "es"}</p>
