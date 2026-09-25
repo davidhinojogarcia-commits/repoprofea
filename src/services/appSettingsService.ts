@@ -31,6 +31,10 @@ export const DEFAULT_SUPERVISOR_SETTINGS: SupervisorSettings = {
   usarPorDefecto: true,
 };
 
+let supervisorCache: SupervisorSettings = { ...DEFAULT_SUPERVISOR_SETTINGS };
+
+export const getCachedSupervisorSettings = (): SupervisorSettings => ({ ...supervisorCache });
+
 const DEFAULTS: AppBusinessSettings = {
   savedObras: [],
   savedLugares: [],
@@ -80,8 +84,13 @@ export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
     query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
   });
   const remote = rows?.[0]?.settings?.app;
-  if (remote && typeof remote === 'object') return normalize(remote);
+  if (remote && typeof remote === 'object') {
+    const normalized = normalize(remote);
+    supervisorCache = normalized.supervisor;
+    return normalized;
+  }
   const defaults = normalize(DEFAULTS);
+  supervisorCache = defaults.supervisor;
   if (typeof navigator === 'undefined' || navigator.onLine) {
     await saveAppBusinessSettings(defaults);
   }
@@ -102,6 +111,7 @@ export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings
   await supabase.rpc('patch_user_settings', {
     p_patch: { app: next },
   });
+  supervisorCache = next.supervisor;
 }
 
 export function clearLegacyBusinessSettings(): void {}
