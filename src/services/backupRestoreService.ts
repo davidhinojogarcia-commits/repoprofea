@@ -195,6 +195,9 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         supervisor: config.supervisor && typeof config.supervisor === 'object'
           ? { ...current.supervisor, ...config.supervisor }
           : current.supervisor,
+        technician: config.technician && typeof config.technician === 'object'
+          ? { ...current.technician, ...config.technician }
+          : current.technician,
       } : {
         savedObras: Array.isArray(config.obras) ? config.obras : [],
         savedLugares: Array.isArray(config.lugares) ? config.lugares : [],
@@ -206,6 +209,9 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         supervisor: config.supervisor && typeof config.supervisor === 'object'
           ? { ...current.supervisor, ...config.supervisor }
           : current.supervisor,
+        technician: config.technician && typeof config.technician === 'object'
+          ? { ...current.technician, ...config.technician }
+          : current.technician,
       };
   if (!restoredFullSettings) await saveAppBusinessSettings(settings);
 
