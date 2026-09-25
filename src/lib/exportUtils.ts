@@ -7,6 +7,7 @@ import { Person, PdfCustomConfig, getAptitudMedicaInfo } from '../../types';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
 import { ensureWorkerQrShare } from '../services/workerQrShareService';
+import { loadAppBusinessSettings } from '../services/appSettingsService';
 export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
@@ -2630,13 +2631,26 @@ export const generateMedicalTicketsPDF = async (
   workEndHourDefault: string = '15:00'
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const appSettings = await loadAppBusinessSettings().catch(() => null);
+  const configuredSupervisor = appSettings?.supervisor;
   for (let i = 0; i < workers.length; i++) {
     if (i > 0) {
       doc.addPage();
     }
 
     const p = workers[i];
-    const supervisorPhone = p.supervisorResponsable ? (supervisorPhones[p.supervisorResponsable] || p.telefono || '-') : '-';
+    const supervisorName = configuredSupervisor?.usarPorDefecto && configuredSupervisor.nombreApellidos
+      ? configuredSupervisor.nombreApellidos
+      : (p.supervisorResponsable || '-');
+    const supervisorPhone = configuredSupervisor?.usarPorDefecto && configuredSupervisor.telefono
+      ? configuredSupervisor.telefono
+      : (supervisorPhones[supervisorName] || supervisorPhones[p.supervisorResponsable || ''] || p.telefono || '-');
+    const supervisorZone = configuredSupervisor?.usarPorDefecto ? configuredSupervisor.zona : '';
+    const supervisorMeta = [
+      `SUPERVISOR: ${supervisorName}`,
+      supervisorPhone && supervisorPhone !== '-' ? `TEL.: ${supervisorPhone}` : '',
+      supervisorZone ? `ZONA: ${supervisorZone}` : '',
+    ].filter(Boolean).join(' · ');
     const workStartHourVal = p.workStartHour || workStartHourDefault;
     const workEndHourVal = p.workEndHour || workEndHourDefault;
 
@@ -2649,13 +2663,13 @@ export const generateMedicalTicketsPDF = async (
     const diaFinContratoFormatted = p.diaFinContrato ? formatDate(p.diaFinContrato) : (p.diaComienzo ? formatDate(p.diaComienzo) : '___/___/______');
     const sitio = p.sitioReconocimiento || 'UNIDAD MOVIL UBICADA EN BORNOS: NAVE DEL AYUNTAMIENTO, CALLE BLAS INFANTE S/N, BORNOS';
 
-    const workerName = '___________________________________________';
-    const workerDni = '___________________________';
+    const workerName = String(p.apellidosNombre || '').trim() || '________________________';
+    const workerDni = String(p.dni || '').trim() || '________________';
 
     renderInstitutionalReportHeader(
       doc,
       'COMUNICACIÓN DE CITACIÓN PARA RECONOCIMIENTO MÉDICO',
-      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      supervisorMeta,
       { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
     );
 
@@ -2744,7 +2758,7 @@ export const generateMedicalTicketsPDF = async (
     renderInstitutionalReportHeader(
       doc,
       'ANEXO · JUSTIFICANTE DE ENTREGA DE CITACIÓN MÉDICA',
-      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      supervisorMeta,
       { subtitle: 'ARCHIVO DE CONTRATACIÓN · GESTIÓN DE FONDOS PROFEA' },
     );
 
@@ -2835,13 +2849,33 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
     doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
     doc.text('Nombre y apellidos:', 22, annexY + 11);
-    doc.line(22, annexY + 15, 96, annexY + 15);
-    doc.text('DNI / NIE:', 22, annexY + 20);
-    doc.line(42, annexY + 20.5, 96, annexY + 20.5);
-    doc.text('Firma:', 22, annexY + 26);
-    doc.line(37, annexY + 26.5, 96, annexY + 26.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    const signatureWorkerName = String(p.apellidosNombre || '').trim();
+    if (signatureWorkerName) {
+      doc.text(doc.splitTextToSize(signatureWorkerName.toUpperCase(), 48).slice(0, 1), 48, annexY + 11);
+    } else {
+      doc.line(48, annexY + 11.5, 96, annexY + 11.5);
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text('DNI / NIE:', 22, annexY + 17);
+    const signatureWorkerDni = String(p.dni || '').trim();
+    if (signatureWorkerDni) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(signatureWorkerDni.toUpperCase(), 42, annexY + 17);
+    } else {
+      doc.line(42, annexY + 17.5, 96, annexY + 17.5);
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text('Firma:', 22, annexY + 24);
+    doc.line(37, annexY + 24.5, 96, annexY + 24.5);
     const sigDateStrAnnex = p.diaContratacion ? `Fecha: ${formatDate(p.diaContratacion)}` : 'Fecha: _____ / _____ / ________';
-    doc.text(sigDateStrAnnex, 22, annexY + 33);
+    doc.text(sigDateStrAnnex, 22, annexY + 32);
 
     // Right Box: Supervisor identity and signature
     doc.roundedRect(108, annexY, 84, annexSignatureH, 2, 2, 'S');
@@ -2857,7 +2891,7 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(15, 23, 42);
-    const supervisorLabel = p.supervisorResponsable ? p.supervisorResponsable.toUpperCase() : 'ENCARGADO DE OBRA';
+    const supervisorLabel = supervisorName && supervisorName !== '-' ? supervisorName.toUpperCase() : 'ENCARGADO DE OBRA';
     doc.text(doc.splitTextToSize(supervisorLabel, 73).slice(0, 2), 112, annexY + 15, { lineHeightFactor: 0.9 });
 
     doc.setFont('helvetica', 'normal');
