@@ -46,7 +46,22 @@ import {
   getDocuments,
   updateDocument,
 } from "../src/services/databaseService";
-import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, saveAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from "../src/services/appSettingsService";
+import {
+  DEFAULT_SUPERVISOR_SETTINGS,
+  DEFAULT_TECHNICIAN_SETTINGS,
+  DEFAULT_ADMINISTRATIVE_SETTINGS,
+  DEFAULT_MEDICAL_COMPANY_SETTINGS,
+  DEFAULT_SHOE_PROVIDER_SETTINGS,
+  DEFAULT_TRAINING_COMPANY_SETTINGS,
+  loadAppBusinessSettings,
+  saveAppBusinessSettings,
+  type SupervisorSettings,
+  type TechnicianSettings,
+  type AdministrativeSettings,
+  type MedicalCompanySettings,
+  type ShoeProviderSettings,
+  type TrainingCompanySettings,
+} from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
 import { useAuthShell } from "./AuthGate";
@@ -61,6 +76,76 @@ import {
   replaceStoredObrasRecursosPreventivos,
   ObraRecursoPreventivo,
 } from "../src/lib/subcontratasDefaults";
+
+type ContactField = {
+  key: string;
+  label: string;
+  placeholder: string;
+  type?: string;
+};
+
+const ConfigurationContactPanel: React.FC<{
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  form: Record<string, string>;
+  setForm: React.Dispatch<React.SetStateAction<any>>;
+  fields: ContactField[];
+  loaded: boolean;
+  saveLabel: string;
+  onSave: () => Promise<void>;
+}> = ({ title, description, icon, form, setForm, fields, loaded, saveLabel, onSave }) => (
+  <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+    <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+      <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+        {icon}
+        {title}
+      </h2>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">{description}</p>
+    </div>
+    <div className="p-6 space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {fields.map((field) => (
+          <label key={field.key} className="space-y-2">
+            <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              {field.label}
+            </span>
+            <input
+              type={field.type || "text"}
+              value={String(form[field.key] || "")}
+              onChange={(event) => setForm((previous: any) => ({ ...previous, [field.key]: event.target.value }))}
+              placeholder={field.placeholder}
+              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+            />
+          </label>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-5">
+        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00548E] dark:text-blue-300">Previsualización</p>
+        {form.empresa && <p className="mt-2 text-base font-black text-slate-900 dark:text-white">{form.empresa}</p>}
+        <p className={`${form.empresa ? "mt-1" : "mt-2"} text-base font-black text-slate-900 dark:text-white`}>
+          {form.nombreApellidos || form.nombreContacto || "Pendiente de configurar"}
+        </p>
+        {form.telefono && <p className="text-sm text-slate-600 dark:text-slate-300">Tel.: {form.telefono}</p>}
+        {form.email && <p className="text-sm text-slate-600 dark:text-slate-300">{form.email}</p>}
+        {form.numeroTrabajador && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Nº trabajador / empleado: {form.numeroTrabajador}</p>}
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={!loaded}
+          onClick={() => void onSave()}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#00436f] transition-colors disabled:opacity-60"
+        >
+          <Save className="w-4 h-4" />
+          {saveLabel}
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 interface ConfiguracionProps {
   savedObras: string[];
@@ -126,8 +211,13 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const { supervisorName, profile, user } = useAuthShell();
   const [supervisorForm, setSupervisorForm] = useState<SupervisorSettings>(DEFAULT_SUPERVISOR_SETTINGS);
   const [technicianForm, setTechnicianForm] = useState<TechnicianSettings>(DEFAULT_TECHNICIAN_SETTINGS);
+  const [administrativeForm, setAdministrativeForm] = useState<AdministrativeSettings>(DEFAULT_ADMINISTRATIVE_SETTINGS);
+  const [medicalCompanyForm, setMedicalCompanyForm] = useState<MedicalCompanySettings>(DEFAULT_MEDICAL_COMPANY_SETTINGS);
+  const [shoeProviderForm, setShoeProviderForm] = useState<ShoeProviderSettings>(DEFAULT_SHOE_PROVIDER_SETTINGS);
+  const [trainingCompanyForm, setTrainingCompanyForm] = useState<TrainingCompanySettings>(DEFAULT_TRAINING_COMPANY_SETTINGS);
   const [supervisorLoaded, setSupervisorLoaded] = useState(false);
   const [technicianLoaded, setTechnicianLoaded] = useState(false);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | "obras"
     | "lugares"
@@ -136,6 +226,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "categorias"
     | "supervisor"
     | "technician"
+    | "administrative"
+    | "medicalCompany"
+    | "shoeProvider"
+    | "trainingCompany"
     | "horario"
     | "backup"
   >("lugares");
@@ -152,6 +246,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     Record<string, ObraRecursoPreventivo>
   >(() => getStoredObrasRecursosPreventivos());
   const [newObraRecurso, setNewObraRecurso] = useState("");
+  const [newObraRecursoTelefono, setNewObraRecursoTelefono] = useState("");
   const [newObraMunicipio, setNewObraMunicipio] = useState("");
   const [obrasMaestras, setObrasMaestras] = useState<any[]>([]);
   const [newObraCategoria, setNewObraCategoria] = useState("Encargado de Obra");
@@ -160,6 +255,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     nombre: string;
     recurso: string;
     categoria: string;
+    telefono: string;
     municipio: string;
     id?: string;
   } | null>(null);
@@ -168,6 +264,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     void getDocuments<any>("obras", { limitCount: 10000 })
       .then((rows) => {
         setObrasMaestras(rows);
+        const storedRecursos = getStoredObrasRecursosPreventivos();
         setObrasRecursos(
           Object.fromEntries(
             rows.map((row) => [
@@ -177,6 +274,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                 recursoPreventivoNombre: row.recursoPreventivo || "",
                 recursoPreventivoCategoria:
                   row.recursoPreventivoCategoria || "Encargado de Obra",
+                recursoPreventivoTelefono:
+                  storedRecursos[row.nombre]?.recursoPreventivoTelefono || "",
               },
             ]),
           ),
@@ -210,12 +309,29 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
           ...DEFAULT_TECHNICIAN_SETTINGS,
           ...(settings.technician || {}),
         });
+        setAdministrativeForm({
+          ...DEFAULT_ADMINISTRATIVE_SETTINGS,
+          ...(settings.administrative || {}),
+        });
+        setMedicalCompanyForm({
+          ...DEFAULT_MEDICAL_COMPANY_SETTINGS,
+          ...(settings.medicalCompany || {}),
+        });
+        setShoeProviderForm({
+          ...DEFAULT_SHOE_PROVIDER_SETTINGS,
+          ...(settings.shoeProvider || {}),
+        });
+        setTrainingCompanyForm({
+          ...DEFAULT_TRAINING_COMPANY_SETTINGS,
+          ...(settings.trainingCompany || {}),
+        });
       })
       .catch((error) => console.error("No se pudo cargar la configuración del supervisor:", error))
       .finally(() => {
         if (active) {
           setSupervisorLoaded(true);
           setTechnicianLoaded(true);
+          setContactsLoaded(true);
         }
       });
     return () => { active = false; };
@@ -272,6 +388,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         workEndHour: appSettings.workEndHour,
         supervisor: appSettings.supervisor,
         technician: appSettings.technician,
+        administrative: appSettings.administrative,
+        medicalCompany: appSettings.medicalCompany,
+        shoeProvider: appSettings.shoeProvider,
+        trainingCompany: appSettings.trainingCompany,
         // Backward compatibility for backups created before v3.
         subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
