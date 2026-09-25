@@ -89,7 +89,7 @@ export const GuidedHome: React.FC<GuidedHomeProps> = ({
               <div className="mt-4 space-y-2">
                 {dailyTasks.slice(0, 3).map((task, index) => (
                   <button key={task.label} type="button" onClick={() => task.view ? onNavigate(task.view) : onOpenAlerts()} className="guided-today-item flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-700 dark:bg-slate-800/70">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00548E] text-sm font-black text-white">{index + 1}</span>
+                    <span className="guided-today-number flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00548E] text-sm font-black text-white">{index + 1}</span>
                     <span className="min-w-0 flex-1 text-base font-bold text-slate-800 dark:text-slate-100">{task.label}</span>
                     <ArrowRight className="h-5 w-5 shrink-0 text-[#00548E] dark:text-blue-300" aria-hidden="true" />
                   </button>

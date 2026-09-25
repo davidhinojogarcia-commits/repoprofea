@@ -470,3 +470,19 @@
     max-width: none !important;
   }
 }
+
+
+/* Contraste garantizado en los indicadores numerados de "Esto es lo que tienes pendiente".
+ * Evita que reglas globales de texto oscuro anulen el blanco sobre el círculo azul. */
+.profea-guided-mode .guided-today-item .guided-today-number {
+  background: #00548E !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .18);
+}
+
+.dark .profea-guided-mode .guided-today-item .guided-today-number {
+  background: #0B6AA8 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
