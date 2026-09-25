@@ -1468,6 +1468,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   setToast?.({ message: "No se pudieron guardar los datos de la empresa de formación.", type: "error" });
                 }
               }}
+            />
           ) : activeTab === "horario" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
