@@ -7,6 +7,7 @@ import { Person, PdfCustomConfig, getAptitudMedicaInfo } from '../../types';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
 import { ensureWorkerQrShare } from '../services/workerQrShareService';
+import { getCachedSupervisorSettings, getCachedTechnicianSettings, loadAppBusinessSettings } from '../services/appSettingsService';
 export { OFFICIAL_LOGO_BASE64 };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
@@ -246,6 +247,28 @@ export const renderInstitutionalReportHeader = (
   options: { subtitle?: string; generatedLabel?: string; customLogo?: string } = {},
 ) => {
   const config = getStoredPdfConfig();
+  const configuredSupervisorForHeader = getCachedSupervisorSettings();
+  const configuredTechnicianForHeader = getCachedTechnicianSettings();
+  const supervisorHeaderParts = configuredSupervisorForHeader.usarPorDefecto && configuredSupervisorForHeader.nombreApellidos
+    ? [
+        `SUPERVISOR: ${configuredSupervisorForHeader.nombreApellidos}`,
+        configuredSupervisorForHeader.telefono ? `TEL.: ${configuredSupervisorForHeader.telefono}` : '',
+        configuredSupervisorForHeader.zona ? `ZONA: ${configuredSupervisorForHeader.zona}` : '',
+      ].filter(Boolean)
+    : [];
+  const technicianHeaderParts = configuredTechnicianForHeader.usarPorDefecto && configuredTechnicianForHeader.nombreApellidos
+    ? [
+        `TÉCNICO: ${configuredTechnicianForHeader.nombreApellidos}`,
+        configuredTechnicianForHeader.numeroTrabajador ? `Nº TRAB.: ${configuredTechnicianForHeader.numeroTrabajador}` : '',
+      ].filter(Boolean)
+    : [];
+  let effectiveMetaLine = String(metaLine || '').trim();
+  if (supervisorHeaderParts.length && !/SUPERVISOR:/i.test(effectiveMetaLine)) {
+    effectiveMetaLine = [effectiveMetaLine, supervisorHeaderParts.join(' · ')].filter(Boolean).join('   |   ');
+  }
+  if (/TÉCNIC[OA]|RESPONSABLE TÉCNICO/i.test(effectiveMetaLine) && technicianHeaderParts.length && !/TÉCNICO:/i.test(effectiveMetaLine)) {
+    effectiveMetaLine = [effectiveMetaLine, technicianHeaderParts.join(' · ')].filter(Boolean).join('   |   ');
+  }
   const pageSize = doc.internal.pageSize;
   const pageWidth = pageSize.width || pageSize.getWidth();
   const margin = INSTITUTIONAL_PDF_THEME.margin;
@@ -300,11 +323,11 @@ export const renderInstitutionalReportHeader = (
     `Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
   doc.text(issued, margin, 32.3, { maxWidth: pageWidth * 0.48 });
 
-  if (metaLine?.trim()) {
+  if (effectiveMetaLine) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
     doc.setTextColor(240, 249, 255);
-    doc.text(metaLine.toUpperCase(), right, 32.3, {
+    doc.text(effectiveMetaLine.toUpperCase(), right, 32.3, {
       align: 'right',
       maxWidth: Math.max(80, pageWidth * 0.45),
     });
@@ -2630,13 +2653,26 @@ export const generateMedicalTicketsPDF = async (
   workEndHourDefault: string = '15:00'
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const appSettings = await loadAppBusinessSettings().catch(() => null);
+  const configuredSupervisor = appSettings?.supervisor;
   for (let i = 0; i < workers.length; i++) {
     if (i > 0) {
       doc.addPage();
     }
 
     const p = workers[i];
-    const supervisorPhone = p.supervisorResponsable ? (supervisorPhones[p.supervisorResponsable] || p.telefono || '-') : '-';
+    const supervisorName = configuredSupervisor?.usarPorDefecto && configuredSupervisor.nombreApellidos
+      ? configuredSupervisor.nombreApellidos
+      : (p.supervisorResponsable || '-');
+    const supervisorPhone = configuredSupervisor?.usarPorDefecto && configuredSupervisor.telefono
+      ? configuredSupervisor.telefono
+      : (supervisorPhones[supervisorName] || supervisorPhones[p.supervisorResponsable || ''] || p.telefono || '-');
+    const supervisorZone = configuredSupervisor?.usarPorDefecto ? configuredSupervisor.zona : '';
+    const supervisorMeta = [
+      `SUPERVISOR: ${supervisorName}`,
+      supervisorPhone && supervisorPhone !== '-' ? `TEL.: ${supervisorPhone}` : '',
+      supervisorZone ? `ZONA: ${supervisorZone}` : '',
+    ].filter(Boolean).join(' · ');
     const workStartHourVal = p.workStartHour || workStartHourDefault;
     const workEndHourVal = p.workEndHour || workEndHourDefault;
 
@@ -2649,13 +2685,13 @@ export const generateMedicalTicketsPDF = async (
     const diaFinContratoFormatted = p.diaFinContrato ? formatDate(p.diaFinContrato) : (p.diaComienzo ? formatDate(p.diaComienzo) : '___/___/______');
     const sitio = p.sitioReconocimiento || 'UNIDAD MOVIL UBICADA EN BORNOS: NAVE DEL AYUNTAMIENTO, CALLE BLAS INFANTE S/N, BORNOS';
 
-    const workerName = '___________________________________________';
-    const workerDni = '___________________________';
+    const workerName = String(p.apellidosNombre || '').trim() || '________________________';
+    const workerDni = String(p.dni || '').trim() || '________________';
 
     renderInstitutionalReportHeader(
       doc,
       'COMUNICACIÓN DE CITACIÓN PARA RECONOCIMIENTO MÉDICO',
-      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      supervisorMeta,
       { subtitle: 'DESARROLLO LOCAL · GESTIÓN DE FONDOS PROFEA' },
     );
 
@@ -2744,7 +2780,7 @@ export const generateMedicalTicketsPDF = async (
     renderInstitutionalReportHeader(
       doc,
       'ANEXO · JUSTIFICANTE DE ENTREGA DE CITACIÓN MÉDICA',
-      `SUPERVISOR: ${p.supervisorResponsable || '-'} · TEL.: ${supervisorPhone}`,
+      supervisorMeta,
       { subtitle: 'ARCHIVO DE CONTRATACIÓN · GESTIÓN DE FONDOS PROFEA' },
     );
 
@@ -2835,13 +2871,33 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
     doc.setFontSize(6.7);
     doc.setTextColor(100, 116, 139);
     doc.text('Nombre y apellidos:', 22, annexY + 11);
-    doc.line(22, annexY + 15, 96, annexY + 15);
-    doc.text('DNI / NIE:', 22, annexY + 20);
-    doc.line(42, annexY + 20.5, 96, annexY + 20.5);
-    doc.text('Firma:', 22, annexY + 26);
-    doc.line(37, annexY + 26.5, 96, annexY + 26.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    const signatureWorkerName = String(p.apellidosNombre || '').trim();
+    if (signatureWorkerName) {
+      doc.text(doc.splitTextToSize(signatureWorkerName.toUpperCase(), 48).slice(0, 1), 48, annexY + 11);
+    } else {
+      doc.line(48, annexY + 11.5, 96, annexY + 11.5);
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text('DNI / NIE:', 22, annexY + 17);
+    const signatureWorkerDni = String(p.dni || '').trim();
+    if (signatureWorkerDni) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(signatureWorkerDni.toUpperCase(), 42, annexY + 17);
+    } else {
+      doc.line(42, annexY + 17.5, 96, annexY + 17.5);
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text('Firma:', 22, annexY + 24);
+    doc.line(37, annexY + 24.5, 96, annexY + 24.5);
     const sigDateStrAnnex = p.diaContratacion ? `Fecha: ${formatDate(p.diaContratacion)}` : 'Fecha: _____ / _____ / ________';
-    doc.text(sigDateStrAnnex, 22, annexY + 33);
+    doc.text(sigDateStrAnnex, 22, annexY + 32);
 
     // Right Box: Supervisor identity and signature
     doc.roundedRect(108, annexY, 84, annexSignatureH, 2, 2, 'S');
@@ -2857,7 +2913,7 @@ En prueba de conformidad y de haber recibido la citación correspondiente y las 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(15, 23, 42);
-    const supervisorLabel = p.supervisorResponsable ? p.supervisorResponsable.toUpperCase() : 'ENCARGADO DE OBRA';
+    const supervisorLabel = supervisorName && supervisorName !== '-' ? supervisorName.toUpperCase() : 'ENCARGADO DE OBRA';
     doc.text(doc.splitTextToSize(supervisorLabel, 73).slice(0, 2), 112, annexY + 15, { lineHeightFactor: 0.9 });
 
     doc.setFont('helvetica', 'normal');
@@ -3245,12 +3301,31 @@ export const generateStatsSummaryPDF = async ({
   doc.text('RESPONSABLE TÉCNICO / SUPERVISOR', 22, sigBoxY + 4);
   doc.line(22, sigBoxY + 5.4, 96, sigBoxY + 5.4);
 
+  const technicianSignature = getCachedTechnicianSettings();
+  const technicianSignatureName = technicianSignature.usarPorDefecto ? technicianSignature.nombreApellidos : '';
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('Firma:', 22, sigBoxY + 10.5);
-  doc.line(36, sigBoxY + 11, 96, sigBoxY + 11);
-  doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 18);
+  if (technicianSignatureName) {
+    doc.text('Técnico:', 22, sigBoxY + 9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(doc.splitTextToSize(technicianSignatureName.toUpperCase(), 56).slice(0, 1), 38, sigBoxY + 9.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    const technicianExtra = [
+      technicianSignature.numeroTrabajador ? `Nº ${technicianSignature.numeroTrabajador}` : '',
+      technicianSignature.zona ? technicianSignature.zona : '',
+    ].filter(Boolean).join(' · ');
+    if (technicianExtra) doc.text(technicianExtra, 22, sigBoxY + 13.5, { maxWidth: 74 });
+    doc.text('Firma:', 22, sigBoxY + 17);
+    doc.line(36, sigBoxY + 17.5, 96, sigBoxY + 17.5);
+    doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 20);
+  } else {
+    doc.text('Firma:', 22, sigBoxY + 10.5);
+    doc.line(36, sigBoxY + 11, 96, sigBoxY + 11);
+    doc.text('Fecha: _____ / _____ / ________', 22, sigBoxY + 18);
+  }
 
   // Signature box 2
   doc.roundedRect(110, sigBoxY, 82, compactSignatureH, 2, 2, 'S');

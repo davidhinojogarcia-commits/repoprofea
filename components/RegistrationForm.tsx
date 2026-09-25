@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, normalizeIban, normalizeSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
 import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 import { useAuthShell } from './AuthGate';
+import { buildWorkerMasterRecords, searchWorkerMasterRecords, type WorkerMasterRecord } from '../src/lib/workerMaster';
 
 interface RegistrationFormProps {
   onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>) => void;
@@ -170,6 +171,76 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [workerHistory, setWorkerHistory] = useState<Person[]>([]);
   const [isSameAnnualityActive, setIsSameAnnualityActive] = useState(false);
   const [isAutoFormedOnReturn, setIsAutoFormedOnReturn] = useState(false);
+  const [workerLookupField, setWorkerLookupField] = useState<'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban' | null>(null);
+  const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
+
+  const workerLookupQuery = workerLookupField ? String((formData as any)[workerLookupField] || '') : '';
+  const workerSuggestions = useMemo(
+    () => workerLookupField ? searchWorkerMasterRecords(workerMasterRecords, workerLookupQuery, 6) : [],
+    [workerLookupField, workerLookupQuery, workerMasterRecords]
+  );
+
+  const applyWorkerMasterRecord = (worker: WorkerMasterRecord) => {
+    setFormData(prev => ({
+      ...prev,
+      apellidosNombre: worker.apellidosNombre || prev.apellidosNombre,
+      dni: worker.dni || prev.dni,
+      fechaNacimiento: worker.fechaNacimiento || prev.fechaNacimiento,
+      telefono: worker.telefono || prev.telefono,
+      numeroSeguridadSocial: worker.numeroSeguridadSocial || prev.numeroSeguridadSocial,
+      iban: worker.iban || prev.iban,
+      calzado: worker.calzado && worker.calzado !== 'No necesita' ? worker.calzado : prev.calzado,
+      supervisorResponsable: supervisorName,
+      // Datos de contratación, PRL y reconocimiento se mantienen siempre separados.
+      numOferta: prev.numOferta,
+      obra: prev.obra,
+      categoria: prev.categoria,
+      quincena: prev.quincena,
+      periodoInicio: prev.periodoInicio,
+      periodoFin: prev.periodoFin,
+      formacion: prev.formacion,
+      lugarFormacion: prev.lugarFormacion,
+      necesitaReconocimiento: prev.necesitaReconocimiento,
+      citaDia: prev.citaDia,
+      citaHora: prev.citaHora,
+      sitioReconocimiento: prev.sitioReconocimiento,
+      documentacionCompleta: prev.documentacionCompleta,
+      observaciones: prev.observaciones,
+    }));
+    const contracts = (people || []).filter(p =>
+      p.dni.replace(/[\s-]/g, '').toUpperCase() === worker.dni.replace(/[\s-]/g, '').toUpperCase()
+    );
+    setMatchedWorkerName(worker.apellidosNombre);
+    setWorkerHistory(contracts);
+    setWorkerLookupField(null);
+  };
+
+  const renderWorkerSuggestions = (field: 'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban') => {
+    if (workerLookupField !== field || workerSuggestions.length === 0) return null;
+    return (
+      <div className="relative z-40">
+        <div className="absolute left-0 right-0 mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+          <div className="px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40 text-[10px] font-black uppercase tracking-wider text-[#00548E] dark:text-blue-300">
+            Trabajadores memorizados
+          </div>
+          {workerSuggestions.map(worker => (
+            <button
+              key={worker.key}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyWorkerMasterRecord(worker)}
+              className="w-full px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800 border-b last:border-b-0 border-slate-100 dark:border-slate-800"
+            >
+              <span className="block text-sm font-bold text-slate-900 dark:text-white">{worker.apellidosNombre || 'Trabajador'}</span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                DNI/NIE: {worker.dni || '-'} · Tel.: {worker.telefono || '-'} · {worker.contratos} contratación{worker.contratos === 1 ? '' : 'es'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const getContractYear = (p: Person): string => {
     if (p.periodoInicio) {
@@ -546,7 +617,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const cleanObras = useMemo(() => Array.from(new Set((savedObras || []).map(o => o.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedObras]);
   const cleanLugares = useMemo(() => Array.from(new Set((savedLugares || []).map(l => l.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedLugares]);
   const cleanSitios = useMemo(() => Array.from(new Set((savedSitios || []).map(s => s.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedSitios]);
-  const cleanTelefonos = useMemo(() => Array.from(new Set((savedTelefonos || []).map(t => t.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedTelefonos]);
+  const cleanTelefonos = useMemo(() => Array.from(new Set([
+    ...(people || []).map(person => String(person.telefono || '').trim()),
+    ...(savedTelefonos || []).map(t => t.trim()),
+  ].filter(Boolean))).sort((a: string, b: string) => a.localeCompare(b)), [people, savedTelefonos]);
   const cleanCategorias = useMemo(() => Array.from(new Set((savedCategorias || []).map(c => c.trim()))).sort((a: string, b: string) => a.localeCompare(b)), [savedCategorias]);
 
   return (
@@ -684,7 +758,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Apellidos y Nombre</label>
-            <input type="text" name="apellidosNombre" value={formData.apellidosNombre} onChange={handleChange} required placeholder="García López, Juan" className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400" />
+            <input type="text" name="apellidosNombre" value={formData.apellidosNombre} onFocus={() => setWorkerLookupField('apellidosNombre')} onBlur={() => window.setTimeout(() => setWorkerLookupField(null), 120)} onChange={handleChange} required placeholder="Escribe las primeras letras para buscar..." autoComplete="off" className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400" />
+            {renderWorkerSuggestions('apellidosNombre')}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -698,9 +773,12 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                   type="text" 
                   name="dni" 
                   value={formData.dni} 
-                  onChange={handleChange} 
+                  onChange={handleChange}
+                  onFocus={() => setWorkerLookupField('dni')}
+                  onBlur={() => window.setTimeout(() => setWorkerLookupField(null), 120)}
                   required 
-                  placeholder="12345678A o X1234567L" 
+                  autoComplete="off"
+                  placeholder="Escribe DNI/NIE o sus primeros caracteres" 
                   className={`w-full p-2.5 bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none transition-all text-sm font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400 ${
                     dniAnalysis.status === 'valid' 
                       ? 'border-emerald-500 focus:border-emerald-500 ring-2 ring-emerald-500/15 bg-emerald-50/10 dark:bg-emerald-950/10' 
@@ -725,6 +803,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                   </span>
                 )}
               </div>
+
+              {renderWorkerSuggestions('dni')}
 
               {/* Real-time Validation Visual Alerts */}
               {dniAnalysis.status === 'valid' && (
@@ -793,13 +873,15 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Nº Seguridad Social <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
-              <input id="nuss-input" type="text" name="numeroSeguridadSocial" value={formData.numeroSeguridadSocial || ''} onChange={handleChange} placeholder="11/12345678/90" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${nussAnalysis ? (nussAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
+              <input id="nuss-input" type="text" name="numeroSeguridadSocial" value={formData.numeroSeguridadSocial || ''} onFocus={() => setWorkerLookupField('numeroSeguridadSocial')} onBlur={() => window.setTimeout(() => setWorkerLookupField(null), 120)} onChange={handleChange} autoComplete="off" placeholder="Escribe para recuperar trabajador o NUSS" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${nussAnalysis ? (nussAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
+              {renderWorkerSuggestions('numeroSeguridadSocial')}
               {nussAnalysis && <p className={`text-[11px] font-semibold ${nussAnalysis.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{nussAnalysis.valid ? `✓ Número válido · ${formatSpanishSocialSecurityNumber(nussAnalysis.normalized)}` : `✕ ${nussAnalysis.error}`}</p>}
               {nussMatches.length > 0 && <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">⚠ Ya registrado en: {repeatedAdministrativeDataLabel(nussMatches)}.</p>}
             </div>
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">IBAN / Cuenta bancaria <span className="text-[10px] font-normal text-slate-400">(opcional)</span></label>
-              <input id="iban-input" type="text" name="iban" value={formData.iban || ''} onChange={handleChange} placeholder="ES00 0000 0000 0000 0000 0000" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${ibanAnalysis ? (ibanAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
+              <input id="iban-input" type="text" name="iban" value={formData.iban || ''} onFocus={() => setWorkerLookupField('iban')} onBlur={() => window.setTimeout(() => setWorkerLookupField(null), 120)} onChange={handleChange} autoComplete="off" placeholder="Escribe para recuperar trabajador o IBAN" className={`w-full p-2.5 rounded-xl focus:outline-none transition-all text-sm font-mono text-slate-800 dark:text-slate-100 ${ibanAnalysis ? (ibanAnalysis.valid ? 'border border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-2 border-red-500 bg-red-50/20 dark:bg-red-950/10') : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand-primary'}`} />
+              {renderWorkerSuggestions('iban')}
               {ibanAnalysis && <p className={`text-[11px] font-semibold ${ibanAnalysis.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{ibanAnalysis.valid ? `✓ IBAN válido · ${formatIban(ibanAnalysis.normalized)}` : `✕ ${ibanAnalysis.error}`}</p>}
               {ibanMatches.length > 0 && <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">⚠ Ya registrado en: {repeatedAdministrativeDataLabel(ibanMatches)}.</p>}
               <p className="text-[10px] text-slate-400">También puedes capturarlos desde Escáner → Seguridad Social / IBAN.</p>
@@ -809,7 +891,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Teléfono</label>
-              <input type="tel" name="telefono" value={formData.telefono} onChange={handleChange} required list="telefonosList" placeholder="600 000 000" className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400" />
+              <input type="tel" name="telefono" value={formData.telefono} onFocus={() => setWorkerLookupField('telefono')} onBlur={() => window.setTimeout(() => setWorkerLookupField(null), 120)} onChange={handleChange} required list="telefonosList" autoComplete="off" placeholder="Escribe para recuperar trabajador o teléfono" className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400" />
+              {renderWorkerSuggestions('telefono')}
               <datalist id="telefonosList">{cleanTelefonos.map((t, i) => <option key={i} value={t} />)}</datalist>
             </div>
             

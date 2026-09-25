@@ -30,6 +30,7 @@ import {
   X,
   Building2,
   UserCheck,
+  Users,
   Clock,
 } from "lucide-react";
 import { Person, DeletedPerson } from "../types";
@@ -45,10 +46,12 @@ import {
   getDocuments,
   updateDocument,
 } from "../src/services/databaseService";
-import { loadAppBusinessSettings, saveAppBusinessSettings } from "../src/services/appSettingsService";
+import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, saveAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
+import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
+import { buildWorkerMasterRecords, maskWorkerIban, maskWorkerNuss } from "../src/lib/workerMaster";
 import {
   getStoredReporteTecnicoConfig,
   saveStoredReporteTecnicoConfig,
@@ -120,14 +123,19 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   setToast,
   onImportWorkers,
 }) => {
+  const { supervisorName, profile, user } = useAuthShell();
+  const [supervisorForm, setSupervisorForm] = useState<SupervisorSettings>(DEFAULT_SUPERVISOR_SETTINGS);
+  const [technicianForm, setTechnicianForm] = useState<TechnicianSettings>(DEFAULT_TECHNICIAN_SETTINGS);
+  const [supervisorLoaded, setSupervisorLoaded] = useState(false);
+  const [technicianLoaded, setTechnicianLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | "obras"
     | "lugares"
     | "sitios"
-    | "telefonos"
+    | "trabajadores"
     | "categorias"
-    | "cuentas"
-    | "seguridad_social"
+    | "supervisor"
+    | "technician"
     | "horario"
     | "backup"
   >("lugares");
@@ -186,6 +194,33 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       );
   }, [setSavedObras]);
 
+  useEffect(() => {
+    let active = true;
+    void loadAppBusinessSettings()
+      .then((settings) => {
+        if (!active) return;
+        const configured = settings.supervisor || DEFAULT_SUPERVISOR_SETTINGS;
+        setSupervisorForm({
+          ...DEFAULT_SUPERVISOR_SETTINGS,
+          ...configured,
+          nombreApellidos: configured.nombreApellidos || supervisorName || "",
+          email: configured.email || profile?.email || user?.email || "",
+        });
+        setTechnicianForm({
+          ...DEFAULT_TECHNICIAN_SETTINGS,
+          ...(settings.technician || {}),
+        });
+      })
+      .catch((error) => console.error("No se pudo cargar la configuración del supervisor:", error))
+      .finally(() => {
+        if (active) {
+          setSupervisorLoaded(true);
+          setTechnicianLoaded(true);
+        }
+      });
+    return () => { active = false; };
+  }, [supervisorName, profile?.email, user?.email]);
+
   // State for parsed backup verification
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -235,6 +270,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         categorias: appSettings.savedCategorias,
         workStartHour: appSettings.workStartHour,
         workEndHour: appSettings.workEndHour,
+        supervisor: appSettings.supervisor,
+        technician: appSettings.technician,
         // Backward compatibility for backups created before v3.
         subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
@@ -465,6 +502,23 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     }
   };
 
+  const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
+  const filteredWorkerMasterRecords = useMemo(() => {
+    const q = searchTerm.trim().toLocaleLowerCase("es");
+    if (!q) return workerMasterRecords;
+    return workerMasterRecords.filter((worker) =>
+      [
+        worker.apellidosNombre,
+        worker.dni,
+        worker.fechaNacimiento,
+        worker.telefono,
+        worker.numeroSeguridadSocial,
+        worker.iban,
+        worker.calzado,
+      ].some((value) => String(value || "").toLocaleLowerCase("es").includes(q))
+    );
+  }, [workerMasterRecords, searchTerm]);
+
   const bankAccountCatalog = useMemo(() => {
     const rows = new Map<string, string[]>();
     people.forEach((person) => {
@@ -501,8 +555,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       .sort((a, b) => a.localeCompare(b, "es"));
   }, [people]);
 
-  const isReadOnlyAdministrativeCatalog =
-    activeTab === "cuentas" || activeTab === "seguridad_social";
+  const isReadOnlyAdministrativeCatalog = false;
 
   const tabs = [
     {
@@ -527,10 +580,10 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       setter: setSavedSitios,
     },
     {
-      id: "telefonos",
-      label: "Teléfonos",
-      icon: Phone,
-      list: savedTelefonos,
+      id: "trabajadores",
+      label: "Trabajadores",
+      icon: Users,
+      list: workerMasterRecords.map(worker => worker.apellidosNombre || worker.dni),
       setter: setSavedTelefonos,
     },
     {
@@ -539,20 +592,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       icon: Briefcase,
       list: savedCategorias,
       setter: setSavedCategorias,
-    },
-    {
-      id: "cuentas",
-      label: "Cuentas bancarias",
-      icon: Database,
-      list: bankAccountCatalog,
-      setter: setSavedTelefonos,
-    },
-    {
-      id: "seguridad_social",
-      label: "Seguridad Social",
-      icon: UserCheck,
-      list: socialSecurityCatalog,
-      setter: setSavedTelefonos,
     },
   ] as const;
 
@@ -854,6 +893,46 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           <button
             onClick={() => {
+              setActiveTab("supervisor");
+              setSearchTerm("");
+              setNewItem("");
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+              ${activeTab === "supervisor"
+                ? "profea-sidebar-item--active text-white"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"}
+            `}
+          >
+            <UserCheck className={`w-5 h-5 ${activeTab === "supervisor" ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+            Supervisor responsable
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("technician");
+              setSearchTerm("");
+              setNewItem("");
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+              ${activeTab === "technician"
+                ? "profea-sidebar-item--active text-white"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"}
+            `}
+          >
+            <Briefcase className={`w-5 h-5 ${activeTab === "technician" ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+            Técnico responsable
+          </button>
+
+          <button
+            onClick={() => {
               setActiveTab("horario");
               setSearchTerm("");
               setNewItem("");
@@ -903,7 +982,237 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          {activeTab === "horario" ? (
+          {activeTab === "trabajadores" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Users className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Ficha maestra de trabajadores
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-3xl">
+                  Una persona mantiene una sola identidad. Aquí se consolidan sus datos personales permanentes; obra, categoría, periodos, SAE y aptitud médica siguen perteneciendo a cada contratación o historial.
+                </p>
+              </div>
+
+              <div className="p-6">
+                <div className="relative mb-5">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar por nombre, DNI/NIE, teléfono, Seguridad Social, IBAN o talla..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                  />
+                </div>
+
+                <div className="mb-5 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4">
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{workerMasterRecords.length} personas únicas memorizadas</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Los datos proceden del Directorio existente. No se crea una segunda base duplicada: al volver a contratar a una persona, GestionProfea recupera estos datos y solo pide los datos de la nueva contratación.
+                  </p>
+                </div>
+
+                <div className="space-y-3 max-h-[650px] overflow-y-auto pr-1">
+                  {filteredWorkerMasterRecords.map((worker) => (
+                    <div key={worker.key} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                        <div>
+                          <p className="font-black text-slate-900 dark:text-white">{worker.apellidosNombre || "Trabajador sin nombre"}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">DNI/NIE: <span className="font-bold text-slate-700 dark:text-slate-200">{worker.dni || "-"}</span></p>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <p className="text-[11px] font-bold text-[#00548E] dark:text-blue-300">{worker.contratos} contratación{worker.contratos === 1 ? "" : "es"}</p>
+                          {worker.ultimaContratacion && <p className="text-[10px] text-slate-400">Última: {worker.ultimaContratacion.split("-").reverse().join("/")}</p>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 mt-4 text-xs">
+                        <p><span className="text-slate-400">Fecha nacimiento:</span> <strong className="text-slate-700 dark:text-slate-200">{worker.fechaNacimiento ? worker.fechaNacimiento.split("-").reverse().join("/") : "-"}</strong></p>
+                        <p><span className="text-slate-400">Teléfono:</span> <strong className="text-slate-700 dark:text-slate-200">{worker.telefono || "-"}</strong></p>
+                        <p><span className="text-slate-400">Talla calzado:</span> <strong className="text-slate-700 dark:text-slate-200">{worker.calzado || "-"}</strong></p>
+                        <p><span className="text-slate-400">Seguridad Social:</span> <strong className="text-slate-700 dark:text-slate-200">{maskWorkerNuss(worker.numeroSeguridadSocial)}</strong></p>
+                        <p className="sm:col-span-2"><span className="text-slate-400">Cuenta bancaria:</span> <strong className="text-slate-700 dark:text-slate-200">{maskWorkerIban(worker.iban)}</strong></p>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredWorkerMasterRecords.length === 0 && (
+                    <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">No se han encontrado trabajadores con ese criterio.</div>
+                  )}
+                </div>
+
+                <p className="mt-5 text-[11px] text-slate-400">
+                  Por seguridad, la cuenta bancaria y el número de Seguridad Social se muestran parcialmente ocultos en este listado. La edición completa sigue realizándose desde la ficha del trabajador en el Directorio.
+                </p>
+              </div>
+            </div>
+          ) : activeTab === "supervisor" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <UserCheck className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Datos del supervisor responsable
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                  Estos datos serán la referencia común del supervisor en citaciones, informes y pantallas de GestionProfea.
+                </p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    ["nombreApellidos", "Nombre y apellidos", "Ej: David Hinojo García", "text"],
+                    ["telefono", "Teléfono", "Ej: 600 123 456", "tel"],
+                    ["zona", "Zona / ámbito territorial", "Ej: Sierra de Cádiz", "text"],
+                    ["cargo", "Cargo / puesto", "Ej: Supervisor PROFEA", "text"],
+                    ["email", "Correo electrónico profesional", "correo@dipucadiz.es", "email"],
+                    ["identificacionInterna", "Nº empleado / identificación interna", "Opcional", "text"],
+                  ].map(([key, label, placeholder, type]) => (
+                    <label key={key} className="space-y-2">
+                      <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">{label}</span>
+                      <input
+                        type={type}
+                        value={String((supervisorForm as any)[key] || "")}
+                        onChange={(e) => setSupervisorForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <label className="flex items-start gap-3 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={supervisorForm.usarPorDefecto}
+                    onChange={(e) => setSupervisorForm((prev) => ({ ...prev, usarPorDefecto: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#00548E]"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Usar como supervisor responsable por defecto</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">El nombre, teléfono, zona, cargo y correo se reutilizarán automáticamente en los apartados e informes que necesiten identificar al supervisor.</span>
+                  </span>
+                </label>
+
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00548E] dark:text-blue-300">Previsualización</p>
+                  <p className="mt-2 text-base font-black text-slate-900 dark:text-white">{supervisorForm.nombreApellidos || "Supervisor responsable"}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{supervisorForm.cargo || "Supervisor PROFEA"}</p>
+                  {supervisorForm.zona && <p className="text-sm text-slate-600 dark:text-slate-300">Zona: {supervisorForm.zona}</p>}
+                  {supervisorForm.telefono && <p className="text-sm text-slate-600 dark:text-slate-300">Tel.: {supervisorForm.telefono}</p>}
+                  {supervisorForm.email && <p className="text-sm text-slate-600 dark:text-slate-300">{supervisorForm.email}</p>}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!supervisorLoaded}
+                    onClick={async () => {
+                      if (!supervisorForm.nombreApellidos.trim()) {
+                        setToast?.({ message: "Indica el nombre y apellidos del supervisor.", type: "error" });
+                        return;
+                      }
+                      try {
+                        await saveAppBusinessSettings({ supervisor: supervisorForm });
+                        window.dispatchEvent(new CustomEvent("profea:supervisor-settings-updated"));
+                        setToast?.({ message: "Datos del supervisor guardados y disponibles para toda la aplicación.", type: "success" });
+                      } catch (error) {
+                        console.error("No se pudieron guardar los datos del supervisor:", error);
+                        setToast?.({ message: "No se pudieron guardar los datos del supervisor.", type: "error" });
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#00436f] transition-colors disabled:opacity-60"
+                  >
+                    <Save className="w-4 h-4" />
+                    Guardar supervisor
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "technician" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Briefcase className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Datos del técnico responsable
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                  Se utilizarán automáticamente en los informes y campos donde corresponda identificar al técnico responsable.
+                </p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    ["nombreApellidos", "Nombre y apellidos", "Nombre completo", "text"],
+                    ["telefono", "Teléfono", "Ej: 600 123 456", "tel"],
+                    ["zona", "Zona / ámbito territorial", "Ej: Sierra de Cádiz", "text"],
+                    ["cargo", "Cargo / puesto", "Ej: Técnico responsable", "text"],
+                    ["email", "Correo electrónico profesional", "correo@dipucadiz.es", "email"],
+                    ["numeroTrabajador", "Nº de trabajador / empleado", "Opcional", "text"],
+                    ["titulacion", "Titulación / especialidad", "Ej: Arquitecto técnico / Ingeniero técnico", "text"],
+                  ].map(([key, label, placeholder, type]) => (
+                    <label key={key} className="space-y-2">
+                      <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">{label}</span>
+                      <input
+                        type={type}
+                        value={String((technicianForm as any)[key] || "")}
+                        onChange={(e) => setTechnicianForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <label className="flex items-start gap-3 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={technicianForm.usarPorDefecto}
+                    onChange={(e) => setTechnicianForm((prev) => ({ ...prev, usarPorDefecto: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#00548E]"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Usar como técnico responsable por defecto</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">Los datos se reutilizarán automáticamente en los informes y apartados que tengan un campo de técnico responsable.</span>
+                  </span>
+                </label>
+
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00548E] dark:text-blue-300">Previsualización</p>
+                  <p className="mt-2 text-base font-black text-slate-900 dark:text-white">{technicianForm.nombreApellidos || "Técnico responsable"}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{technicianForm.cargo || "Técnico responsable"}</p>
+                  {technicianForm.titulacion && <p className="text-sm text-slate-600 dark:text-slate-300">{technicianForm.titulacion}</p>}
+                  {technicianForm.zona && <p className="text-sm text-slate-600 dark:text-slate-300">Zona: {technicianForm.zona}</p>}
+                  {technicianForm.telefono && <p className="text-sm text-slate-600 dark:text-slate-300">Tel.: {technicianForm.telefono}</p>}
+                  {technicianForm.email && <p className="text-sm text-slate-600 dark:text-slate-300">{technicianForm.email}</p>}
+                  {technicianForm.numeroTrabajador && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Nº trabajador: {technicianForm.numeroTrabajador}</p>}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!technicianLoaded}
+                    onClick={async () => {
+                      if (!technicianForm.nombreApellidos.trim()) {
+                        setToast?.({ message: "Indica el nombre y apellidos del técnico responsable.", type: "error" });
+                        return;
+                      }
+                      try {
+                        await saveAppBusinessSettings({ technician: technicianForm });
+                        window.dispatchEvent(new CustomEvent("profea:technician-settings-updated"));
+                        setToast?.({ message: "Datos del técnico guardados y disponibles para los informes.", type: "success" });
+                      } catch (error) {
+                        console.error("No se pudieron guardar los datos del técnico:", error);
+                        setToast?.({ message: "No se pudieron guardar los datos del técnico.", type: "error" });
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#00436f] transition-colors disabled:opacity-60"
+                  >
+                    <Save className="w-4 h-4" />
+                    Guardar técnico
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "horario" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">

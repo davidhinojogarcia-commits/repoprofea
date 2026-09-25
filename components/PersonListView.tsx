@@ -425,10 +425,24 @@ export const PersonList: React.FC<PersonListProps> = ({
   );
 
   useEffect(() => {
+    const scope = {
+      ids: administrativeExportScopeIds,
+      filteredIds: filteredPeople.map(person => person.id),
+      selectedIds: selectedIds.filter(id => filteredPeople.some(person => person.id === id)),
+      hasSelection: isSelectionActive,
+      updatedAt: Date.now(),
+    };
+    // Fuente síncrona para que la relación administrativa use exactamente
+    // el mismo conjunto que el resto de exportaciones del Directorio.
+    (window as any).__profeaDirectoryExportScope = scope;
     window.dispatchEvent(new CustomEvent('profea:directory-export-scope', {
-      detail: { ids: administrativeExportScopeIds },
+      detail: scope,
     }));
-  }, [administrativeExportScopeIds]);
+    return () => {
+      const current = (window as any).__profeaDirectoryExportScope;
+      if (current?.updatedAt === scope.updatedAt) delete (window as any).__profeaDirectoryExportScope;
+    };
+  }, [administrativeExportScopeIds, filteredPeople, selectedIds, isSelectionActive]);
 
   const visibleSelectedCount = filteredPeople.filter(p => selectedIds.includes(p.id)).length;
   const isAllVisibleSelected = filteredPeople.length > 0 && visibleSelectedCount === filteredPeople.length;

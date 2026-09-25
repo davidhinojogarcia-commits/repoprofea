@@ -50,8 +50,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   onUpdateWorkStartHour,
   onUpdateSavedTelefonos
 }) => {
-  const { supervisorName, profile } = useAuthShell();
-  const accountSupervisorPhone = String(profile.telefono || '').trim();
+  const { supervisorName, profile, supervisorSettings } = useAuthShell();
+  const accountSupervisorPhone = String(supervisorSettings.telefono || profile.telefono || '').trim();
   // Mode selection: 'ai', 'manual' or 'reconocimientos'
   const [activeTab, setActiveTab] = useState<'ai' | 'manual' | 'reconocimientos'>('reconocimientos');
   
@@ -86,6 +86,10 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   });
   const manualSupervisor = supervisorName;
   const [manualTelefonoSupervisor, setManualTelefonoSupervisor] = useState<string>(accountSupervisorPhone);
+
+  useEffect(() => {
+    if (accountSupervisorPhone) setManualTelefonoSupervisor(accountSupervisorPhone);
+  }, [accountSupervisorPhone]);
   const [manualDiaContratacion, setManualDiaContratacion] = useState<string>('');
   const [manualQuincena, setManualQuincena] = useState<string>(() => {
     const today = new Date();
@@ -477,8 +481,8 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
             <span className="text-xs font-bold tracking-widest uppercase text-blue-200">ÁREA DE COOPERACIÓN | GESTIÓN PROFEA DIPUTACIÓN DE CÁDIZ</span>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Citaciones para Reconocimiento Médico</h1>
             <p className="text-sm text-blue-100 max-w-2xl font-medium">
-              Gestione y genere de forma ágil, rápida y anónima los resguardos para el reconocimiento médico. 
-              Los tickets son 100% anónimos para rellenar a mano el día de la firma del contrato PROFEA.
+              Gestione y genere de forma ágil los resguardos para el reconocimiento médico.
+              Cuando la citación parte de una ficha de trabajador, sus datos se incorporan al justificante; los lotes genéricos pueden seguir generándose en blanco.
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/15">
@@ -487,7 +491,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
             </div>
             <div>
               <div className="text-xs font-bold text-blue-200">DOCUMENTO OFICIAL</div>
-              <div className="text-sm font-bold">Fichas en Blanco (A4)</div>
+              <div className="text-sm font-bold">Citación + justificante (A4)</div>
             </div>
           </div>
         </div>
@@ -1251,7 +1255,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           </span>
           <ul className="space-y-2 text-[11px] text-slate-600 dark:text-slate-400 list-inside list-disc">
             <li>
-              <strong className="text-slate-700 dark:text-slate-300">Documento de 2 Páginas (A4)</strong>: El PDF incluye la Comunicación oficial y un Anexo legal de justificante de entrega con casillas de firma pre-rellenadas de manera autónoma.
+              <strong className="text-slate-700 dark:text-slate-300">Documento de 2 Páginas (A4)</strong>: El PDF incluye la comunicación oficial y un anexo de justificante de entrega. Si existen datos del trabajador, nombre y DNI/NIE se muestran en el justificante; la firma manuscrita permanece libre.
             </li>
             <li>
               <strong className="text-slate-700 dark:text-slate-300">Totalmente Autónomo</strong>: Se descargará directamente al ordenador en un solo clic, listo para abrir e imprimir en papel.
