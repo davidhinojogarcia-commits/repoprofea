@@ -6,7 +6,7 @@ import { authErrorMessage, getUserProfile, signInWithEmail, signOutUser, subscri
 import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
 import { hydrateStoredPdfConfig } from '../src/lib/exportUtils';
 import { clearUserActivity, initializeUserActivity, useIdleTimeout } from '../src/hooks/useIdleTimeout';
-import { DEFAULT_SUPERVISOR_SETTINGS, loadAppBusinessSettings, type SupervisorSettings } from '../src/services/appSettingsService';
+import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from '../src/services/appSettingsService';
 
 interface AuthGateProps { children: React.ReactNode; }
 
@@ -16,6 +16,7 @@ export interface AuthShellValue {
   profile: AuthProfile;
   supervisorName: string;
   supervisorSettings: SupervisorSettings;
+  technicianSettings: TechnicianSettings;
   signingOut: boolean;
   signOut: () => Promise<void>;
 }
@@ -32,6 +33,7 @@ export function AuthGate({ children }: AuthGateProps) {
   const [role, setRole] = useState<AppRole | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [supervisorSettings, setSupervisorSettings] = useState<SupervisorSettings>(DEFAULT_SUPERVISOR_SETTINGS);
+  const [technicianSettings, setTechnicianSettings] = useState<TechnicianSettings>(DEFAULT_TECHNICIAN_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,6 +76,7 @@ export function AuthGate({ children }: AuthGateProps) {
             loadAppBusinessSettings().catch(err => { console.warn('No se pudo precargar la configuración del supervisor:', err); return null; }),
           ]);
           if (businessSettings?.supervisor) setSupervisorSettings(businessSettings.supervisor);
+          if (businessSettings?.technician) setTechnicianSettings(businessSettings.technician);
           if (validationId !== authValidationRef.current) return;
         }
         setRole(currentRole);
@@ -99,6 +102,7 @@ export function AuthGate({ children }: AuthGateProps) {
         setRole(null);
         setProfile(null);
         setSupervisorSettings(DEFAULT_SUPERVISOR_SETTINGS);
+        setTechnicianSettings(DEFAULT_TECHNICIAN_SETTINGS);
         setSigningOut(false);
         setLoading(false);
         if (explicitSignOutRef.current) {
@@ -142,8 +146,17 @@ export function AuthGate({ children }: AuthGateProps) {
         .then(settings => setSupervisorSettings(settings.supervisor || DEFAULT_SUPERVISOR_SETTINGS))
         .catch(err => console.warn('No se pudo recargar la configuración del supervisor:', err));
     };
+    const reloadTechnician = () => {
+      void loadAppBusinessSettings()
+        .then(settings => setTechnicianSettings(settings.technician || DEFAULT_TECHNICIAN_SETTINGS))
+        .catch(err => console.warn('No se pudo recargar la configuración del técnico:', err));
+    };
     window.addEventListener('profea:supervisor-settings-updated', reloadSupervisor);
-    return () => window.removeEventListener('profea:supervisor-settings-updated', reloadSupervisor);
+    window.addEventListener('profea:technician-settings-updated', reloadTechnician);
+    return () => {
+      window.removeEventListener('profea:supervisor-settings-updated', reloadSupervisor);
+      window.removeEventListener('profea:technician-settings-updated', reloadTechnician);
+    };
   }, []);
 
   const handleIdleTimeout = useCallback(async () => {
@@ -273,7 +286,7 @@ export function AuthGate({ children }: AuthGateProps) {
     const minutes = Math.floor(seconds / 60);
     const secs = String(seconds % 60).padStart(2, '0');
     return (
-      <AuthShellContext.Provider value={{ user, role, profile, supervisorName, supervisorSettings, signingOut, signOut: handleSignOut }}>
+      <AuthShellContext.Provider value={{ user, role, profile, supervisorName, supervisorSettings, technicianSettings, signingOut, signOut: handleSignOut }}>
         <div className="min-h-screen">{children}</div>
         {warningOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-title">
