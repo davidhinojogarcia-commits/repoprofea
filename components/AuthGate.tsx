@@ -6,6 +6,7 @@ import { authErrorMessage, getUserProfile, signInWithEmail, signOutUser, subscri
 import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
 import { hydrateStoredPdfConfig } from '../src/lib/exportUtils';
 import { clearUserActivity, initializeUserActivity, useIdleTimeout } from '../src/hooks/useIdleTimeout';
+import { DEFAULT_SUPERVISOR_SETTINGS, loadAppBusinessSettings, type SupervisorSettings } from '../src/services/appSettingsService';
 
 interface AuthGateProps { children: React.ReactNode; }
 
@@ -14,6 +15,7 @@ export interface AuthShellValue {
   role: AppRole;
   profile: AuthProfile;
   supervisorName: string;
+  supervisorSettings: SupervisorSettings;
   signingOut: boolean;
   signOut: () => Promise<void>;
 }
@@ -29,6 +31,7 @@ export function AuthGate({ children }: AuthGateProps) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
+  const [supervisorSettings, setSupervisorSettings] = useState<SupervisorSettings>(DEFAULT_SUPERVISOR_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -65,10 +68,12 @@ export function AuthGate({ children }: AuthGateProps) {
         if (validationId !== authValidationRef.current) return;
         setProfile(currentProfile);
         if (currentRole) {
-          await Promise.all([
+          const [, , businessSettings] = await Promise.all([
             hydrateStoredSubcontratasPreferences().catch(err => console.warn('No se pudieron precargar preferencias de subcontratas:', err)),
             hydrateStoredPdfConfig().catch(err => console.warn('No se pudo precargar la configuración PDF:', err)),
+            loadAppBusinessSettings().catch(err => { console.warn('No se pudo precargar la configuración del supervisor:', err); return null; }),
           ]);
+          if (businessSettings?.supervisor) setSupervisorSettings(businessSettings.supervisor);
           if (validationId !== authValidationRef.current) return;
         }
         setRole(currentRole);
@@ -93,6 +98,7 @@ export function AuthGate({ children }: AuthGateProps) {
         setUser(null);
         setRole(null);
         setProfile(null);
+        setSupervisorSettings(DEFAULT_SUPERVISOR_SETTINGS);
         setSigningOut(false);
         setLoading(false);
         if (explicitSignOutRef.current) {
@@ -128,6 +134,16 @@ export function AuthGate({ children }: AuthGateProps) {
       unsubscribe();
       if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const reloadSupervisor = () => {
+      void loadAppBusinessSettings()
+        .then(settings => setSupervisorSettings(settings.supervisor || DEFAULT_SUPERVISOR_SETTINGS))
+        .catch(err => console.warn('No se pudo recargar la configuración del supervisor:', err));
+    };
+    window.addEventListener('profea:supervisor-settings-updated', reloadSupervisor);
+    return () => window.removeEventListener('profea:supervisor-settings-updated', reloadSupervisor);
   }, []);
 
   const handleIdleTimeout = useCallback(async () => {
@@ -241,7 +257,7 @@ export function AuthGate({ children }: AuthGateProps) {
   }
 
   if (user && role && profile) {
-    const supervisorName =
+    const accountSupervisorName =
       [profile.nombre, profile.apellidos]
         .filter(Boolean)
         .join(' ')
@@ -250,11 +266,14 @@ export function AuthGate({ children }: AuthGateProps) {
       profile.email ||
       user.email ||
       'Supervisor';
+    const supervisorName = supervisorSettings.usarPorDefecto && supervisorSettings.nombreApellidos
+      ? supervisorSettings.nombreApellidos
+      : accountSupervisorName;
     const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
     const minutes = Math.floor(seconds / 60);
     const secs = String(seconds % 60).padStart(2, '0');
     return (
-      <AuthShellContext.Provider value={{ user, role, profile, supervisorName, signingOut, signOut: handleSignOut }}>
+      <AuthShellContext.Provider value={{ user, role, profile, supervisorName, supervisorSettings, signingOut, signOut: handleSignOut }}>
         <div className="min-h-screen">{children}</div>
         {warningOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-title">
