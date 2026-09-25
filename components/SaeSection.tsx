@@ -337,6 +337,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           "Preseleccionado",
           "1ª Quincena",
           "2ª Quincena",
+          "Mensual",
           "Contratado",
         ].includes(c.estado),
       ).length,
@@ -656,26 +657,31 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         quincena: parsed.quincena,
         categoria: parsed.categoria,
       },
-      parsed.candidates.map((candidate) => ({
-        orderNumber: candidate.orderNumber,
-        fullNameOriginal: candidate.fullNameOriginal,
-        normalizedName: candidate.normalizedName,
-        apellidos: candidate.apellidos,
-        nombre: candidate.nombre,
-        categoria: parsed.categoria,
-        obra: parsed.obra || targetNeed.obra,
-        codigoObra: parsed.codigoObra || targetNeed.codigoObra,
-        offerNumber: parsed.offerNumber,
-        mes: parsed.mes || targetNeed.mes,
-        quincena: "",
-        estado: "Sin asignar",
-        resultCode: "",
-        linkedWorkerId: null,
-        pageNumber: candidate.pageNumber,
-        overlayX: candidate.overlayX,
-        overlayY: candidate.overlayY,
-        confidence: candidate.confidence,
-      })),
+      parsed.candidates.map((candidate) => {
+        const isQualified =
+          Boolean(parsed.categoria) &&
+          !/\bpeon(?:es)?\b/i.test(normalizeSaeTextForPeriod(parsed.categoria));
+        return {
+          orderNumber: candidate.orderNumber,
+          fullNameOriginal: candidate.fullNameOriginal,
+          normalizedName: candidate.normalizedName,
+          apellidos: candidate.apellidos,
+          nombre: candidate.nombre,
+          categoria: parsed.categoria,
+          obra: parsed.obra || targetNeed.obra,
+          codigoObra: parsed.codigoObra || targetNeed.codigoObra,
+          offerNumber: parsed.offerNumber,
+          mes: parsed.mes || targetNeed.mes,
+          quincena: isQualified ? "Mensual" : "",
+          estado: isQualified ? "Mensual" : "Sin asignar",
+          resultCode: "",
+          linkedWorkerId: null,
+          pageNumber: candidate.pageNumber,
+          overlayX: candidate.overlayX,
+          overlayY: candidate.overlayY,
+          confidence: candidate.confidence,
+        };
+      }),
     );
 
     const period =
@@ -1851,21 +1857,39 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {["", "1ª Quincena", "2ª Quincena"].map((q) => (
-                              <button
-                                key={q || "none"}
-                                disabled={c.estado === "Contratado" || selectedReportLocked}
-                                onClick={() =>
-                                  void patchCandidate(c, {
-                                    quincena: q,
-                                    estado: q || "Sin asignar",
-                                  })
-                                }
-                                className={`px-3 py-2 rounded-lg text-xs font-bold border disabled:opacity-50 ${c.quincena === q ? "bg-[#00548E] text-white" : ""}`}
-                              >
-                                {q || "Sin asignar"}
-                              </button>
-                            ))}
+                            {(() => {
+                              const isQualified =
+                                Boolean(c.categoria) &&
+                                !/\bpeon(?:es)?\b/i.test(normalizeSaeTextForPeriod(c.categoria));
+                              const options = isQualified
+                                ? ["Mensual"]
+                                : ["1ª Quincena", "2ª Quincena"];
+                              const effectivePeriod =
+                                c.quincena || (isQualified ? "Mensual" : "");
+
+                              return options.map((q) => {
+                                const active = effectivePeriod === q;
+                                return (
+                                  <button
+                                    key={q}
+                                    disabled={c.estado === "Contratado" || selectedReportLocked}
+                                    onClick={() =>
+                                      void patchCandidate(c, {
+                                        quincena: q,
+                                        estado: q,
+                                      })
+                                    }
+                                    className={`px-4 py-2.5 rounded-xl text-xs font-black border-2 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                      active
+                                        ? "bg-[#00548E] border-[#00548E] text-white shadow-[#00548E]/20"
+                                        : "bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-700 text-[#00548E] dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                    }`}
+                                  >
+                                    {q}
+                                  </button>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                         <div className="mt-3 grid md:grid-cols-[1fr_auto] gap-3 items-end">
