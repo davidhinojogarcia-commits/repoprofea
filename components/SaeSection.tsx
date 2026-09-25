@@ -1760,15 +1760,29 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                 <button
                                   type="button"
                                   onClick={() => setSelectedReportId(r.id)}
-                                  className="w-full text-left"
+                                  aria-pressed={isSelected}
+                                  className={`sae-report-selector w-full text-left rounded-xl border-2 px-3.5 py-3 transition-all shadow-sm ${isSelected
+                                    ? "border-[#00548E] bg-[#00548E] text-white shadow-md ring-2 ring-[#00548E]/20 dark:border-sky-300 dark:bg-sky-700 dark:text-white dark:ring-sky-400/25"
+                                    : "border-slate-300 bg-white text-slate-900 hover:border-[#00548E] hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-sky-400 dark:hover:bg-slate-700"}`}
                                 >
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <div className="font-bold text-sm">{r.fileName}</div>
-                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isFinalized ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"}`}>
-                                      {isFinalized ? "Finalizado" : "En revisión"}
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                      <div className="font-black text-sm break-all">{r.fileName}</div>
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected
+                                        ? "bg-white/95 text-slate-900 border border-white"
+                                        : isFinalized
+                                          ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100"
+                                          : "bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100"}`}>
+                                        {isFinalized ? "Finalizado" : "En revisión"}
+                                      </span>
+                                    </div>
+                                    <span className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${isSelected
+                                      ? "bg-white text-[#003f6b]"
+                                      : "bg-[#00548E] text-white dark:bg-sky-500 dark:text-slate-950"}`}>
+                                      {isSelected ? "Seleccionado" : "Seleccionar informe"}
                                     </span>
                                   </div>
-                                  <div className="mt-1 text-xs text-slate-500">
+                                  <div className={`mt-2 text-xs font-semibold ${isSelected ? "text-blue-50 dark:text-white" : "text-slate-700 dark:text-slate-200"}`}>
                                     Oferta {r.offerNumber || "—"} · {reportCandidates.length} candidatos · {r.categoria || "Categoría no detectada"}
                                     {r.versions?.length ? ` · ${r.versions.length} versión(es) finalizada(s)` : ""}
                                   </div>

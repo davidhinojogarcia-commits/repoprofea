@@ -198,6 +198,30 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         technician: config.technician && typeof config.technician === 'object'
           ? { ...current.technician, ...config.technician }
           : current.technician,
+        administrative: config.administrative && typeof config.administrative === 'object'
+          ? { ...current.administrative, ...config.administrative }
+          : current.administrative,
+        medicalProvider: config.medicalProvider && typeof config.medicalProvider === 'object'
+          ? { ...current.medicalProvider, ...config.medicalProvider }
+          : current.medicalProvider,
+        footwearProvider: config.footwearProvider && typeof config.footwearProvider === 'object'
+          ? { ...current.footwearProvider, ...config.footwearProvider }
+          : current.footwearProvider,
+        trainingProvider: config.trainingProvider && typeof config.trainingProvider === 'object'
+          ? { ...current.trainingProvider, ...config.trainingProvider }
+          : current.trainingProvider,
+        administrative: config.administrative && typeof config.administrative === 'object'
+          ? { ...current.administrative, ...config.administrative }
+          : current.administrative,
+        medicalProvider: config.medicalProvider && typeof config.medicalProvider === 'object'
+          ? { ...current.medicalProvider, ...config.medicalProvider }
+          : current.medicalProvider,
+        footwearProvider: config.footwearProvider && typeof config.footwearProvider === 'object'
+          ? { ...current.footwearProvider, ...config.footwearProvider }
+          : current.footwearProvider,
+        trainingProvider: config.trainingProvider && typeof config.trainingProvider === 'object'
+          ? { ...current.trainingProvider, ...config.trainingProvider }
+          : current.trainingProvider,
       } : {
         savedObras: Array.isArray(config.obras) ? config.obras : [],
         savedLugares: Array.isArray(config.lugares) ? config.lugares : [],

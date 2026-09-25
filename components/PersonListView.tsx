@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Person } from '../types';
-import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, Upload, History, Cloud, Loader2, Undo2, Redo2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
+import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, Undo2, Redo2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleCalendarModal } from './GoogleCalendarModal';
@@ -10,6 +10,7 @@ import { VirtualPersonList } from './VirtualPersonList';
 import { PersonTable } from './PersonTable';
 import { CompactPersonCard } from './CompactPersonCard';
 import { BulkShareButton } from './BulkShareButton';
+import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
 
 interface PersonListProps {
   people: Person[];
@@ -648,9 +649,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                    )}
                  </div>
                )}
-               <button onClick={() => onEmail(peopleToExport)} className={`flex-1 md:flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 ring-2 ring-indigo-500/20 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'}`}>
-                  <Mail className="w-4 h-4 mr-2 text-[#00548E] dark:text-blue-400" /> Gmail{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-               </button>
+
 
           </div>
           <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
@@ -663,6 +662,14 @@ export const PersonList: React.FC<PersonListProps> = ({
                    <button onClick={() => onExport(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-emerald-500/20' : ''}`}>
                       <Download className="w-3 h-3 mr-1.5" /> Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
                    </button>
+                   <button
+                     type="button"
+                     onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
+                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-slate-950 dark:border-emerald-300 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
+                     title="Generar el PDF y compartirlo con el recurso preventivo configurado"
+                   >
+                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                   </button>
                  </div>
                  <div className="directorio-export-row flex items-center justify-end gap-2">
                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Reconocimientos Médicos:</span>
@@ -671,6 +678,14 @@ export const PersonList: React.FC<PersonListProps> = ({
                    </button>
                    <button onClick={() => onExportRRMMExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
                       <Download className="w-3 h-3 mr-1.5" /> Excel
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => void sendDirectoryCommunication('medical' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
+                     title="Generar PDF y preparar el envío al contacto configurado"
+                   >
+                     <Mail className="w-3.5 h-3.5" /> Mail
                    </button>
                  </div>
                  <div className="directorio-export-row flex items-center justify-end gap-2">
@@ -681,6 +696,14 @@ export const PersonList: React.FC<PersonListProps> = ({
                    <button onClick={() => onExportCalzadoExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
                       <Download className="w-3 h-3 mr-1.5" /> Excel
                    </button>
+                   <button
+                     type="button"
+                     onClick={() => void sendDirectoryCommunication('footwear' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
+                     title="Generar PDF y preparar el envío al contacto configurado"
+                   >
+                     <Mail className="w-3.5 h-3.5" /> Mail
+                   </button>
                  </div>
                  <div className="directorio-export-row flex items-center justify-end gap-2">
                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Formación PRL 20h:</span>
@@ -689,6 +712,14 @@ export const PersonList: React.FC<PersonListProps> = ({
                    </button>
                    <button onClick={() => onExportPRLExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
                       <Download className="w-3 h-3 mr-1.5" /> Excel
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => void sendDirectoryCommunication('training' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
+                     title="Generar PDF y preparar el envío al contacto configurado"
+                   >
+                     <Mail className="w-3.5 h-3.5" /> Mail
                    </button>
                  </div>
                </div>

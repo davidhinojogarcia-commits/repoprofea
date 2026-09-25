@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
 import { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } from '../src/lib/administrativeRelationExport';
+import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
 
 const workerIdFromNode = (node: Element | null): number | null => {
   if (!node) return null;
@@ -52,10 +53,10 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
-      #directorio-section .directorio-export-row{display:grid!important;grid-template-columns:minmax(210px,210px) 112px 112px!important;align-items:center!important;gap:8px!important;width:450px!important;max-width:100%!important}
+      #directorio-section .directorio-export-row{display:grid!important;grid-template-columns:minmax(210px,210px) 112px 112px 112px!important;align-items:center!important;gap:8px!important;width:570px!important;max-width:100%!important}
       #directorio-section .directorio-export-row>span{width:210px!important;margin-right:0!important;text-align:right!important;justify-content:flex-end!important;white-space:normal!important;line-height:1.15!important}
       #directorio-section .directorio-export-row>button{width:112px!important;min-width:112px!important;height:36px!important;padding-top:6px!important;padding-bottom:6px!important}
-      @media(max-width:640px){#directorio-section .directorio-export-row{grid-template-columns:minmax(130px,1fr) 96px 96px!important;width:100%!important}#directorio-section .directorio-export-row>span{width:auto!important;font-size:9px!important;text-align:left!important;justify-content:flex-start!important}#directorio-section .directorio-export-row>button{width:96px!important;min-width:96px!important}}
+      @media(max-width:640px){#directorio-section .directorio-export-row{grid-template-columns:minmax(120px,1fr) repeat(3,88px)!important;width:100%!important;overflow-x:auto!important}#directorio-section .directorio-export-row>span{width:auto!important;font-size:9px!important;text-align:left!important;justify-content:flex-start!important}#directorio-section .directorio-export-row>button{width:88px!important;min-width:88px!important}}
     `;
     document.head.appendChild(style);
 
@@ -68,19 +69,21 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
     };
     window.addEventListener('profea:directory-export-scope', handleExportScope as EventListener);
 
+    const getScopedData = async () => {
+      const all = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
+      const liveScope = (window as any).__profeaDirectoryExportScope as { ids?: unknown[] } | undefined;
+      const liveIds = Array.isArray(liveScope?.ids)
+        ? liveScope.ids.map(Number).filter(Number.isFinite)
+        : null;
+      const scopedIds = liveIds !== null ? Array.from(new Set(liveIds)) : exportScopeIdsRef.current;
+      const ids = scopedIds !== null ? scopedIds : getCurrentExportIds();
+      const byId = new Map(all.map(person => [Number(person.id), person]));
+      return ids.map(id => byId.get(Number(id))).filter(Boolean) as Person[];
+    };
+
     const exportData = async (format: 'pdf' | 'excel') => {
       try {
-        const all = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
-        const liveScope = (window as any).__profeaDirectoryExportScope as { ids?: unknown[] } | undefined;
-        const liveIds = Array.isArray(liveScope?.ids)
-          ? liveScope!.ids!.map(Number).filter(Number.isFinite)
-          : null;
-        const scopedIds = liveIds !== null ? Array.from(new Set(liveIds)) : exportScopeIdsRef.current;
-        const ids = scopedIds !== null ? scopedIds : getCurrentExportIds();
-        const byId = new Map(all.map(person => [Number(person.id), person]));
-        const data = ids
-          .map(id => byId.get(Number(id)))
-          .filter(Boolean) as Person[];
+        const data = await getScopedData();
         if (!data.length) return window.alert('No hay trabajadores dentro de los filtros actuales para exportar.');
         if (format === 'pdf') {
           const { doc, filename } = prepareAdministrativeRelationPDF(data);
@@ -124,9 +127,15 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       row.innerHTML = `
         <span class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación administrativa de trabajadores:</span>
         <button type="button" data-admin-export="pdf" class="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border"><svg viewBox="0 0 24 24" width="12" height="12" class="mr-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" x2="8" y1="13" y2="13"></line><line x1="16" x2="8" y1="17" y2="17"></line><line x1="10" x2="8" y1="9" y2="9"></line></svg>PDF</button>
-        <button type="button" data-admin-export="excel" class="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border"><svg viewBox="0 0 24 24" width="12" height="12" class="mr-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Excel</button>`;
+        <button type="button" data-admin-export="excel" class="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border"><svg viewBox="0 0 24 24" width="12" height="12" class="mr-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Excel</button>
+        <button type="button" data-admin-export="mail" class="w-[112px] flex-none flex items-center justify-center bg-sky-100 hover:bg-sky-200 text-sky-950 border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase border"><svg viewBox="0 0 24 24" width="13" height="13" class="mr-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>Mail</button>`;
       row.querySelector('[data-admin-export="pdf"]')?.addEventListener('click', () => void exportData('pdf'));
       row.querySelector('[data-admin-export="excel"]')?.addEventListener('click', () => void exportData('excel'));
+      row.querySelector('[data-admin-export="mail"]')?.addEventListener('click', () => {
+        void getScopedData()
+          .then((data) => sendDirectoryCommunication('administrative', data))
+          .catch((error) => window.alert(error?.message || 'No se pudo preparar el correo administrativo.'));
+      });
       const encargadosRow = group.querySelector('[data-encargados-relation-row="1"]');
       if (encargadosRow) encargadosRow.after(row);
       else group.prepend(row);
