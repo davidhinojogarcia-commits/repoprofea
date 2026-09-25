@@ -64,7 +64,16 @@ const preparePdf = (
   if (kind === 'administrative') return prepareAdministrativeRelationPDF(data);
   if (kind === 'medical') return prepareRRMMPDFData(data);
   if (kind === 'footwear') return prepareCalzadoPDFData(data);
-  if (kind === 'training') return preparePRLPDFData(data);
+  if (kind === 'training') {
+    const pendingTraining = data.filter(person => {
+      const value = String(person.formacion || '').trim().toLowerCase();
+      return value === 'no' || value === 'pendiente' || value.includes('sin form');
+    });
+    if (!pendingTraining.length) {
+      throw new Error('No hay trabajadores sin formación dentro de los filtros actuales.');
+    }
+    return preparePRLPDFData(pendingTraining);
+  }
   return preparePDFData(data, allPeople || data);
 };
 
