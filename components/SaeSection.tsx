@@ -1955,49 +1955,78 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               placeholder="Nombre"
                             />
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-end gap-2">
                             {c.estado !== "Contratado" ? (
                               <button
                                 onClick={() => void registerWorker(c)}
                                 disabled={selectedReportLocked}
-                                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex gap-1 items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black inline-flex gap-2 items-center shadow-md shadow-emerald-600/20 ring-1 ring-emerald-700/20 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <UserCheck className="w-4 h-4" />
                                 Registrar trabajador
                               </button>
                             ) : (
                               <>
-                                <span className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold inline-flex gap-1 items-center">
+                                <span className="px-3 py-2.5 rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 text-xs font-black inline-flex gap-1.5 items-center border border-emerald-300 dark:border-emerald-800">
                                   <CheckCircle2 className="w-4 h-4" />
                                   Contratado · {c.resultCode || "2001"}
                                 </span>
                                 <button
                                   onClick={() => void revertWorker(c)}
                                   disabled={selectedReportLocked}
-                                  className="px-3 py-2 rounded-lg border border-amber-300 text-amber-700 text-xs font-bold inline-flex gap-1 items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="px-3 py-2.5 rounded-xl border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-xs font-bold inline-flex gap-1.5 items-center hover:bg-amber-100 dark:hover:bg-amber-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   <RotateCcw className="w-4 h-4" />
                                   Revertir contratación
                                 </button>
                               </>
                             )}
-                            <select
-                              value={c.resultCode}
-                              disabled={c.estado === "Contratado" || selectedReportLocked}
-                              onChange={(e) =>
-                                void patchCandidate(c, {
-                                  resultCode: e.target.value,
-                                })
-                              }
-                              className="ui-input text-xs min-w-[220px]"
+
+                            <label
+                              className={`min-w-[240px] rounded-xl border-2 px-3 py-2 shadow-sm transition-all ${
+                                c.resultCode === "2001"
+                                  ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/25"
+                                  : c.resultCode
+                                    ? "border-amber-400 bg-amber-50 dark:bg-amber-950/20"
+                                    : "border-[#00548E] bg-blue-50/80 dark:border-blue-600 dark:bg-blue-950/25"
+                              }`}
                             >
-                              <option value="">Resultado SAE pendiente</option>
-                              {SAE_RESULT_CODES.map(([code, label]) => (
-                                <option key={code} value={code}>
-                                  {code} · {label}
-                                </option>
-                              ))}
-                            </select>
+                              <span
+                                className={`mb-1 block text-[10px] font-black uppercase tracking-wider ${
+                                  c.resultCode === "2001"
+                                    ? "text-emerald-700 dark:text-emerald-300"
+                                    : c.resultCode
+                                      ? "text-amber-700 dark:text-amber-300"
+                                      : "text-[#00548E] dark:text-blue-300"
+                                }`}
+                              >
+                                Resultado SAE
+                              </span>
+                              <select
+                                value={c.resultCode}
+                                disabled={c.estado === "Contratado" || selectedReportLocked}
+                                onChange={(e) =>
+                                  void patchCandidate(c, {
+                                    resultCode: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-lg border-0 bg-white dark:bg-slate-900 px-2.5 py-2 text-xs font-black text-slate-900 dark:text-white shadow-inner outline-none focus:ring-2 focus:ring-[#00548E]/30 disabled:opacity-60"
+                              >
+                                <option value="">Seleccionar resultado…</option>
+                                {SAE_RESULT_CODES.map(([code, label]) => (
+                                  <option key={code} value={code}>
+                                    {code} · {label}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="mt-1 block text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                {c.resultCode === "2001"
+                                  ? "Candidato marcado para contratar"
+                                  : c.resultCode
+                                    ? "Resultado asignado"
+                                    : "Pendiente de asignar"}
+                              </span>
+                            </label>
                           </div>
                         </div>
                       </div>
