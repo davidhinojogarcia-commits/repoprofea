@@ -216,7 +216,7 @@ export interface DocumentoIlegibleAlerta {
   confianza: 'alta' | 'media' | 'baja';
 }
 
-export interface ObraRecursoPreventivo { obra: string; recursoPreventivoNombre: string; recursoPreventivoCategoria: string; }
+export interface ObraRecursoPreventivo { obra: string; recursoPreventivoNombre: string; recursoPreventivoCategoria: string; recursoPreventivoTelefono?: string; }
 
 export interface ReporteTecnicoConfig {
   tecnicoNombre: string;
