@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as XLSX from 'xlsx';
 
 type Row = Record<string, string>;
@@ -218,7 +217,7 @@ const identity = (item: any) => {
   return `N:${[item.nombre, item.marca, item.modelo, item.categoria].map(clean).join('|')}`;
 };
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido.' });
   try {
     const { fileBase64, filename } = req.body || {};
