@@ -124,6 +124,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
   const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
   const [pendingPdfGenerating, setPendingPdfGenerating] = useState(false);
   const [pendingPdfError, setPendingPdfError] = useState("");
+  const [pendingPdfDownloadedForManualShare, setPendingPdfDownloadedForManualShare] = useState(false);
   const pendingPdfReturnRef = useRef(false);
 
   useEffect(() => {
@@ -220,6 +221,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
     setPendingPdfPerson(null);
     setPendingPdfFile(null);
     setPendingPdfError("");
+    setPendingPdfDownloadedForManualShare(false);
     pendingPdfReturnRef.current = false;
     try {
       sessionStorage.removeItem("profea:medical-pdf-pending");
@@ -234,8 +236,12 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
       if (returnWorkerId !== String(personId)) return false;
       sessionStorage.removeItem("profea-medical-return-to-sae-worker-id");
       sessionStorage.removeItem("profea-medical-focus-worker-id");
+      sessionStorage.setItem("profea-sae-focus-candidates", "1");
+      sessionStorage.setItem("profea-sae-last-completed-worker-id", String(personId));
       window.dispatchEvent(
-        new CustomEvent("profea:navigate", { detail: { view: "sae" } }),
+        new CustomEvent("profea:navigate", {
+          detail: { view: "sae", section: "candidates", reason: "medical-pdf-shared", workerId: personId },
+        }),
       );
       return true;
     } catch {
@@ -325,6 +331,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
       setPendingPdfPerson(prepared.updatedPerson);
       setPendingPdfFile(null);
       setPendingPdfError("");
+      setPendingPdfDownloadedForManualShare(false);
       pendingPdfReturnRef.current = false;
       try {
         sessionStorage.setItem(
@@ -382,8 +389,9 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         clearPendingPdf();
         returnToSaeAfterMedicalShare(sharedPerson.id);
       } else if (result === "downloaded") {
+        setPendingPdfDownloadedForManualShare(true);
         onToast(
-          "Este dispositivo no permite compartir el PDF directamente. Se ha descargado para que puedas adjuntarlo manualmente.",
+          "Este dispositivo no permite confirmar automáticamente el envío. Se ha descargado el PDF: adjúntalo manualmente y pulsa «Ya lo he compartido · continuar SAE».",
           "success",
         );
       }
@@ -391,6 +399,28 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
       console.error("[medical-pdf-share]", error);
       onToast(error?.message || "No se pudo compartir el PDF.", "error");
     }
+  };
+
+  const confirmManualShareAndReturnToSae = async () => {
+    if (!pendingPdfPerson || !pendingPdfFile) return;
+    const sharedPerson = pendingPdfPerson;
+    const now = new Date().toISOString();
+    try {
+      await updateDocument("trabajadores", sharedPerson.id, {
+        ...sharedPerson,
+        confirmacionCitaDocumentoCompartidoFecha: now,
+        confirmacionCitaDocumentoNombre: pendingPdfFile.name,
+        confirmacionCitaDocumentoCompartidoManual: true,
+      } as any);
+    } catch (error) {
+      console.warn("[medical-pdf-share-manual] No se pudo registrar la acción de compartir", error);
+    }
+    onToast(
+      "Citación marcada como compartida. Volviendo a SAE para seleccionar el siguiente candidato.",
+      "success",
+    );
+    clearPendingPdf();
+    returnToSaeAfterMedicalShare(sharedPerson.id);
   };
 
   const setConfirmation = async (
@@ -719,6 +749,16 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
                   >
                     <Share2 className="w-4 h-4" />
                     Compartir PDF ahora
+                  </button>
+                )}
+                {pendingPdfFile && pendingPdfDownloadedForManualShare && (
+                  <button
+                    type="button"
+                    onClick={() => void confirmManualShareAndReturnToSae()}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-3 text-sm font-black text-white"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Ya lo he compartido · continuar SAE
                   </button>
                 )}
                 <button
