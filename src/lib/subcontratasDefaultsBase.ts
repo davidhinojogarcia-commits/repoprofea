@@ -404,6 +404,7 @@ export const saveStoredObraRecursoPreventivo = (
   obra: string,
   recursoPreventivoNombre: string,
   recursoPreventivoCategoria: string = "Encargado de Obra",
+  recursoPreventivoTelefono: string = "",
 ): void => {
   if (!obra || !obra.trim()) return;
   obrasRecursosPreventivosCache = {
@@ -413,6 +414,7 @@ export const saveStoredObraRecursoPreventivo = (
       recursoPreventivoNombre: recursoPreventivoNombre.trim(),
       recursoPreventivoCategoria:
         recursoPreventivoCategoria.trim() || "Encargado de Obra",
+      recursoPreventivoTelefono: recursoPreventivoTelefono.trim(),
     },
   };
   void saveSubcontratasPreferences({
