@@ -45,9 +45,10 @@ import {
   getDocuments,
   updateDocument,
 } from "../src/services/databaseService";
-import { loadAppBusinessSettings, saveAppBusinessSettings } from "../src/services/appSettingsService";
+import { DEFAULT_SUPERVISOR_SETTINGS, loadAppBusinessSettings, saveAppBusinessSettings, type SupervisorSettings } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
+import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
 import {
   getStoredReporteTecnicoConfig,
@@ -120,6 +121,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   setToast,
   onImportWorkers,
 }) => {
+  const { supervisorName, profile, user } = useAuthShell();
+  const [supervisorForm, setSupervisorForm] = useState<SupervisorSettings>(DEFAULT_SUPERVISOR_SETTINGS);
+  const [supervisorLoaded, setSupervisorLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | "obras"
     | "lugares"
@@ -128,6 +132,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "categorias"
     | "cuentas"
     | "seguridad_social"
+    | "supervisor"
     | "horario"
     | "backup"
   >("lugares");
@@ -186,6 +191,26 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
       );
   }, [setSavedObras]);
 
+  useEffect(() => {
+    let active = true;
+    void loadAppBusinessSettings()
+      .then((settings) => {
+        if (!active) return;
+        const configured = settings.supervisor || DEFAULT_SUPERVISOR_SETTINGS;
+        setSupervisorForm({
+          ...DEFAULT_SUPERVISOR_SETTINGS,
+          ...configured,
+          nombreApellidos: configured.nombreApellidos || supervisorName || "",
+          email: configured.email || profile?.email || user?.email || "",
+        });
+      })
+      .catch((error) => console.error("No se pudo cargar la configuración del supervisor:", error))
+      .finally(() => {
+        if (active) setSupervisorLoaded(true);
+      });
+    return () => { active = false; };
+  }, [supervisorName, profile?.email, user?.email]);
+
   // State for parsed backup verification
   const [loadedBackup, setLoadedBackup] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -235,6 +260,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         categorias: appSettings.savedCategorias,
         workStartHour: appSettings.workStartHour,
         workEndHour: appSettings.workEndHour,
+        supervisor: appSettings.supervisor,
         // Backward compatibility for backups created before v3.
         subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
@@ -854,6 +880,26 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           <button
             onClick={() => {
+              setActiveTab("supervisor");
+              setSearchTerm("");
+              setNewItem("");
+              setDeletingItem(null);
+              setSelectedItems([]);
+              setShowBulkConfirm(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold
+              ${activeTab === "supervisor"
+                ? "profea-sidebar-item--active text-white"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"}
+            `}
+          >
+            <UserCheck className={`w-5 h-5 ${activeTab === "supervisor" ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+            Supervisor responsable
+          </button>
+
+          <button
+            onClick={() => {
               setActiveTab("horario");
               setSearchTerm("");
               setNewItem("");
@@ -903,7 +949,89 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          {activeTab === "horario" ? (
+          {activeTab === "supervisor" ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <UserCheck className="w-6 h-6 text-[#00548E] dark:text-blue-400" />
+                  Datos del supervisor responsable
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                  Estos datos serán la referencia común del supervisor en citaciones, informes y pantallas de GestionProfea.
+                </p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    ["nombreApellidos", "Nombre y apellidos", "Ej: David Hinojo García", "text"],
+                    ["telefono", "Teléfono", "Ej: 600 123 456", "tel"],
+                    ["zona", "Zona / ámbito territorial", "Ej: Sierra de Cádiz", "text"],
+                    ["cargo", "Cargo / puesto", "Ej: Supervisor PROFEA", "text"],
+                    ["email", "Correo electrónico profesional", "correo@dipucadiz.es", "email"],
+                    ["identificacionInterna", "Nº empleado / identificación interna", "Opcional", "text"],
+                  ].map(([key, label, placeholder, type]) => (
+                    <label key={key} className="space-y-2">
+                      <span className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">{label}</span>
+                      <input
+                        type={type}
+                        value={String((supervisorForm as any)[key] || "")}
+                        onChange={(e) => setSupervisorForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <label className="flex items-start gap-3 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={supervisorForm.usarPorDefecto}
+                    onChange={(e) => setSupervisorForm((prev) => ({ ...prev, usarPorDefecto: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#00548E]"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Usar como supervisor responsable por defecto</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">El nombre, teléfono, zona, cargo y correo se reutilizarán automáticamente en los apartados e informes que necesiten identificar al supervisor.</span>
+                  </span>
+                </label>
+
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00548E] dark:text-blue-300">Previsualización</p>
+                  <p className="mt-2 text-base font-black text-slate-900 dark:text-white">{supervisorForm.nombreApellidos || "Supervisor responsable"}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{supervisorForm.cargo || "Supervisor PROFEA"}</p>
+                  {supervisorForm.zona && <p className="text-sm text-slate-600 dark:text-slate-300">Zona: {supervisorForm.zona}</p>}
+                  {supervisorForm.telefono && <p className="text-sm text-slate-600 dark:text-slate-300">Tel.: {supervisorForm.telefono}</p>}
+                  {supervisorForm.email && <p className="text-sm text-slate-600 dark:text-slate-300">{supervisorForm.email}</p>}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!supervisorLoaded}
+                    onClick={async () => {
+                      if (!supervisorForm.nombreApellidos.trim()) {
+                        setToast?.({ message: "Indica el nombre y apellidos del supervisor.", type: "error" });
+                        return;
+                      }
+                      try {
+                        await saveAppBusinessSettings({ supervisor: supervisorForm });
+                        window.dispatchEvent(new CustomEvent("profea:supervisor-settings-updated"));
+                        setToast?.({ message: "Datos del supervisor guardados y disponibles para toda la aplicación.", type: "success" });
+                      } catch (error) {
+                        console.error("No se pudieron guardar los datos del supervisor:", error);
+                        setToast?.({ message: "No se pudieron guardar los datos del supervisor.", type: "error" });
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#00436f] transition-colors disabled:opacity-60"
+                  >
+                    <Save className="w-4 h-4" />
+                    Guardar supervisor
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "horario" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
