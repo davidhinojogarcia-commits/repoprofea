@@ -32,10 +32,11 @@ type GuidedStep = { step: number; title: string; description: string; view: View
 const guidedSteps: GuidedStep[] = [
   { step: 1, title: 'Selección SAE', description: 'Empieza aquí para seleccionar y contratar trabajadores.', view: 'sae', icon: BriefcaseBusiness },
   { step: 2, title: 'Trabajadores', description: 'Revisa sus datos, documentación e historial.', view: 'directorio', icon: Users },
-  { step: 3, title: 'Reconocimientos médicos', description: 'Comprueba citas, aptitud y fechas de vigencia.', view: 'citas', icon: CalendarCheck2 },
-  { step: 4, title: 'Documentación de obra', description: 'Completa, revisa y firma los documentos de la obra.', view: 'documentacion_obra', icon: FileCheck2 },
-  { step: 5, title: 'CAE', description: 'Revisa la coordinación y documentación de empresas.', view: 'subcontratas', icon: HardHat },
-  { step: 6, title: 'Maquinaria y herramientas', description: 'Consulta equipos disponibles, asignados o averiados.', view: 'inventario', icon: Wrench },
+  { step: 3, title: 'Añadir trabajador', description: 'Da de alta manualmente a un trabajador cuando lo necesites.', view: 'registro', icon: UserPlus },
+  { step: 4, title: 'Reconocimientos médicos', description: 'Comprueba citas, aptitud y fechas de vigencia.', view: 'citas', icon: CalendarCheck2 },
+  { step: 5, title: 'Documentación de obra', description: 'Completa, revisa y firma los documentos de la obra.', view: 'documentacion_obra', icon: FileCheck2 },
+  { step: 6, title: 'CAE', description: 'Revisa la coordinación y documentación de empresas.', view: 'subcontratas', icon: HardHat },
+  { step: 7, title: 'Maquinaria y herramientas', description: 'Consulta equipos disponibles, asignados o averiados.', view: 'inventario', icon: Wrench },
 ];
 
 export const GuidedHome: React.FC<GuidedHomeProps> = ({
@@ -139,7 +140,7 @@ export const GuidedHome: React.FC<GuidedHomeProps> = ({
       <section aria-labelledby="guided-other-title">
         <div className="mb-3"><h2 id="guided-other-title" className="text-lg font-black text-slate-900 dark:text-white">Otras opciones</h2></div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <button type="button" onClick={() => onNavigate('registro')} className="guided-secondary-action ui-surface flex min-h-[104px] items-center gap-4 p-4 text-left"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-brand-primary dark:bg-blue-950/40 dark:text-blue-300"><UserPlus className="h-6 w-6" aria-hidden="true" /></span><span><span className="block font-black text-slate-900 dark:text-white">Añadir trabajador</span><span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">Alta manual paso a paso.</span></span></button>
+          <button type="button" onClick={() => onNavigate('configuracion')} className="guided-secondary-action ui-surface flex min-h-[104px] items-center gap-4 p-4 text-left"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-brand-primary dark:bg-blue-950/40 dark:text-blue-300"><Settings2 className="h-6 w-6" aria-hidden="true" /></span><span><span className="block font-black text-slate-900 dark:text-white">Configuración</span><span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">Datos, contactos y preferencias.</span></span></button>
           <button type="button" onClick={onOpenAlerts} className="guided-secondary-action ui-surface flex min-h-[104px] items-center gap-4 p-4 text-left"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"><Bell className="h-6 w-6" aria-hidden="true" /></span><span><span className="block font-black text-slate-900 dark:text-white">Avisos pendientes</span><span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">{alertsCount} aviso(s) por revisar.</span></span></button>
           <div className="guided-status-card ui-surface min-h-[104px] p-4"><p className="text-sm font-bold text-slate-600 dark:text-slate-300">Estado rápido</p><p className="mt-2 text-base font-black text-slate-900 dark:text-white">{workersCount} trabajadores</p><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{worksCount} obras configuradas</p></div>
           <button type="button" onClick={onShowCompleteView} className="guided-complete-button ui-button-secondary flex min-h-[104px] items-center justify-center gap-3 px-4 text-left"><Settings2 className="h-6 w-6 shrink-0" aria-hidden="true" /><span><span className="block font-black">Vista completa</span><span className="mt-1 block text-sm font-medium">Opciones avanzadas.</span></span></button>
