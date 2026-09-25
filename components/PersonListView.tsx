@@ -648,9 +648,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                    )}
                  </div>
                )}
-               <button onClick={() => onEmail(peopleToExport)} className={`flex-1 md:flex-none flex items-center justify-center px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-sm border ${isSelectionActive ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 ring-2 ring-indigo-500/20 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'}`}>
-                  <Mail className="w-4 h-4 mr-2 text-[#00548E] dark:text-blue-400" /> Gmail{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-               </button>
 
           </div>
           <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
