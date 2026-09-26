@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import type { Person } from '../../types';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { supabase } from './supabase';
+import { getStoredObrasRecursosPreventivos, hydrateStoredSubcontratasPreferences } from './subcontratasDefaults';
 
 export interface WorkerHiringInformation {
   worker: Person;
@@ -81,11 +82,24 @@ const normalizePhone = (value: string) => {
 
 const resolveWork = async (person: Person) => {
   try {
+    await hydrateStoredSubcontratasPreferences();
+    const configuredResources = getStoredObrasRecursosPreventivos();
+    const workerWork = normalize(person.obra);
+    const workerCode = workerWork.match(/\b\d{4,6}\b/)?.[0] || '';
+
+    const configuredEntry = Object.entries(configuredResources).find(([obra, resource]) => {
+      const obraName = normalize(obra);
+      const resourceObra = normalize(resource?.obra);
+      return Boolean(workerWork) && (
+        obraName === workerWork ||
+        resourceObra === workerWork ||
+        (workerCode && (obraName.includes(workerCode) || resourceObra.includes(workerCode)))
+      );
+    })?.[1];
+
     const rows = await supabase.query('obras', {
       query: 'select=id,codigo,nombre,municipio,recurso_preventivo',
     });
-    const workerWork = normalize(person.obra);
-    const workerCode = workerWork.match(/\b\d{4,6}\b/)?.[0] || '';
     const match = (rows || []).find((row: any) => {
       const code = normalize(row.codigo);
       const name = normalize(row.nombre);
@@ -95,13 +109,15 @@ const resolveWork = async (person: Person) => {
         (workerWork && code === workerWork)
       );
     });
+
     return {
       municipio: safe(match?.municipio),
-      encargado: safe(match?.recurso_preventivo),
+      encargado: safe(configuredEntry?.recursoPreventivoNombre) || safe(match?.recurso_preventivo),
+      telefonoEncargado: safe(configuredEntry?.recursoPreventivoTelefono),
     };
   } catch (error) {
     console.warn('[worker-hiring-info] No se pudieron resolver los datos de la obra:', error);
-    return { municipio: '', encargado: '' };
+    return { municipio: '', encargado: '', telefonoEncargado: '' };
   }
 };
 
@@ -129,11 +145,9 @@ export const resolveWorkerHiringInformation = async (
       : '';
 
   const municipio = safe((person as any).municipioObra) || work.municipio;
-  const encargado = safe((person as any).encargadoObra) || work.encargado;
-  const telefonoEncargado = safe((person as any).telefonoEncargado);
-  const incorporationPlace =
-    safe((person as any).lugarIncorporacion) ||
-    [safe(person.obra), municipio].filter(Boolean).join(' · ');
+  const encargado = work.encargado;
+  const telefonoEncargado = work.telefonoEncargado;
+  const incorporationPlace = [safe(person.obra), municipio].filter(Boolean).join(' · ');
 
   return {
     worker: person,
