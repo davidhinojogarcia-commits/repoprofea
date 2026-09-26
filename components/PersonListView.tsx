@@ -652,6 +652,7 @@ export const PersonList: React.FC<PersonListProps> = ({
 
 
           </div>
+          <div className="text-right text-[11px] font-black uppercase tracking-[0.16em] text-slate-700 dark:text-slate-200">Acciones informativas rápidas</div>
           <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
                <div className="flex flex-col gap-2 w-full sm:w-auto">
                  <div data-encargados-relation-row="1" className="directorio-export-row flex items-center justify-end gap-2">
