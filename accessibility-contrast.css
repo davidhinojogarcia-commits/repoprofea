@@ -136,3 +136,64 @@ html:not(.dark) #root .sae-report-selector:not([aria-pressed='true']) {
 #root .sae-report-selector[aria-pressed='true'] {
   color: #ffffff !important;
 }
+
+
+/* SAE · contraste reforzado de tarjetas de informes en ambos temas.
+ * Estas reglas prevalecen sobre capas globales de color y evitan texto
+ * blanco sobre fondo blanco o azul oscuro sobre superficies oscuras. */
+#root .sae-report-selector .sae-report-filename {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+html:not(.dark) #root .sae-report-selector[aria-pressed='true'] .sae-report-filename {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+.dark #root .sae-report-selector .sae-report-filename,
+.dark #root .sae-report-selector[aria-pressed='true'] .sae-report-filename {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+#root .sae-report-selector[aria-pressed='true'] .sae-report-status,
+#root .sae-report-selector[aria-pressed='true'] .sae-report-action {
+  background-color: #ffffff !important;
+  color: #0f3f63 !important;
+  -webkit-text-fill-color: #0f3f63 !important;
+  border-color: #dbeafe !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) #root .sae-report-selector:not([aria-pressed='true']) .sae-report-action {
+  background-color: #00548e !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+.dark #root .sae-report-selector:not([aria-pressed='true']) .sae-report-action {
+  background-color: #38bdf8 !important;
+  color: #082f49 !important;
+  -webkit-text-fill-color: #082f49 !important;
+}
+
+html:not(.dark) #root .sae-report-selector:not([aria-pressed='true']) .sae-report-status {
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+}
+.dark #root .sae-report-selector:not([aria-pressed='true']) .sae-report-status {
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+}
+
+#root .sae-report-selector[aria-pressed='true'] .sae-report-meta {
+  color: #f8fbff !important;
+  -webkit-text-fill-color: #f8fbff !important;
+  opacity: 1 !important;
+}
+html:not(.dark) #root .sae-report-selector:not([aria-pressed='true']) .sae-report-meta {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+}
+.dark #root .sae-report-selector:not([aria-pressed='true']) .sae-report-meta {
+  color: #dbe7ef !important;
+  -webkit-text-fill-color: #dbe7ef !important;
+}
