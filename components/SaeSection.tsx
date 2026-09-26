@@ -1773,8 +1773,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                 >
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex flex-wrap items-center gap-2 min-w-0">
-                                      <div className="font-black text-sm break-all">{r.fileName}</div>
-                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected
+                                      <div className="sae-report-filename font-black text-sm break-all">{r.fileName}</div>
+                                      <span className={`sae-report-status text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected
                                         ? "bg-white/95 text-slate-900 border border-white"
                                         : isFinalized
                                           ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100"
@@ -1782,13 +1782,13 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                         {isFinalized ? "Finalizado" : "En revisión"}
                                       </span>
                                     </div>
-                                    <span className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${isSelected
+                                    <span className={`sae-report-action shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${isSelected
                                       ? "bg-white text-[#003f6b]"
                                       : "bg-[#00548E] text-white dark:bg-sky-500 dark:text-slate-950"}`}>
                                       {isSelected ? "Seleccionado" : "Seleccionar informe"}
                                     </span>
                                   </div>
-                                  <div className={`mt-2 text-xs font-semibold ${isSelected ? "text-blue-50 dark:text-white" : "text-slate-700 dark:text-slate-200"}`}>
+                                  <div className={`sae-report-meta mt-2 text-xs font-semibold ${isSelected ? "text-blue-50 dark:text-white" : "text-slate-700 dark:text-slate-200"}`}>
                                     Oferta {r.offerNumber || "—"} · {reportCandidates.length} candidatos · {r.categoria || "Categoría no detectada"}
                                     {r.versions?.length ? ` · ${r.versions.length} versión(es) finalizada(s)` : ""}
                                   </div>
