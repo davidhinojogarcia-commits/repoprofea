@@ -215,7 +215,7 @@ export const sendDirectoryCommunication = async (
     try {
       await navigator.share({
         title: prepared.subject,
-        text: `${prepared.body}\n\nDestinatario configurado: ${prepared.recipientName} <${prepared.recipientEmail}>`,
+        text: prepared.body,
         files: [prepared.file],
       });
       return 'shared';
