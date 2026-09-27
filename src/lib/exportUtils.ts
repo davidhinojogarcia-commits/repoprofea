@@ -2700,18 +2700,45 @@ export const generateMedicalTicketsPDF = async (
     doc.setFontSize(9.5);
     doc.setTextColor(51, 65, 85);
     doc.text('NOTIFICACIÓN OFICIAL AL TRABAJADOR', 18, 64);
-    
-    // Homogenize body text: set all paragraphs to helvetica normal, font size 8.5
+
+    // Bloque compacto de identificación. El nombre puede ocupar varias líneas
+    // sin invadir el DNI ni el texto de la notificación.
+    const identityName = workerName.toUpperCase();
+    const identityDni = workerDni.toUpperCase();
+    const identityNameLines = doc.splitTextToSize(identityName, 118);
+    const identityNameHeight = Math.max(1, identityNameLines.length) * 4.2;
+    const identityBoxHeight = Math.max(14, identityNameHeight + 8);
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(18, 68, 174, identityBoxHeight, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text('TRABAJADOR/A', 23, 73);
+    doc.text('DNI / NIE', 150, 73);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.4);
+    doc.setTextColor(15, 23, 42);
+    doc.text(identityNameLines, 23, 78);
+    doc.text(identityDni, 150, 78, { maxWidth: 36 });
+
+    // Cuerpo de la notificación: ya no repite nombre y DNI, evitando
+    // solapamientos y espacio vacío innecesario.
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
-    
+
     const quincenaStr = p.quincena ? ` perteneciente a la ${p.quincena.toUpperCase()},` : '';
     const finContratoText = p.diaFinContrato ? ` hasta el ${diaFinContratoFormatted}` : '';
-    const par1Text = `El trabajador ${workerName} con DNI ${workerDni} de la obra nº ${numOferta} de la localidad de ${localidad.toUpperCase()},${quincenaStr} cuyo periodo de contratación es del ${diaComienzoFormatted}${finContratoText} (jornada prevista de ${workStartHourVal} h a ${workEndHourVal} h), está citado/a el día ${citaDiaFormatted} a las ${citaHoraFormatted} horas en el/a ${sitio.toUpperCase()}, para la realización del reconocimiento médico en cumplimiento del Convenio Colectivo para la Construcción de Cádiz en vigor.`;
+    const par1Text = `La persona trabajadora arriba indicada, de la obra nº ${numOferta} de la localidad de ${localidad.toUpperCase()},${quincenaStr} cuyo periodo de contratación es del ${diaComienzoFormatted}${finContratoText} (jornada prevista de ${workStartHourVal} h a ${workEndHourVal} h), está citada el día ${citaDiaFormatted} a las ${citaHoraFormatted} horas en el/a ${sitio.toUpperCase()}, para la realización del reconocimiento médico en cumplimiento del Convenio Colectivo para la Construcción de Cádiz en vigor.`;
     const par1Wrapped = doc.splitTextToSize(par1Text, 174);
-    doc.text(par1Text, 18, 70, { maxWidth: 174, align: 'justify' });
-    
-    let currentY = 70 + (par1Wrapped.length * 4) + 4;
+    const par1StartY = 68 + identityBoxHeight + 6;
+    doc.text(par1Text, 18, par1StartY, { maxWidth: 174, align: 'justify' });
+
+    let currentY = par1StartY + (par1Wrapped.length * 4) + 4;
 
     // Second paragraph (exact requested text layout)
     const par2Text = `Deberá acudir el día del reconocimiento con su DNI, la corrección visual (gafas) en el caso de que las necesite, y este documento que se le solicitará a su llegada al centro médico (será firmado y sellado por el equipo médico y de conformidad con el trabajador). Para la correcta realización de las pruebas analíticas, es obligatorio presentarse estrictamente en ayunas (o sin haber comido nada durante las 4 horas previas al reconocimiento) y aportar el tarro con la muestra de orina.`;
