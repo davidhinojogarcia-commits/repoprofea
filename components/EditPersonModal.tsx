@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert, MessageCircle, Share2, Download, Phone } from 'lucide-react';
+import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert, MessageCircle, Share2, Download } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatIban, formatSpanishSocialSecurityNumber, validateIban, validateSpanishSocialSecurityNumber } from '../src/lib/personalDataValidators';
@@ -74,7 +74,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   savedCategorias,
   allPeople
 }) => {
-  const { supervisorName, supervisorSettings } = useAuthShell();
+  const { supervisorName } = useAuthShell();
   const [isHiringInfoBusy, setIsHiringInfoBusy] = useState<'' | 'whatsapp' | 'share' | 'download'>('');
   const isHiringEdit = useMemo(() => {
     if (!person || typeof window === 'undefined') return false;
@@ -606,38 +606,6 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Teléfono del encargado / recurso preventivo
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                    <input
-                      type="tel"
-                      name="telefonoEncargado"
-                      value={formData.telefonoEncargado || ''}
-                      onChange={handleChange}
-                      placeholder="Ej.: 600 000 000"
-                      className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Lugar concreto de incorporación
-                  </label>
-                  <input
-                    type="text"
-                    name="lugarIncorporacion"
-                    value={formData.lugarIncorporacion || ''}
-                    onChange={handleChange}
-                    placeholder="Opcional. Si se deja vacío se usará obra + localidad"
-                    className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
               {formData.formacion === 'No' && (
                 <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs text-amber-900 dark:text-amber-200">
                   <div className="font-black">Formación pendiente</div>
@@ -648,13 +616,10 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 </div>
               )}
 
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 p-3 text-xs">
-                <div className="font-bold text-slate-700 dark:text-slate-200">Contactos que aparecerán</div>
-                <div className="mt-1 text-slate-500 dark:text-slate-400">
-                  Encargado: se toma de la obra seleccionada · Teléfono: {formData.telefonoEncargado || 'pendiente'}
-                </div>
-                <div className="text-slate-500 dark:text-slate-400">
-                  Supervisor: {supervisorName || 'pendiente'} · Teléfono: {supervisorSettings.telefono || 'pendiente'}
+              <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/80 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200">
+                <div className="font-black">Datos automáticos de la obra</div>
+                <div className="mt-1">
+                  El recurso preventivo, su teléfono y los datos de contacto se toman automáticamente de Configuración → Recurso preventivo según la obra seleccionada. No es necesario repetirlos en la ficha del trabajador.
                 </div>
               </div>
 
