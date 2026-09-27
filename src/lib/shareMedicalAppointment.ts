@@ -154,35 +154,6 @@ export const buildMedicalAppointmentWhatsAppText = (
   return lines.join('\n');
 };
 
-const overlayWorkerIdentity = (doc: any, person: Person) => {
-  try {
-    doc.setPage(1);
-    const namePlaceholder = '___________________________________________';
-    const dniPlaceholder = '___________________________';
-    const prefix = 'El trabajador ';
-    const middle = ' con DNI ';
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-
-    const startX = 18;
-    const baselineY = 70;
-    const nameX = startX + doc.getTextWidth(prefix);
-    const nameW = doc.getTextWidth(namePlaceholder);
-    const dniX = nameX + nameW + doc.getTextWidth(middle);
-    const dniW = doc.getTextWidth(dniPlaceholder);
-
-    doc.setFillColor(255, 255, 255);
-    doc.rect(nameX - 0.5, baselineY - 3.5, nameW + 1, 4.5, 'F');
-    doc.rect(dniX - 0.5, baselineY - 3.5, dniW + 1, 4.5, 'F');
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.text((person.apellidosNombre || '-').toUpperCase(), nameX, baselineY, { maxWidth: nameW });
-    doc.text((person.dni || '-').toUpperCase(), dniX, baselineY, { maxWidth: dniW });
-  } catch (error) {
-    console.warn('No se pudo completar la identidad del trabajador en la citación PDF:', error);
-  }
-};
-
 const appendPrlTrainingSchedule = (doc: any, person: Person) => {
   if (!needsPrl20h(person)) return;
   const prl = getPrlSchedule(person);
@@ -307,7 +278,6 @@ export const createMedicalAppointmentPdfFile = async (person: Person): Promise<F
     },
   ], {}, settings.workStartHour, settings.workEndHour);
 
-  overlayWorkerIdentity(doc, person);
   appendPrlTrainingSchedule(doc, person);
   // La citación base ya se sella en su generador. Si se añade la página PRL,
   // esta segunda pasada incorpora el mismo copyright a la nueva página.
