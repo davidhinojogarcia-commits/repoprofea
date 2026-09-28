@@ -68,6 +68,100 @@ export function generateForemanMandatoryDocumentPdf(
   record: ForemanMandatoryDocument,
   obra: string,
 ) {
+  if (['epis','maquinaria','autorizacion_uso_maquinaria'].includes(record.documentType)) {
+    const titleMap: Record<string,string> = {
+      epis: 'ENTREGA DE EPIs',
+      maquinaria: 'AUTORIZACIÓN DE MAQUINARIA',
+      autorizacion_uso_maquinaria: 'AUTORIZACIÓN AL USO DE MAQUINARIA',
+    };
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+    const title = titleMap[record.documentType] || 'DOCUMENTO DE OBRA';
+    renderInstitutionalReportHeader(
+      doc,
+      title,
+      `${obra} · ${fmtEs(record.workDate)}`,
+      { subtitle: 'DOCUMENTACIÓN CUMPLIMENTADA POR EL ENCARGADO · PROFEA' },
+    );
+
+    const detailText = record.documentType === 'epis'
+      ? Object.entries((record.details?.epis || {}) as Record<string,boolean>)
+          .filter(([,enabled])=>Boolean(enabled))
+          .map(([key])=>({
+            casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',
+            guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado',
+          } as Record<string,string>)[key] || key)
+          .join(', ')
+      : String(record.details?.maquinaria || '');
+
+    let y = 49;
+    doc.setTextColor(0,0,0);
+    doc.setDrawColor(0,0,0);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.text('TRABAJADOR/A', 14, y);
+    doc.text('DNI/NIE', 92, y);
+    doc.text('CATEGORÍA', 126, y);
+    doc.text(record.documentType==='epis' ? 'EPIs ENTREGADOS' : 'MAQUINARIA / EQUIPOS', 174, y);
+    doc.text('FIRMA', 246, y);
+    y += 3;
+    doc.setLineWidth(0.35);
+    doc.line(14,y,283,y);
+    y += 8;
+
+    const rowHeight=17;
+    const signatureHeight=11;
+    for (const worker of record.workers || []) {
+      if (y + rowHeight > 192) {
+        doc.addPage('a4','landscape');
+        y=22;
+        doc.setTextColor(0,0,0);
+        doc.setDrawColor(0,0,0);
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8.5);
+        doc.text('TRABAJADOR/A', 14, y);
+        doc.text('DNI/NIE', 92, y);
+        doc.text('CATEGORÍA', 126, y);
+        doc.text(record.documentType==='epis' ? 'EPIs ENTREGADOS' : 'MAQUINARIA / EQUIPOS', 174, y);
+        doc.text('FIRMA', 246, y);
+        y += 3;
+        doc.line(14,y,283,y);
+        y += 8;
+      }
+
+      const rowTop=y-5;
+      const rowBottom=rowTop+rowHeight;
+      const signatureRaw=(record.signatures||{})[String(worker.id)];
+      const signature=typeof signatureRaw==='string'?signatureRaw:signatureRaw?.signature;
+
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8.3);
+      doc.text(String(worker.apellidosNombre||''),14,y,{maxWidth:74});
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7.8);
+      doc.text(String(worker.dni||''),92,y,{maxWidth:30});
+      doc.text(String(worker.categoria||''),126,y,{maxWidth:44});
+      doc.text(detailText||'-',174,y,{maxWidth:68});
+
+      if(signature){
+        const sy=rowTop+(rowHeight-signatureHeight)/2;
+        try{doc.addImage(signature,'PNG',246,sy,34,signatureHeight,undefined,'FAST');}catch{}
+      }else{
+        doc.line(246,rowTop+rowHeight/2+1,280,rowTop+rowHeight/2+1);
+      }
+      doc.setDrawColor(90,90,90);
+      doc.setLineWidth(0.2);
+      doc.line(14,rowBottom,283,rowBottom);
+      y+=rowHeight;
+    }
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7.5);
+    doc.text('Estado: '+(record.status==='reviewed'?'Revisado':record.status==='completed'?'Cumplimentado':'En cumplimentación'),14,201);
+    applyInstitutionalPdfStandard(doc);
+    const prefix=record.documentType==='epis'?'EPIS':record.documentType==='maquinaria'?'AUTORIZACION_MAQUINARIA':'AUTORIZACION_USO_MAQUINARIA';
+    return { doc, filename: `${prefix}_ENCARGADO_${record.workDate}.pdf` };
+  }
+
   if (record.documentType === 'control_presencia') {
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     renderInstitutionalReportHeader(
