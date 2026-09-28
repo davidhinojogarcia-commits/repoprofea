@@ -64,6 +64,7 @@ import {
 } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
+import { GmailConnectionPanel } from "./GmailConnectionPanel";
 import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
 import { buildWorkerMasterRecords, maskWorkerIban, maskWorkerNuss } from "../src/lib/workerMaster";
@@ -1415,6 +1416,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   {supervisorForm.telefono && <p className="text-sm text-slate-600 dark:text-slate-300">Tel.: {supervisorForm.telefono}</p>}
                   {supervisorForm.email && <p className="text-sm text-slate-600 dark:text-slate-300">{supervisorForm.email}</p>}
                 </div>
+
+                <GmailConnectionPanel email={supervisorForm.email} />
 
                 <div className="flex justify-end">
                   <button
