@@ -1,0 +1,80 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, Clock3, Download, FileSignature, Loader2, RefreshCw, Search } from 'lucide-react';
+import { supabase } from '../src/lib/supabase';
+import { downloadPDF } from '../src/lib/exportUtils';
+import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
+import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf } from '../src/lib/foremanDocumentsPdf';
+import type { ForemanAttendanceDay, ForemanCompletedDocument } from '../src/services/foremanPortalService';
+
+type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
+type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
+
+export const ForemanDocumentsDashboard: React.FC = () => {
+  const [documents,setDocuments]=useState<DbDocument[]>([]);
+  const [attendance,setAttendance]=useState<DbAttendance[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [search,setSearch]=useState('');
+  const [filter,setFilter]=useState<'all'|'attendance'|'documents'|'pending'>('all');
+  const refresh=async(silent=false)=>{
+    if(!silent)setLoading(true);
+    try{
+      const userResult=await supabase.auth.getUser();
+      const user=userResult.data.user;
+      if(!user)return;
+      const docsQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=updated_at.desc&limit=500';
+      const daysQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=work_date.desc&limit=180';
+      const results=await Promise.all([
+        supabase.query('foreman_documents',{query:docsQuery}),
+        supabase.query('foreman_attendance_days',{query:daysQuery}),
+      ]);
+      setDocuments(Array.isArray(results[0])?results[0]:[]);
+      setAttendance(Array.isArray(results[1])?results[1]:[]);
+    }finally{if(!silent)setLoading(false);}
+  };
+  useEffect(()=>{void refresh();const timer=window.setInterval(()=>void refresh(true),5000);return()=>window.clearInterval(timer);},[]);
+  const term=search.trim().toLowerCase();
+  const cards=useMemo(()=>{
+    const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
+    const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
+    return [...dayCards,...docCards].filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed')).filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  },[attendance,documents,filter,term]);
+  const markReviewed=async(kind:'attendance'|'document',id:string)=>{
+    const table=kind==='attendance'?'foreman_attendance_days':'foreman_documents';
+    await supabase.query(table,{method:'PATCH',query:'id=eq.'+encodeURIComponent(id),body:{status:'reviewed',reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()},prefer:'return=minimal'});
+    await refresh(true);
+  };
+  const openPdf=(card:any)=>{
+    if(card.kind==='attendance'){
+      const day:ForemanAttendanceDay={id:card.item.id,workDate:card.item.work_date,rows:card.item.rows||[],status:card.item.status,completedAt:card.item.completed_at,updatedAt:card.item.updated_at};
+      const out=generateForemanAttendancePdf(day,card.item.obra,card.item.foreman_name); downloadPDF(out.doc,out.filename); return;
+    }
+    const d=card.item as DbDocument;
+    const record:ForemanCompletedDocument={id:d.id,workDate:d.work_date,documentType:d.document_type,workerId:d.worker_id,workerSnapshot:d.worker_snapshot||{},answers:d.answers||{},signatures:d.signatures||{},status:d.status,completedAt:d.completed_at};
+    const out=generateForemanCompletedDocumentPdf(record,d.obra,d.completed_by); downloadPDF(out.doc,out.filename);
+  };
+  const signedEntries=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.entrySignature).length,0);
+  const signedExits=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.exitSignature).length,0);
+  const pending=cards.filter(c=>c.status!=='reviewed').length;
+  return <div className="space-y-5">
+    <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se actualiza automáticamente cada 5 segundos.</p></div>
+        <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+        {([['Documentos',documents.length],['Jornadas',attendance.length],['Entradas firmadas',signedEntries],['Salidas firmadas',signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
+      </div>
+    </div>
+    <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
+      <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border pl-9 pr-3 py-2.5 bg-white dark:bg-slate-950"/></div>
+      <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950 font-bold text-sm"><option value="all">Todo</option><option value="attendance">Registro diario</option><option value="documents">Otros documentos</option><option value="pending">Pendientes de revisar ({pending})</option></select>
+    </div>
+    {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-500">Todavía no hay documentación enviada por encargados.</div>:<div className="space-y-3">{cards.map(card=><article key={card.kind+card.id} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Revisado':'Pendiente de revisar'}</span></div>
+        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}</div>
+        <div className="flex flex-wrap gap-2"><button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>{card.status!=='reviewed'&&<button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}</div>
+      </div>
+    </article>)}</div>}
+  </div>;
+};
