@@ -318,8 +318,13 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   }, [workers]);
 
   const availableBatchPeriods = useMemo(
-    () => Array.from(new Set(workers.map(normalizedPeriodBucket).filter(Boolean)))
-      .sort((a,b) => a.localeCompare(b, "es", { numeric: true })),
+    () => Array.from(
+      new Set<string>(
+        workers
+          .map((person) => String(normalizedPeriodBucket(person) || ""))
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b, "es", { numeric: true })),
     [workers],
   );
 
@@ -652,7 +657,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       }
 
       // Un único PDF permite imprimir toda la selección con una sola orden.
-      const pdfLib: any = await import(/* @vite-ignore */ "https://esm.sh/pdf-lib@1.17.1");
+      const pdfLib: any = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm");
       const merged = await pdfLib.PDFDocument.create();
       for (const item of generated) {
         const source = await pdfLib.PDFDocument.load(item.bytes);
