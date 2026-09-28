@@ -58,109 +58,14 @@ const buildContext = (data: Person[]) => ({
   supervisor: data[0]?.supervisorResponsable || 'Supervisor PROFEA',
 });
 
-const cleanValue = (value: unknown, fallback = 'No consta') => {
-  const text = String(value ?? '').trim();
-  return text || fallback;
-};
-
-const formatDateEs = (value: unknown) => {
-  const text = String(value || '').trim();
-  if (!text) return 'No consta';
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : text;
-};
-
-const buildWorkerHeading = (person: Person, index: number) =>
-  `${index + 1}. ${cleanValue(person.apellidosNombre, 'Trabajador sin nombre')}`;
-
-const buildAdministrativeWorkerLines = (person: Person, index: number) => [
-  buildWorkerHeading(person, index),
-  `   • DNI/NIE: ${cleanValue(person.dni)}`,
-  `   • Nº de oferta: ${cleanValue(person.numOferta)}`,
-  `   • Obra: ${cleanValue(person.obra)}`,
-  `   • Categoría: ${cleanValue(person.categoria)}`,
-  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
-  `   • Inicio de contrato: ${formatDateEs(person.periodoInicio)}`,
-  `   • Fin de contrato: ${formatDateEs(person.periodoFin)}`,
-  `   • Teléfono: ${cleanValue(person.telefono)}`,
-  `   • Nº Seguridad Social: ${cleanValue(person.numeroSeguridadSocial)}`,
-  `   • IBAN: ${cleanValue(person.iban)}`,
-  `   • Documentación: ${cleanValue(person.documentacionCompleta)}`,
-  person.observaciones?.trim() ? `   • Observaciones: ${person.observaciones.trim()}` : '',
-].filter(Boolean);
-
-const buildMedicalWorkerLines = (person: Person, index: number) => [
-  buildWorkerHeading(person, index),
-  `   • DNI/NIE: ${cleanValue(person.dni)}`,
-  `   • Obra: ${cleanValue(person.obra)}`,
-  `   • Categoría: ${cleanValue(person.categoria)}`,
-  `   • Teléfono: ${cleanValue(person.telefono)}`,
-  `   • Fecha de cita: ${formatDateEs(person.citaDia)}`,
-  `   • Hora de cita: ${cleanValue(person.citaHora)}`,
-  `   • Centro / lugar del reconocimiento: ${cleanValue(person.sitioReconocimiento)}`,
-  `   • Estado del reconocimiento: ${cleanValue(person.reconocimientoEstado || person.aptitudMedica, 'Pendiente')}`,
-  person.reconocimientoLimitaciones?.trim()
-    ? `   • Limitaciones: ${person.reconocimientoLimitaciones.trim()}`
-    : '',
-  person.reconocimientoObservaciones?.trim()
-    ? `   • Observaciones médicas administrativas: ${person.reconocimientoObservaciones.trim()}`
-    : '',
-].filter(Boolean);
-
-const buildFootwearWorkerLines = (person: Person, index: number) => [
-  buildWorkerHeading(person, index),
-  `   • DNI/NIE: ${cleanValue(person.dni)}`,
-  `   • Obra: ${cleanValue(person.obra)}`,
-  `   • Categoría: ${cleanValue(person.categoria)}`,
-  `   • Talla de calzado: ${cleanValue(person.calzado)}`,
-  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
-].filter(Boolean);
-
-const buildTrainingWorkerLines = (person: Person, index: number) => [
-  buildWorkerHeading(person, index),
-  `   • DNI/NIE: ${cleanValue(person.dni)}`,
-  `   • Obra: ${cleanValue(person.obra)}`,
-  `   • Categoría: ${cleanValue(person.categoria)}`,
-  `   • Estado de formación: ${cleanValue(person.formacion)}`,
-  `   • Lugar de formación: ${cleanValue(person.lugarFormacion)}`,
-  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
-  `   • Teléfono: ${cleanValue(person.telefono)}`,
-].filter(Boolean);
-
-const buildForemanWorkerLines = (person: Person, index: number) => [
-  buildWorkerHeading(person, index),
-  `   • DNI/NIE: ${cleanValue(person.dni)}`,
-  `   • Categoría: ${cleanValue(person.categoria)}`,
-  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
-  `   • Inicio: ${formatDateEs(person.periodoInicio)}`,
-  `   • Fin: ${formatDateEs(person.periodoFin)}`,
-  `   • Teléfono: ${cleanValue(person.telefono)}`,
-].filter(Boolean);
-
-const buildRelationText = (
-  kind: DirectoryCommunicationKind,
-  data: Person[],
-) => {
-  const blocks = data.map((person, index) => {
-    if (kind === 'administrative') return buildAdministrativeWorkerLines(person, index);
-    if (kind === 'medical') return buildMedicalWorkerLines(person, index);
-    if (kind === 'footwear') return buildFootwearWorkerLines(person, index);
-    if (kind === 'training') return buildTrainingWorkerLines(person, index);
-    return buildForemanWorkerLines(person, index);
-  });
-  return blocks.map(lines => lines.join('\n')).join('\n\n');
-};
-
 const buildStructuredBody = (input: {
-  kind: DirectoryCommunicationKind;
   recipientName: string;
   data: Person[];
   context: ReturnType<typeof buildContext>;
   label: string;
   fileName: string;
 }) => {
-  const { kind, recipientName, data, context, label, fileName } = input;
-  const relation = buildRelationText(kind, data);
+  const { recipientName, data, context, label, fileName } = input;
   return [
     `Buenos días, ${recipientName}:`,
     '',
@@ -172,10 +77,6 @@ const buildStructuredBody = (input: {
     `• Periodo(s): ${context.periodos || 'No consta'}`,
     `• Nº de trabajadores relacionados: ${data.length}`,
     `• Supervisor responsable: ${context.supervisor}`,
-    '',
-    'RELACIÓN DETALLADA',
-    '------------------',
-    relation,
     '',
     'DOCUMENTACIÓN ADJUNTA',
     '---------------------',
@@ -243,7 +144,6 @@ const prepareCommunication = async (
       recipientPhone: phone,
       subject: `Relación de trabajadores · ${work}`,
       body: buildStructuredBody({
-        kind,
         recipientName: resource.recursoPreventivoNombre,
         data,
         context,
@@ -298,7 +198,6 @@ const prepareCommunication = async (
     recipientEmail: email,
     subject: `${subjects[typedKind]}${context.obras ? ` · ${context.obras}` : ''}`,
     body: buildStructuredBody({
-      kind,
       recipientName,
       data: kind === 'training'
         ? data.filter(person => {
@@ -362,7 +261,7 @@ export const sendDirectoryCommunication = async (
     const gmail = await getGmailConnectionStatus();
     if (gmail.connected) {
       const confirmed = await appConfirm(
-        `Se enviará el correo “${prepared.subject}” desde ${gmail.email} a ${prepared.recipientEmail}, incluyendo la relación detallada en el cuerpo del mensaje y el PDF adjunto. ¿Deseas continuar?`,
+        `Se enviará el correo “${prepared.subject}” desde ${gmail.email} a ${prepared.recipientEmail}, con los datos generales del envío y el PDF adjunto que contiene la relación completa. ¿Deseas continuar?`,
         {
           title: 'Enviar correo',
           confirmLabel: 'Enviar correo',
