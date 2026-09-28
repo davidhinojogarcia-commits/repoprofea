@@ -120,11 +120,15 @@ const prepareCommunication = async (
     };
   }
 
+  const activeTrainingProvider =
+    settings.trainingProviders.find(provider => provider.id === settings.activeTrainingProviderId) ||
+    settings.trainingProvider;
+
   const recipient =
     kind === 'administrative' ? settings.administrative :
     kind === 'medical' ? settings.medicalProvider :
     kind === 'footwear' ? settings.footwearProvider :
-    settings.trainingProvider;
+    activeTrainingProvider;
 
   const email = String(recipient?.email || '').trim();
   const recipientName = String(recipient?.nombreApellidos || '').trim();
@@ -133,7 +137,7 @@ const prepareCommunication = async (
       administrative: 'administrativo/a',
       medical: 'responsable de reconocimientos médicos',
       footwear: 'responsable del proveedor de calzado',
-      training: 'responsable de la empresa de formación',
+      training: 'responsable de la empresa de formación activa',
     };
     throw new Error(`Falta configurar el contacto ${labels[kind as Exclude<DirectoryCommunicationKind, 'encargados'>]}.`);
   }
