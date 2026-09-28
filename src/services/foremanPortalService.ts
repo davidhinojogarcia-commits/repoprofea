@@ -58,6 +58,28 @@ export type ForemanPortalPayload = {
   mandatoryDocuments: ForemanMandatoryDocument[];
 };
 
+export type ForemanPortalAccessStatus = {
+  exists: boolean;
+  active: boolean;
+  foremanName: string;
+  lastUsedAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export async function getForemanPortalAccessStatus(obra: string): Promise<ForemanPortalAccessStatus> {
+  const rows = await supabase.query('foreman_portal_access', {
+    query: `obra=eq.${encodeURIComponent(obra)}&select=active,foreman_name,last_used_at,updated_at&limit=1`,
+  });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return {
+    exists: Boolean(row),
+    active: Boolean(row?.active),
+    foremanName: String(row?.foreman_name || ''),
+    lastUsedAt: row?.last_used_at || null,
+    updatedAt: row?.updated_at || null,
+  };
+}
+
 export async function createForemanPortalAccess(obra: string, foremanName: string): Promise<string> {
   const token = await supabase.rpc('ensure_foreman_portal_access', {
     p_obra: obra,
