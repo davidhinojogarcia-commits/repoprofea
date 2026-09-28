@@ -641,9 +641,16 @@ begin
     coalesce(p_work_date,current_date),p_document_type,v_category,v_workers,'pending',
     p_gmail_message_id,p_gmail_thread_id,p_rfc_message_id,p_email_from,p_email_subject,p_attachment_name,now()
   )
-  on conflict(owner_id,source_gmail_message_id,source_attachment_name)
-  where source_gmail_message_id is not null
-  do update set updated_at=now()
+  on conflict(owner_id,obra,period_key,document_type,category)
+  do update set
+    workers=excluded.workers,
+    source_gmail_message_id=coalesce(excluded.source_gmail_message_id, public.foreman_mandatory_documents.source_gmail_message_id),
+    source_gmail_thread_id=coalesce(excluded.source_gmail_thread_id, public.foreman_mandatory_documents.source_gmail_thread_id),
+    source_rfc_message_id=coalesce(excluded.source_rfc_message_id, public.foreman_mandatory_documents.source_rfc_message_id),
+    source_email_from=coalesce(excluded.source_email_from, public.foreman_mandatory_documents.source_email_from),
+    source_email_subject=coalesce(excluded.source_email_subject, public.foreman_mandatory_documents.source_email_subject),
+    source_attachment_name=coalesce(excluded.source_attachment_name, public.foreman_mandatory_documents.source_attachment_name),
+    updated_at=now()
   returning id into v_id;
   return v_id;
 end;
