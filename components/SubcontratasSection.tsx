@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
 import {
   HardHat, FileCheck, AlertTriangle, CheckCircle2, XCircle, Clock,
   Sparkles, UploadCloud, FileText, Download, Copy, Trash2, Plus,
@@ -389,8 +390,11 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
   };
 
   // Delete subcontractor
-  const handleDeleteSubcontrata = (subId: string, nombre: string) => {
-    if (!window.confirm(`¿Está seguro de eliminar el registro de la subcontrata "${nombre}"?`)) return;
+  const handleDeleteSubcontrata = async (subId: string, nombre: string) => {
+    if (!(await appConfirm(
+      `¿Está seguro de eliminar el registro de la subcontrata "${nombre}"?`,
+      { title: 'Eliminar subcontrata', confirmLabel: 'Eliminar' },
+    ))) return;
     setSubcontratistas(prev => prev.filter(s => s.id !== subId));
     if (selectedSubId === subId) setSelectedSubId(null);
     onToast(`Subcontrata "${nombre}" eliminada.`, 'success');
@@ -667,11 +671,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     );
   };
 
-  const handleDeleteCaeWorker = (subId: string, worker: SubcontrataTrabajadorCAE) => {
+  const handleDeleteCaeWorker = async (subId: string, worker: SubcontrataTrabajadorCAE) => {
     if (
-      !window.confirm(
+      !(await appConfirm(
         `¿Eliminar a "${worker.nombreApellidos || worker.dni}" de los trabajadores de esta empresa?`,
-      )
+        { title: 'Eliminar trabajador', confirmLabel: 'Eliminar' },
+      ))
     ) {
       return;
     }
