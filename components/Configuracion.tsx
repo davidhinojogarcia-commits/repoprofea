@@ -2386,6 +2386,18 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   </div>
                 )}
 
+                <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/20 p-4">
+                  <div className="flex items-start gap-3">
+                    <QrCode className="w-5 h-5 mt-0.5 text-emerald-700 dark:text-emerald-300 shrink-0" />
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white">Acceso móvil del encargado</h3>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                        Desde cada obra puedes generar el código QR o enlace del encargado. Ese acceso solo permite trabajar con la documentación de su obra: registro diario, Inicio, Control de presencia y Otros documentos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* List of Obras with Recurso Preventivo cards */}
                 {(() => {
                   const filteredObras = savedObras.filter((o) => {
@@ -2500,11 +2512,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">
-                                <ForemanAccessButton
-                                  obra={obra}
-                                  foremanName={recursoData?.recursoPreventivoNombre || ""}
-                                  phone={recursoData?.recursoPreventivoTelefono || ""}
-                                />
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -2543,6 +2550,13 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                 </button>
                               </div>
                             </div>
+
+                            <ForemanAccessButton
+                              obra={obra}
+                              foremanName={recursoData?.recursoPreventivoNombre || ""}
+                              phone={recursoData?.recursoPreventivoTelefono || ""}
+                              display="card"
+                            />
 
                             {deletingItem === obra && (
                               <div className="flex items-center justify-between p-2 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 animate-in fade-in duration-150">
