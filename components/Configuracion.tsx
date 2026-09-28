@@ -61,6 +61,7 @@ import {
   type MedicalProviderSettings,
   type FootwearProviderSettings,
   type TrainingProviderSettings,
+  type TrainingProviderEntry,
 } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
@@ -145,7 +146,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
   const [administrativeForm, setAdministrativeForm] = useState<AdministrativeSettings>(DEFAULT_ADMINISTRATIVE_SETTINGS);
   const [medicalProviderForm, setMedicalProviderForm] = useState<MedicalProviderSettings>(DEFAULT_MEDICAL_PROVIDER_SETTINGS);
   const [footwearProviderForm, setFootwearProviderForm] = useState<FootwearProviderSettings>(DEFAULT_FOOTWEAR_PROVIDER_SETTINGS);
-  const [trainingProviderForm, setTrainingProviderForm] = useState<TrainingProviderSettings>(DEFAULT_TRAINING_PROVIDER_SETTINGS);
+  const [trainingProviders, setTrainingProviders] = useState<TrainingProviderEntry[]>([]);
+  const [activeTrainingProviderId, setActiveTrainingProviderId] = useState("");
+  const [trainingProviderDraft, setTrainingProviderDraft] = useState<TrainingProviderSettings>(DEFAULT_TRAINING_PROVIDER_SETTINGS);
   const [supervisorLoaded, setSupervisorLoaded] = useState(false);
   const [technicianLoaded, setTechnicianLoaded] = useState(false);
   const [contactsLoaded, setContactsLoaded] = useState(false);
@@ -256,10 +259,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
           ...DEFAULT_FOOTWEAR_PROVIDER_SETTINGS,
           ...(settings.footwearProvider || {}),
         });
-        setTrainingProviderForm({
-          ...DEFAULT_TRAINING_PROVIDER_SETTINGS,
-          ...(settings.trainingProvider || {}),
-        });
+        setTrainingProviders(settings.trainingProviders || []);
+        setActiveTrainingProviderId(settings.activeTrainingProviderId || settings.trainingProviders?.[0]?.id || "");
+        setTrainingProviderDraft({ ...DEFAULT_TRAINING_PROVIDER_SETTINGS });
       })
       .catch((error) => console.error("No se pudo cargar la configuración del supervisor:", error))
       .finally(() => {
@@ -327,6 +329,8 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         medicalProvider: appSettings.medicalProvider,
         footwearProvider: appSettings.footwearProvider,
         trainingProvider: appSettings.trainingProvider,
+        trainingProviders: appSettings.trainingProviders,
+        activeTrainingProviderId: appSettings.activeTrainingProviderId,
         // Backward compatibility for backups created before v3.
         subcontratas,
         reporteTecnicoConfig: getStoredReporteTecnicoConfig(),
@@ -973,7 +977,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     description: string,
     form: any,
     setForm: React.Dispatch<React.SetStateAction<any>>,
-    settingsKey: "administrative" | "medicalProvider" | "footwearProvider" | "trainingProvider",
+    settingsKey: "administrative" | "medicalProvider" | "footwearProvider",
     options: { empresa?: boolean; numeroTrabajador?: boolean } = {},
   ) => {
     const fields = [
@@ -1555,14 +1559,198 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
               { empresa: true },
             )
           ) : activeTab === "trainingProvider" ? (
-            renderContactPanel(
-              "Empresa de formación",
-              "Contacto responsable que recibirá la relación de trabajadores y documentación de formación.",
-              trainingProviderForm,
-              setTrainingProviderForm,
-              "trainingProvider",
-              { empresa: true },
-            )
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in duration-300">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white">Empresas de formación</h2>
+                    <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 max-w-2xl">
+                      Puedes guardar varias empresas. La marcada como activa será la destinataria automática del correo de Formación PRL en Acciones informativas rápidas.
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-3 py-1 text-xs font-black text-[#00548E] dark:text-blue-200">
+                    {trainingProviders.length} {trainingProviders.length === 1 ? "empresa" : "empresas"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-3">
+                  {trainingProviders.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 text-center text-sm text-slate-600 dark:text-slate-300">
+                      No hay empresas de formación guardadas. Añade la primera debajo.
+                    </div>
+                  ) : trainingProviders.map((provider) => {
+                    const active = provider.id === activeTrainingProviderId;
+                    return (
+                      <div
+                        key={provider.id}
+                        className={`rounded-2xl border p-4 transition-all ${active
+                          ? "border-emerald-400 bg-emerald-50/70 dark:border-emerald-700 dark:bg-emerald-950/20 ring-2 ring-emerald-500/10"
+                          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950/40"}`}
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-black text-slate-900 dark:text-white">{provider.empresa || "Empresa sin nombre"}</p>
+                              {active && (
+                                <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+                                  Activa para envíos
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{provider.nombreApellidos || "Sin contacto responsable"}</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300">
+                              {provider.email || "Sin correo"}{provider.telefono ? ` · ${provider.telefono}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {!active && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await saveAppBusinessSettings({
+                                      trainingProviders,
+                                      activeTrainingProviderId: provider.id,
+                                    });
+                                    setActiveTrainingProviderId(provider.id);
+                                    window.dispatchEvent(new CustomEvent("profea:contact-settings-updated", { detail: { settingsKey: "trainingProvider" } }));
+                                    setToast?.({ message: `${provider.empresa || "Empresa"} activada para los envíos de formación.`, type: "success" });
+                                  } catch (error) {
+                                    console.error("No se pudo activar la empresa de formación:", error);
+                                    setToast?.({ message: "No se pudo activar la empresa de formación.", type: "error" });
+                                  }
+                                }}
+                                className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+                              >
+                                Activar para envíos
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setTrainingProviderDraft({
+                                empresa: provider.empresa,
+                                nombreApellidos: provider.nombreApellidos,
+                                telefono: provider.telefono,
+                                email: provider.email,
+                              })}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                              title="Copia los datos al formulario para crear una variante o modificarlos antes de guardar"
+                            >
+                              Editar / duplicar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!window.confirm(`¿Eliminar ${provider.empresa || "esta empresa de formación"}?`)) return;
+                                const next = trainingProviders.filter(item => item.id !== provider.id);
+                                const nextActive = active ? (next[0]?.id || "") : activeTrainingProviderId;
+                                try {
+                                  await saveAppBusinessSettings({
+                                    trainingProviders: next,
+                                    activeTrainingProviderId: nextActive,
+                                  });
+                                  setTrainingProviders(next);
+                                  setActiveTrainingProviderId(nextActive);
+                                  window.dispatchEvent(new CustomEvent("profea:contact-settings-updated", { detail: { settingsKey: "trainingProvider" } }));
+                                  setToast?.({ message: "Empresa de formación eliminada.", type: "success" });
+                                } catch (error) {
+                                  console.error("No se pudo eliminar la empresa de formación:", error);
+                                  setToast?.({ message: "No se pudo eliminar la empresa de formación.", type: "error" });
+                                }
+                              }}
+                              className="rounded-xl border border-rose-300 bg-white px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:bg-slate-900 dark:text-rose-300"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Plus className="w-5 h-5 text-[#00548E] dark:text-blue-300" />
+                    <h3 className="font-black text-slate-900 dark:text-white">Añadir empresa de formación</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      ["empresa", "Empresa", "Nombre de la empresa", "text"],
+                      ["nombreApellidos", "Contacto responsable", "Nombre y apellidos", "text"],
+                      ["telefono", "Teléfono", "Ej: 600 123 456", "tel"],
+                      ["email", "Correo electrónico", "correo@empresa.es", "email"],
+                    ].map(([key, label, placeholder, type]) => (
+                      <label key={key} className="space-y-2">
+                        <span className="block text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">{label}</span>
+                        <input
+                          type={type}
+                          value={String((trainingProviderDraft as any)[key] || "")}
+                          onChange={(event) => setTrainingProviderDraft(previous => ({ ...previous, [key]: event.target.value }))}
+                          placeholder={placeholder}
+                          className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00548E]/30"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTrainingProviderDraft({ ...DEFAULT_TRAINING_PROVIDER_SETTINGS })}
+                      className="rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-black text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                    >
+                      Limpiar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!contactsLoaded}
+                      onClick={async () => {
+                        const empresa = trainingProviderDraft.empresa.trim();
+                        const nombreApellidos = trainingProviderDraft.nombreApellidos.trim();
+                        const email = trainingProviderDraft.email.trim();
+                        if (!empresa || !nombreApellidos || !email) {
+                          setToast?.({ message: "Indica empresa, contacto responsable y correo electrónico.", type: "error" });
+                          return;
+                        }
+                        const id = `training-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+                        const added: TrainingProviderEntry = {
+                          id,
+                          empresa,
+                          nombreApellidos,
+                          telefono: trainingProviderDraft.telefono.trim(),
+                          email,
+                        };
+                        const next = [...trainingProviders, added];
+                        const nextActive = activeTrainingProviderId || id;
+                        try {
+                          await saveAppBusinessSettings({
+                            trainingProviders: next,
+                            activeTrainingProviderId: nextActive,
+                          });
+                          setTrainingProviders(next);
+                          setActiveTrainingProviderId(nextActive);
+                          setTrainingProviderDraft({ ...DEFAULT_TRAINING_PROVIDER_SETTINGS });
+                          window.dispatchEvent(new CustomEvent("profea:contact-settings-updated", { detail: { settingsKey: "trainingProvider" } }));
+                          setToast?.({
+                            message: `${empresa} guardada${nextActive === id ? " y activada para los envíos." : "."}`,
+                            type: "success",
+                          });
+                        } catch (error) {
+                          console.error("No se pudo guardar la empresa de formación:", error);
+                          setToast?.({ message: "No se pudo guardar la empresa de formación.", type: "error" });
+                        }
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-xs font-black text-white hover:bg-[#003f6b] disabled:opacity-60"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Añadir empresa
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : activeTab === "horario" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
