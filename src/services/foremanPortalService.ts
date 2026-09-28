@@ -174,3 +174,11 @@ export async function markMandatoryDocumentReturned(id: string, gmailMessageId: 
     p_gmail_message_id: gmailMessageId,
   });
 }
+
+
+export async function finalizeForemanMandatoryDocument(token: string, documentId: string) {
+  return supabase.rpc('finalize_foreman_mandatory_document', {
+    p_token: token,
+    p_document_id: documentId,
+  });
+}
