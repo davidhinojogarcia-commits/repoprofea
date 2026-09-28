@@ -163,14 +163,18 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     }
   };
   const term=search.trim().toLowerCase();
+  const visibleMandatory = useMemo(
+    () => mandatory.filter(item => ['inicio','control_presencia'].includes(String(item.document_type || ''))),
+    [mandatory],
+  );
 
   const allCards=useMemo(()=>{
     const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
-    const mandatoryCards=mandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
+    const mandatoryCards=visibleMandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards]
       .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-  },[attendance,mandatory,documents]);
+  },[attendance,visibleMandatory,documents]);
 
   const cards=useMemo(()=>allCards
     .filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed'))
@@ -520,9 +524,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const signedEntries=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.entrySignature).length,0);
   const signedExits=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.exitSignature).length,0);
   const pending=cards.filter(c=>c.status!=='reviewed').length;
-  const correctionCount=mandatory.filter(i=>i.correction_pending).length+documents.filter(i=>i.correction_pending).length+attendance.filter(i=>i.correction_pending).length;
-  const incompleteCount=mandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
-  const reviewCount=mandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
+  const correctionCount=visibleMandatory.filter(i=>i.correction_pending).length+documents.filter(i=>i.correction_pending).length+attendance.filter(i=>i.correction_pending).length;
+  const incompleteCount=visibleMandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
+  const reviewCount=visibleMandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
   const actionLabel=(action:string)=>({
     created:'Creado',created_and_finalized:'Creado y finalizado',signature_updated:'Firma registrada o actualizada',
     finalized:'Finalizado por el encargado',reviewed:'Revisado por el supervisor',returned_for_correction:'Devuelto para corrección',
@@ -566,7 +570,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       {completionNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"><span>{completionNotice}</span><button onClick={()=>setCompletionNotice('')} className="rounded-lg border border-emerald-300 px-2 py-1 text-[10px]">OK</button></div>}
       {activityNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-xs font-black text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><span>{activityNotice}</span><button onClick={()=>{setActivityNotice('');setControlView('activity')}} className="rounded-lg border border-blue-300 px-2 py-1 text-[10px]">Ver actividad</button></div>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
-        {([['Obligatorios',mandatory.length],['Otros documentos',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
+        {([['Inicio / Control',visibleMandatory.length],['Documentos normalizados',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -622,7 +626,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
         <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border pl-9 pr-3 py-2.5 bg-white dark:bg-slate-950"/></div>
-      <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio y control de presencia</option><option value="attendance">Registro diario</option><option value="documents">Otros documentos</option><option value="pending">Pendientes de revisar ({pending})</option></select>
+      <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio y control de presencia</option><option value="attendance">Registro diario</option><option value="documents">Documentos normalizados</option><option value="pending">Pendientes de revisar ({pending})</option></select>
     </div>
     {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra y mes con los filtros actuales.</div>:<div className="space-y-3">{visibleCards.map(card=><article key={card.kind+card.id} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
