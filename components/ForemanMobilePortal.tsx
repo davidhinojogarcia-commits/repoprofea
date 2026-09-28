@@ -1,15 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ClipboardList, Clock3, FileSignature, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
-import type { Person } from '../types';
-import {
-  ADDITIONAL_WORKSITE_DOCUMENTS,
-  type AdditionalWorksiteDocumentType,
-} from '../src/lib/worksiteAdditionalDocumentsPdf';
+import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, ClipboardList, Clock3, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import {
   resolveForemanPortal,
   saveForemanAttendance,
-  submitForemanDocument,
   signMandatoryForemanDocument,
+  finalizeForemanMandatoryDocument,
   type ForemanAttendanceRow,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
@@ -51,16 +46,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [tab,setTab]=useState<'attendance'|'mandatory'|'documents'|'completed'>('attendance');
+  const [tab,setTab]=useState<'attendance'|'mandatory'|'completed'>('mandatory');
   const [date,setDate]=useState(today());
   const [rows,setRows]=useState<ForemanAttendanceRow[]>([]);
   const [signing,setSigning]=useState<{workerId:number;kind:'entry'|'exit'}|null>(null);
   const [saving,setSaving]=useState(false);
-  const [docType,setDocType]=useState<AdditionalWorksiteDocumentType>('ausencia_trabajador');
-  const [workerId,setWorkerId]=useState<number|''>('');
-  const [answers,setAnswers]=useState<Record<string,string>>({});
-  const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
-  const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
 
   const refresh=async()=>{setLoading(true);setError('');try{const next=await resolveForemanPortal(token);if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');setData(next);}catch(e:any){setError(e?.message||'No se pudo abrir la documentación de la obra.');}finally{setLoading(false);}};
@@ -95,8 +85,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const next=rows.map(r=>r.workerId===signing.workerId?{...r,...(signing.kind==='entry'?{entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}:{exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})}:r);
     setSigning(null); await persist(next,'draft');
   };
-  const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
-  const selectedWorker=data?.workers.find(w=>Number(w.id)===Number(workerId));
 
   if(loading&&!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="text-center"><Loader2 className="w-9 h-9 animate-spin mx-auto text-[#00548E]"/><p className="mt-3 font-bold">Abriendo documentación de obra…</p></div></div>;
   if(error||!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><div className="max-w-md rounded-3xl bg-white border border-amber-200 p-7 text-center shadow-xl"><ShieldCheck className="w-10 h-10 mx-auto text-amber-500"/><h1 className="mt-3 text-xl font-black">Acceso no disponible</h1><p className="mt-2 text-sm text-slate-600">{error}</p></div></div>;
@@ -107,11 +95,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       <div className="max-w-3xl mx-auto"><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E]">Portal del encargado · PROFEA</div><h1 className="text-lg font-black leading-tight">{data.obra}</h1><p className="text-xs text-slate-500">{data.foremanName||'Encargado de obra'}</p></div>
     </header>
     <main className="max-w-3xl mx-auto p-3 sm:p-5 space-y-4">
-      <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-white border p-2">
+      <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-white border p-2">
+        <button onClick={()=>setTab('mandatory')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-600'}`}><ClipboardList className="w-4 h-4 mx-auto mb-1"/>Documentos</button>
         <button onClick={()=>setTab('attendance')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='attendance'?'bg-[#00548E] text-white':'text-slate-600'}`}><Clock3 className="w-4 h-4 mx-auto mb-1"/>Jornada</button>
-        <button onClick={()=>setTab('mandatory')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-600'}`}><ClipboardList className="w-4 h-4 mx-auto mb-1"/>Obligatorios</button>
-        <button onClick={()=>setTab('documents')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-600'}`}><FileSignature className="w-4 h-4 mx-auto mb-1"/>Otros</button>
-        <button onClick={()=>setTab('completed')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-600'}`}><CheckCircle2 className="w-4 h-4 mx-auto mb-1"/>Enviados</button>
+        <button onClick={()=>setTab('completed')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-600'}`}><CheckCircle2 className="w-4 h-4 mx-auto mb-1"/>Finalizados</button>
       </div>
 
       {tab==='attendance'&&<section className="space-y-3">
@@ -161,8 +148,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
-          <h2 className="font-black">Documentos obligatorios</h2>
-          <p className="mt-1 text-xs text-slate-500">Se crean automáticamente al importar la relación de la administrativa. Cada trabajador firma desde este móvil.</p>
+          <h2 className="font-black">Documentos asignados por el supervisor</h2>
+          <p className="mt-1 text-xs text-slate-500">Aquí solo aparecen los documentos que el supervisor ha preparado para esta obra. Recoge todas las firmas y después pulsa Finalizar para enviárselos.</p>
         </div>
         {data.mandatoryDocuments.map(doc=>{
           const label=doc.documentType==='inicio'?'Inicio / incorporación':'Control de presencia';
@@ -171,36 +158,50 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             <div className="flex items-start justify-between gap-3"><div><div className="font-black">{label}</div><div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${doc.status==='completed'||doc.status==='reviewed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span></div>
             <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
               const signed=Boolean((doc.signatures||{})[String(worker.id)]);
-              return <button key={worker.id} type="button" disabled={signed} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left ${signed?'bg-emerald-50 border-emerald-200':'bg-white'}`}>
+              const closed=doc.status==='completed'||doc.status==='reviewed';
+              return <button key={worker.id} type="button" disabled={signed||closed} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left ${signed?'bg-emerald-50 border-emerald-200':'bg-white'}`}>
                 <span><span className="block text-sm font-black">{worker.apellidosNombre}</span><span className="block text-[11px] text-slate-500">{worker.dni} · {worker.categoria}</span></span>
                 <span className={`text-xs font-black ${signed?'text-emerald-700':'text-[#00548E]'}`}>{signed?'Firmado ✓':'Firmar'}</span>
               </button>;
             })}</div>
+            {doc.status!=='completed'&&doc.status!=='reviewed'&&(
+              <button
+                type="button"
+                disabled={saving || signedCount !== doc.workers.length || doc.workers.length===0}
+                onClick={async()=>{
+                  setSaving(true);
+                  try{
+                    await finalizeForemanMandatoryDocument(token,doc.id);
+                    await refresh();
+                    setTab('completed');
+                  }catch(error:any){
+                    window.alert(error?.message||'No se pudo finalizar el documento.');
+                  }finally{
+                    setSaving(false);
+                  }
+                }}
+                className="mt-4 w-full rounded-2xl bg-emerald-600 py-3.5 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500"
+              >
+                {signedCount===doc.workers.length&&doc.workers.length>0 ? 'Finalizar y enviar al supervisor' : `Faltan ${Math.max(0,doc.workers.length-signedCount)} firma(s)`}
+              </button>
+            )}
+            {(doc.status==='completed'||doc.status==='reviewed')&&(
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">
+                Documento finalizado y enviado al supervisor
+              </div>
+            )}
           </div>;
         })}
         {!data.mandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay documentos obligatorios pendientes para esta obra.</div>}
       </section>}
 
-      {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 space-y-4">
-        <div><h2 className="font-black">Otros documentos</h2><p className="text-xs text-slate-500">Cumplimenta, firma y envía el documento al supervisor.</p></div>
-        <label className="block text-xs font-black uppercase">Documento<select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});}} className="mt-1 w-full rounded-xl border px-3 py-3 text-sm normal-case">
-          {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
-        </select></label>
-        <label className="block text-xs font-black uppercase">Trabajador<select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-1 w-full rounded-xl border px-3 py-3 text-sm normal-case"><option value="">Seleccionar…</option>{data.workers.map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}</select></label>
-        <label className="block text-xs font-black uppercase">Fecha<input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-3 text-sm normal-case"/></label>
-        {def.fields.map(field=><label key={field.key} className="block text-xs font-black uppercase">{field.label}{field.type==='textarea'?<textarea rows={3} value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-3 text-sm normal-case"/>:field.type==='select'?<select value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-3 text-sm normal-case"><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o}>{o}</option>)}</select>:<input type={field.type||'text'} value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-3 text-sm normal-case"/>}</label>)}
-        <div className="grid grid-cols-2 gap-2">{def.signatureWorker&&<button onClick={()=>setDocSigning('worker')} className={`rounded-xl border px-3 py-3 text-sm font-black ${docSignatures.worker?'bg-emerald-50 border-emerald-300 text-emerald-800':''}`}>Firma trabajador {docSignatures.worker?'✓':''}</button>}<button onClick={()=>setDocSigning('foreman')} className={`rounded-xl border px-3 py-3 text-sm font-black ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':''}`}>Firma encargado {docSignatures.foreman?'✓':''}</button></div>
-        <button onClick={async()=>{if(!selectedWorker)return alert('Selecciona un trabajador.');const missing=def.fields.filter(f=>f.required&&!String(answers[f.key]||'').trim());if(missing.length)return alert('Completa: '+missing.map(f=>f.label).join(', '));if(def.signatureWorker&&!docSignatures.worker)return alert('Falta la firma del trabajador.');if(!docSignatures.foreman)return alert('Falta la firma del encargado.');setSaving(true);try{await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});setAnswers({});setDocSignatures({});setWorkerId('');await refresh();setTab('completed');}finally{setSaving(false);}}} disabled={saving} className="w-full rounded-2xl bg-[#00548E] text-white py-4 font-black disabled:opacity-50">Finalizar y enviar documento</button>
-      </section>}
-
       {tab==='completed'&&<section className="space-y-3">
         <button onClick={()=>void refresh()} className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-xs font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
-        {data.documents.map(d=><div key={d.id} className="rounded-2xl bg-white border p-4"><div className="font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="text-xs text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-2 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-2 py-1 text-[10px] font-black text-emerald-700">Enviado al supervisor</span></div>)}
-        {!data.documents.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">Todavía no hay documentos enviados.</div>}
+        {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={d.id} className="rounded-2xl bg-white border p-4"><div className="font-black">{d.documentType==='inicio'?'Inicio / incorporación':'Control de presencia'}</div><div className="text-xs text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}</div><span className="mt-2 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-2 py-1 text-[10px] font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
+        {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">Todavía no hay documentos finalizados.</div>}
       </section>}
     </main>
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
-    {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
     {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);await refresh();}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>}
   </div>;
 };
