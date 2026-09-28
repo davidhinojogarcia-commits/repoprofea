@@ -1140,7 +1140,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
             ["administrative", "Administrativo/a", Users],
             ["medicalProvider", "Empresa reconocimientos médicos", Stethoscope],
             ["footwearProvider", "Proveedor de calzado", Building2],
-            ["trainingProvider", "Empresa de formación", GraduationCap],
+            ["trainingProvider", "Empresas de formación", GraduationCap],
           ].map(([id, label, Icon]: any) => (
             <button
               key={id}
