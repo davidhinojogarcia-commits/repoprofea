@@ -10,6 +10,8 @@ import {
   submitForemanDocument,
   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
+  createForemanOperationalDocument,
+  resubmitForemanDocument,
   type ForemanAttendanceRow,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
@@ -24,9 +26,9 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
   useEffect(() => {
     const canvas=ref.current; if(!canvas) return;
     const rect=canvas.getBoundingClientRect(); const ratio=Math.max(1,window.devicePixelRatio||1);
-    canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(190*ratio);
+    canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
     const ctx=canvas.getContext('2d'); if(!ctx) return;
-    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,rect.width,190);
+    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,rect.width,rect.height);
     ctx.strokeStyle='#111827'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
   },[]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
@@ -61,7 +63,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [answers,setAnswers]=useState<Record<string,string>>({});
   const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
+  const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
+  const [operationalType,setOperationalType]=useState<'epis'|'maquinaria'|'autorizacion_uso_maquinaria'>('epis');
+  const [operationalWorkerIds,setOperationalWorkerIds]=useState<number[]>([]);
+  const [operationalMachinery,setOperationalMachinery]=useState('');
+  const [operationalEpis,setOperationalEpis]=useState<Record<string,boolean>>({
+    casco:true,chaleco:true,orejeras:true,gafas:true,guantes:true,mascarillas:true,calzado:true,
+  });
 
   const refresh=async()=>{setLoading(true);setError('');try{const next=await resolveForemanPortal(token);if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');setData(next);}catch(e:any){setError(e?.message||'No se pudo abrir la documentación de la obra.');}finally{setLoading(false);}};
   useEffect(()=>{void refresh();},[token]);
@@ -97,6 +106,38 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
   const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
   const selectedWorker=data?.workers.find(w=>Number(w.id)===Number(workerId));
+  const mandatoryLabel=(type:string)=>({
+    inicio:'Inicio / incorporación',
+    control_presencia:'Control de presencia',
+    epis:'Entrega de EPIs',
+    maquinaria:'Autorización de maquinaria',
+    autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
+  } as Record<string,string>)[type]||type;
+  const toggleOperationalWorker=(id:number)=>setOperationalWorkerIds(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id]);
+  const createOperational=async()=>{
+    if(!operationalWorkerIds.length)return window.alert('Selecciona al menos un trabajador.');
+    if((operationalType==='maquinaria'||operationalType==='autorizacion_uso_maquinaria')&&!operationalMachinery.trim()){
+      return window.alert('Indica la maquinaria o equipos autorizados.');
+    }
+    setSaving(true);
+    try{
+      await createForemanOperationalDocument({
+        token,
+        documentType:operationalType,
+        workDate:date,
+        workerIds:operationalWorkerIds,
+        details: operationalType==='epis'
+          ? { epis: operationalEpis }
+          : { maquinaria: operationalMachinery.trim() },
+      });
+      setOperationalWorkerIds([]);
+      setOperationalMachinery('');
+      await refresh();
+      setTab('mandatory');
+    }catch(error:any){
+      window.alert(error?.message||'No se pudo crear el documento.');
+    }finally{setSaving(false);}
+  };
 
   if(loading&&!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="text-center"><Loader2 className="w-9 h-9 animate-spin mx-auto text-[#00548E]"/><p className="mt-3 font-bold">Abriendo documentación de obra…</p></div></div>;
   if(error||!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><div className="max-w-md rounded-3xl bg-white border border-amber-200 p-7 text-center shadow-xl"><ShieldCheck className="w-10 h-10 mx-auto text-amber-500"/><h1 className="mt-3 text-xl font-black">Acceso no disponible</h1><p className="mt-2 text-sm text-slate-600">{error}</p></div></div>;
@@ -122,6 +163,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <div className="rounded-2xl bg-white border p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 className="text-lg font-black">Registro diario de jornada</h2><p className="text-sm text-slate-600">{completedToday}/{rows.length} con entrada y salida firmadas</p><p className="mt-1 text-sm font-semibold text-slate-500">Horario predeterminado: {data.defaultWorkStartHour}–{data.defaultWorkEndHour}. Puedes cambiarlo para cada trabajador.</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="min-h-[50px] w-full sm:w-auto rounded-xl border px-3 py-2 text-base font-bold bg-white"/></div>
         </div>
+        {data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionPending&&
+          <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+            <div className="font-black text-amber-900">Corrección solicitada por el supervisor</div>
+            <p className="mt-1 text-sm text-amber-800">{data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionReason||'Revisa esta jornada antes de volver a finalizarla.'}</p>
+          </div>}
         {rows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
           <div><div className="font-black">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -169,16 +215,18 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <p className="mt-1 text-xs text-slate-500">Aquí solo aparecen los documentos que el supervisor ha preparado para esta obra. Recoge todas las firmas y después pulsa Finalizar para enviárselos.</p>
         </div>
         {data.mandatoryDocuments.map(doc=>{
-          const label=doc.documentType==='inicio'?'Inicio / incorporación':'Control de presencia';
+          const label=mandatoryLabel(doc.documentType);
           const signedCount=Object.keys(doc.signatures||{}).length;
-          return <div key={doc.id} className="rounded-2xl bg-white border p-4 shadow-sm">
+          const correction=Boolean(doc.correctionPending);
+          return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
             <div className="flex items-start justify-between gap-3"><div><div className="font-black">{label}</div><div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${doc.status==='completed'||doc.status==='reviewed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span></div>
+            {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
             <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
               const signed=Boolean((doc.signatures||{})[String(worker.id)]);
               const closed=doc.status==='completed'||doc.status==='reviewed';
-              return <button key={worker.id} type="button" disabled={signed||closed} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
+              return <button key={worker.id} type="button" disabled={closed||(!correction&&signed)} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
                 <span><span className="block text-base font-black leading-tight">{worker.apellidosNombre}</span><span className="block mt-1 text-sm text-slate-500">{worker.dni} · {worker.categoria}</span></span>
-                <span className={`text-xs font-black ${signed?'text-emerald-700':'text-[#00548E]'}`}>{signed?'Firmado ✓':'Firmar'}</span>
+                <span className={`text-xs font-black ${signed&&!correction?'text-emerald-700':'text-[#00548E]'}`}>{correction?(signed?'Volver a firmar':'Firmar'):signed?'Firmado ✓':'Firmar'}</span>
               </button>;
             })}</div>
             {doc.status!=='completed'&&doc.status!=='reviewed'&&(
@@ -214,11 +262,92 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
-          <h2 className="text-lg font-black">Otros documentos de obra</h2>
-          <p className="mt-1 text-sm text-slate-600">Estos modelos están siempre disponibles. El encargado puede cumplimentarlos cuando los necesite, recoger las firmas y enviarlos al supervisor.</p>
+          <h2 className="text-lg font-black">Documentos de obra</h2>
+          <p className="mt-1 text-sm text-slate-600">Documentos disponibles permanentemente para el encargado. Puedes preparar los habituales de obra o cumplimentar otros modelos cuando los necesites.</p>
+        </div>
+
+        <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-4 space-y-4">
+          <div>
+            <div className="text-base font-black">Documentos habituales del encargado</div>
+            <p className="mt-1 text-sm text-slate-600">Selecciona el documento, los trabajadores que deben firmar y prepáralo desde el móvil.</p>
+          </div>
+          <label className="block text-sm font-black">Tipo de documento
+            <select value={operationalType} onChange={e=>setOperationalType(e.target.value as any)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+              <option value="epis">Entrega de EPIs</option>
+              <option value="maquinaria">Autorización de maquinaria</option>
+              <option value="autorizacion_uso_maquinaria">Autorización al uso de maquinaria</option>
+            </select>
+          </label>
+          <label className="block text-sm font-black">Fecha
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>
+
+          {operationalType==='epis'&&<div>
+            <div className="text-sm font-black mb-2">EPIs entregados</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=>
+                <label key={key} className="flex items-center gap-2 rounded-xl border bg-white px-3 py-3 text-sm font-bold">
+                  <input type="checkbox" checked={Boolean(operationalEpis[key])} onChange={e=>setOperationalEpis(current=>({...current,[key]:e.target.checked}))}/>
+                  <span>{label}</span>
+                </label>
+              )}
+            </div>
+          </div>}
+
+          {(operationalType==='maquinaria'||operationalType==='autorizacion_uso_maquinaria')&&<label className="block text-sm font-black">Maquinaria / equipos autorizados
+            <textarea rows={3} value={operationalMachinery} onChange={e=>setOperationalMachinery(e.target.value)} placeholder="Ej.: dumper, hormigonera, radial…" className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>}
+
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-sm font-black">Trabajadores que deben firmar</div>
+              <button type="button" onClick={()=>setOperationalWorkerIds(operationalWorkerIds.length===data.workers.length?[]:data.workers.map(w=>Number(w.id)))} className="text-xs font-black text-[#00548E]">
+                {operationalWorkerIds.length===data.workers.length?'Ninguno':'Todos'}
+              </button>
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-2">
+              {data.workers.map(w=><label key={w.id} className="flex items-center gap-3 rounded-xl border bg-white px-3 py-3">
+                <input type="checkbox" checked={operationalWorkerIds.includes(Number(w.id))} onChange={()=>toggleOperationalWorker(Number(w.id))} className="w-5 h-5"/>
+                <span className="min-w-0"><span className="block text-sm font-black">{w.apellidosNombre}</span><span className="block text-xs text-slate-500">{w.dni} · {w.categoria}</span></span>
+              </label>)}
+            </div>
+          </div>
+
+          <button type="button" disabled={saving||!operationalWorkerIds.length} onClick={()=>void createOperational()} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white disabled:opacity-40">
+            {saving?'Preparando…':`Preparar ${mandatoryLabel(operationalType)}`}
+          </button>
+        </div>
+
+        {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
+          <div>
+            <div className="text-base font-black text-amber-900">Correcciones solicitadas por el supervisor</div>
+            <p className="mt-1 text-sm text-amber-800">Estos documentos están desbloqueados únicamente para que hagas la corrección indicada y los vuelvas a enviar.</p>
+          </div>
+          {data.documents.filter(d=>d.correctionPending).map(d=><button
+            key={d.id}
+            type="button"
+            onClick={()=>{
+              setCorrectionDocumentId(String(d.id));
+              setDocType(d.documentType as AdditionalWorksiteDocumentType);
+              setWorkerId(Number(d.workerId||'')||'');
+              setDate(String(d.workDate).slice(0,10));
+              setAnswers(d.answers||{});
+              setDocSignatures(d.signatures||{});
+            }}
+            className="w-full rounded-xl border border-amber-300 bg-white p-3 text-left"
+          >
+            <div className="font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div>
+            <div className="mt-1 text-xs text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div>
+            <div className="mt-2 text-sm font-semibold text-amber-900">Motivo: {d.correctionReason||'Revisar documento'}</div>
+          </button>)}
+        </div>}
+
+        <div className="border-t pt-4">
+          <div className="text-base font-black">Otros documentos</div>
+          <p className="mt-1 text-sm text-slate-600">Modelos individuales para cumplimentar y firmar cuando sean necesarios.</p>
         </div>
         <label className="block text-sm font-black">Documento
-          <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+          <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});setCorrectionDocumentId('');}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
           </select>
         </label>
@@ -243,6 +372,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           {def.signatureWorker&&<button onClick={()=>setDocSigning('worker')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.worker?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma trabajador {docSignatures.worker?'✓':''}</button>}
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma encargado {docSignatures.foreman?'✓':''}</button>
         </div>
+        {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
         <button
           onClick={async()=>{
             if(!selectedWorker)return alert('Selecciona un trabajador.');
@@ -252,8 +382,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             if(!docSignatures.foreman)return alert('Falta la firma del encargado.');
             setSaving(true);
             try{
-              await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
-              setAnswers({});setDocSignatures({});setWorkerId('');
+              if(correctionDocumentId){
+                await resubmitForemanDocument({token,documentId:correctionDocumentId,answers,signatures:docSignatures});
+              }else{
+                await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
+              }
+              setAnswers({});setDocSignatures({});setWorkerId('');setCorrectionDocumentId('');
               await refresh();setTab('completed');
             }finally{setSaving(false);}
           }}
@@ -266,8 +400,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='completed'&&<section className="space-y-3">
         <button onClick={()=>void refresh()} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-black touch-manipulation"><RefreshCw className="w-4 h-4"/>Actualizar</button>
-        {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={'m-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{d.documentType==='inicio'?'Inicio / incorporación':'Control de presencia'}</div><div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}</div><span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
-        {data.documents.map(d=><div key={'d-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="mt-1 text-sm text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-800">Enviado al supervisor</span></div>)}
+        {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={'m-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{mandatoryLabel(d.documentType)}</div><div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}</div><span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
+        {data.documents.filter(d=>!d.correctionPending&&d.status!=='draft').map(d=><div key={'d-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="mt-1 text-sm text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-800">Enviado al supervisor</span></div>)}
         {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.documents.length&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
       </section>}
     </main>

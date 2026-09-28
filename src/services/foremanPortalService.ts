@@ -19,18 +19,25 @@ export type ForemanAttendanceDay = {
   status: 'draft' | 'completed' | 'reviewed';
   completedAt?: string | null;
   updatedAt?: string | null;
+  correctionPending?: boolean;
+  correctionReason?: string | null;
+  correctionRequestedAt?: string | null;
 };
 
 export type ForemanMandatoryDocument = {
   id: string;
   workDate: string;
   periodKey: string;
-  documentType: 'inicio' | 'control_presencia';
+  documentType: 'inicio' | 'control_presencia' | 'epis' | 'maquinaria' | 'autorizacion_uso_maquinaria';
   category: string;
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
-  status: 'pending' | 'in_progress' | 'completed' | 'reviewed';
+  status: 'pending' | 'in_progress' | 'returned' | 'completed' | 'reviewed';
   completedAt?: string | null;
+  details?: Record<string, any>;
+  correctionPending?: boolean;
+  correctionReason?: string | null;
+  correctionRequestedAt?: string | null;
 };
 
 export type ForemanCompletedDocument = {
@@ -43,6 +50,9 @@ export type ForemanCompletedDocument = {
   signatures: Record<string, string>;
   status: 'draft' | 'completed' | 'reviewed';
   completedAt?: string | null;
+  correctionPending?: boolean;
+  correctionReason?: string | null;
+  correctionRequestedAt?: string | null;
 };
 
 export type ForemanPortalPayload = {
@@ -56,6 +66,28 @@ export type ForemanPortalPayload = {
   documents: ForemanCompletedDocument[];
   mandatoryDocuments: ForemanMandatoryDocument[];
 };
+
+export type ForemanPortalAccessStatus = {
+  exists: boolean;
+  active: boolean;
+  foremanName: string;
+  lastUsedAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export async function getForemanPortalAccessStatus(obra: string): Promise<ForemanPortalAccessStatus> {
+  const rows = await supabase.query('foreman_portal_access', {
+    query: `obra=eq.${encodeURIComponent(obra)}&select=active,foreman_name,last_used_at,updated_at&limit=1`,
+  });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return {
+    exists: Boolean(row),
+    active: Boolean(row?.active),
+    foremanName: String(row?.foreman_name || ''),
+    lastUsedAt: row?.last_used_at || null,
+    updatedAt: row?.updated_at || null,
+  };
+}
 
 export async function createForemanPortalAccess(obra: string, foremanName: string): Promise<string> {
   const token = await supabase.rpc('ensure_foreman_portal_access', {
@@ -180,5 +212,59 @@ export async function finalizeForemanMandatoryDocument(token: string, documentId
   return supabase.rpc('finalize_foreman_mandatory_document', {
     p_token: token,
     p_document_id: documentId,
+  });
+}
+
+
+export async function createForemanOperationalDocument(input: {
+  token: string;
+  documentType: 'epis' | 'maquinaria' | 'autorizacion_uso_maquinaria';
+  workDate: string;
+  workerIds: number[];
+  details?: Record<string, any>;
+}) {
+  return supabase.rpc('create_foreman_operational_document', {
+    p_token: input.token,
+    p_document_type: input.documentType,
+    p_work_date: input.workDate,
+    p_worker_ids: input.workerIds,
+    p_details: input.details || {},
+  });
+}
+
+
+export async function returnForemanItemForCorrection(
+  entityType: 'mandatory' | 'attendance' | 'document',
+  id: string,
+  reason: string,
+) {
+  return supabase.rpc('return_foreman_item_for_correction', {
+    p_entity_type: entityType,
+    p_id: id,
+    p_reason: reason,
+  });
+}
+
+export async function reviewForemanItem(
+  entityType: 'mandatory' | 'attendance' | 'document',
+  id: string,
+) {
+  return supabase.rpc('review_foreman_item', {
+    p_entity_type: entityType,
+    p_id: id,
+  });
+}
+
+export async function resubmitForemanDocument(input: {
+  token: string;
+  documentId: string;
+  answers: Record<string, string>;
+  signatures: Record<string, string>;
+}) {
+  return supabase.rpc('resubmit_foreman_document', {
+    p_token: input.token,
+    p_document_id: input.documentId,
+    p_answers: input.answers,
+    p_signatures: input.signatures,
   });
 }

@@ -68,6 +68,100 @@ export function generateForemanMandatoryDocumentPdf(
   record: ForemanMandatoryDocument,
   obra: string,
 ) {
+  if (['epis','maquinaria','autorizacion_uso_maquinaria'].includes(record.documentType)) {
+    const titleMap: Record<string,string> = {
+      epis: 'ENTREGA DE EPIs',
+      maquinaria: 'AUTORIZACIÓN DE MAQUINARIA',
+      autorizacion_uso_maquinaria: 'AUTORIZACIÓN AL USO DE MAQUINARIA',
+    };
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+    const title = titleMap[record.documentType] || 'DOCUMENTO DE OBRA';
+    renderInstitutionalReportHeader(
+      doc,
+      title,
+      `${obra} · ${fmtEs(record.workDate)}`,
+      { subtitle: 'DOCUMENTACIÓN CUMPLIMENTADA POR EL ENCARGADO · PROFEA' },
+    );
+
+    const detailText = record.documentType === 'epis'
+      ? Object.entries((record.details?.epis || {}) as Record<string,boolean>)
+          .filter(([,enabled])=>Boolean(enabled))
+          .map(([key])=>({
+            casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',
+            guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado',
+          } as Record<string,string>)[key] || key)
+          .join(', ')
+      : String(record.details?.maquinaria || '');
+
+    let y = 49;
+    doc.setTextColor(0,0,0);
+    doc.setDrawColor(0,0,0);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.text('TRABAJADOR/A', 14, y);
+    doc.text('DNI/NIE', 92, y);
+    doc.text('CATEGORÍA', 126, y);
+    doc.text(record.documentType==='epis' ? 'EPIs ENTREGADOS' : 'MAQUINARIA / EQUIPOS', 174, y);
+    doc.text('FIRMA', 246, y);
+    y += 3;
+    doc.setLineWidth(0.35);
+    doc.line(14,y,283,y);
+    y += 8;
+
+    const rowHeight=17;
+    const signatureHeight=11;
+    for (const worker of record.workers || []) {
+      if (y + rowHeight > 192) {
+        doc.addPage('a4','landscape');
+        y=22;
+        doc.setTextColor(0,0,0);
+        doc.setDrawColor(0,0,0);
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8.5);
+        doc.text('TRABAJADOR/A', 14, y);
+        doc.text('DNI/NIE', 92, y);
+        doc.text('CATEGORÍA', 126, y);
+        doc.text(record.documentType==='epis' ? 'EPIs ENTREGADOS' : 'MAQUINARIA / EQUIPOS', 174, y);
+        doc.text('FIRMA', 246, y);
+        y += 3;
+        doc.line(14,y,283,y);
+        y += 8;
+      }
+
+      const rowTop=y-5;
+      const rowBottom=rowTop+rowHeight;
+      const signatureRaw=(record.signatures||{})[String(worker.id)];
+      const signature=typeof signatureRaw==='string'?signatureRaw:signatureRaw?.signature;
+
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8.3);
+      doc.text(String(worker.apellidosNombre||''),14,y,{maxWidth:74});
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7.8);
+      doc.text(String(worker.dni||''),92,y,{maxWidth:30});
+      doc.text(String(worker.categoria||''),126,y,{maxWidth:44});
+      doc.text(detailText||'-',174,y,{maxWidth:68});
+
+      if(signature){
+        const sy=rowTop+(rowHeight-signatureHeight)/2;
+        try{doc.addImage(signature,'PNG',246,sy,34,signatureHeight,undefined,'FAST');}catch{}
+      }else{
+        doc.line(246,rowTop+rowHeight/2+1,280,rowTop+rowHeight/2+1);
+      }
+      doc.setDrawColor(90,90,90);
+      doc.setLineWidth(0.2);
+      doc.line(14,rowBottom,283,rowBottom);
+      y+=rowHeight;
+    }
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7.5);
+    doc.text('Estado: '+(record.status==='reviewed'?'Revisado':record.status==='completed'?'Cumplimentado':'En cumplimentación'),14,201);
+    applyInstitutionalPdfStandard(doc);
+    const prefix=record.documentType==='epis'?'EPIS':record.documentType==='maquinaria'?'AUTORIZACION_MAQUINARIA':'AUTORIZACION_USO_MAQUINARIA';
+    return { doc, filename: `${prefix}_ENCARGADO_${record.workDate}.pdf` };
+  }
+
   if (record.documentType === 'control_presencia') {
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     renderInstitutionalReportHeader(
@@ -78,36 +172,55 @@ export function generateForemanMandatoryDocumentPdf(
     );
 
     let y = 50;
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
     doc.setFont('courier', 'bold');
-    doc.setFontSize(8.2);
+    doc.setFontSize(8.6);
     doc.text('APELLIDOS / NOMBRE', 14, y);
     doc.text('CATEGORÍA', 84, y);
     doc.text('N.I.F.', 132, y);
     doc.text('FIRMA', 165, y);
     y += 3;
+    doc.setLineWidth(0.35);
     doc.line(14, y, 196, y);
-    y += 7;
+    y += 8;
 
     doc.setFont('courier', 'normal');
-    doc.setFontSize(7.8);
+    doc.setFontSize(8.2);
+    const rowHeight = 16;
+    const signatureHeight = 11;
+    const signatureWidth = 28;
     for (const worker of record.workers || []) {
-      if (y > 276) {
+      if (y + rowHeight > 282) {
         doc.addPage('a4', 'portrait');
         y = 20;
+        doc.setTextColor(0, 0, 0);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.25);
       }
+
+      const rowTop = y - 5;
+      const rowBottom = rowTop + rowHeight;
       const signatureRaw = (record.signatures || {})[String(worker.id)];
       const signature = typeof signatureRaw === 'string' ? signatureRaw : signatureRaw?.signature;
+
+      doc.setTextColor(0, 0, 0);
       doc.text(String(worker.apellidosNombre || ''), 14, y, { maxWidth: 65 });
       doc.text(String(worker.categoria || ''), 84, y, { maxWidth: 43 });
       doc.text(String(worker.dni || ''), 132, y, { maxWidth: 28 });
+
       if (signature) {
-        try { doc.addImage(signature, 'PNG', 165, y - 6, 28, 9, undefined, 'FAST'); } catch {}
+        const signatureY = rowTop + (rowHeight - signatureHeight) / 2;
+        try { doc.addImage(signature, 'PNG', 165, signatureY, signatureWidth, signatureHeight, undefined, 'FAST'); } catch {}
       } else {
-        doc.line(165, y + 1, 195, y + 1);
+        doc.setDrawColor(0, 0, 0);
+        doc.line(165, rowTop + rowHeight / 2 + 1, 195, rowTop + rowHeight / 2 + 1);
       }
-      y += 12;
-      doc.setDrawColor(210);
-      doc.line(14, y - 3, 196, y - 3);
+
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineWidth(0.2);
+      doc.line(14, rowBottom, 196, rowBottom);
+      y += rowHeight;
     }
     applyInstitutionalPdfStandard(doc);
     return { doc, filename: `CONTROL_PRESENCIA_${record.workDate}.pdf` };
@@ -148,23 +261,63 @@ export function generateForemanMandatoryDocumentPdf(
   doc.line(18, y, 192, y);
   y += 8;
 
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8.5);
+  doc.text('TRABAJADOR/A', 18, y);
+  doc.text('FIRMA', 120, y);
+  y += 3;
+  doc.setLineWidth(0.35);
+  doc.line(18, y, 190, y);
+  y += 8;
+
+  const inicioRowHeight = 16;
+  const inicioSignatureHeight = 11;
+  const inicioSignatureWidth = 48;
+  const renderInicioHeader = () => {
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.text('TRABAJADOR/A', 18, y);
+    doc.text('FIRMA', 120, y);
+    y += 3;
+    doc.setLineWidth(0.35);
+    doc.line(18, y, 190, y);
+    y += 8;
+  };
+
   doc.setFontSize(9);
   for (const worker of record.workers || []) {
-    if (y > 265) {
+    if (y + inicioRowHeight > 274) {
       doc.addPage('a4','portrait');
-      y = 30;
+      y = 24;
+      renderInicioHeader();
     }
+
+    const rowTop = y - 5;
+    const rowBottom = rowTop + inicioRowHeight;
     const signatureRaw = (record.signatures || {})[String(worker.id)];
     const signature = typeof signatureRaw === 'string' ? signatureRaw : signatureRaw?.signature;
+
+    doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica','bold');
-    doc.text(String(worker.apellidosNombre || '').toUpperCase(), 18, y, { maxWidth: 112 });
-    doc.setFont('helvetica','normal');
+    doc.text(String(worker.apellidosNombre || '').toUpperCase(), 18, y, { maxWidth: 96 });
+
     if (signature) {
-      try { doc.addImage(signature, 'PNG', 145, y - 6, 43, 10, undefined, 'FAST'); } catch {}
+      const signatureY = rowTop + (inicioRowHeight - inicioSignatureHeight) / 2;
+      try { doc.addImage(signature, 'PNG', 120, signatureY, inicioSignatureWidth, inicioSignatureHeight, undefined, 'FAST'); } catch {}
     } else {
-      doc.line(145, y + 1, 190, y + 1);
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.25);
+      doc.line(120, rowTop + inicioRowHeight / 2 + 1, 170, rowTop + inicioRowHeight / 2 + 1);
     }
-    y += 11;
+
+    doc.setDrawColor(90, 90, 90);
+    doc.setLineWidth(0.2);
+    doc.line(18, rowBottom, 190, rowBottom);
+    y += inicioRowHeight;
   }
 
   doc.setFont('helvetica','normal');
