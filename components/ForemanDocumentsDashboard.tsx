@@ -47,6 +47,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [editWorkDate,setEditWorkDate]=useState('');
   const [editCategory,setEditCategory]=useState('');
   const [editBusy,setEditBusy]=useState(false);
+  const [editingCard,setEditingCard]=useState<any|null>(null);
+  const [genericEditDraft,setGenericEditDraft]=useState<any>({});
   const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
   const completedBaselineRef=useRef<Set<string>|null>(null);
   const activityBaselineRef=useRef<number|null>(null);
@@ -312,6 +314,128 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailBusy(false);
     }
   };
+  const openGenericEditor = (card:any) => {
+    if (card.kind === 'attendance') {
+      setGenericEditDraft({
+        work_date: String(card.item.work_date || '').slice(0,10),
+        foreman_name: String(card.item.foreman_name || ''),
+        rows: (card.item.rows || []).map((row:any) => ({ ...row })),
+      });
+    } else if (card.kind === 'mandatory') {
+      setGenericEditDraft({
+        work_date: String(card.item.work_date || '').slice(0,10),
+        category: String(card.item.category || ''),
+        details: { ...(card.item.details || {}) },
+      });
+    } else {
+      setGenericEditDraft({
+        work_date: String(card.item.work_date || '').slice(0,10),
+        answers: { ...(card.item.answers || {}) },
+      });
+    }
+    setEditingCard(card);
+  };
+
+  const saveGenericEditor = async () => {
+    if (!editingCard) return;
+    if (!genericEditDraft.work_date) {
+      window.alert('Indica la fecha del documento.');
+      return;
+    }
+    setEditBusy(true);
+    try {
+      const table = editingCard.kind === 'attendance'
+        ? 'foreman_attendance_days'
+        : editingCard.kind === 'mandatory'
+          ? 'foreman_mandatory_documents'
+          : 'foreman_documents';
+      let body:any = { updated_at: new Date().toISOString() };
+
+      if (editingCard.kind === 'attendance') {
+        body = {
+          ...body,
+          work_date: genericEditDraft.work_date,
+          foreman_name: genericEditDraft.foreman_name || '',
+          rows: genericEditDraft.rows || [],
+        };
+      } else if (editingCard.kind === 'mandatory') {
+        body = {
+          ...body,
+          work_date: genericEditDraft.work_date,
+          category: genericEditDraft.category || '',
+          details: genericEditDraft.details || {},
+        };
+      } else {
+        body = {
+          ...body,
+          work_date: genericEditDraft.work_date,
+          answers: genericEditDraft.answers || {},
+        };
+      }
+
+      await supabase.query(table, {
+        method: 'PATCH',
+        query: 'id=eq.' + encodeURIComponent(editingCard.id),
+        body,
+        prefer: 'return=minimal',
+      });
+
+      setMailMessage('Documento actualizado correctamente. El cambio ha quedado registrado en Actividad.');
+      setEditingCard(null);
+      setGenericEditDraft({});
+      await refresh(true);
+    } catch (error:any) {
+      console.error('No se pudo editar el documento del encargado:', error);
+      window.alert(error?.message || 'No se pudo guardar la edición.');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const deleteGenericItem = async (card:any) => {
+    if (card.kind === 'mandatory') {
+      await removeMandatoryDocument(card.item as DbMandatory);
+      return;
+    }
+    const ok = await appConfirm(
+      `¿Eliminar definitivamente “${card.title}” de ${card.obra}? La eliminación quedará registrada en Actividad y las versiones históricas ya guardadas se conservarán.`,
+      { title: 'Eliminar documento', confirmLabel: 'Eliminar definitivamente' },
+    );
+    if (!ok) return;
+
+    setEditBusy(true);
+    try {
+      const table = card.kind === 'attendance' ? 'foreman_attendance_days' : 'foreman_documents';
+      await supabase.query(table, {
+        method: 'DELETE',
+        query: 'id=eq.' + encodeURIComponent(card.id),
+        prefer: 'return=minimal',
+      });
+      if (editingCard?.id === card.id) {
+        setEditingCard(null);
+        setGenericEditDraft({});
+      }
+      setMailMessage('Documento eliminado correctamente. La eliminación ha quedado registrada en Actividad.');
+      await refresh(true);
+    } catch (error:any) {
+      console.error('No se pudo eliminar el documento del encargado:', error);
+      window.alert(error?.message || 'No se pudo eliminar el documento.');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const editAnyDocument = (card:any) => {
+    if (
+      card.kind === 'mandatory' &&
+      ['inicio','control_presencia'].includes(String(card.item.document_type || ''))
+    ) {
+      void openMandatoryEditor(card.item as DbMandatory);
+      return;
+    }
+    openGenericEditor(card);
+  };
+
   const openMandatoryEditor = async (item: DbMandatory) => {
     setEditingMandatory(item);
     setEditWorkDate(String(item.work_date || '').slice(0,10));
@@ -506,12 +630,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>
-          {card.kind==='mandatory' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
-            <>
-              <button onClick={()=>void openMandatoryEditor(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>
-              <button onClick={()=>void removeMandatoryDocument(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
-            </>
-          )}
+          <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>
+          <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
             <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Aprobar y devolver por Gmail':'Aprobar y enviar a administrativa'}</button>
           )}
@@ -527,6 +647,84 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
     </>}
+
+    {editingCard&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+      <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[.16em] text-blue-100">GestionProfea · Edición del supervisor</div>
+            <h3 className="text-lg font-black">{editingCard.title}</h3>
+            <p className="text-xs text-blue-100">{editingCard.obra} · Las firmas existentes se conservan.</p>
+          </div>
+          <button type="button" onClick={()=>{setEditingCard(null);setGenericEditDraft({});}} className="grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-900" aria-label="Cerrar"><X className="w-5 h-5"/></button>
+        </div>
+
+        <div className="max-h-[calc(92dvh-9rem)] overflow-y-auto p-5 space-y-5">
+          <label className="block text-sm font-black text-slate-700 dark:text-slate-200">Fecha
+            <input type="date" value={genericEditDraft.work_date||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,work_date:e.target.value}))} className="mt-2 min-h-[48px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+          </label>
+
+          {editingCard.kind==='attendance'&&<>
+            <label className="block text-sm font-black text-slate-700 dark:text-slate-200">Encargado / recurso preventivo
+              <input value={genericEditDraft.foreman_name||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,foreman_name:e.target.value}))} className="mt-2 min-h-[48px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+            </label>
+            <div>
+              <div className="mb-2 text-sm font-black text-slate-800 dark:text-slate-100">Horario por trabajador</div>
+              <div className="space-y-2">
+                {(genericEditDraft.rows||[]).map((row:any,index:number)=><div key={row.workerId||index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_130px_130px] sm:items-end">
+                  <div><div className="text-sm font-black">{row.name}</div><div className="text-xs text-slate-600 dark:text-slate-300">{row.dni} · {row.category}</div></div>
+                  <label className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-300">Entrada
+                    <input type="time" value={row.entryTime||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,rows:d.rows.map((r:any,i:number)=>i===index?{...r,entryTime:e.target.value}:r)}))} className="mt-1 w-full rounded-lg border px-2 py-2 bg-white dark:bg-slate-950"/>
+                  </label>
+                  <label className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-300">Salida
+                    <input type="time" value={row.exitTime||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,rows:d.rows.map((r:any,i:number)=>i===index?{...r,exitTime:e.target.value}:r)}))} className="mt-1 w-full rounded-lg border px-2 py-2 bg-white dark:bg-slate-950"/>
+                  </label>
+                </div>)}
+              </div>
+            </div>
+          </>}
+
+          {editingCard.kind==='mandatory'&&editingCard.item.document_type==='epis'&&<div>
+            <div className="mb-2 text-sm font-black text-slate-800 dark:text-slate-100">EPIs entregados</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key} className="flex items-center gap-2 rounded-xl border p-3 text-sm font-bold">
+                <input type="checkbox" checked={Boolean(genericEditDraft.details?.epis?.[key])} onChange={e=>setGenericEditDraft((d:any)=>({...d,details:{...(d.details||{}),epis:{...(d.details?.epis||{}),[key]:e.target.checked}}}))}/>
+                {label}
+              </label>)}
+            </div>
+          </div>}
+
+          {editingCard.kind==='mandatory'&&['maquinaria','autorizacion_uso_maquinaria'].includes(String(editingCard.item.document_type||''))&&<label className="block text-sm font-black text-slate-700 dark:text-slate-200">Maquinaria / equipos
+            <textarea rows={4} value={genericEditDraft.details?.maquinaria||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,details:{...(d.details||{}),maquinaria:e.target.value}}))} className="mt-2 w-full rounded-xl border px-3 py-3 bg-white dark:bg-slate-950"/>
+          </label>}
+
+          {editingCard.kind==='mandatory'&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Los trabajadores y sus firmas se mantienen intactos al editar estos datos.</div>}
+
+          {editingCard.kind==='document'&&(()=>{
+            const def=ADDITIONAL_WORKSITE_DOCUMENTS[editingCard.item.document_type as AdditionalWorksiteDocumentType];
+            return <div className="space-y-3">
+              {(def?.fields||[]).map((field:any)=><label key={field.key} className="block text-sm font-black text-slate-700 dark:text-slate-200">{field.label}
+                {field.type==='textarea'
+                  ?<textarea rows={4} value={genericEditDraft.answers?.[field.key]||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,answers:{...(d.answers||{}),[field.key]:e.target.value}}))} className="mt-2 w-full rounded-xl border px-3 py-3 bg-white dark:bg-slate-950"/>
+                  :field.type==='select'
+                    ?<select value={genericEditDraft.answers?.[field.key]||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,answers:{...(d.answers||{}),[field.key]:e.target.value}}))} className="mt-2 min-h-[48px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"><option value="">Seleccionar…</option>{field.options?.map((option:string)=><option key={option}>{option}</option>)}</select>
+                    :<input type={field.type||'text'} value={genericEditDraft.answers?.[field.key]||''} onChange={e=>setGenericEditDraft((d:any)=>({...d,answers:{...(d.answers||{}),[field.key]:e.target.value}}))} className="mt-2 min-h-[48px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+                }
+              </label>)}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Las firmas originales permanecen sin cambios.</div>
+            </div>;
+          })()}
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
+          <button type="button" disabled={editBusy} onClick={()=>void deleteGenericItem(editingCard)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={()=>{setEditingCard(null);setGenericEditDraft({});}} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button>
+            <button type="button" disabled={editBusy||!genericEditDraft.work_date} onClick={()=>void saveGenericEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+    </div>}
 
     {controlView==='activity'&&<div className="space-y-2">
       {!activity.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay movimientos registrados.</div>}
