@@ -172,6 +172,7 @@ export function generateForemanMandatoryDocumentPdf(
     );
 
     let y = 50;
+    // Todo el contenido funcional del Control de presencia se imprime en negro puro.
     doc.setTextColor(0, 0, 0);
     doc.setDrawColor(0, 0, 0);
     doc.setFont('courier', 'bold');
@@ -236,6 +237,11 @@ export function generateForemanMandatoryDocumentPdf(
 
   let y = 47;
   const width = 174;
+  // El encabezado institucional deja configurado un color secundario.
+  // Forzamos negro puro antes de imprimir todo el cuerpo de Inicio para
+  // garantizar legibilidad tanto en pantalla como en impresión/fotocopia.
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
   const paragraphs = [
     'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
     'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
@@ -320,6 +326,7 @@ export function generateForemanMandatoryDocumentPdf(
     y += inicioRowHeight;
   }
 
+  doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica','normal');
   doc.setFontSize(9);
   doc.text(`Cádiz, a ${fmtEs(record.workDate)}`, 132, 286);
