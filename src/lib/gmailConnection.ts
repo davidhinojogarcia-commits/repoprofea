@@ -5,6 +5,7 @@ export type GmailConnectionStatus = {
   email: string;
   connectedAt?: string | null;
   lastSentAt?: string | null;
+  canRead?: boolean;
 };
 
 async function authHeaders(extra: Record<string, string> = {}) {
@@ -39,6 +40,7 @@ export async function getGmailConnectionStatus(): Promise<GmailConnectionStatus>
     email: String(result.email || ''),
     connectedAt: result.connectedAt || null,
     lastSentAt: result.lastSentAt || null,
+    canRead: Boolean(result.canRead),
   };
 }
 
@@ -70,6 +72,9 @@ export async function sendPdfWithConnectedGmail(input: {
   subject: string;
   body: string;
   file: File;
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
 }) {
   const pdfBase64 = await fileToBase64(input.file);
   return api<{ ok: true; messageId: string; threadId?: string | null; from: string }>('/api/gmail?action=send', {
@@ -80,6 +85,46 @@ export async function sendPdfWithConnectedGmail(input: {
       body: input.body,
       filename: input.file.name,
       pdfBase64,
+      threadId: input.threadId || '',
+      inReplyTo: input.inReplyTo || '',
+      references: input.references || '',
     }),
   });
+}
+
+
+export type AdministrativeGmailAttachment = {
+  filename: string;
+  mimeType: string;
+  dataBase64Url: string;
+  size: number;
+};
+
+export type AdministrativeGmailMessage = {
+  id: string;
+  threadId: string;
+  internalDate: string;
+  from: string;
+  subject: string;
+  rfcMessageId: string;
+  references: string;
+  date: string;
+  attachments: AdministrativeGmailAttachment[];
+};
+
+export async function scanAdministrativeGmail(administrativeEmail: string, after?: string) {
+  const result = await api<{ ok: true; messages: AdministrativeGmailMessage[] }>('/api/gmail?action=scan-administrative', {
+    method: 'POST',
+    body: JSON.stringify({ administrativeEmail, after: after || '' }),
+  });
+  return Array.isArray(result.messages) ? result.messages : [];
+}
+
+export function base64UrlAttachmentToFile(input: AdministrativeGmailAttachment): File {
+  const standard = input.dataBase64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = standard + '='.repeat((4 - (standard.length % 4)) % 4);
+  const raw = atob(padded);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+  return new File([bytes], input.filename, { type: input.mimeType || 'application/octet-stream' });
 }
