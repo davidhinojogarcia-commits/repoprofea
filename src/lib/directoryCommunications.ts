@@ -8,6 +8,7 @@ import {
 import { prepareAdministrativeRelationPDF } from './administrativeRelationExport';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getStoredObrasRecursosPreventivos } from './subcontratasDefaults';
+import { getGmailConnectionStatus, sendPdfWithConnectedGmail } from './gmailConnection';
 
 export type DirectoryCommunicationKind =
   | 'encargados'
@@ -183,7 +184,7 @@ export const sendDirectoryCommunication = async (
   kind: DirectoryCommunicationKind,
   data: Person[],
   allPeople?: Person[],
-): Promise<'shared' | 'opened' | 'cancelled'> => {
+): Promise<'sent' | 'shared' | 'opened' | 'cancelled'> => {
   const prepared = await prepareCommunication(kind, data, allPeople);
 
   if (kind === 'encargados') {
@@ -211,6 +212,32 @@ export const sendDirectoryCommunication = async (
     return 'opened';
   }
 
+  // Si el supervisor ha autorizado Gmail, el botón Mail envía directamente
+  // desde su cuenta institucional con el PDF adjunto.
+  try {
+    const gmail = await getGmailConnectionStatus();
+    if (gmail.connected) {
+      const confirmed = window.confirm(
+        `Enviar “${prepared.subject}” desde ${gmail.email} a ${prepared.recipientEmail} con el PDF adjunto?`,
+      );
+      if (!confirmed) return 'cancelled';
+      await sendPdfWithConnectedGmail({
+        to: prepared.recipientEmail || '',
+        subject: prepared.subject,
+        body: prepared.body,
+        file: prepared.file,
+      });
+      window.alert(`Correo enviado correctamente desde ${gmail.email} a ${prepared.recipientEmail}.`);
+      return 'sent';
+    }
+  } catch (error: any) {
+    console.warn('[directory-communications] No se pudo usar el envío Gmail directo:', error);
+    if (error?.code !== 'GMAIL_NOT_CONNECTED') {
+      window.alert(error?.message || 'No se pudo enviar mediante Gmail. Se usará el método alternativo.');
+    }
+  }
+
+  // Compatibilidad: si Gmail aún no está conectado, conserva el flujo anterior.
   if (canShareFile(prepared.file)) {
     try {
       await navigator.share({
