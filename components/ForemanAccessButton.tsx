@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import {
   createForemanPortalAccess,
   getForemanPortalAccessStatus,
+  resolveForemanPortal,
   revokeForemanPortalAccess,
 } from '../src/services/foremanPortalService';
 
@@ -17,12 +18,42 @@ type AccessState = {
 const storageKeyFor = (obra: string) =>
   `profea:foreman-access-url:${String(obra || '').trim().toLocaleLowerCase('es')}`;
 
-const qrDataUrl = (accessUrl: string) =>
-  QRCode.toDataURL(accessUrl, {
-    errorCorrectionLevel: 'H',
-    width: 768,
-    margin: 2,
-  });
+const canonicalPortalOrigin = () => {
+  const host = String(window.location.hostname || '').toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1') return window.location.origin;
+  return 'https://gestionprofea.vercel.app';
+};
+
+const portalUrlForToken = (token: string) =>
+  `${canonicalPortalOrigin()}/?encargado=${encodeURIComponent(token)}`;
+
+const tokenFromPortalUrl = (value: string) => {
+  try {
+    const parsed = new URL(value, window.location.origin);
+    return parsed.searchParams.get('encargado')?.trim() || '';
+  } catch {
+    return '';
+  }
+};
+
+const qrDataUrl = async (accessUrl: string) => {
+  try {
+    return await QRCode.toDataURL(accessUrl, {
+      errorCorrectionLevel: 'H',
+      width: 768,
+      margin: 2,
+    });
+  } catch (canvasError) {
+    console.warn('No se pudo generar el QR con canvas; usando SVG de respaldo.', canvasError);
+    const svg = await QRCode.toString(accessUrl, {
+      type: 'svg',
+      errorCorrectionLevel: 'H',
+      width: 768,
+      margin: 2,
+    });
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
+};
 
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -68,8 +99,27 @@ export const ForemanAccessButton: React.FC<{
 
       const storedUrl = window.localStorage.getItem(storageKey) || '';
       if (storedUrl) {
-        setUrl(storedUrl);
-        setQr(await qrDataUrl(storedUrl));
+        const storedToken = tokenFromPortalUrl(storedUrl);
+        let stillValid = false;
+        if (storedToken) {
+          try {
+            const resolved = await resolveForemanPortal(storedToken);
+            stillValid = Boolean(resolved.valid) && String(resolved.obra || '').trim().toLowerCase() === obra.trim().toLowerCase();
+          } catch {
+            stillValid = false;
+          }
+        }
+
+        if (stillValid) {
+          const canonicalUrl = portalUrlForToken(storedToken);
+          setUrl(canonicalUrl);
+          setQr(await qrDataUrl(canonicalUrl));
+          window.localStorage.setItem(storageKey, canonicalUrl);
+        } else {
+          setUrl('');
+          setQr('');
+          window.localStorage.removeItem(storageKey);
+        }
       }
     } catch (caught) {
       console.error('No se pudo comprobar el acceso del encargado:', caught);
@@ -93,12 +143,24 @@ export const ForemanAccessButton: React.FC<{
     setCopied(false);
     try {
       const token = await createForemanPortalAccess(obra, foremanName);
-      const next = `${window.location.origin}/?encargado=${encodeURIComponent(token)}`;
-      const nextQr = await qrDataUrl(next);
+      const next = portalUrlForToken(token);
+
+      // El enlace se guarda inmediatamente después de obtener el token. Así,
+      // aunque el navegador no pueda dibujar el QR, el token nuevo no se pierde
+      // ni deja en pantalla un enlace antiguo que ya haya sido invalidado.
       setUrl(next);
-      setQr(nextQr);
       window.localStorage.setItem(storageKey, next);
       setAccess({ loaded: true, exists: true, active: true, lastUsedAt: null });
+
+      try {
+        const nextQr = await qrDataUrl(next);
+        setQr(nextQr);
+      } catch (qrError) {
+        console.error('No se pudo representar el QR del encargado:', qrError);
+        setQr('');
+        setError('El acceso se ha generado correctamente, pero este navegador no pudo dibujar el QR. Puedes usar Copiar enlace.');
+      }
+
       if (openModal) setOpen(true);
       return next;
     } catch (caught) {
