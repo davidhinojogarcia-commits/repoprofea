@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, Download, FileSignature, Loader2, RefreshCw, Search } from 'lucide-react';
+import { CheckCircle2, Clock3, Download, FileSignature, Loader2, MailCheck, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
 import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, generateForemanMandatoryDocumentPdf } from '../src/lib/foremanDocumentsPdf';
+import { processAdministrativeMandatoryInbox } from '../src/lib/mandatoryEmailIntake';
+import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
+import { markMandatoryDocumentReturned } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'; category:string; workers:any[]; signatures:Record<string,any>; status:'pending'|'in_progress'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'; category:string; workers:any[]; signatures:Record<string,any>; status:'pending'|'in_progress'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null };
 
 export const ForemanDocumentsDashboard: React.FC = () => {
   const [documents,setDocuments]=useState<DbDocument[]>([]);
@@ -17,6 +20,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
+  const [mailBusy,setMailBusy]=useState(false);
+  const [mailMessage,setMailMessage]=useState('');
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -37,6 +42,37 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     }finally{if(!silent)setLoading(false);}
   };
   useEffect(()=>{void refresh();const timer=window.setInterval(()=>void refresh(true),5000);return()=>window.clearInterval(timer);},[]);
+  const scanAdministrativeMail = async (silent=false) => {
+    if (mailBusy) return;
+    setMailBusy(true);
+    if (!silent) setMailMessage('Comprobando Gmail de la administrativa…');
+    try {
+      const keys = new Set(
+        mandatory
+          .filter(item => item.source_gmail_message_id && item.source_attachment_name)
+          .map(item => `${item.source_gmail_message_id}|${item.source_attachment_name}`)
+      );
+      const result = await processAdministrativeMandatoryInbox({
+        existingSourceKeys: keys,
+        onProgress: message => { if (!silent) setMailMessage(message); },
+      });
+      if (result.importedDocuments > 0) {
+        setMailMessage(`${result.importedDocuments} documento(s) recibido(s) de la administrativa y preparados para firma.`);
+        await refresh(true);
+      } else if (!silent) {
+        setMailMessage(result.warnings[0] || 'Gmail revisado. No hay nuevos documentos obligatorios.');
+      }
+    } catch (error:any) {
+      setMailMessage(error?.message || 'No se pudo comprobar Gmail.');
+    } finally {
+      setMailBusy(false);
+    }
+  };
+  useEffect(()=>{
+    const first=window.setTimeout(()=>void scanAdministrativeMail(true),2500);
+    const timer=window.setInterval(()=>void scanAdministrativeMail(true),60000);
+    return()=>{window.clearTimeout(first);window.clearInterval(timer);};
+  },[mandatory.length]);
   const term=search.trim().toLowerCase();
   const cards=useMemo(()=>{
     const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
@@ -63,6 +99,43 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     const record:ForemanCompletedDocument={id:d.id,workDate:d.work_date,documentType:d.document_type,workerId:d.worker_id,workerSnapshot:d.worker_snapshot||{},answers:d.answers||{},signatures:d.signatures||{},status:d.status,completedAt:d.completed_at};
     const out=generateForemanCompletedDocumentPdf(record,d.obra,d.completed_by); downloadPDF(out.doc,out.filename);
   };
+  const approveAndReturnMandatory = async (item: DbMandatory) => {
+    if (item.status !== 'completed') return;
+    if (!item.source_email_from || !item.source_gmail_thread_id) {
+      await markReviewed('mandatory', item.id);
+      return;
+    }
+    if (!window.confirm('¿Aprobar este documento firmado y devolverlo por Gmail a la administrativa?')) return;
+    setMailBusy(true);
+    try {
+      const record:ForemanMandatoryDocument={
+        id:item.id,workDate:item.work_date,periodKey:item.period_key,documentType:item.document_type,
+        category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
+        completedAt:item.completed_at
+      };
+      const out=generateForemanMandatoryDocumentPdf(record,item.obra);
+      const blob=out.doc.output('blob');
+      const file=new File([blob],out.filename,{type:'application/pdf'});
+      const subjectRaw=String(item.source_email_subject||'Documentación PROFEA firmada').trim();
+      const subject=/^re:/i.test(subjectRaw)?subjectRaw:`Re: ${subjectRaw}`;
+      const sent=await sendPdfWithConnectedGmail({
+        to:item.source_email_from,
+        subject,
+        body:`Se devuelve la documentación de ${item.obra} firmada y revisada por el supervisor.\n\nDocumento: ${item.document_type==='inicio'?'Inicio / incorporación':'Control de presencia'}\nFecha: ${item.work_date}.`,
+        file,
+        threadId:item.source_gmail_thread_id||'',
+        inReplyTo:item.source_rfc_message_id||'',
+        references:item.source_rfc_message_id||'',
+      });
+      await markMandatoryDocumentReturned(item.id,sent.messageId);
+      setMailMessage('Documento aprobado y devuelto por Gmail a la administrativa.');
+      await refresh(true);
+    } catch(error:any) {
+      setMailMessage(error?.message||'No se pudo devolver el documento por Gmail.');
+    } finally {
+      setMailBusy(false);
+    }
+  };
   const signedEntries=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.entrySignature).length,0);
   const signedExits=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.exitSignature).length,0);
   const pending=cards.filter(c=>c.status!=='reviewed').length;
@@ -70,8 +143,12 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se actualiza automáticamente cada 5 segundos.</p></div>
-        <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
+        <div className="flex flex-wrap gap-2">
+          <button disabled={mailBusy} onClick={()=>void scanAdministrativeMail(false)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-4 py-2.5 text-sm font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>Revisar Gmail</button>
+          <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
+        </div>
       </div>
+      {mailMessage&&<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">{mailMessage}</div>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
         {([['Obligatorios',mandatory.length],['Otros documentos',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
@@ -84,7 +161,18 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Revisado':'Pendiente de revisar'}</span></div>
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}</div>
-        <div className="flex flex-wrap gap-2"><button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>{card.status!=='reviewed'&&<button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}</div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>
+          {card.kind==='mandatory' && card.status==='completed' && card.item.source_gmail_message_id && (
+            <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>Aprobar y devolver por Gmail</button>
+          )}
+          {card.kind==='mandatory' && card.status==='completed' && !card.item.source_gmail_message_id && (
+            <button onClick={()=>void markReviewed('mandatory',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
+          )}
+          {card.kind!=='mandatory' && card.status!=='reviewed' && (
+            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
+          )}
+        </div>
       </div>
     </article>)}</div>}
   </div>;
