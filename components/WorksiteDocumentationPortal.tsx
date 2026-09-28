@@ -13,6 +13,7 @@ import {
   UserPlus,
   Search,
   Trash2,
+  Printer,
 } from "lucide-react";
 import { Person } from "../types";
 import { getDocuments } from "../src/services/databaseService";
@@ -51,6 +52,33 @@ type EpiKey =
   | "calzado";
 
 type AttendanceOverride = { start: string; end: string };
+type BatchDocumentType = "epis" | "formacion" | "maquinaria" | "control";
+const BATCH_DOCUMENT_LABELS: Record<BatchDocumentType, string> = {
+  epis: "Entrega de EPIs",
+  formacion: "Formación e información",
+  maquinaria: "Autorización de maquinaria",
+  control: "Control horario",
+};
+const MONTH_LABELS = [
+  "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre",
+];
+const workerMonthKey = (person: Person) => {
+  const start = iso(person.periodoInicio);
+  return start ? start.slice(5, 7) : "";
+};
+const workerMonthLabel = (person: Person) => {
+  const key = workerMonthKey(person);
+  const month = Number(key);
+  return month >= 1 && month <= 12 ? MONTH_LABELS[month - 1] : "";
+};
+const normalizedPeriodBucket = (person: Person) => {
+  const raw = normalize(periodLabelFor(person));
+  if (raw.includes("1") && raw.includes("quinc")) return "1ª Quincena";
+  if (raw.includes("2") && raw.includes("quinc")) return "2ª Quincena";
+  if (raw.includes("mensual") || raw.includes("mes")) return "Mensual";
+  return periodLabelFor(person);
+};
 type CoreDocumentationView =
   | "obra"
   | "trabajadores"
@@ -178,6 +206,12 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [workEndHour, setWorkEndHour] = useState("15:00");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>(storedDocumentationView);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchWorks, setBatchWorks] = useState<string[]>([]);
+  const [batchMonths, setBatchMonths] = useState<string[]>([]);
+  const [batchPeriods, setBatchPeriods] = useState<string[]>([]);
+  const [batchDocuments, setBatchDocuments] = useState<BatchDocumentType[]>(["epis","formacion","maquinaria","control"]);
+  const [batchGenerating, setBatchGenerating] = useState(false);
 
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
@@ -274,6 +308,52 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     () => selectedWorkWorkers.filter((person) => !selectedPeriod || periodLabelFor(person) === selectedPeriod),
     [selectedWorkWorkers, selectedPeriod],
   );
+
+  const availableBatchMonths = useMemo(() => {
+    const keys = new Set(workers.map(workerMonthKey).filter(Boolean));
+    return Array.from(keys).sort().map((key) => ({
+      key,
+      label: MONTH_LABELS[Number(key) - 1] || key,
+    }));
+  }, [workers]);
+
+  const availableBatchPeriods = useMemo(
+    () => Array.from(new Set(workers.map(normalizedPeriodBucket).filter(Boolean)))
+      .sort((a,b) => a.localeCompare(b, "es", { numeric: true })),
+    [workers],
+  );
+
+  useEffect(() => {
+    if (!batchWorks.length && selectedWork) setBatchWorks([selectedWork]);
+  }, [batchWorks.length, selectedWork]);
+
+  const batchMatches = useMemo(() => {
+    return workers.filter((person) => {
+      const workOk = !batchWorks.length || batchWorks.some((work) => sameWork(person.obra || "", work));
+      const monthKey = workerMonthKey(person);
+      const monthOk = !batchMonths.length || batchMonths.includes(monthKey);
+      const periodOk = !batchPeriods.length || batchPeriods.includes(normalizedPeriodBucket(person));
+      return workOk && monthOk && periodOk;
+    });
+  }, [workers, batchWorks, batchMonths, batchPeriods]);
+
+  const batchGroups = useMemo(() => {
+    const groups = new Map<string, { work: string; period: string; month: string; workers: Person[] }>();
+    batchMatches.forEach((person) => {
+      const work = workNames.find((name) => sameWork(name, person.obra || "")) || safe(person.obra);
+      const period = normalizedPeriodBucket(person);
+      const month = workerMonthKey(person);
+      const key = [work, month, period].join("||");
+      const existing = groups.get(key);
+      if (existing) existing.workers.push(person);
+      else groups.set(key, { work, period, month, workers: [person] });
+    });
+    return Array.from(groups.values()).sort((a,b) =>
+      a.work.localeCompare(b.work, "es", { numeric: true }) ||
+      a.month.localeCompare(b.month) ||
+      a.period.localeCompare(b.period, "es", { numeric: true })
+    );
+  }, [batchMatches, workNames]);
 
   const attendanceRange = useMemo(() => {
     const starts = periodWorkers.map((p) => iso(p.periodoInicio)).filter(Boolean).sort();
@@ -508,6 +588,99 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     });
   };
 
+
+  const toggleBatchValue = <T extends string>(value: T, setter: React.Dispatch<React.SetStateAction<T[]>>) => {
+    setter((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  };
+
+  const batchContextFor = (work: string, period: string, groupWorkers: Person[]) => {
+    const row = workRows.find((item) => sameWork(item.nombre, work));
+    const company = safe(row?.empresa) || DEFAULT_COMPANY;
+    const dates = groupWorkers.map((person) => iso(person.periodoInicio)).filter(Boolean).sort();
+    return {
+      obra: work,
+      municipio: safe(row?.municipio),
+      empresa: company,
+      cif: safe(row?.cif) || resolveKnownCompanyCif(company),
+      recursoPreventivo: safe(row?.recurso_preventivo),
+      fecha: dates[0] || documentDate,
+      periodoLabel: period || "Sin periodo",
+      accionFormativa: trainingAction,
+      duracionFormacion: trainingDuration,
+      epis: epiSelection,
+      maquinariaPorTrabajador: (() => {
+        try {
+          const storageKey = `profea:obra-docs:maquinaria:${work}:${period}`;
+          const parsed = JSON.parse(localStorage.getItem(storageKey) || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      })(),
+      workStartHour,
+      workEndHour,
+    };
+  };
+
+  const generateBatchPdf = async () => {
+    if (!batchWorks.length) return showToast("Selecciona al menos una obra.", "error");
+    if (!batchDocuments.length) return showToast("Selecciona al menos un tipo de documento.", "error");
+    if (!batchGroups.length) return showToast("No hay trabajadores que coincidan con los filtros seleccionados.", "error");
+
+    const groupsWithoutForeman = batchGroups.filter(({work}) => {
+      const row = workRows.find((item) => sameWork(item.nombre, work));
+      return !safe(row?.recurso_preventivo);
+    });
+    if (groupsWithoutForeman.length) {
+      const works = Array.from(new Set(groupsWithoutForeman.map((group) => group.work))).join(", ");
+      return showToast(`Falta encargado/recurso preventivo en: ${works}.`, "error");
+    }
+
+    setBatchGenerating(true);
+    try {
+      const generated: { bytes: ArrayBuffer; title: string }[] = [];
+      for (const group of batchGroups) {
+        const ctx = batchContextFor(group.work, group.period, group.workers);
+        for (const type of batchDocuments) {
+          let output;
+          if (type === "epis") output = generateEpiDeliveryPdf(group.workers, ctx);
+          else if (type === "formacion") output = generateTrainingInformationPdf(group.workers, ctx);
+          else if (type === "maquinaria") output = generateMachineryAuthorizationPdf(group.workers, ctx);
+          else output = generateContractAttendancePdf(group.workers, ctx);
+          generated.push({ bytes: output.doc.output("arraybuffer"), title: output.filename });
+        }
+      }
+
+      // Un único PDF permite imprimir toda la selección con una sola orden.
+      const pdfLib: any = await import(/* @vite-ignore */ "https://esm.sh/pdf-lib@1.17.1");
+      const merged = await pdfLib.PDFDocument.create();
+      for (const item of generated) {
+        const source = await pdfLib.PDFDocument.load(item.bytes);
+        const pages = await merged.copyPages(source, source.getPageIndices());
+        pages.forEach((page: any) => merged.addPage(page));
+      }
+      const bytes = await merged.save();
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank", "noopener,noreferrer");
+      if (!win) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `DOCUMENTACION_OBRAS_${new Date().toISOString().slice(0,10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+      showToast(`PDF conjunto preparado: ${generated.length} documento(s) en ${batchGroups.length} grupo(s).`);
+    } catch (error) {
+      console.error("Error generando impresión múltiple:", error);
+      showToast("No se pudo preparar el PDF conjunto. Revisa la conexión e inténtalo de nuevo.", "error");
+    } finally {
+      setBatchGenerating(false);
+    }
+  };
+
   const libraryItems: {
     id: DocumentationView;
     label: string;
@@ -728,6 +901,117 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                     </div>
                   </label>
                 </div>
+              </section>
+
+              <section className="rounded-2xl sm:rounded-3xl border border-blue-200 dark:border-blue-900/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setBatchOpen((value) => !value)}
+                  className="w-full flex items-center justify-between gap-3 px-4 sm:px-5 py-4 text-left"
+                >
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-2.5 text-[#00548E] dark:text-blue-300">
+                      <Printer className="w-5 h-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-black text-base">Impresión múltiple</span>
+                      <span className="block mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Combina varias obras, meses y periodos y genera un único PDF.
+                      </span>
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 text-xs font-black text-[#00548E] dark:text-blue-300">
+                    {batchGroups.length} grupo(s)
+                  </span>
+                </button>
+
+                {batchOpen && (
+                  <div className="border-t border-blue-100 dark:border-blue-900/60 p-4 sm:p-5 space-y-5">
+                    <div className="grid lg:grid-cols-3 gap-4">
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h3 className="text-sm font-black">Obras</h3>
+                          <button type="button" onClick={() => setBatchWorks(batchWorks.length === workNames.length ? [] : [...workNames])} className="text-xs font-bold text-[#00548E]">
+                            {batchWorks.length === workNames.length ? "Ninguna" : "Todas"}
+                          </button>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 p-2 space-y-1">
+                          {workNames.map((work) => (
+                            <label key={work} className="flex items-center gap-3 rounded-lg px-2.5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                              <input type="checkbox" checked={batchWorks.includes(work)} onChange={() => toggleBatchValue(work, setBatchWorks)} className="w-4 h-4" />
+                              <span className="text-sm font-bold">{work}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h3 className="text-sm font-black">Meses</h3>
+                          <button type="button" onClick={() => setBatchMonths(batchMonths.length === availableBatchMonths.length ? [] : availableBatchMonths.map((item) => item.key))} className="text-xs font-bold text-[#00548E]">
+                            {batchMonths.length === availableBatchMonths.length ? "Ninguno" : "Todos"}
+                          </button>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 p-2 space-y-1">
+                          {availableBatchMonths.map((month) => (
+                            <label key={month.key} className="flex items-center gap-3 rounded-lg px-2.5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                              <input type="checkbox" checked={batchMonths.includes(month.key)} onChange={() => toggleBatchValue(month.key, setBatchMonths)} className="w-4 h-4" />
+                              <span className="text-sm font-bold">{month.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h3 className="text-sm font-black">Periodos</h3>
+                          <button type="button" onClick={() => setBatchPeriods(batchPeriods.length === availableBatchPeriods.length ? [] : [...availableBatchPeriods])} className="text-xs font-bold text-[#00548E]">
+                            {batchPeriods.length === availableBatchPeriods.length ? "Ninguno" : "Todos"}
+                          </button>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 p-2 space-y-1">
+                          {availableBatchPeriods.map((period) => (
+                            <label key={period} className="flex items-center gap-3 rounded-lg px-2.5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                              <input type="checkbox" checked={batchPeriods.includes(period)} onChange={() => toggleBatchValue(period, setBatchPeriods)} className="w-4 h-4" />
+                              <span className="text-sm font-bold">{period}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-black mb-2">Documentos a incluir</h3>
+                      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                        {(Object.keys(BATCH_DOCUMENT_LABELS) as BatchDocumentType[]).map((type) => (
+                          <label key={type} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-3">
+                            <input type="checkbox" checked={batchDocuments.includes(type)} onChange={() => toggleBatchValue(type, setBatchDocuments)} className="w-4 h-4" />
+                            <span className="text-sm font-bold">{BATCH_DOCUMENT_LABELS[type]}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 text-sm">
+                      <b>{batchMatches.length}</b> trabajador(es) · <b>{batchGroups.length}</b> combinación(es) obra/mes/periodo · <b>{batchGroups.length * batchDocuments.length}</b> documento(s) previstos.
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Si no marcas meses o periodos, se incluyen todos dentro de las obras seleccionadas.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={batchGenerating || !batchWorks.length || !batchDocuments.length || !batchGroups.length}
+                        onClick={() => void generateBatchPdf()}
+                        className="min-h-[50px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] hover:bg-[#004270] px-5 py-3 font-black text-white disabled:opacity-40"
+                      >
+                        <Printer className="w-5 h-5" />
+                        {batchGenerating ? "Preparando PDF…" : "Generar PDF conjunto para imprimir"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </section>
 
               {activeDocumentView === "obra" && (
