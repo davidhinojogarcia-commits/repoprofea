@@ -9,6 +9,7 @@ import { prepareAdministrativeRelationPDF } from './administrativeRelationExport
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getStoredObrasRecursosPreventivos } from './subcontratasDefaults';
 import { getGmailConnectionStatus, sendPdfWithConnectedGmail } from './gmailConnection';
+import { appAlert, appConfirm } from './appDialog';
 
 export type DirectoryCommunicationKind =
   | 'encargados'
@@ -56,6 +57,138 @@ const buildContext = (data: Person[]) => ({
   periodos: uniqueText(data.map(person => person.quincena)),
   supervisor: data[0]?.supervisorResponsable || 'Supervisor PROFEA',
 });
+
+const cleanValue = (value: unknown, fallback = 'No consta') => {
+  const text = String(value ?? '').trim();
+  return text || fallback;
+};
+
+const formatDateEs = (value: unknown) => {
+  const text = String(value || '').trim();
+  if (!text) return 'No consta';
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : text;
+};
+
+const buildWorkerHeading = (person: Person, index: number) =>
+  `${index + 1}. ${cleanValue(person.apellidosNombre, 'Trabajador sin nombre')}`;
+
+const buildAdministrativeWorkerLines = (person: Person, index: number) => [
+  buildWorkerHeading(person, index),
+  `   • DNI/NIE: ${cleanValue(person.dni)}`,
+  `   • Nº de oferta: ${cleanValue(person.numOferta)}`,
+  `   • Obra: ${cleanValue(person.obra)}`,
+  `   • Categoría: ${cleanValue(person.categoria)}`,
+  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
+  `   • Inicio de contrato: ${formatDateEs(person.periodoInicio)}`,
+  `   • Fin de contrato: ${formatDateEs(person.periodoFin)}`,
+  `   • Teléfono: ${cleanValue(person.telefono)}`,
+  `   • Nº Seguridad Social: ${cleanValue(person.numeroSeguridadSocial)}`,
+  `   • IBAN: ${cleanValue(person.iban)}`,
+  `   • Documentación: ${cleanValue(person.documentacionCompleta)}`,
+  person.observaciones?.trim() ? `   • Observaciones: ${person.observaciones.trim()}` : '',
+].filter(Boolean);
+
+const buildMedicalWorkerLines = (person: Person, index: number) => [
+  buildWorkerHeading(person, index),
+  `   • DNI/NIE: ${cleanValue(person.dni)}`,
+  `   • Obra: ${cleanValue(person.obra)}`,
+  `   • Categoría: ${cleanValue(person.categoria)}`,
+  `   • Teléfono: ${cleanValue(person.telefono)}`,
+  `   • Fecha de cita: ${formatDateEs(person.citaDia)}`,
+  `   • Hora de cita: ${cleanValue(person.citaHora)}`,
+  `   • Centro / lugar del reconocimiento: ${cleanValue(person.sitioReconocimiento)}`,
+  `   • Estado del reconocimiento: ${cleanValue(person.reconocimientoEstado || person.aptitudMedica, 'Pendiente')}`,
+  person.reconocimientoLimitaciones?.trim()
+    ? `   • Limitaciones: ${person.reconocimientoLimitaciones.trim()}`
+    : '',
+  person.reconocimientoObservaciones?.trim()
+    ? `   • Observaciones médicas administrativas: ${person.reconocimientoObservaciones.trim()}`
+    : '',
+].filter(Boolean);
+
+const buildFootwearWorkerLines = (person: Person, index: number) => [
+  buildWorkerHeading(person, index),
+  `   • DNI/NIE: ${cleanValue(person.dni)}`,
+  `   • Obra: ${cleanValue(person.obra)}`,
+  `   • Categoría: ${cleanValue(person.categoria)}`,
+  `   • Talla de calzado: ${cleanValue(person.calzado)}`,
+  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
+].filter(Boolean);
+
+const buildTrainingWorkerLines = (person: Person, index: number) => [
+  buildWorkerHeading(person, index),
+  `   • DNI/NIE: ${cleanValue(person.dni)}`,
+  `   • Obra: ${cleanValue(person.obra)}`,
+  `   • Categoría: ${cleanValue(person.categoria)}`,
+  `   • Estado de formación: ${cleanValue(person.formacion)}`,
+  `   • Lugar de formación: ${cleanValue(person.lugarFormacion)}`,
+  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
+  `   • Teléfono: ${cleanValue(person.telefono)}`,
+].filter(Boolean);
+
+const buildForemanWorkerLines = (person: Person, index: number) => [
+  buildWorkerHeading(person, index),
+  `   • DNI/NIE: ${cleanValue(person.dni)}`,
+  `   • Categoría: ${cleanValue(person.categoria)}`,
+  `   • Periodo / quincena: ${cleanValue(person.quincena)}`,
+  `   • Inicio: ${formatDateEs(person.periodoInicio)}`,
+  `   • Fin: ${formatDateEs(person.periodoFin)}`,
+  `   • Teléfono: ${cleanValue(person.telefono)}`,
+].filter(Boolean);
+
+const buildRelationText = (
+  kind: DirectoryCommunicationKind,
+  data: Person[],
+) => {
+  const blocks = data.map((person, index) => {
+    if (kind === 'administrative') return buildAdministrativeWorkerLines(person, index);
+    if (kind === 'medical') return buildMedicalWorkerLines(person, index);
+    if (kind === 'footwear') return buildFootwearWorkerLines(person, index);
+    if (kind === 'training') return buildTrainingWorkerLines(person, index);
+    return buildForemanWorkerLines(person, index);
+  });
+  return blocks.map(lines => lines.join('\n')).join('\n\n');
+};
+
+const buildStructuredBody = (input: {
+  kind: DirectoryCommunicationKind;
+  recipientName: string;
+  data: Person[];
+  context: ReturnType<typeof buildContext>;
+  label: string;
+  fileName: string;
+}) => {
+  const { kind, recipientName, data, context, label, fileName } = input;
+  const relation = buildRelationText(kind, data);
+  return [
+    `Buenos días, ${recipientName}:`,
+    '',
+    `Por medio del presente correo se remite ${label}, correspondiente a la información actualmente registrada en GestionProfea.`,
+    '',
+    'DATOS GENERALES DEL ENVÍO',
+    '-------------------------',
+    `• Obra(s): ${context.obras || 'No consta'}`,
+    `• Periodo(s): ${context.periodos || 'No consta'}`,
+    `• Nº de trabajadores relacionados: ${data.length}`,
+    `• Supervisor responsable: ${context.supervisor}`,
+    '',
+    'RELACIÓN DETALLADA',
+    '------------------',
+    relation,
+    '',
+    'DOCUMENTACIÓN ADJUNTA',
+    '---------------------',
+    `Se adjunta el documento PDF “${fileName}”, que contiene la relación correspondiente para su archivo, comprobación y/o gestión.`,
+    '',
+    'Si detecta cualquier incidencia, omisión o dato que deba ser corregido, le ruego que lo comunique para proceder a su revisión.',
+    '',
+    'Un saludo.',
+    '',
+    context.supervisor,
+    'GestionProfea · Programa de Fomento de Empleo Agrario',
+  ].join('\n');
+};
 
 const preparePdf = (
   kind: DirectoryCommunicationKind,
@@ -109,14 +242,14 @@ const prepareCommunication = async (
       recipientName: resource.recursoPreventivoNombre,
       recipientPhone: phone,
       subject: `Relación de trabajadores · ${work}`,
-      body: [
-        `Hola ${resource.recursoPreventivoNombre}.`,
-        '',
-        `Te envío la relación de trabajadores de la obra ${work}.`,
-        context.periodos ? `Periodo: ${context.periodos}.` : '',
-        '',
-        `Un saludo,\n${context.supervisor}`,
-      ].filter(Boolean).join('\n'),
+      body: buildStructuredBody({
+        kind,
+        recipientName: resource.recursoPreventivoNombre,
+        data,
+        context,
+        label: `la relación de trabajadores de la obra ${work}`,
+        fileName: file.name,
+      }),
     };
   }
 
@@ -164,15 +297,19 @@ const prepareCommunication = async (
     recipientName,
     recipientEmail: email,
     subject: `${subjects[typedKind]}${context.obras ? ` · ${context.obras}` : ''}`,
-    body: [
-      `Hola ${recipientName}.`,
-      '',
-      `Te envío adjunto el PDF con ${labels[typedKind]}.`,
-      context.obras ? `Obra(s): ${context.obras}.` : '',
-      context.periodos ? `Periodo(s): ${context.periodos}.` : '',
-      '',
-      `Un saludo,\n${context.supervisor}`,
-    ].filter(Boolean).join('\n'),
+    body: buildStructuredBody({
+      kind,
+      recipientName,
+      data: kind === 'training'
+        ? data.filter(person => {
+            const value = String(person.formacion || '').trim().toLowerCase();
+            return value === 'no' || value === 'pendiente' || value.includes('sin form');
+          })
+        : data,
+      context,
+      label: labels[typedKind],
+      fileName: file.name,
+    }),
   };
 };
 
@@ -212,7 +349,10 @@ export const sendDirectoryCommunication = async (
     )}`;
     const opened = window.open(url, '_blank', 'noopener,noreferrer');
     if (!opened) window.location.href = url;
-    window.alert(`Se ha descargado ${prepared.file.name}. Adjunta ese PDF al chat de ${prepared.recipientName}.`);
+    await appAlert(`Se ha descargado ${prepared.file.name}. Adjunta ese PDF al chat de ${prepared.recipientName}.`, {
+      kind: 'info',
+      title: 'PDF preparado',
+    });
     return 'opened';
   }
 
@@ -221,8 +361,13 @@ export const sendDirectoryCommunication = async (
   try {
     const gmail = await getGmailConnectionStatus();
     if (gmail.connected) {
-      const confirmed = window.confirm(
-        `Enviar “${prepared.subject}” desde ${gmail.email} a ${prepared.recipientEmail} con el PDF adjunto?`,
+      const confirmed = await appConfirm(
+        `Se enviará el correo “${prepared.subject}” desde ${gmail.email} a ${prepared.recipientEmail}, incluyendo la relación detallada en el cuerpo del mensaje y el PDF adjunto. ¿Deseas continuar?`,
+        {
+          title: 'Enviar correo',
+          confirmLabel: 'Enviar correo',
+          cancelLabel: 'Cancelar',
+        },
       );
       if (!confirmed) return 'cancelled';
       await sendPdfWithConnectedGmail({
@@ -231,13 +376,19 @@ export const sendDirectoryCommunication = async (
         body: prepared.body,
         file: prepared.file,
       });
-      window.alert(`Correo enviado correctamente desde ${gmail.email} a ${prepared.recipientEmail}.`);
+      await appAlert(`Correo enviado correctamente desde ${gmail.email} a ${prepared.recipientEmail}.`, {
+        kind: 'success',
+        title: 'Correo enviado',
+      });
       return 'sent';
     }
   } catch (error: any) {
     console.warn('[directory-communications] No se pudo usar el envío Gmail directo:', error);
     if (error?.code !== 'GMAIL_NOT_CONNECTED') {
-      window.alert(error?.message || 'No se pudo enviar mediante Gmail. Se usará el método alternativo.');
+      await appAlert(error?.message || 'No se pudo enviar mediante Gmail. Se usará el método alternativo.', {
+        kind: 'warning',
+        title: 'Envío alternativo',
+      });
     }
   }
 
@@ -263,8 +414,9 @@ export const sendDirectoryCommunication = async (
       `${prepared.body}\n\nAdjunta el PDF descargado: ${prepared.file.name}`,
     )}`;
   window.open(gmailUrl, '_blank', 'noopener,noreferrer');
-  window.alert(
+  await appAlert(
     `Se ha descargado ${prepared.file.name} y se ha preparado el correo para ${prepared.recipientName} (${prepared.recipientEmail}). Adjunta el PDF descargado antes de enviar.`,
+    { kind: 'info', title: 'Correo preparado' },
   );
   return 'opened';
 };
