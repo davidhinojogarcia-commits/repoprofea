@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Clock3, Download, FileSignature, Loader2, MailCheck, RefreshCw, Search, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, RefreshCw, RotateCcw, Search, Upload } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
@@ -7,12 +7,15 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { markMandatoryDocumentReturned } from '../src/services/foremanPortalService';
+import { markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 
-type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
-type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; status:'pending'|'in_progress'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null };
+type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+
+type ActivityRow = { id:number; obra:string; entity_type:string; entity_id?:string|null; document_type?:string|null; action:string; actor_type:'supervisor'|'encargado'|'sistema'; actor_name?:string; worker_id?:number|null; metadata?:Record<string,any>; created_at:string };
+type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; snapshot:Record<string,any>; created_at:string };
 
 const mandatoryDocumentLabel = (type:string) => ({
   inicio:'Inicio / incorporación',
@@ -26,6 +29,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [documents,setDocuments]=useState<DbDocument[]>([]);
   const [attendance,setAttendance]=useState<DbAttendance[]>([]);
   const [mandatory,setMandatory]=useState<DbMandatory[]>([]);
+  const [activity,setActivity]=useState<ActivityRow[]>([]);
+  const [versions,setVersions]=useState<VersionRow[]>([]);
+  const [controlView,setControlView]=useState<'status'|'activity'|'history'>('status');
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
@@ -44,10 +50,14 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const docsQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=updated_at.desc&limit=500';
       const daysQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=work_date.desc&limit=180';
       const mandatoryQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=work_date.desc&limit=300';
+      const activityQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=created_at.desc&limit=500';
+      const versionsQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=created_at.desc&limit=300';
       const results=await Promise.all([
         supabase.query('foreman_documents',{query:docsQuery}),
         supabase.query('foreman_attendance_days',{query:daysQuery}),
         supabase.query('foreman_mandatory_documents',{query:mandatoryQuery}),
+        supabase.query('foreman_activity_log',{query:activityQuery}),
+        supabase.query('foreman_document_versions',{query:versionsQuery}),
       ]);
       const nextDocuments=Array.isArray(results[0])?results[0]:[];
       const nextAttendance=Array.isArray(results[1])?results[1]:[];
@@ -55,6 +65,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setDocuments(nextDocuments);
       setAttendance(nextAttendance);
       setMandatory(nextMandatory);
+      setActivity(Array.isArray(results[3])?results[3]:[]);
+      setVersions(Array.isArray(results[4])?results[4]:[]);
 
       const completedIds=new Set(nextMandatory.filter((item:any)=>item.status==='completed').map((item:any)=>String(item.id)));
       if(completedBaselineRef.current===null){
@@ -131,8 +143,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     return [...dayCards,...mandatoryCards,...docCards].filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed')).filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   },[attendance,mandatory,documents,filter,term]);
   const markReviewed=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
-    const table=kind==='attendance'?'foreman_attendance_days':kind==='mandatory'?'foreman_mandatory_documents':'foreman_documents';
-    await supabase.query(table,{method:'PATCH',query:'id=eq.'+encodeURIComponent(id),body:{status:'reviewed',reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()},prefer:'return=minimal'});
+    await reviewForemanItem(kind,id);
+    await refresh(true);
+  };
+  const returnForCorrection=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
+    const reason=window.prompt('Indica al encargado qué debe corregir:','');
+    if(!reason?.trim())return;
+    await returnForemanItemForCorrection(kind,id,reason.trim());
     await refresh(true);
   };
   const openPdf=(card:any)=>{
@@ -191,6 +208,23 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const signedEntries=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.entrySignature).length,0);
   const signedExits=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.exitSignature).length,0);
   const pending=cards.filter(c=>c.status!=='reviewed').length;
+  const correctionCount=mandatory.filter(i=>i.correction_pending).length+documents.filter(i=>i.correction_pending).length+attendance.filter(i=>i.correction_pending).length;
+  const incompleteCount=mandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
+  const reviewCount=mandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
+  const actionLabel=(action:string)=>({
+    created:'Creado',created_and_finalized:'Creado y finalizado',signature_updated:'Firma registrada o actualizada',
+    finalized:'Finalizado por el encargado',reviewed:'Revisado por el supervisor',returned_for_correction:'Devuelto para corrección',
+    attendance_updated:'Jornada actualizada',answers_updated:'Datos modificados',access_authorized:'Acceso autorizado',
+    access_revoked:'Acceso desautorizado',access_rotated:'Acceso renovado',access_updated:'Acceso al portal',status_changed:'Cambio de estado',updated:'Actualizado'
+  } as Record<string,string>)[action]||action;
+  const entityLabel=(row:ActivityRow|VersionRow)=>{
+    const snap='snapshot' in row?row.snapshot:null;
+    const type=('document_type' in row?row.document_type:null)||snap?.document_type;
+    if(type)return mandatoryDocumentLabel(String(type));
+    if(row.entity_type==='foreman_attendance_days')return 'Registro diario de jornada';
+    if(row.entity_type==='foreman_portal_access')return 'Acceso del encargado';
+    return 'Documento de obra';
+  };
   return <div className="space-y-5">
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
@@ -222,24 +256,82 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         {([['Obligatorios',mandatory.length],['Otros documentos',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
     </div>
-    <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <button onClick={()=>setControlView('status')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='status'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><ListChecks className="w-4 h-4"/>Estado actual</button>
+      <button onClick={()=>setControlView('activity')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='activity'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><Clock3 className="w-4 h-4"/>Actividad ({activity.length})</button>
+      <button onClick={()=>setControlView('history')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='history'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><History className="w-4 h-4"/>Historial / versiones ({versions.length})</button>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className={`rounded-2xl border p-4 ${correctionCount?'border-amber-300 bg-amber-50 dark:bg-amber-950/20':'bg-white dark:bg-slate-900'}`}>
+        <div className="flex items-center gap-2"><RotateCcw className="w-4 h-4 text-amber-600"/><span className="text-xs font-black uppercase">Correcciones</span></div>
+        <div className="mt-2 text-2xl font-black">{correctionCount}</div><div className="text-xs text-slate-500">devueltos al encargado</div>
+      </div>
+      <div className={`rounded-2xl border p-4 ${incompleteCount?'border-amber-300 bg-amber-50/60 dark:bg-amber-950/20':'bg-white dark:bg-slate-900'}`}>
+        <div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-600"/><span className="text-xs font-black uppercase">En curso</span></div>
+        <div className="mt-2 text-2xl font-black">{incompleteCount}</div><div className="text-xs text-slate-500">pendientes o incompletos</div>
+      </div>
+      <div className={`rounded-2xl border p-4 ${reviewCount?'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20':'bg-white dark:bg-slate-900'}`}>
+        <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600"/><span className="text-xs font-black uppercase">Por revisar</span></div>
+        <div className="mt-2 text-2xl font-black">{reviewCount}</div><div className="text-xs text-slate-500">finalizados por el encargado</div>
+      </div>
+    </div>
+
+    {controlView==='status'&&<>    <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border pl-9 pr-3 py-2.5 bg-white dark:bg-slate-950"/></div>
       <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio y control de presencia</option><option value="attendance">Registro diario</option><option value="documents">Otros documentos</option><option value="pending">Pendientes de revisar ({pending})</option></select>
     </div>
     {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-500">Todavía no hay documentación enviada por encargados.</div>:<div className="space-y-3">{cards.map(card=><article key={card.kind+card.id} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':'Pendiente de firma'}</span></div>
-        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}</div>
+        <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
+        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>
           {card.kind==='mandatory' && card.status==='completed' && (
             <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Aprobar y devolver por Gmail':'Aprobar y enviar a administrativa'}</button>
           )}
-          {card.kind!=='mandatory' && card.status!=='reviewed' && (
-            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
+          {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && (
+            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
+          )}
+          {(card.status==='completed'||card.status==='reviewed')&&(
+            <button onClick={()=>void returnForCorrection(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-xs font-black"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>
           )}
         </div>
       </div>
     </article>)}</div>}
+    </>}
+
+    {controlView==='activity'&&<div className="space-y-2">
+      {!activity.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay movimientos registrados.</div>}
+      {activity.map(row=><div key={row.id} className="rounded-2xl bg-white dark:bg-slate-900 border p-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-2 py-1 text-[10px] font-black ${row.actor_type==='supervisor'?'bg-blue-50 text-blue-800':row.actor_type==='encargado'?'bg-emerald-50 text-emerald-800':'bg-slate-100 text-slate-700'}`}>{row.actor_type==='supervisor'?'Supervisor':row.actor_type==='encargado'?'Encargado':'Sistema'}</span>
+              <span className="text-sm font-black">{actionLabel(row.action)}</span>
+            </div>
+            <div className="mt-1 text-sm font-semibold">{entityLabel(row)}</div>
+            <div className="mt-1 text-xs text-slate-500">{row.obra}{row.actor_name?' · '+row.actor_name:''}</div>
+            {row.metadata?.correctionReason&&<div className="mt-2 text-xs font-bold text-amber-800">Motivo: {row.metadata.correctionReason}</div>}
+            {typeof row.metadata?.signedCount==='number'&&<div className="mt-1 text-xs text-slate-500">Firmas: {row.metadata.signedCount}/{row.metadata.workerCount??'-'}</div>}
+          </div>
+          <time className="text-xs font-bold text-slate-500">{new Date(row.created_at).toLocaleString('es-ES')}</time>
+        </div>
+      </div>)}
+    </div>}
+
+    {controlView==='history'&&<div className="space-y-2">
+      {!versions.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay versiones finalizadas guardadas.</div>}
+      {versions.map(version=><div key={version.id} className="rounded-2xl bg-white dark:bg-slate-900 border p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2"><History className="w-4 h-4 text-[#00548E]"/><span className="font-black">{entityLabel(version)}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black">Versión {version.version_no}</span></div>
+            <div className="mt-1 text-xs text-slate-500">{version.obra} · {String(version.snapshot?.work_date||version.snapshot?.workDate||'').slice(0,10)}</div>
+            <div className="mt-1 text-xs font-semibold text-slate-600">Copia inalterable del estado en el momento de finalizar.</div>
+          </div>
+          <time className="text-xs font-bold text-slate-500">{new Date(version.created_at).toLocaleString('es-ES')}</time>
+        </div>
+      </div>)}
+    </div>}
   </div>;
 };
