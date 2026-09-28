@@ -49,6 +49,10 @@ export interface TrainingProviderSettings {
   email: string;
 }
 
+export interface TrainingProviderEntry extends TrainingProviderSettings {
+  id: string;
+}
+
 export interface AppBusinessSettings {
   savedObras: string[];
   savedLugares: string[];
@@ -63,6 +67,8 @@ export interface AppBusinessSettings {
   medicalProvider: MedicalProviderSettings;
   footwearProvider: FootwearProviderSettings;
   trainingProvider: TrainingProviderSettings;
+  trainingProviders: TrainingProviderEntry[];
+  activeTrainingProviderId: string;
 }
 
 export const DEFAULT_TECHNICIAN_SETTINGS: TechnicianSettings = {
@@ -134,6 +140,8 @@ const DEFAULTS: AppBusinessSettings = {
   medicalProvider: DEFAULT_MEDICAL_PROVIDER_SETTINGS,
   footwearProvider: DEFAULT_FOOTWEAR_PROVIDER_SETTINGS,
   trainingProvider: DEFAULT_TRAINING_PROVIDER_SETTINGS,
+  trainingProviders: [],
+  activeTrainingProviderId: '',
 };
 
 const cleanList = (value: unknown, fallback: string[] = []): string[] => {
@@ -183,6 +191,33 @@ const cleanTrainingProvider = (value: any): TrainingProviderSettings => ({
   empresa: String(value?.empresa || '').trim(),
 });
 
+const makeTrainingProviderId = (value: any, index: number) => {
+  const explicit = String(value?.id || '').trim();
+  if (explicit) return explicit;
+  const base = [value?.empresa, value?.email, value?.nombreApellidos]
+    .map(item => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join('-')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base ? `training-${base}` : `training-provider-${index + 1}`;
+};
+
+const cleanTrainingProviders = (value: any, legacy?: any): TrainingProviderEntry[] => {
+  const source = Array.isArray(value)
+    ? value
+    : legacy && (legacy.empresa || legacy.nombreApellidos || legacy.telefono || legacy.email)
+      ? [legacy]
+      : [];
+  const seen = new Set<string>();
+  return source.map((item, index) => {
+    let id = makeTrainingProviderId(item, index);
+    while (seen.has(id)) id = `${id}-${index + 1}`;
+    seen.add(id);
+    return { id, ...cleanTrainingProvider(item) };
+  });
+};
+
 const cleanSupervisor = (value: any): SupervisorSettings => ({
   nombreApellidos: String(value?.nombreApellidos || '').trim(),
   telefono: String(value?.telefono || '').trim(),
@@ -193,21 +228,34 @@ const cleanSupervisor = (value: any): SupervisorSettings => ({
   usarPorDefecto: value?.usarPorDefecto !== false,
 });
 
-const normalize = (value: any): AppBusinessSettings => ({
-  savedObras: cleanList(value?.savedObras),
-  savedLugares: cleanList(value?.savedLugares),
-  savedSitios: cleanList(value?.savedSitios),
-  savedTelefonos: cleanList(value?.savedTelefonos),
-  savedCategorias: cleanList(value?.savedCategorias, DEFAULTS.savedCategorias),
-  workStartHour: String(value?.workStartHour || DEFAULTS.workStartHour),
-  workEndHour: String(value?.workEndHour || DEFAULTS.workEndHour),
-  supervisor: cleanSupervisor(value?.supervisor),
-  technician: cleanTechnician(value?.technician),
-  administrative: cleanAdministrative(value?.administrative),
-  medicalProvider: cleanMedicalProvider(value?.medicalProvider),
-  footwearProvider: cleanFootwearProvider(value?.footwearProvider),
-  trainingProvider: cleanTrainingProvider(value?.trainingProvider),
-});
+const normalize = (value: any): AppBusinessSettings => {
+  const trainingProviders = cleanTrainingProviders(value?.trainingProviders, value?.trainingProvider);
+  const requestedActive = String(value?.activeTrainingProviderId || '').trim();
+  const activeTrainingProviderId = trainingProviders.some(item => item.id === requestedActive)
+    ? requestedActive
+    : (trainingProviders[0]?.id || '');
+  const activeTrainingProvider =
+    trainingProviders.find(item => item.id === activeTrainingProviderId) ||
+    cleanTrainingProvider(value?.trainingProvider);
+
+  return {
+    savedObras: cleanList(value?.savedObras),
+    savedLugares: cleanList(value?.savedLugares),
+    savedSitios: cleanList(value?.savedSitios),
+    savedTelefonos: cleanList(value?.savedTelefonos),
+    savedCategorias: cleanList(value?.savedCategorias, DEFAULTS.savedCategorias),
+    workStartHour: String(value?.workStartHour || DEFAULTS.workStartHour),
+    workEndHour: String(value?.workEndHour || DEFAULTS.workEndHour),
+    supervisor: cleanSupervisor(value?.supervisor),
+    technician: cleanTechnician(value?.technician),
+    administrative: cleanAdministrative(value?.administrative),
+    medicalProvider: cleanMedicalProvider(value?.medicalProvider),
+    footwearProvider: cleanFootwearProvider(value?.footwearProvider),
+    trainingProvider: cleanTrainingProvider(activeTrainingProvider),
+    trainingProviders,
+    activeTrainingProviderId,
+  };
+};
 
 async function requireUser() {
   const user = await getSessionUser();
@@ -269,6 +317,8 @@ export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings
     medicalProvider: mergedMedicalProvider,
     footwearProvider: mergedFootwearProvider,
     trainingProvider: mergedTrainingProvider,
+    trainingProviders: patch.trainingProviders ?? existingRaw?.trainingProviders,
+    activeTrainingProviderId: patch.activeTrainingProviderId ?? existingRaw?.activeTrainingProviderId,
   });
 
   await supabase.rpc('patch_user_settings', {
