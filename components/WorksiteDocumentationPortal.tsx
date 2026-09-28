@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { appConfirm } from '../src/lib/appDialog';
 import {
   Clock,
   FileDown,
@@ -535,10 +536,16 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     downloadPDF(doc, filename);
   };
 
-  const exportMachinery = () => {
+  const exportMachinery = async () => {
     if (!ensureReady()) return;
     const missing = periodWorkers.filter((p) => !safe(machineryByWorker[String(p.id)]));
-    if (missing.length && !window.confirm(`${missing.length} trabajador(es) no tienen maquinaria indicada. ¿Generar el PDF igualmente?`)) return;
+    if (
+      missing.length &&
+      !(await appConfirm(
+        `${missing.length} trabajador(es) no tienen maquinaria indicada. ¿Generar el PDF igualmente?`,
+        { title: 'Maquinaria pendiente', confirmLabel: 'Generar igualmente' },
+      ))
+    ) return;
     const { doc, filename } = generateMachineryAuthorizationPdf(periodWorkers, context);
     downloadPDF(doc, filename);
   };

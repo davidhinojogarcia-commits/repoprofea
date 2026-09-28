@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import { applyPlugin } from 'jspdf-autotable';
 import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
+import { AppDialogHost } from './components/AppDialogHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
 import { AnnualHiringPeriodsPanel } from './components/AnnualHiringPeriodsPanel';
 import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
@@ -18,6 +19,7 @@ import { RemoteScannerPortal } from './components/RemoteScannerPortal';
 import { ForemanMobilePortal } from './components/ForemanMobilePortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
 import { installModalRuntime } from './src/lib/modalRuntime';
+import { installAppDialogRuntime } from './src/lib/appDialog';
 import { installButtonSounds } from './src/lib/uiSounds';
 import { installSidebarSwipe } from './src/lib/sidebarSwipe';
 import { initializeOfflineSync } from './src/lib/supabase';
@@ -91,6 +93,7 @@ const normalizeLegacyLoginRoute = () => {
 normalizeLegacyLoginRoute();
 window.addEventListener('popstate', normalizeLegacyLoginRoute);
 installModalRuntime();
+installAppDialogRuntime();
 installButtonSounds();
 installSidebarSwipe();
 initializeOfflineSync();
@@ -112,7 +115,9 @@ const foremanToken = initialSearchParams.get('encargado')?.trim() || '';
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
-      {isMedicalConfirmation ? (
+      <>
+        <AppDialogHost />
+        {isMedicalConfirmation ? (
         <MedicalAppointmentConfirmationPortal />
       ) : foremanToken ? (
         <ForemanMobilePortal token={foremanToken} />
@@ -146,6 +151,7 @@ ReactDOM.createRoot(rootElement).render(
           )}
         </AuthGate>
       )}
+      </>
     </RootErrorBoundary>
   </React.StrictMode>
 );
