@@ -184,12 +184,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       key={item.id}
                       data-profea-view={item.id}
                       onClick={() => handleNavClick(item.id)}
-                      className={`profea-sidebar-item w-full min-h-12 flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative ${isActive ? 'profea-sidebar-item--active text-white' : 'text-slate-700 dark:text-slate-300'}`}
+                      className={`profea-sidebar-item w-full min-h-12 flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative overflow-hidden ${isActive ? 'profea-sidebar-item--active text-white' : 'text-slate-700 dark:text-slate-300'}`}
                       title={isCollapsed && !isMobileOpen ? item.label : undefined}
                     >
                       <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`} />
-                      <span className={`min-w-0 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
-                        <span className={`profea-sidebar-label font-semibold text-sm whitespace-nowrap ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
+                      <span className={`min-w-0 flex-1 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
+                        <span className={`profea-sidebar-label w-full font-semibold text-sm leading-[1.15] whitespace-normal break-words ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
                           {item.label}
                         </span>
                         {item.subtitle && (
