@@ -9,7 +9,7 @@ import {
   saveForemanAttendance,
   submitForemanDocument,
   signMandatoryForemanDocument,
-  finalizeForemanMandatoryDocument
+  finalizeForemanMandatoryDocument,
   resubmitForemanDocument,
   type ForemanAttendanceRow,
   type ForemanPortalPayload,
