@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, Download, FileSignature, Loader2, MailCheck, RefreshCw, Search } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, Clock3, Download, FileSignature, Loader2, MailCheck, RefreshCw, Search, Upload } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
 import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, generateForemanMandatoryDocumentPdf } from '../src/lib/foremanDocumentsPdf';
-import { processAdministrativeMandatoryInbox } from '../src/lib/mandatoryEmailIntake';
+import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { markMandatoryDocumentReturned } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
@@ -22,6 +22,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
+  const [importBusy,setImportBusy]=useState(false);
+  const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -73,6 +75,27 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     const timer=window.setInterval(()=>void scanAdministrativeMail(true),60000);
     return()=>{window.clearTimeout(first);window.clearInterval(timer);};
   },[mandatory.length]);
+  const importMandatoryFiles = async (files: File[]) => {
+    if (!files.length || importBusy) return;
+    setImportBusy(true);
+    setMailMessage('Analizando documentos seleccionados…');
+    try {
+      const result=await processManualMandatoryFiles(files,{
+        onProgress: message=>setMailMessage(message),
+      });
+      if(result.importedDocuments>0){
+        setMailMessage(`${result.importedDocuments} documento(s) importado(s) y preparados para que el encargado recoja las firmas.${result.skippedFiles ? ` ${result.skippedFiles} archivo(s) no se pudieron importar.` : ''}`);
+        await refresh(true);
+      }else{
+        setMailMessage(result.warnings[0] || 'No se ha podido importar ningún documento.');
+      }
+    }catch(error:any){
+      setMailMessage(error?.message || 'No se pudieron importar los documentos.');
+    }finally{
+      setImportBusy(false);
+      if(mandatoryFileInputRef.current) mandatoryFileInputRef.current.value='';
+    }
+  };
   const term=search.trim().toLowerCase();
   const cards=useMemo(()=>{
     const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
@@ -144,6 +167,22 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se actualiza automáticamente cada 5 segundos.</p></div>
         <div className="flex flex-wrap gap-2">
+          <input
+            ref={mandatoryFileInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            className="hidden"
+            onChange={event=>void importMandatoryFiles(Array.from(event.target.files || []))}
+          />
+          <button
+            disabled={importBusy}
+            onClick={()=>mandatoryFileInputRef.current?.click()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2.5 text-sm font-black disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+          >
+            {importBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}
+            Importar Inicio / Control de presencia
+          </button>
           <button disabled={mailBusy} onClick={()=>void scanAdministrativeMail(false)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-4 py-2.5 text-sm font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>Revisar Gmail</button>
           <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
         </div>
