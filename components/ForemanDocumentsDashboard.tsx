@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, RefreshCw, RotateCcw, Search, Upload } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
@@ -163,7 +164,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     await refresh(true);
   };
   const returnForCorrection=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
-    const reason=window.prompt('Indica al encargado qué debe corregir:','');
+    const reason=await appPrompt(
+      'Indica al encargado qué debe corregir:',
+      { title: 'Solicitar corrección', confirmLabel: 'Enviar corrección', placeholder: 'Describe qué debe corregirse…' },
+    );
     if(!reason?.trim())return;
     await returnForemanItemForCorrection(kind,id,reason.trim());
     await refresh(true);
@@ -190,7 +194,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage('No hay correo de la administrativa configurado.');
       return;
     }
-    if (!window.confirm('¿Aprobar este documento cumplimentado y enviarlo por Gmail a la administrativa?')) return;
+    if (!(await appConfirm(
+      '¿Aprobar este documento cumplimentado y enviarlo por Gmail a la administrativa?',
+      { title: 'Aprobar y enviar', confirmLabel: 'Aprobar y enviar' },
+    ))) return;
     setMailBusy(true);
     try {
       const record:ForemanMandatoryDocument={
