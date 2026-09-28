@@ -143,6 +143,10 @@ const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: strin
 
 function App() {
   const { user: authenticatedUser, supervisorName } = useAuthShell();
+  const supervisorNameRef = useRef(supervisorName);
+  useEffect(() => {
+    supervisorNameRef.current = supervisorName;
+  }, [supervisorName]);
 
   useEffect(() => {
     document.title = 'Sistema Gestión Contratación PFEA';
@@ -568,11 +572,12 @@ function App() {
   useEffect(() => {
     if (!auth.currentUser?.uid) return;
     const unsubscribe = subscribeToDocuments<Person>('trabajadores', workers => {
+      const currentSupervisorName = supervisorNameRef.current;
       setPeople(workers.map(worker => ({
         ...worker,
         supervisorResponsable:
-          (!worker.ownerId || worker.ownerId === authenticatedUser.id) && supervisorName
-            ? supervisorName
+          (!worker.ownerId || worker.ownerId === authenticatedUser.id) && currentSupervisorName
+            ? currentSupervisorName
             : worker.supervisorResponsable,
         sincronizadoEnNube: true,
       })));
@@ -581,6 +586,18 @@ function App() {
       setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
+  }, [authenticatedUser.id]);
+
+  useEffect(() => {
+    if (!supervisorName) return;
+    setPeople(current =>
+      current.map(worker =>
+        (!worker.ownerId || worker.ownerId === authenticatedUser.id) &&
+        worker.supervisorResponsable !== supervisorName
+          ? { ...worker, supervisorResponsable: supervisorName }
+          : worker,
+      ),
+    );
   }, [authenticatedUser.id, supervisorName]);
 
   // La papelera también se lee automáticamente desde Supabase.
