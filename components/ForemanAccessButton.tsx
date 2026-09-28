@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
 import { AlertCircle, Ban, CheckCircle2, Copy, Loader2, QrCode, RefreshCw, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -173,10 +174,11 @@ export const ForemanAccessButton: React.FC<{
   };
 
   const confirmNewAccess = () =>
-    window.confirm(
+    appConfirm(
       access.exists
         ? 'Se generará un acceso nuevo. El código QR y el enlace anteriores dejarán de funcionar. ¿Continuar?'
         : 'Se generará el acceso móvil del encargado para esta obra. ¿Continuar?',
+      { title: 'Acceso del encargado', confirmLabel: 'Generar acceso' },
     );
 
   const ensureShareableUrl = async (openModal: boolean) => {
@@ -186,7 +188,7 @@ export const ForemanAccessButton: React.FC<{
       return url;
     }
 
-    if (!confirmNewAccess()) return '';
+    if (!(await confirmNewAccess())) return '';
     return generateAccess(openModal);
   };
 
@@ -234,8 +236,9 @@ export const ForemanAccessButton: React.FC<{
 
   const revokeAccess = async () => {
     if (!access.active) return;
-    const ok = window.confirm(
+    const ok = await appConfirm(
       '¿Desautorizar este acceso? El enlace y el código QR dejarán de funcionar inmediatamente.',
+      { title: 'Desautorizar acceso', confirmLabel: 'Desautorizar' },
     );
     if (!ok) return;
 
