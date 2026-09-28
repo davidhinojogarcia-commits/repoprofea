@@ -9,6 +9,7 @@ import {
   resolveForemanPortal,
   saveForemanAttendance,
   submitForemanDocument,
+  signMandatoryForemanDocument,
   type ForemanAttendanceRow,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
@@ -50,7 +51,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [tab,setTab]=useState<'attendance'|'documents'|'completed'>('attendance');
+  const [tab,setTab]=useState<'attendance'|'mandatory'|'documents'|'completed'>('attendance');
   const [date,setDate]=useState(today());
   const [rows,setRows]=useState<ForemanAttendanceRow[]>([]);
   const [signing,setSigning]=useState<{workerId:number;kind:'entry'|'exit'}|null>(null);
@@ -60,6 +61,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [answers,setAnswers]=useState<Record<string,string>>({});
   const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
+  const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
 
   const refresh=async()=>{setLoading(true);setError('');try{const next=await resolveForemanPortal(token);if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');setData(next);}catch(e:any){setError(e?.message||'No se pudo abrir la documentación de la obra.');}finally{setLoading(false);}};
   useEffect(()=>{void refresh();},[token]);
@@ -91,10 +93,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       <div className="max-w-3xl mx-auto"><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E]">Portal del encargado · PROFEA</div><h1 className="text-lg font-black leading-tight">{data.obra}</h1><p className="text-xs text-slate-500">{data.foremanName||'Encargado de obra'}</p></div>
     </header>
     <main className="max-w-3xl mx-auto p-3 sm:p-5 space-y-4">
-      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-white border p-2">
-        <button onClick={()=>setTab('attendance')} className={`rounded-xl px-2 py-3 text-xs font-black ${tab==='attendance'?'bg-[#00548E] text-white':'text-slate-600'}`}><Clock3 className="w-4 h-4 mx-auto mb-1"/>Hoy</button>
-        <button onClick={()=>setTab('documents')} className={`rounded-xl px-2 py-3 text-xs font-black ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-600'}`}><FileSignature className="w-4 h-4 mx-auto mb-1"/>Documentos</button>
-        <button onClick={()=>setTab('completed')} className={`rounded-xl px-2 py-3 text-xs font-black ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-600'}`}><ClipboardList className="w-4 h-4 mx-auto mb-1"/>Enviados</button>
+      <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-white border p-2">
+        <button onClick={()=>setTab('attendance')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='attendance'?'bg-[#00548E] text-white':'text-slate-600'}`}><Clock3 className="w-4 h-4 mx-auto mb-1"/>Jornada</button>
+        <button onClick={()=>setTab('mandatory')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-600'}`}><ClipboardList className="w-4 h-4 mx-auto mb-1"/>Obligatorios</button>
+        <button onClick={()=>setTab('documents')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-600'}`}><FileSignature className="w-4 h-4 mx-auto mb-1"/>Otros</button>
+        <button onClick={()=>setTab('completed')} className={`rounded-xl px-1 py-3 text-[11px] font-black ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-600'}`}><CheckCircle2 className="w-4 h-4 mx-auto mb-1"/>Enviados</button>
       </div>
 
       {tab==='attendance'&&<section className="space-y-3">
@@ -109,6 +112,28 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           </div>
         </div>)}
         <button disabled={saving||!rows.length} onClick={()=>void persist(rows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Finalizar y enviar jornada</>}</button>
+      </section>}
+
+      {tab==='mandatory'&&<section className="space-y-3">
+        <div className="rounded-2xl bg-white border p-4">
+          <h2 className="font-black">Documentos obligatorios</h2>
+          <p className="mt-1 text-xs text-slate-500">Se crean automáticamente al importar la relación de la administrativa. Cada trabajador firma desde este móvil.</p>
+        </div>
+        {data.mandatoryDocuments.map(doc=>{
+          const label=doc.documentType==='inicio'?'Inicio / incorporación':'Control de presencia';
+          const signedCount=Object.keys(doc.signatures||{}).length;
+          return <div key={doc.id} className="rounded-2xl bg-white border p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3"><div><div className="font-black">{label}</div><div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${doc.status==='completed'||doc.status==='reviewed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span></div>
+            <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
+              const signed=Boolean((doc.signatures||{})[String(worker.id)]);
+              return <button key={worker.id} type="button" disabled={signed} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left ${signed?'bg-emerald-50 border-emerald-200':'bg-white'}`}>
+                <span><span className="block text-sm font-black">{worker.apellidosNombre}</span><span className="block text-[11px] text-slate-500">{worker.dni} · {worker.categoria}</span></span>
+                <span className={`text-xs font-black ${signed?'text-emerald-700':'text-[#00548E]'}`}>{signed?'Firmado ✓':'Firmar'}</span>
+              </button>;
+            })}</div>
+          </div>;
+        })}
+        {!data.mandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay documentos obligatorios pendientes para esta obra.</div>}
       </section>}
 
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 space-y-4">
@@ -131,5 +156,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     </main>
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
+    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);await refresh();}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>}
   </div>;
 };
