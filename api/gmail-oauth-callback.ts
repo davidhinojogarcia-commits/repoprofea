@@ -7,7 +7,7 @@ import {
   oauthRedirectUri,
   upsertConnection,
   verifyOAuthState,
-} from '../src/server/gmailOAuth';
+} from '../src/server/gmailOAuth.js';
 
 const redirectWithResult = (res: any, ok: boolean, message: string) => {
   const params = new URLSearchParams({
