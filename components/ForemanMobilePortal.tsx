@@ -69,14 +69,21 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   useEffect(()=>{
     if(!data)return;
     const saved=data.attendance.find(a=>String(a.workDate).slice(0,10)===date);
-    if(saved?.rows?.length){setRows(saved.rows);return;}
+    if(saved?.rows?.length){
+      setRows(saved.rows.map(row=>({
+        ...row,
+        entryTime: row.entryTime || data.defaultWorkStartHour || '08:00',
+        exitTime: row.exitTime || data.defaultWorkEndHour || '15:00',
+      })));
+      return;
+    }
     setRows(data.workers.map(w=>({
       workerId:Number(w.id),
       name:w.apellidosNombre,
       dni:w.dni,
       category:w.categoria,
-      entryTime:data.defaultWorkStartHour || '07:30',
-      exitTime:data.defaultWorkEndHour || '15:30',
+      entryTime:data.defaultWorkStartHour || '08:00',
+      exitTime:data.defaultWorkEndHour || '15:00',
     })));
   },[data,date]);
 
@@ -118,7 +125,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               <label className="block text-[10px] font-black uppercase text-slate-500">Hora entrada</label>
               <input
                 type="time"
-                value={row.entryTime || data.defaultWorkStartHour || '07:30'}
+                value={row.entryTime || data.defaultWorkStartHour || '08:00'}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:undefined}:item));
@@ -133,7 +140,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               <label className="block text-[10px] font-black uppercase text-slate-500">Hora salida</label>
               <input
                 type="time"
-                value={row.exitTime || data.defaultWorkEndHour || '15:30'}
+                value={row.exitTime || data.defaultWorkEndHour || '15:00'}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:undefined}:item));
