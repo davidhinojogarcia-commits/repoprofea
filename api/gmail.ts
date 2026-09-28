@@ -22,6 +22,8 @@ function buildMime(input: {
   body: string;
   filename: string;
   pdfBase64: string;
+  inReplyTo?: string;
+  references?: string;
 }) {
   const boundary = `profea_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const filename = cleanHeader(input.filename || 'documento.pdf').replace(/"/g, '');
@@ -29,6 +31,8 @@ function buildMime(input: {
   return [
     `To: ${cleanHeader(input.to)}`,
     `Subject: ${subject}`,
+    ...(input.inReplyTo ? [`In-Reply-To: ${cleanHeader(input.inReplyTo)}`] : []),
+    ...(input.references ? [`References: ${cleanHeader(input.references)}`] : []),
     'MIME-Version: 1.0',
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     '',
@@ -63,6 +67,7 @@ export default async function handler(req: any, res: any) {
         email: connection?.email || '',
         connectedAt: connection?.connected_at || null,
         lastSentAt: connection?.last_sent_at || null,
+        canRead: String(connection?.scope || '').includes('gmail.readonly'),
       });
     }
 
@@ -85,6 +90,7 @@ export default async function handler(req: any, res: any) {
           'email',
           'profile',
           'https://www.googleapis.com/auth/gmail.send',
+          'https://www.googleapis.com/auth/gmail.readonly',
         ].join(' '),
         state: createOAuthState(user, expectedEmail),
         login_hint: expectedEmail,
@@ -112,6 +118,92 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ ok: true });
     }
 
+    if (action === 'scan-administrative' && req.method === 'POST') {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+      const administrativeEmail = String(body.administrativeEmail || '').trim().toLowerCase();
+      const after = String(body.after || '').trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(administrativeEmail)) {
+        return res.status(400).json({ ok: false, message: 'El correo de la administrativa no es válido.' });
+      }
+
+      const connection = await getConnection(user.id);
+      if (!connection?.refresh_token_encrypted) {
+        return res.status(409).json({ ok: false, code: 'GMAIL_NOT_CONNECTED', message: 'Conecta primero Gmail en Configuración.' });
+      }
+      if (!String(connection.scope || '').includes('gmail.readonly')) {
+        return res.status(409).json({ ok: false, code: 'GMAIL_READ_PERMISSION_REQUIRED', message: 'Vuelve a autorizar Gmail para permitir la detección automática de correos de la administrativa.' });
+      }
+
+      const accessToken = await refreshGoogleAccessToken(decryptToken(connection.refresh_token_encrypted));
+      const gmailHeaders = { Authorization: `Bearer ${accessToken}` };
+      const qParts = [`from:(${administrativeEmail})`, 'has:attachment', 'newer_than:120d'];
+      if (after) qParts.push(`after:${after.replace(/-/g, '/')}`);
+      const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
+      listUrl.searchParams.set('q', qParts.join(' '));
+      listUrl.searchParams.set('maxResults', '25');
+      const listResponse = await fetch(listUrl, { headers: gmailHeaders });
+      const listData: any = await listResponse.json().catch(() => ({}));
+      if (!listResponse.ok) throw new Error('Gmail no pudo consultar los mensajes de la administrativa.');
+
+      const messageIds = Array.isArray(listData.messages) ? listData.messages.map((item: any) => String(item.id || '')).filter(Boolean) : [];
+      const results: any[] = [];
+
+      const collectAttachmentParts = (part: any, out: any[] = []) => {
+        if (!part) return out;
+        const filename = String(part.filename || '').trim();
+        const attachmentId = String(part.body?.attachmentId || '').trim();
+        if (filename && attachmentId) out.push({ filename, attachmentId, mimeType: String(part.mimeType || '') });
+        for (const child of Array.isArray(part.parts) ? part.parts : []) collectAttachmentParts(child, out);
+        return out;
+      };
+
+      for (const id of messageIds) {
+        const messageResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`, { headers: gmailHeaders });
+        const message: any = await messageResponse.json().catch(() => ({}));
+        if (!messageResponse.ok) continue;
+        const headers = Array.isArray(message.payload?.headers) ? message.payload.headers : [];
+        const header = (name: string) => String(headers.find((h: any) => String(h.name || '').toLowerCase() === name.toLowerCase())?.value || '');
+        const from = header('From');
+        if (!from.toLowerCase().includes(administrativeEmail)) continue;
+
+        const parts = collectAttachmentParts(message.payload).filter((part: any) =>
+          /\.(pdf|xlsx?|csv)$/i.test(part.filename) ||
+          /pdf|spreadsheet|excel|csv/i.test(part.mimeType)
+        );
+        if (!parts.length) continue;
+
+        const attachments: any[] = [];
+        for (const part of parts) {
+          const attachmentResponse = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(part.attachmentId)}`,
+            { headers: gmailHeaders },
+          );
+          const attachment: any = await attachmentResponse.json().catch(() => ({}));
+          if (!attachmentResponse.ok || !attachment.data) continue;
+          attachments.push({
+            filename: part.filename,
+            mimeType: part.mimeType,
+            dataBase64Url: String(attachment.data),
+            size: Number(attachment.size || 0),
+          });
+        }
+        if (!attachments.length) continue;
+        results.push({
+          id,
+          threadId: String(message.threadId || ''),
+          internalDate: String(message.internalDate || ''),
+          from,
+          subject: header('Subject'),
+          rfcMessageId: header('Message-ID'),
+          references: header('References'),
+          date: header('Date'),
+          attachments,
+        });
+      }
+
+      return res.status(200).json({ ok: true, messages: results });
+    }
+
     if (action === 'send' && req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
       const to = String(body.to || '').trim();
@@ -119,6 +211,9 @@ export default async function handler(req: any, res: any) {
       const messageBody = String(body.body || '');
       const filename = String(body.filename || 'documento.pdf').trim();
       const pdfBase64 = String(body.pdfBase64 || '').replace(/^data:application\/pdf;base64,/, '').trim();
+      const threadId = String(body.threadId || '').trim();
+      const inReplyTo = String(body.inReplyTo || '').trim();
+      const references = String(body.references || inReplyTo || '').trim();
 
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+(?:\s*,\s*[^@\s]+@[^@\s]+\.[^@\s]+)*$/.test(to)) {
         return res.status(400).json({ ok: false, message: 'El destinatario no es válido.' });
@@ -140,7 +235,7 @@ export default async function handler(req: any, res: any) {
 
       const refreshToken = decryptToken(connection.refresh_token_encrypted);
       const accessToken = await refreshGoogleAccessToken(refreshToken);
-      const mime = buildMime({ to, subject, body: messageBody, filename, pdfBase64 });
+      const mime = buildMime({ to, subject, body: messageBody, filename, pdfBase64, inReplyTo, references });
       const raw = Buffer.from(mime, 'utf8').toString('base64url');
 
       const sendResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -149,7 +244,7 @@ export default async function handler(req: any, res: any) {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ raw }),
+        body: JSON.stringify(threadId ? { raw, threadId } : { raw }),
       });
       const sent: any = await sendResponse.json().catch(() => ({}));
       if (!sendResponse.ok || !sent.id) {
