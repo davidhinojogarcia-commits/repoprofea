@@ -413,7 +413,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions
-as $
+as $$
 declare
   v_access public.foreman_portal_access%rowtype;
   v_hash text;
@@ -554,7 +554,7 @@ begin
 
   return jsonb_build_object('ok',true,'signed',v_signed,'total',v_total,'readyToFinalize',v_signed>=v_total and v_total>0);
 end;
-$;
+$$;
 
 create or replace function public.finalize_foreman_mandatory_document(
   p_token text,
@@ -564,7 +564,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions
-as $
+as $$
 declare
   v_access public.foreman_portal_access%rowtype;
   v_doc public.foreman_mandatory_documents%rowtype;
@@ -596,7 +596,7 @@ begin
 
   return jsonb_build_object('ok',true,'completed',true,'signed',v_signed,'total',v_total);
 end;
-$;
+$$;
 
 revoke all on function public.prepare_foreman_mandatory_documents(jsonb) from public;
 grant execute on function public.prepare_foreman_mandatory_documents(jsonb) to authenticated;
