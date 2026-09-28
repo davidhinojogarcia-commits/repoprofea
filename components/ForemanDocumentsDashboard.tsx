@@ -12,7 +12,15 @@ import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDo
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'; category:string; workers:any[]; signatures:Record<string,any>; status:'pending'|'in_progress'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; status:'pending'|'in_progress'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null };
+
+const mandatoryDocumentLabel = (type:string) => ({
+  inicio:'Inicio / incorporación',
+  control_presencia:'Control de presencia',
+  epis:'Entrega de EPIs',
+  maquinaria:'Autorización de maquinaria',
+  autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
+} as Record<string,string>)[type] || type;
 
 export const ForemanDocumentsDashboard: React.FC = () => {
   const [documents,setDocuments]=useState<DbDocument[]>([]);
@@ -118,7 +126,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const term=search.trim().toLowerCase();
   const cards=useMemo(()=>{
     const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
-    const mandatoryCards=mandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:item.document_type==='inicio'?'Inicio / incorporación':'Control de presencia',subtitle:item.category||'',status:item.status,item}));
+    const mandatoryCards=mandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards].filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed')).filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   },[attendance,mandatory,documents,filter,term]);
@@ -134,7 +142,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     }
     if(card.kind==='mandatory'){
       const m=card.item as DbMandatory;
-      const record:ForemanMandatoryDocument={id:m.id,workDate:m.work_date,periodKey:m.period_key,documentType:m.document_type,category:m.category,workers:m.workers||[],signatures:m.signatures||{},status:m.status,completedAt:m.completed_at};
+      const record:ForemanMandatoryDocument={id:m.id,workDate:m.work_date,periodKey:m.period_key,documentType:m.document_type,category:m.category,workers:m.workers||[],signatures:m.signatures||{},status:m.status,completedAt:m.completed_at,details:m.details||{}};
       const out=generateForemanMandatoryDocumentPdf(record,m.obra); downloadPDF(out.doc,out.filename); return;
     }
     const d=card.item as DbDocument;
@@ -155,7 +163,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const record:ForemanMandatoryDocument={
         id:item.id,workDate:item.work_date,periodKey:item.period_key,documentType:item.document_type,
         category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
-        completedAt:item.completed_at
+        completedAt:item.completed_at,details:item.details||{}
       };
       const out=generateForemanMandatoryDocumentPdf(record,item.obra);
       const blob=out.doc.output('blob');
@@ -165,7 +173,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const sent=await sendPdfWithConnectedGmail({
         to:targetEmail,
         subject,
-        body:`Se devuelve la documentación de ${item.obra} firmada y revisada por el supervisor.\n\nDocumento: ${item.document_type==='inicio'?'Inicio / incorporación':'Control de presencia'}\nFecha: ${item.work_date}.`,
+        body:`Se devuelve la documentación de ${item.obra} firmada y revisada por el supervisor.\n\nDocumento: ${mandatoryDocumentLabel(item.document_type)}\nFecha: ${item.work_date}.`,
         file,
         threadId:item.source_gmail_thread_id||'',
         inReplyTo:item.source_rfc_message_id||'',
