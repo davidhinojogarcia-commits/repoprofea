@@ -204,9 +204,8 @@ const makeTrainingProviderId = (value: any, index: number) => {
 };
 
 const cleanTrainingProviders = (value: any, legacy?: any): TrainingProviderEntry[] => {
-  const raw = Array.isArray(value) ? value : [];
-  const source = raw.length
-    ? raw
+  const source = Array.isArray(value)
+    ? value
     : legacy && (legacy.empresa || legacy.nombreApellidos || legacy.telefono || legacy.email)
       ? [legacy]
       : [];
