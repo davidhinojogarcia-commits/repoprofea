@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import { Person } from '../types';
 import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, Undo2, Redo2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
@@ -380,6 +380,11 @@ export const PersonList: React.FC<PersonListProps> = ({
     return repeaters;
   }, [sameDniWorkersMap]);
 
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedObraSet = useMemo(() => new Set(selectedObraFilter), [selectedObraFilter]);
+  const selectedQuincenaSet = useMemo(() => new Set(selectedQuincenaFilter), [selectedQuincenaFilter]);
+
   const noAptosCount = useMemo(() => {
     return (people || []).filter(p => p.reconocimientoEstado === 'No Apto').length;
   }, [people]);
@@ -389,11 +394,11 @@ export const PersonList: React.FC<PersonListProps> = ({
   }, [people]);
 
   const selectedNoAptoCount = useMemo(() => {
-    return (people || []).filter(p => selectedIds.includes(p.id) && p.reconocimientoEstado === 'No Apto' && p.documentacionCompleta === 'No').length;
-  }, [people, selectedIds]);
+    return (people || []).filter(p => selectedIdSet.has(p.id) && p.reconocimientoEstado === 'No Apto' && p.documentacionCompleta === 'No').length;
+  }, [people, selectedIdSet]);
 
   const filteredPeople = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim();
+    const term = deferredSearchTerm.toLowerCase().trim();
     return (people || []).filter(person => {
       const matchesSearch = !term || (
         person.apellidosNombre.toLowerCase().includes(term) ||
@@ -403,8 +408,8 @@ export const PersonList: React.FC<PersonListProps> = ({
         (person.categoria && person.categoria.toLowerCase().includes(term))
       );
       
-      const matchesObra = selectedObraFilter.includes('Todas') || selectedObraFilter.includes(person.obra);
-      const matchesQuincena = selectedQuincenaFilter.includes('Todas') || selectedQuincenaFilter.includes(person.quincena);
+      const matchesObra = selectedObraSet.has('Todas') || selectedObraSet.has(person.obra);
+      const matchesQuincena = selectedQuincenaSet.has('Todas') || selectedQuincenaSet.has(person.quincena);
       
       const cleanDni = person.dni ? person.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
       const isRepeaterWorker = cleanDni ? repeaterDniSet.has(cleanDni) : false;
@@ -413,23 +418,26 @@ export const PersonList: React.FC<PersonListProps> = ({
       
       return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesNoApto;
     });
-  }, [people, searchTerm, selectedObraFilter, selectedQuincenaFilter, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos]);
+  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos]);
 
   const isSelectionActive = selectedIds.length > 0;
-  const peopleToExport = isSelectionActive
-    ? people.filter(p => selectedIds.includes(p.id))
-    : filteredPeople;
+  const peopleToExport = useMemo(
+    () => isSelectionActive ? people.filter(p => selectedIdSet.has(p.id)) : filteredPeople,
+    [isSelectionActive, people, selectedIdSet, filteredPeople],
+  );
 
   const administrativeExportScopeIds = useMemo(
     () => peopleToExport.map(person => person.id),
     [peopleToExport],
   );
 
+  const filteredIdSet = useMemo(() => new Set(filteredPeople.map(person => person.id)), [filteredPeople]);
+
   useEffect(() => {
     const scope = {
       ids: administrativeExportScopeIds,
       filteredIds: filteredPeople.map(person => person.id),
-      selectedIds: selectedIds.filter(id => filteredPeople.some(person => person.id === id)),
+      selectedIds: selectedIds.filter(id => filteredIdSet.has(id)),
       hasSelection: isSelectionActive,
       updatedAt: Date.now(),
     };
@@ -445,7 +453,7 @@ export const PersonList: React.FC<PersonListProps> = ({
     };
   }, [administrativeExportScopeIds, filteredPeople, selectedIds, isSelectionActive]);
 
-  const visibleSelectedCount = filteredPeople.filter(p => selectedIds.includes(p.id)).length;
+  const visibleSelectedCount = filteredPeople.reduce((count, person) => count + (selectedIdSet.has(person.id) ? 1 : 0), 0);
   const isAllVisibleSelected = filteredPeople.length > 0 && visibleSelectedCount === filteredPeople.length;
   const isSomeVisibleSelected = visibleSelectedCount > 0 && visibleSelectedCount < filteredPeople.length;
 
