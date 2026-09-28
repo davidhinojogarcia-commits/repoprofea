@@ -10,7 +10,7 @@ import {
   refreshGoogleAccessToken,
   requireServerConfig,
   touchSent,
-} from '../src/server/gmailOAuth';
+} from '../src/server/gmailOAuth.js';
 
 const cleanHeader = (value: unknown) => String(value || '').replace(/[\r\n]+/g, ' ').trim();
 const encodeHeader = (value: string) => `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
