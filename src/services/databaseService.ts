@@ -28,6 +28,20 @@ const TABLE_BY_COLLECTION: Record<string, string> = {
 };
 
 const canonicalTable = (name: string) => TABLE_BY_COLLECTION[name] || name;
+const WORKER_DIRECTORY_SELECT = [
+  'id',
+  'owner_id',
+  'obra_id',
+  'created_by',
+  'created_at',
+  'updated_by',
+  'updated_at',
+  'data',
+].join(',');
+
+const selectForTable = (table: string) =>
+  table === 'trabajadores' ? WORKER_DIRECTORY_SELECT : '*';
+
 const clean = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value, (_k, v) => (v === undefined ? null : v)));
 const dateOrNull = (value: unknown) =>
@@ -465,7 +479,7 @@ export async function getDocuments<T = DatabaseRecord>(
   const table = canonicalTable(collectionName);
   const limit = options.limitCount ? `&limit=${options.limitCount}` : "";
   const rows = await supabase.query(table, {
-    query: `select=*&order=updated_at.desc${limit}`,
+    query: `select=${selectForTable(table)}&order=updated_at.desc${limit}`,
   });
   return (rows || []).map((row: any) => hydrate(row, table) as T);
 }
@@ -511,11 +525,12 @@ export function subscribeToDocuments<T = DatabaseRecord>(
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
       void run();
-    }, 120);
+    }, table === "trabajadores" ? 280 : 120);
   };
 
   const handleResume = () => {
     if (!active) return;
+    if (document.visibilityState === "hidden") return;
     consecutiveReadFailures = 0;
     scheduleRefresh();
   };
@@ -531,7 +546,6 @@ export function subscribeToDocuments<T = DatabaseRecord>(
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
         consecutiveReadFailures = 0;
-        scheduleRefresh();
       }
     });
 
