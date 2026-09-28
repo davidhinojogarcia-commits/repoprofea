@@ -491,6 +491,28 @@ begin
          updated_at=now()
    where id=v_doc.id;
 
+  -- Asiento documental individual en la ficha del trabajador. Se conserva la
+  -- evidencia de qué documento colectivo firmó, en qué obra y en qué fecha.
+  update public.trabajadores
+     set data = jsonb_set(
+       coalesce(data,'{}'::jsonb),
+       '{documentacionEncargado}',
+       coalesce(data->'documentacionEncargado','{}'::jsonb) ||
+         jsonb_build_object(
+           v_doc.id::text,
+           jsonb_build_object(
+             'tipo',v_doc.document_type,
+             'obra',v_doc.obra,
+             'fecha',v_doc.work_date,
+             'categoria',v_doc.category,
+             'firmadoEn',now()
+           )
+         ),
+       true
+     ),
+     updated_at=now()
+   where owner_id=v_access.owner_id and id=p_worker_id;
+
   return jsonb_build_object('ok',true,'signed',v_signed,'total',v_total,'completed',v_signed>=v_total and v_total>0);
 end;
 $$;
