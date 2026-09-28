@@ -40,7 +40,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [importBusy,setImportBusy]=useState(false);
   const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
   const completedBaselineRef=useRef<Set<string>|null>(null);
+  const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
+  const [activityNotice,setActivityNotice]=useState('');
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -65,8 +67,22 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setDocuments(nextDocuments);
       setAttendance(nextAttendance);
       setMandatory(nextMandatory);
-      setActivity(Array.isArray(results[3])?results[3]:[]);
+      const nextActivity=Array.isArray(results[3])?results[3]:[];
+      setActivity(nextActivity);
       setVersions(Array.isArray(results[4])?results[4]:[]);
+      const newestActivityId=nextActivity.length?Math.max(...nextActivity.map((row:any)=>Number(row.id)||0)):0;
+      if(activityBaselineRef.current===null){
+        activityBaselineRef.current=newestActivityId;
+      }else if(newestActivityId>activityBaselineRef.current){
+        const newRows=nextActivity.filter((row:any)=>(Number(row.id)||0)>Number(activityBaselineRef.current||0));
+        const relevant=newRows.filter((row:any)=>!['access_updated','updated'].includes(String(row.action||'')));
+        if(relevant.length){
+          setActivityNotice(relevant.length===1
+            ? 'Hay una nueva actividad del encargado o del supervisor en la documentación.'
+            : `Hay ${relevant.length} movimientos nuevos en la documentación de encargados.`);
+        }
+        activityBaselineRef.current=newestActivityId;
+      }
 
       const completedIds=new Set(nextMandatory.filter((item:any)=>item.status==='completed').map((item:any)=>String(item.id)));
       if(completedBaselineRef.current===null){
@@ -252,6 +268,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
       {mailMessage&&<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">{mailMessage}</div>}
       {completionNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"><span>{completionNotice}</span><button onClick={()=>setCompletionNotice('')} className="rounded-lg border border-emerald-300 px-2 py-1 text-[10px]">OK</button></div>}
+      {activityNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-xs font-black text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><span>{activityNotice}</span><button onClick={()=>{setActivityNotice('');setControlView('activity')}} className="rounded-lg border border-blue-300 px-2 py-1 text-[10px]">Ver actividad</button></div>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
         {([['Obligatorios',mandatory.length],['Otros documentos',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
@@ -287,7 +304,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>
-          {card.kind==='mandatory' && card.status==='completed' && (
+          {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
             <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Aprobar y devolver por Gmail':'Aprobar y enviar a administrativa'}</button>
           )}
           {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && (
