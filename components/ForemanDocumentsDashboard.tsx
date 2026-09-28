@@ -68,7 +68,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     setMailBusy(true);
     if (!silent) setMailMessage('Comprobando Gmail de la administrativa…');
     try {
-      const keys = new Set(
+      const keys = new Set<string>(
         mandatory
           .filter(item => item.source_gmail_message_id && item.source_attachment_name)
           .map(item => `${item.source_gmail_message_id}|${item.source_attachment_name}`)
