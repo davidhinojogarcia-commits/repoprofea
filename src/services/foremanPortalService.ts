@@ -25,12 +25,13 @@ export type ForemanMandatoryDocument = {
   id: string;
   workDate: string;
   periodKey: string;
-  documentType: 'inicio' | 'control_presencia';
+  documentType: 'inicio' | 'control_presencia' | 'epis' | 'maquinaria' | 'autorizacion_uso_maquinaria';
   category: string;
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
   status: 'pending' | 'in_progress' | 'completed' | 'reviewed';
   completedAt?: string | null;
+  details?: Record<string, any>;
 };
 
 export type ForemanCompletedDocument = {
@@ -180,5 +181,22 @@ export async function finalizeForemanMandatoryDocument(token: string, documentId
   return supabase.rpc('finalize_foreman_mandatory_document', {
     p_token: token,
     p_document_id: documentId,
+  });
+}
+
+
+export async function createForemanOperationalDocument(input: {
+  token: string;
+  documentType: 'epis' | 'maquinaria' | 'autorizacion_uso_maquinaria';
+  workDate: string;
+  workerIds: number[];
+  details?: Record<string, any>;
+}) {
+  return supabase.rpc('create_foreman_operational_document', {
+    p_token: input.token,
+    p_document_type: input.documentType,
+    p_work_date: input.workDate,
+    p_worker_ids: input.workerIds,
+    p_details: input.details || {},
   });
 }
