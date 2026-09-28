@@ -444,8 +444,8 @@ begin
     'valid', true,
     'obra', v_access.obra,
     'foremanName', v_access.foreman_name,
-    'defaultStartTime', v_work_start,
-    'defaultEndTime', v_work_end,
+    'defaultWorkStartHour', v_work_start,
+    'defaultWorkEndHour', v_work_end,
     'workers', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,
