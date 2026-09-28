@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
 import { 
   Calendar, Sparkles, Download, Clock, MapPin, Printer, RefreshCw, 
   Trash2, Plus, Info, LayoutGrid, FileText, Check, AlertCircle, ChevronRight,
@@ -446,8 +447,11 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
   };
 
   // Clear current active list
-  const handleClearList = () => {
-    if (confirm("¿Está seguro de que desea limpiar el historial reciente de citaciones generadas?")) {
+  const handleClearList = async () => {
+    if (await appConfirm(
+      "¿Está seguro de que desea limpiar el historial reciente de citaciones generadas?",
+      { title: 'Limpiar historial', confirmLabel: 'Limpiar' },
+    )) {
       setLatestGeneratedCitas([]);
       setSelectedPreviewIndex(0);
       onToast("Historial de citas médicas limpiado.", "success");
