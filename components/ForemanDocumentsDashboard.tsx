@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
-import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, RefreshCw, RotateCcw, Search, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
@@ -8,7 +8,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -39,6 +39,12 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
   const [importBusy,setImportBusy]=useState(false);
+  const [editingMandatory,setEditingMandatory]=useState<DbMandatory|null>(null);
+  const [editWorkers,setEditWorkers]=useState<any[]>([]);
+  const [editWorkerIds,setEditWorkerIds]=useState<Set<string>>(new Set());
+  const [editWorkDate,setEditWorkDate]=useState('');
+  const [editCategory,setEditCategory]=useState('');
+  const [editBusy,setEditBusy]=useState(false);
   const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
   const completedBaselineRef=useRef<Set<string>|null>(null);
   const activityBaselineRef=useRef<number|null>(null);
@@ -228,6 +234,87 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailBusy(false);
     }
   };
+  const openMandatoryEditor = async (item: DbMandatory) => {
+    setEditingMandatory(item);
+    setEditWorkDate(String(item.work_date || '').slice(0,10));
+    setEditCategory(item.document_type === 'control_presencia' ? '' : String(item.category || ''));
+    setEditWorkerIds(new Set((item.workers || []).map((worker:any) => String(worker.id))));
+    setEditBusy(true);
+    try {
+      const rows = await supabase.query('trabajadores', {
+        query: `obra=eq.${encodeURIComponent(item.obra)}&select=id,apellidos_nombre,dni,categoria,obra,num_oferta,periodo_inicio,periodo_fin&order=apellidos_nombre.asc`,
+      });
+      const available = (Array.isArray(rows) ? rows : []).map((row:any) => ({
+        id: row.id,
+        apellidosNombre: row.apellidos_nombre,
+        dni: row.dni,
+        categoria: row.categoria,
+        obra: row.obra,
+        numOferta: row.num_oferta,
+        periodoInicio: row.periodo_inicio,
+        periodoFin: row.periodo_fin,
+      }));
+      const byId = new Map<string, any>();
+      [...(item.workers || []), ...available].forEach((worker:any) => byId.set(String(worker.id), worker));
+      setEditWorkers(Array.from(byId.values()).sort((a:any,b:any) => String(a.apellidosNombre || '').localeCompare(String(b.apellidosNombre || ''), 'es')));
+    } catch (error:any) {
+      window.alert(error?.message || 'No se pudieron cargar los trabajadores de la obra.');
+      setEditWorkers(item.workers || []);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const saveMandatoryEditor = async () => {
+    if (!editingMandatory) return;
+    const selectedWorkers = editWorkers.filter((worker:any) => editWorkerIds.has(String(worker.id)));
+    if (!selectedWorkers.length) {
+      window.alert('Selecciona al menos un trabajador para el documento.');
+      return;
+    }
+    if (!editWorkDate) {
+      window.alert('Indica la fecha del documento.');
+      return;
+    }
+    setEditBusy(true);
+    try {
+      await updateForemanMandatoryDocument({
+        id: editingMandatory.id,
+        workDate: editWorkDate,
+        category: editingMandatory.document_type === 'control_presencia' ? '' : editCategory.trim(),
+        workers: selectedWorkers,
+        signatures: editingMandatory.signatures || {},
+        status: editingMandatory.status,
+      });
+      setMailMessage(`${mandatoryDocumentLabel(editingMandatory.document_type)} actualizado correctamente.`);
+      setEditingMandatory(null);
+      await refresh(true);
+    } catch (error:any) {
+      window.alert(error?.message || 'No se pudo actualizar el documento.');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const removeMandatoryDocument = async (item: DbMandatory) => {
+    const ok = await appConfirm(
+      `¿Eliminar definitivamente este documento de ${mandatoryDocumentLabel(item.document_type)} de ${item.obra}? Se eliminarán también sus evidencias de firma asociadas, pero la actividad histórica quedará registrada.`,
+      { title: 'Eliminar documento', confirmLabel: 'Eliminar definitivamente' },
+    );
+    if (!ok) return;
+    setEditBusy(true);
+    try {
+      await deleteForemanMandatoryDocument(item.id);
+      if (editingMandatory?.id === item.id) setEditingMandatory(null);
+      setMailMessage('Documento eliminado correctamente.');
+      await refresh(true);
+    } catch (error:any) {
+      window.alert(error?.message || 'No se pudo eliminar el documento.');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
   const signedEntries=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.entrySignature).length,0);
   const signedExits=attendance.reduce((sum,d)=>sum+(d.rows||[]).filter((r:any)=>r.exitSignature).length,0);
   const pending=cards.filter(c=>c.status!=='reviewed').length;
@@ -311,6 +398,12 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>
+          {card.kind==='mandatory' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
+            <>
+              <button onClick={()=>void openMandatoryEditor(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>
+              <button onClick={()=>void removeMandatoryDocument(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
+            </>
+          )}
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
             <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Aprobar y devolver por Gmail':'Aprobar y enviar a administrativa'}</button>
           )}
@@ -356,6 +449,40 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <time className="text-xs font-bold text-slate-500">{new Date(version.created_at).toLocaleString('es-ES')}</time>
         </div>
       </div>)}
+    </div>}
+
+    {editingMandatory&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+      <div className="w-full max-w-2xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white">
+          <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-blue-100">GestionProfea</div><h3 className="text-lg font-black">Editar {mandatoryDocumentLabel(editingMandatory.document_type)}</h3><p className="text-xs text-blue-100">{editingMandatory.obra}</p></div>
+          <button type="button" onClick={()=>setEditingMandatory(null)} className="grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-900" aria-label="Cerrar"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="max-h-[calc(92dvh-9rem)] overflow-y-auto p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-xs font-black text-slate-700 dark:text-slate-200">Fecha
+              <input type="date" value={editWorkDate} onChange={e=>setEditWorkDate(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+            </label>
+            <label className="text-xs font-black text-slate-700 dark:text-slate-200">Categoría
+              <input disabled={editingMandatory.document_type==='control_presencia'} value={editingMandatory.document_type==='control_presencia'?'Todas las categorías':editCategory} onChange={e=>setEditCategory(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 bg-white disabled:bg-slate-100 dark:bg-slate-950 dark:disabled:bg-slate-800"/>
+            </label>
+          </div>
+          <div className="mt-5">
+            <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-black">Trabajadores incluidos</h4><p className="text-xs text-slate-500">Marca o desmarca los trabajadores que deben aparecer en el documento.</p></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-800">{editWorkerIds.size} seleccionados</span></div>
+            <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border divide-y dark:divide-slate-700">
+              {editBusy&&!editWorkers.length?<div className="p-6 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin"/>Cargando trabajadores…</div>:editWorkers.map((worker:any)=><label key={worker.id} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
+                <input type="checkbox" checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 rounded border-slate-300"/>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span></span>
+                {editingMandatory.signatures?.[String(worker.id)]&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Firmado</span>}
+              </label>)}
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">Si eliminas un trabajador del documento, su firma dejará de formar parte de este documento. Las firmas de los trabajadores que permanezcan seleccionados se conservarán.</p>
+          </div>
+        </div>
+        <div className="flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
+          <button type="button" disabled={editBusy} onClick={()=>void removeMandatoryDocument(editingMandatory)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
+          <div className="flex gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
+        </div>
+      </div>
     </div>}
   </div>;
 };
