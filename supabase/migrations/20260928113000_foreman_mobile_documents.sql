@@ -536,8 +536,8 @@ begin
 
   update public.foreman_mandatory_documents
      set signatures=v_signatures,
-         status=case when v_signed>=v_total and v_total>0 then 'completed' else 'in_progress' end,
-         completed_at=case when v_signed>=v_total and v_total>0 then coalesce(completed_at,now()) else null end,
+         status='in_progress',
+         completed_at=null,
          updated_at=now()
    where id=v_doc.id;
 
@@ -552,13 +552,56 @@ begin
   on conflict(owner_id,worker_id,document_id) do update
     set signed_at=excluded.signed_at, metadata=excluded.metadata;
 
-  return jsonb_build_object('ok',true,'signed',v_signed,'total',v_total,'completed',v_signed>=v_total and v_total>0);
+  return jsonb_build_object('ok',true,'signed',v_signed,'total',v_total,'readyToFinalize',v_signed>=v_total and v_total>0);
 end;
-$$;
+$;
+
+create or replace function public.finalize_foreman_mandatory_document(
+  p_token text,
+  p_document_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $
+declare
+  v_access public.foreman_portal_access%rowtype;
+  v_doc public.foreman_mandatory_documents%rowtype;
+  v_hash text;
+  v_total integer;
+  v_signed integer;
+begin
+  v_hash := encode(digest(trim(coalesce(p_token,'')), 'sha256'), 'hex');
+  select * into v_access from public.foreman_portal_access where token_hash=v_hash and active=true limit 1;
+  if not found then raise exception 'Acceso no válido o revocado'; end if;
+
+  select * into v_doc from public.foreman_mandatory_documents
+   where id=p_document_id and owner_id=v_access.owner_id and lower(obra)=lower(v_access.obra)
+   limit 1;
+  if not found then raise exception 'Documento no válido'; end if;
+  if v_doc.status='reviewed' then raise exception 'El documento ya ha sido revisado por el supervisor'; end if;
+
+  select count(*) into v_total from jsonb_array_elements(coalesce(v_doc.workers,'[]'::jsonb));
+  select count(*) into v_signed from jsonb_each(coalesce(v_doc.signatures,'{}'::jsonb));
+  if v_total=0 or v_signed < v_total then
+    raise exception 'Faltan firmas antes de finalizar el documento';
+  end if;
+
+  update public.foreman_mandatory_documents
+     set status='completed',
+         completed_at=coalesce(completed_at,now()),
+         updated_at=now()
+   where id=v_doc.id;
+
+  return jsonb_build_object('ok',true,'completed',true,'signed',v_signed,'total',v_total);
+end;
+$;
 
 revoke all on function public.prepare_foreman_mandatory_documents(jsonb) from public;
 grant execute on function public.prepare_foreman_mandatory_documents(jsonb) to authenticated;
 grant execute on function public.sign_foreman_mandatory_document(text,uuid,bigint,text) to anon,authenticated;
+grant execute on function public.finalize_foreman_mandatory_document(text,uuid) to anon,authenticated;
 
 alter table public.foreman_mandatory_documents
   add column if not exists source_gmail_message_id text,
