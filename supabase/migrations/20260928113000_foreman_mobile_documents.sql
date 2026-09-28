@@ -138,6 +138,18 @@ begin
     'valid', true,
     'obra', v_access.obra,
     'foremanName', v_access.foreman_name,
+    'defaultWorkStartHour', coalesce((
+      select nullif(us.settings->'app'->>'workStartHour','')
+      from public.user_settings us
+      where us.user_id=v_access.owner_id
+      limit 1
+    ), '07:30'),
+    'defaultWorkEndHour', coalesce((
+      select nullif(us.settings->'app'->>'workEndHour','')
+      from public.user_settings us
+      where us.user_id=v_access.owner_id
+      limit 1
+    ), '15:30'),
     'workers', coalesce((
       select jsonb_agg(
         jsonb_build_object(
