@@ -520,3 +520,114 @@ $$;
 revoke all on function public.prepare_foreman_mandatory_documents(jsonb) from public;
 grant execute on function public.prepare_foreman_mandatory_documents(jsonb) to authenticated;
 grant execute on function public.sign_foreman_mandatory_document(text,uuid,bigint,text) to anon,authenticated;
+
+alter table public.foreman_mandatory_documents
+  add column if not exists source_gmail_message_id text,
+  add column if not exists source_gmail_thread_id text,
+  add column if not exists source_rfc_message_id text,
+  add column if not exists source_email_from text,
+  add column if not exists source_email_subject text,
+  add column if not exists source_attachment_name text,
+  add column if not exists returned_gmail_message_id text,
+  add column if not exists returned_at timestamptz;
+
+create unique index if not exists foreman_mandatory_source_attachment_idx
+  on public.foreman_mandatory_documents(owner_id, source_gmail_message_id, source_attachment_name)
+  where source_gmail_message_id is not null;
+
+create or replace function public.prepare_foreman_mandatory_from_email(
+  p_document_type text,
+  p_worker_ids bigint[],
+  p_work_date date,
+  p_category text,
+  p_period_key text,
+  p_gmail_message_id text,
+  p_gmail_thread_id text,
+  p_rfc_message_id text,
+  p_email_from text,
+  p_email_subject text,
+  p_attachment_name text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner uuid := auth.uid();
+  v_obra text;
+  v_workers jsonb;
+  v_id uuid;
+  v_category text := coalesce(trim(p_category),'');
+begin
+  if v_owner is null then raise exception 'Authentication required'; end if;
+  if p_document_type not in ('inicio','control_presencia') then raise exception 'Tipo de documento no válido'; end if;
+  if coalesce(array_length(p_worker_ids,1),0)=0 then raise exception 'No hay trabajadores identificados'; end if;
+
+  select t.obra into v_obra
+  from public.trabajadores t
+  where t.owner_id=v_owner and t.id=any(p_worker_ids)
+  group by t.obra
+  order by count(*) desc
+  limit 1;
+  if coalesce(trim(v_obra),'')='' then raise exception 'No se ha podido identificar la obra'; end if;
+
+  if p_document_type='control_presencia' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,
+      'obra',t.obra,'numOferta',t.num_oferta,'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin
+    ) order by t.apellidos_nombre),'[]'::jsonb) into v_workers
+    from public.trabajadores t
+    where t.owner_id=v_owner and lower(t.obra)=lower(v_obra)
+      and (nullif(t.periodo_inicio,'') is null or nullif(t.periodo_inicio,'')::date <= coalesce(p_work_date,current_date))
+      and (nullif(t.periodo_fin,'') is null or nullif(t.periodo_fin,'')::date >= coalesce(p_work_date,current_date));
+    v_category := '';
+  else
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,
+      'obra',t.obra,'numOferta',t.num_oferta,'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin
+    ) order by t.apellidos_nombre),'[]'::jsonb) into v_workers
+    from public.trabajadores t
+    where t.owner_id=v_owner and t.id=any(p_worker_ids)
+      and lower(t.obra)=lower(v_obra)
+      and (v_category='' or lower(t.categoria)=lower(v_category));
+  end if;
+
+  insert into public.foreman_mandatory_documents(
+    owner_id,obra,period_key,work_date,document_type,category,workers,status,
+    source_gmail_message_id,source_gmail_thread_id,source_rfc_message_id,source_email_from,
+    source_email_subject,source_attachment_name,updated_at
+  ) values(
+    v_owner,v_obra,coalesce(nullif(trim(p_period_key),''),to_char(coalesce(p_work_date,current_date),'YYYY-MM-DD')),
+    coalesce(p_work_date,current_date),p_document_type,v_category,v_workers,'pending',
+    p_gmail_message_id,p_gmail_thread_id,p_rfc_message_id,p_email_from,p_email_subject,p_attachment_name,now()
+  )
+  on conflict(owner_id,source_gmail_message_id,source_attachment_name)
+  where source_gmail_message_id is not null
+  do update set updated_at=now()
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.mark_foreman_mandatory_returned(
+  p_id uuid,
+  p_gmail_message_id text
+)
+returns void
+language sql
+security definer
+set search_path=public
+as $$
+  update public.foreman_mandatory_documents
+  set status='reviewed',
+      reviewed_at=coalesce(reviewed_at,now()),
+      returned_gmail_message_id=p_gmail_message_id,
+      returned_at=now(),
+      updated_at=now()
+  where id=p_id and owner_id=auth.uid();
+$$;
+
+revoke all on function public.prepare_foreman_mandatory_from_email(text,bigint[],date,text,text,text,text,text,text,text,text) from public;
+grant execute on function public.prepare_foreman_mandatory_from_email(text,bigint[],date,text,text,text,text,text,text,text,text) to authenticated;
+grant execute on function public.mark_foreman_mandatory_returned(uuid,text) to authenticated;
