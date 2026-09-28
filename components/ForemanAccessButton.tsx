@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import {
   createForemanPortalAccess,
   getForemanPortalAccessStatus,
+  resolveForemanPortal,
   revokeForemanPortalAccess,
 } from '../src/services/foremanPortalService';
 
@@ -16,6 +17,24 @@ type AccessState = {
 
 const storageKeyFor = (obra: string) =>
   `profea:foreman-access-url:${String(obra || '').trim().toLocaleLowerCase('es')}`;
+
+const canonicalPortalOrigin = () => {
+  const host = String(window.location.hostname || '').toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1') return window.location.origin;
+  return 'https://gestionprofea.vercel.app';
+};
+
+const portalUrlForToken = (token: string) =>
+  `${canonicalPortalOrigin()}/?encargado=${encodeURIComponent(token)}`;
+
+const tokenFromPortalUrl = (value: string) => {
+  try {
+    const parsed = new URL(value, window.location.origin);
+    return parsed.searchParams.get('encargado')?.trim() || '';
+  } catch {
+    return '';
+  }
+};
 
 const qrDataUrl = (accessUrl: string) =>
   QRCode.toDataURL(accessUrl, {
@@ -68,8 +87,27 @@ export const ForemanAccessButton: React.FC<{
 
       const storedUrl = window.localStorage.getItem(storageKey) || '';
       if (storedUrl) {
-        setUrl(storedUrl);
-        setQr(await qrDataUrl(storedUrl));
+        const storedToken = tokenFromPortalUrl(storedUrl);
+        let stillValid = false;
+        if (storedToken) {
+          try {
+            const resolved = await resolveForemanPortal(storedToken);
+            stillValid = Boolean(resolved.valid) && String(resolved.obra || '').trim().toLowerCase() === obra.trim().toLowerCase();
+          } catch {
+            stillValid = false;
+          }
+        }
+
+        if (stillValid) {
+          const canonicalUrl = portalUrlForToken(storedToken);
+          setUrl(canonicalUrl);
+          setQr(await qrDataUrl(canonicalUrl));
+          window.localStorage.setItem(storageKey, canonicalUrl);
+        } else {
+          setUrl('');
+          setQr('');
+          window.localStorage.removeItem(storageKey);
+        }
       }
     } catch (caught) {
       console.error('No se pudo comprobar el acceso del encargado:', caught);
@@ -93,7 +131,7 @@ export const ForemanAccessButton: React.FC<{
     setCopied(false);
     try {
       const token = await createForemanPortalAccess(obra, foremanName);
-      const next = `${window.location.origin}/?encargado=${encodeURIComponent(token)}`;
+      const next = portalUrlForToken(token);
       const nextQr = await qrDataUrl(next);
       setUrl(next);
       setQr(nextQr);
