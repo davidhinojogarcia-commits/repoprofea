@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, RefreshCw, RotateCcw, Search, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
@@ -43,6 +43,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
   const [activityNotice,setActivityNotice]=useState('');
+  const [editingCard,setEditingCard]=useState<any|null>(null);
+  const [editDraft,setEditDraft]=useState<any>({});
+  const [editBusy,setEditBusy]=useState(false);
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -167,6 +170,92 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     if(!reason?.trim())return;
     await returnForemanItemForCorrection(kind,id,reason.trim());
     await refresh(true);
+  };
+
+  const startEdit=(card:any)=>{
+    if(card.kind==='attendance'){
+      setEditDraft({
+        work_date:String(card.item.work_date||'').slice(0,10),
+        foreman_name:String(card.item.foreman_name||''),
+        rows:(card.item.rows||[]).map((row:any)=>({...row})),
+      });
+    }else if(card.kind==='mandatory'){
+      setEditDraft({
+        work_date:String(card.item.work_date||'').slice(0,10),
+        category:String(card.item.category||''),
+        details:{...(card.item.details||{})},
+      });
+    }else{
+      setEditDraft({
+        work_date:String(card.item.work_date||'').slice(0,10),
+        answers:{...(card.item.answers||{})},
+      });
+    }
+    setEditingCard(card);
+  };
+
+  const saveSupervisorEdit=async()=>{
+    if(!editingCard)return;
+    setEditBusy(true);
+    try{
+      const table=editingCard.kind==='attendance'
+        ?'foreman_attendance_days'
+        :editingCard.kind==='mandatory'
+          ?'foreman_mandatory_documents'
+          :'foreman_documents';
+      let body:any={updated_at:new Date().toISOString()};
+      if(editingCard.kind==='attendance'){
+        body={...body,work_date:editDraft.work_date,foreman_name:editDraft.foreman_name,rows:editDraft.rows||[]};
+      }else if(editingCard.kind==='mandatory'){
+        body={...body,work_date:editDraft.work_date,category:editDraft.category||'',details:editDraft.details||{}};
+      }else{
+        body={...body,work_date:editDraft.work_date,answers:editDraft.answers||{}};
+      }
+      await supabase.query(table,{
+        method:'PATCH',
+        query:'id=eq.'+encodeURIComponent(editingCard.id),
+        body,
+        prefer:'return=minimal',
+      });
+      setEditingCard(null);
+      setEditDraft({});
+      setMailMessage('Documento actualizado por el supervisor. El cambio ha quedado registrado en Actividad.');
+      await refresh(true);
+    }catch(error:any){
+      console.error('No se pudo editar el documento del encargado:',error);
+      setMailMessage(error?.message||'No se pudo guardar la edición.');
+    }finally{
+      setEditBusy(false);
+    }
+  };
+
+  const deleteSupervisorItem=async(card:any)=>{
+    const ok=window.confirm(
+      `¿Eliminar definitivamente "${card.title}" de ${card.obra}?\n\nLa eliminación quedará registrada en la auditoría del supervisor y las versiones históricas ya guardadas se conservarán.`
+    );
+    if(!ok)return;
+    const confirmText=window.prompt('Escribe ELIMINAR para confirmar:','');
+    if(String(confirmText||'').trim().toUpperCase()!=='ELIMINAR')return;
+    setEditBusy(true);
+    try{
+      const table=card.kind==='attendance'
+        ?'foreman_attendance_days'
+        :card.kind==='mandatory'
+          ?'foreman_mandatory_documents'
+          :'foreman_documents';
+      await supabase.query(table,{
+        method:'DELETE',
+        query:'id=eq.'+encodeURIComponent(card.id),
+        prefer:'return=minimal',
+      });
+      setMailMessage('Documento eliminado por el supervisor. La eliminación ha quedado registrada en Actividad.');
+      await refresh(true);
+    }catch(error:any){
+      console.error('No se pudo eliminar el documento del encargado:',error);
+      setMailMessage(error?.message||'No se pudo eliminar el documento.');
+    }finally{
+      setEditBusy(false);
+    }
   };
   const openPdf=(card:any)=>{
     if(card.kind==='attendance'){
@@ -313,10 +402,95 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           {(card.status==='completed'||card.status==='reviewed')&&(
             <button onClick={()=>void returnForCorrection(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-xs font-black"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>
           )}
+          <button onClick={()=>startEdit(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-blue-50 text-blue-900 px-3 py-2.5 text-xs font-black"><Pencil className="w-4 h-4"/>Editar</button>
+          <button onClick={()=>void deleteSupervisorItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 text-rose-800 px-3 py-2.5 text-xs font-black disabled:opacity-50"><Trash2 className="w-4 h-4"/>Eliminar</button>
         </div>
       </div>
     </article>)}</div>}
     </>}
+
+    {editingCard&&<div className="fixed inset-0 z-[140] bg-slate-950/60 p-3 sm:p-5 flex items-center justify-center">
+      <div className="w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-white/95 dark:bg-slate-900/95 backdrop-blur p-4 sm:p-5">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[.14em] text-[#00548E]">Edición del supervisor</div>
+            <h3 className="mt-1 text-xl font-black">{editingCard.title}</h3>
+            <p className="mt-1 text-xs text-slate-500">{editingCard.obra} · Las firmas existentes se conservan.</p>
+          </div>
+          <button onClick={()=>{setEditingCard(null);setEditDraft({});}} className="rounded-xl border p-2"><X className="w-4 h-4"/></button>
+        </div>
+        <div className="p-4 sm:p-5 space-y-5">
+          <label className="block text-sm font-black">Fecha
+            <input type="date" value={editDraft.work_date||''} onChange={e=>setEditDraft((d:any)=>({...d,work_date:e.target.value}))} className="mt-2 min-h-[50px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+          </label>
+
+          {editingCard.kind==='attendance'&&<>
+            <label className="block text-sm font-black">Encargado
+              <input value={editDraft.foreman_name||''} onChange={e=>setEditDraft((d:any)=>({...d,foreman_name:e.target.value}))} className="mt-2 min-h-[50px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+            </label>
+            <div>
+              <div className="text-sm font-black mb-2">Horario por trabajador</div>
+              <div className="space-y-2">
+                {(editDraft.rows||[]).map((row:any,index:number)=><div key={row.workerId||index} className="rounded-xl border p-3 grid sm:grid-cols-[1fr_130px_130px] gap-2 items-end">
+                  <div><div className="font-black text-sm">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
+                  <label className="text-[10px] font-black uppercase text-slate-500">Entrada
+                    <input type="time" value={row.entryTime||''} onChange={e=>setEditDraft((d:any)=>({...d,rows:d.rows.map((r:any,i:number)=>i===index?{...r,entryTime:e.target.value}:r)}))} className="mt-1 w-full rounded-lg border px-2 py-2 bg-white dark:bg-slate-950"/>
+                  </label>
+                  <label className="text-[10px] font-black uppercase text-slate-500">Salida
+                    <input type="time" value={row.exitTime||''} onChange={e=>setEditDraft((d:any)=>({...d,rows:d.rows.map((r:any,i:number)=>i===index?{...r,exitTime:e.target.value}:r)}))} className="mt-1 w-full rounded-lg border px-2 py-2 bg-white dark:bg-slate-950"/>
+                  </label>
+                </div>)}
+              </div>
+            </div>
+          </>}
+
+          {editingCard.kind==='mandatory'&&<>
+            {(editingCard.item.document_type==='inicio'||editingCard.item.document_type==='control_presencia')&&<label className="block text-sm font-black">Categoría
+              <input value={editDraft.category||''} onChange={e=>setEditDraft((d:any)=>({...d,category:e.target.value}))} className="mt-2 min-h-[50px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+            </label>}
+            {editingCard.item.document_type==='epis'&&<div>
+              <div className="text-sm font-black mb-2">EPIs</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key} className="flex items-center gap-2 rounded-xl border p-3 text-sm font-bold">
+                  <input type="checkbox" checked={Boolean(editDraft.details?.epis?.[key])} onChange={e=>setEditDraft((d:any)=>({...d,details:{...(d.details||{}),epis:{...(d.details?.epis||{}),[key]:e.target.checked}}}))}/>
+                  {label}
+                </label>)}
+              </div>
+            </div>}
+            {(editingCard.item.document_type==='maquinaria'||editingCard.item.document_type==='autorizacion_uso_maquinaria')&&<label className="block text-sm font-black">Maquinaria / equipos
+              <textarea rows={4} value={editDraft.details?.maquinaria||''} onChange={e=>setEditDraft((d:any)=>({...d,details:{...(d.details||{}),maquinaria:e.target.value}}))} className="mt-2 w-full rounded-xl border px-3 py-3 bg-white dark:bg-slate-950"/>
+            </label>}
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900">
+              Los trabajadores y sus firmas no se alteran desde esta edición para mantener la trazabilidad.
+            </div>
+          </>}
+
+          {editingCard.kind==='document'&&(()=>{
+            const def=ADDITIONAL_WORKSITE_DOCUMENTS[editingCard.item.document_type as AdditionalWorksiteDocumentType];
+            return <div className="space-y-3">
+              {(def?.fields||[]).map((field:any)=><label key={field.key} className="block text-sm font-black">{field.label}
+                {field.type==='textarea'
+                  ?<textarea rows={4} value={editDraft.answers?.[field.key]||''} onChange={e=>setEditDraft((d:any)=>({...d,answers:{...(d.answers||{}),[field.key]:e.target.value}}))} className="mt-2 w-full rounded-xl border px-3 py-3 bg-white dark:bg-slate-950"/>
+                  :field.type==='select'
+                    ?<select value={editDraft.answers?.[field.key]||''} onChange={e=>setEditDraft((d:any)=>({...d,answers:{...(d.answers||{}),[field.key]:e.target.value}}))} className="mt-2 min-h-[50px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"><option value="">Seleccionar…</option>{field.options?.map((o:string)=><option key={o}>{o}</option>)}</select>
+                    :<input type={field.type||'text'} value={editDraft.answers?.[field.key]||''} onChange={e=>setEditDraft((d:any)=>({...d,answers:{...(d.answers||{}),[field.key]:e.target.value}}))} className="mt-2 min-h-[50px] w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
+                }
+              </label>)}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900">Las firmas originales permanecen sin cambios.</div>
+            </div>;
+          })()}
+
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t pt-4">
+            <button onClick={()=>{setEditingCard(null);setEditDraft({});}} className="min-h-[48px] rounded-xl border px-4 py-3 text-sm font-black">Cancelar</button>
+            <button disabled={editBusy||!editDraft.work_date} onClick={()=>void saveSupervisorEdit()} className="min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white disabled:opacity-50">
+              {editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}
+              Guardar cambios
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>}
+
 
     {controlView==='activity'&&<div className="space-y-2">
       {!activity.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay movimientos registrados.</div>}
