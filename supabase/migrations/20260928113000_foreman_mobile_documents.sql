@@ -413,10 +413,12 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions
-as $$
+as $
 declare
   v_access public.foreman_portal_access%rowtype;
   v_hash text;
+  v_work_start text := '08:00';
+  v_work_end text := '15:00';
 begin
   v_hash := encode(digest(trim(coalesce(p_token,'')), 'sha256'), 'hex');
   select * into v_access
@@ -427,10 +429,23 @@ begin
 
   update public.foreman_portal_access set last_used_at=now() where id=v_access.id;
 
+  select
+    coalesce(nullif(settings #>> '{app,workStartHour}',''),'08:00'),
+    coalesce(nullif(settings #>> '{app,workEndHour}',''),'15:00')
+    into v_work_start, v_work_end
+    from public.user_settings
+   where user_id=v_access.owner_id
+   limit 1;
+
+  v_work_start := coalesce(v_work_start,'08:00');
+  v_work_end := coalesce(v_work_end,'15:00');
+
   return jsonb_build_object(
     'valid', true,
     'obra', v_access.obra,
     'foremanName', v_access.foreman_name,
+    'defaultStartTime', v_work_start,
+    'defaultEndTime', v_work_end,
     'workers', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,
