@@ -11,6 +11,7 @@ import {
   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
   createForemanOperationalDocument,
+  resubmitForemanDocument,
   type ForemanAttendanceRow,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
@@ -25,9 +26,9 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
   useEffect(() => {
     const canvas=ref.current; if(!canvas) return;
     const rect=canvas.getBoundingClientRect(); const ratio=Math.max(1,window.devicePixelRatio||1);
-    canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(190*ratio);
+    canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
     const ctx=canvas.getContext('2d'); if(!ctx) return;
-    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,rect.width,190);
+    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,rect.width,rect.height);
     ctx.strokeStyle='#111827'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
   },[]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
@@ -62,6 +63,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [answers,setAnswers]=useState<Record<string,string>>({});
   const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
+  const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
   const [operationalType,setOperationalType]=useState<'epis'|'maquinaria'|'autorizacion_uso_maquinaria'>('epis');
   const [operationalWorkerIds,setOperationalWorkerIds]=useState<number[]>([]);
@@ -161,6 +163,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <div className="rounded-2xl bg-white border p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 className="text-lg font-black">Registro diario de jornada</h2><p className="text-sm text-slate-600">{completedToday}/{rows.length} con entrada y salida firmadas</p><p className="mt-1 text-sm font-semibold text-slate-500">Horario predeterminado: {data.defaultWorkStartHour}–{data.defaultWorkEndHour}. Puedes cambiarlo para cada trabajador.</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="min-h-[50px] w-full sm:w-auto rounded-xl border px-3 py-2 text-base font-bold bg-white"/></div>
         </div>
+        {data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionPending&&
+          <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+            <div className="font-black text-amber-900">Corrección solicitada por el supervisor</div>
+            <p className="mt-1 text-sm text-amber-800">{data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionReason||'Revisa esta jornada antes de volver a finalizarla.'}</p>
+          </div>}
         {rows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
           <div><div className="font-black">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -210,14 +217,16 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         {data.mandatoryDocuments.map(doc=>{
           const label=mandatoryLabel(doc.documentType);
           const signedCount=Object.keys(doc.signatures||{}).length;
-          return <div key={doc.id} className="rounded-2xl bg-white border p-4 shadow-sm">
+          const correction=Boolean(doc.correctionPending);
+          return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
             <div className="flex items-start justify-between gap-3"><div><div className="font-black">{label}</div><div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${doc.status==='completed'||doc.status==='reviewed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span></div>
+            {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
             <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
               const signed=Boolean((doc.signatures||{})[String(worker.id)]);
               const closed=doc.status==='completed'||doc.status==='reviewed';
-              return <button key={worker.id} type="button" disabled={signed||closed} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
+              return <button key={worker.id} type="button" disabled={closed||(!correction&&signed)} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
                 <span><span className="block text-base font-black leading-tight">{worker.apellidosNombre}</span><span className="block mt-1 text-sm text-slate-500">{worker.dni} · {worker.categoria}</span></span>
-                <span className={`text-xs font-black ${signed?'text-emerald-700':'text-[#00548E]'}`}>{signed?'Firmado ✓':'Firmar'}</span>
+                <span className={`text-xs font-black ${signed&&!correction?'text-emerald-700':'text-[#00548E]'}`}>{correction?(signed?'Volver a firmar':'Firmar'):signed?'Firmado ✓':'Firmar'}</span>
               </button>;
             })}</div>
             {doc.status!=='completed'&&doc.status!=='reviewed'&&(
@@ -309,12 +318,36 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           </button>
         </div>
 
+        {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
+          <div>
+            <div className="text-base font-black text-amber-900">Correcciones solicitadas por el supervisor</div>
+            <p className="mt-1 text-sm text-amber-800">Estos documentos están desbloqueados únicamente para que hagas la corrección indicada y los vuelvas a enviar.</p>
+          </div>
+          {data.documents.filter(d=>d.correctionPending).map(d=><button
+            key={d.id}
+            type="button"
+            onClick={()=>{
+              setCorrectionDocumentId(String(d.id));
+              setDocType(d.documentType as AdditionalWorksiteDocumentType);
+              setWorkerId(Number(d.workerId||'')||'');
+              setDate(String(d.workDate).slice(0,10));
+              setAnswers(d.answers||{});
+              setDocSignatures(d.signatures||{});
+            }}
+            className="w-full rounded-xl border border-amber-300 bg-white p-3 text-left"
+          >
+            <div className="font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div>
+            <div className="mt-1 text-xs text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div>
+            <div className="mt-2 text-sm font-semibold text-amber-900">Motivo: {d.correctionReason||'Revisar documento'}</div>
+          </button>)}
+        </div>}
+
         <div className="border-t pt-4">
           <div className="text-base font-black">Otros documentos</div>
           <p className="mt-1 text-sm text-slate-600">Modelos individuales para cumplimentar y firmar cuando sean necesarios.</p>
         </div>
         <label className="block text-sm font-black">Documento
-          <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+          <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});setCorrectionDocumentId('');}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
           </select>
         </label>
@@ -339,6 +372,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           {def.signatureWorker&&<button onClick={()=>setDocSigning('worker')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.worker?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma trabajador {docSignatures.worker?'✓':''}</button>}
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma encargado {docSignatures.foreman?'✓':''}</button>
         </div>
+        {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
         <button
           onClick={async()=>{
             if(!selectedWorker)return alert('Selecciona un trabajador.');
@@ -348,8 +382,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             if(!docSignatures.foreman)return alert('Falta la firma del encargado.');
             setSaving(true);
             try{
-              await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
-              setAnswers({});setDocSignatures({});setWorkerId('');
+              if(correctionDocumentId){
+                await resubmitForemanDocument({token,documentId:correctionDocumentId,answers,signatures:docSignatures});
+              }else{
+                await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
+              }
+              setAnswers({});setDocSignatures({});setWorkerId('');setCorrectionDocumentId('');
               await refresh();setTab('completed');
             }finally{setSaving(false);}
           }}
@@ -363,7 +401,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='completed'&&<section className="space-y-3">
         <button onClick={()=>void refresh()} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-black touch-manipulation"><RefreshCw className="w-4 h-4"/>Actualizar</button>
         {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={'m-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{mandatoryLabel(d.documentType)}</div><div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}</div><span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
-        {data.documents.map(d=><div key={'d-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="mt-1 text-sm text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-800">Enviado al supervisor</span></div>)}
+        {data.documents.filter(d=>!d.correctionPending&&d.status!=='draft').map(d=><div key={'d-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="mt-1 text-sm text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-800">Enviado al supervisor</span></div>)}
         {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.documents.length&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
       </section>}
     </main>
