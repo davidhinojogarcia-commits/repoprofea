@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
-import { AlertTriangle, CheckCircle2, Clock3, Download, FileSignature, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
@@ -36,6 +36,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
+  const [selectedDocsWork,setSelectedDocsWork]=useState(()=>localStorage.getItem('profea:foreman-docs:last-work')||'');
+  const [selectedDocsMonth,setSelectedDocsMonth]=useState('');
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
   const [importBusy,setImportBusy]=useState(false);
@@ -163,8 +165,64 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
     const mandatoryCards=mandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
-    return [...dayCards,...mandatoryCards,...docCards].filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed')).filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    return [...dayCards,...mandatoryCards,...docCards]
+      .filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed'))
+      .filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term)))
+      .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   },[attendance,mandatory,documents,filter,term]);
+
+  const workDocumentGroups=useMemo(()=>{
+    const map=new Map<string,number>();
+    cards.forEach(card=>{
+      const work=String(card.obra||'Sin obra').trim()||'Sin obra';
+      map.set(work,(map.get(work)||0)+1);
+    });
+    return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es',{numeric:true}));
+  },[cards]);
+
+  useEffect(()=>{
+    if(!workDocumentGroups.length){
+      if(selectedDocsWork)setSelectedDocsWork('');
+      return;
+    }
+    if(!selectedDocsWork||!workDocumentGroups.some(([work])=>work===selectedDocsWork)){
+      setSelectedDocsWork(workDocumentGroups[0][0]);
+    }
+  },[workDocumentGroups,selectedDocsWork]);
+
+  useEffect(()=>{
+    if(selectedDocsWork)localStorage.setItem('profea:foreman-docs:last-work',selectedDocsWork);
+  },[selectedDocsWork]);
+
+  const monthLabel=(key:string)=>{
+    const [year,month]=key.split('-');
+    const names=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return `${names[Math.max(0,Number(month)-1)]||month} ${year}`;
+  };
+
+  const monthDocumentGroups=useMemo(()=>{
+    const map=new Map<string,number>();
+    cards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork).forEach(card=>{
+      const key=String(card.date||'').slice(0,7)||'Sin fecha';
+      map.set(key,(map.get(key)||0)+1);
+    });
+    return [...map.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
+  },[cards,selectedDocsWork]);
+
+  useEffect(()=>{
+    if(!monthDocumentGroups.length){
+      if(selectedDocsMonth)setSelectedDocsMonth('');
+      return;
+    }
+    if(!selectedDocsMonth||!monthDocumentGroups.some(([month])=>month===selectedDocsMonth)){
+      setSelectedDocsMonth(monthDocumentGroups[0][0]);
+    }
+  },[monthDocumentGroups,selectedDocsMonth]);
+
+  const visibleCards=useMemo(()=>cards.filter(card=>
+    String(card.obra||'Sin obra').trim()===selectedDocsWork &&
+    String(card.date||'').slice(0,7)===selectedDocsMonth
+  ),[cards,selectedDocsWork,selectedDocsMonth]);
   const markReviewed=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
     await reviewForemanItem(kind,id);
     await refresh(true);
@@ -388,11 +446,41 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
 
-    {controlView==='status'&&<>    <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
+    {controlView==='status'&&<>
+    <div className="lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 lg:items-start">
+      <aside className="hidden lg:block rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-fit sticky top-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2"><Building2 className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm uppercase tracking-wider text-slate-700 dark:text-slate-200">Obras</h2></div>
+          <span className="text-xs font-bold rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 px-2.5 py-1">{workDocumentGroups.length}</span>
+        </div>
+        <div className="space-y-2 max-h-[64vh] overflow-y-auto pr-1">
+          {workDocumentGroups.map(([work,count])=><button key={work} type="button" onClick={()=>{setSelectedDocsWork(work);setSelectedDocsMonth('')}} className={`w-full text-left rounded-xl border px-3.5 py-3 transition ${selectedDocsWork===work?'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 shadow-sm':'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}>
+            <div className="font-bold text-sm leading-tight">{work}</div><div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{count} documento(s)</div>
+          </button>)}
+        </div>
+      </aside>
+      <div className="min-w-0 space-y-3">
+        <div className="lg:hidden rounded-2xl border bg-white dark:bg-slate-900 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-slate-700 dark:text-slate-200"><Building2 className="w-4 h-4 text-[#00548E]"/>Obras</div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {workDocumentGroups.map(([work,count])=><button key={work} type="button" onClick={()=>{setSelectedDocsWork(work);setSelectedDocsMonth('')}} className={`shrink-0 rounded-xl border px-3 py-2.5 text-left ${selectedDocsWork===work?'border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950/30 dark:text-blue-100':'bg-white dark:bg-slate-900'}`}><div className="text-xs font-black">{work}</div><div className="text-[10px] text-slate-600 dark:text-slate-300">{count} doc.</div></button>)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white dark:bg-slate-900 p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Documentación organizada por meses.</p></div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {monthDocumentGroups.map(([month,count])=><button key={month} type="button" onClick={()=>setSelectedDocsMonth(month)} className={`shrink-0 rounded-xl border px-3 py-2.5 ${selectedDocsMonth===month?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}><div className="flex items-center gap-2 text-xs font-black"><CalendarDays className="w-3.5 h-3.5"/>{month==='Sin fecha'?'Sin fecha':monthLabel(month)}</div><div className={`mt-0.5 text-[10px] ${selectedDocsMonth===month?'text-blue-100':'text-slate-600 dark:text-slate-300'}`}>{count} documento(s)</div></button>)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border pl-9 pr-3 py-2.5 bg-white dark:bg-slate-950"/></div>
       <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio y control de presencia</option><option value="attendance">Registro diario</option><option value="documents">Otros documentos</option><option value="pending">Pendientes de revisar ({pending})</option></select>
     </div>
-    {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-500">Todavía no hay documentación enviada por encargados.</div>:<div className="space-y-3">{cards.map(card=><article key={card.kind+card.id} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
+    {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra y mes con los filtros actuales.</div>:<div className="space-y-3">{visibleCards.map(card=><article key={card.kind+card.id} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
@@ -416,6 +504,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         </div>
       </div>
     </article>)}</div>}
+      </div>
+    </div>
     </>}
 
     {controlView==='activity'&&<div className="space-y-2">
