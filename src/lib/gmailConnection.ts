@@ -33,7 +33,7 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export async function getGmailConnectionStatus(): Promise<GmailConnectionStatus> {
-  const result = await api<any>('/api/gmail-status', { method: 'GET' });
+  const result = await api<any>('/api/gmail?action=status', { method: 'GET' });
   return {
     connected: Boolean(result.connected),
     email: String(result.email || ''),
@@ -43,7 +43,7 @@ export async function getGmailConnectionStatus(): Promise<GmailConnectionStatus>
 }
 
 export async function beginGmailOAuth(email: string) {
-  const result = await api<any>('/api/gmail-oauth-start', {
+  const result = await api<any>('/api/gmail?action=start', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
@@ -52,7 +52,7 @@ export async function beginGmailOAuth(email: string) {
 }
 
 export async function disconnectGmail() {
-  await api('/api/gmail-disconnect', { method: 'DELETE' });
+  await api('/api/gmail?action=disconnect', { method: 'DELETE' });
 }
 
 const fileToBase64 = async (file: File) => {
@@ -72,7 +72,7 @@ export async function sendPdfWithConnectedGmail(input: {
   file: File;
 }) {
   const pdfBase64 = await fileToBase64(input.file);
-  return api<{ ok: true; messageId: string; threadId?: string | null; from: string }>('/api/gmail-send', {
+  return api<{ ok: true; messageId: string; threadId?: string | null; from: string }>('/api/gmail?action=send', {
     method: 'POST',
     body: JSON.stringify({
       to: input.to,
