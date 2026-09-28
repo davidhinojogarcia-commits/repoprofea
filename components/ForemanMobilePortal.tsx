@@ -70,7 +70,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     if(!data)return;
     const saved=data.attendance.find(a=>String(a.workDate).slice(0,10)===date);
     if(saved?.rows?.length){setRows(saved.rows);return;}
-    setRows(data.workers.map(w=>({workerId:Number(w.id),name:w.apellidosNombre,dni:w.dni,category:w.categoria})));
+    setRows(data.workers.map(w=>({
+      workerId:Number(w.id),
+      name:w.apellidosNombre,
+      dni:w.dni,
+      category:w.categoria,
+      entryTime:data.defaultWorkStartHour || '07:30',
+      exitTime:data.defaultWorkEndHour || '15:30',
+    })));
   },[data,date]);
 
   const persist=async(nextRows:ForemanAttendanceRow[],status:'draft'|'completed'='draft')=>{
@@ -78,7 +85,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
   const applySignature=async(image:string)=>{
     if(!signing)return;
-    const next=rows.map(r=>r.workerId===signing.workerId?{...r,...(signing.kind==='entry'?{entrySignature:image,entryTime:r.entryTime||nowTime()}:{exitSignature:image,exitTime:r.exitTime||nowTime()})}:r);
+    const next=rows.map(r=>r.workerId===signing.workerId?{...r,...(signing.kind==='entry'?{entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}:{exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})}:r);
     setSigning(null); await persist(next,'draft');
   };
   const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
@@ -102,16 +109,47 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='attendance'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-black">Registro diario de jornada</h2><p className="text-xs text-slate-500">{completedToday}/{rows.length} con entrada y salida firmadas</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm font-bold"/></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-black">Registro diario de jornada</h2><p className="text-xs text-slate-500">{completedToday}/{rows.length} con entrada y salida firmadas</p><p className="mt-1 text-[11px] font-semibold text-slate-500">Horario predeterminado: {data.defaultWorkStartHour}–{data.defaultWorkEndHour}. Puedes cambiarlo individualmente para cada trabajador.</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm font-bold"/></div>
         </div>
         {rows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
           <div><div className="font-black">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
           <div className="grid grid-cols-2 gap-2 mt-3">
-            <button onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`rounded-xl border px-3 py-3 text-sm font-black ${row.entrySignature?'border-emerald-300 bg-emerald-50 text-emerald-800':'bg-white'}`}><LogIn className="w-4 h-4 inline mr-1"/>Entrada {row.entryTime||''}{row.entrySignature&&<CheckCircle2 className="inline ml-1 w-4 h-4"/>}</button>
-            <button onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`rounded-xl border px-3 py-3 text-sm font-black ${row.exitSignature?'border-blue-300 bg-blue-50 text-blue-800':'bg-white'}`}><LogOut className="w-4 h-4 inline mr-1"/>Salida {row.exitTime||''}{row.exitSignature&&<CheckCircle2 className="inline ml-1 w-4 h-4"/>}</button>
+            <div className={`rounded-xl border p-2.5 ${row.entrySignature?'border-emerald-300 bg-emerald-50':'bg-white'}`}>
+              <label className="block text-[10px] font-black uppercase text-slate-500">Hora entrada</label>
+              <input
+                type="time"
+                value={row.entryTime || data.defaultWorkStartHour || '07:30'}
+                onChange={e=>{
+                  const value=e.target.value;
+                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:undefined}:item));
+                }}
+                className="mt-1 w-full rounded-lg border px-2 py-2 text-sm font-black bg-white"
+              />
+              <button onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 w-full rounded-lg px-2 py-2 text-xs font-black ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
+                <LogIn className="w-4 h-4 inline mr-1"/>{row.entrySignature?'Entrada firmada':'Firmar entrada'}
+              </button>
+            </div>
+            <div className={`rounded-xl border p-2.5 ${row.exitSignature?'border-blue-300 bg-blue-50':'bg-white'}`}>
+              <label className="block text-[10px] font-black uppercase text-slate-500">Hora salida</label>
+              <input
+                type="time"
+                value={row.exitTime || data.defaultWorkEndHour || '15:30'}
+                onChange={e=>{
+                  const value=e.target.value;
+                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:undefined}:item));
+                }}
+                className="mt-1 w-full rounded-lg border px-2 py-2 text-sm font-black bg-white"
+              />
+              <button onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 w-full rounded-lg px-2 py-2 text-xs font-black ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
+                <LogOut className="w-4 h-4 inline mr-1"/>{row.exitSignature?'Salida firmada':'Firmar salida'}
+              </button>
+            </div>
           </div>
         </div>)}
-        <button disabled={saving||!rows.length} onClick={()=>void persist(rows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Finalizar y enviar jornada</>}</button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button disabled={saving||!rows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
+          <button disabled={saving||!rows.length} onClick={()=>void persist(rows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar jornada</>}</button>
+        </div>
       </section>}
 
       {tab==='mandatory'&&<section className="space-y-3">
