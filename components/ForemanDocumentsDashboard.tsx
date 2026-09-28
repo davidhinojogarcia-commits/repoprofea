@@ -37,7 +37,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
   const [selectedDocsWork,setSelectedDocsWork]=useState(()=>localStorage.getItem('profea:foreman-docs:last-work')||'');
-  const [selectedDocsMonth,setSelectedDocsMonth]=useState('');
+  const [selectedDocsMonth,setSelectedDocsMonth]=useState(()=>localStorage.getItem('profea:foreman-docs:last-month')||'');
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
   const [importBusy,setImportBusy]=useState(false);
@@ -161,24 +161,31 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     }
   };
   const term=search.trim().toLowerCase();
-  const cards=useMemo(()=>{
+
+  const allCards=useMemo(()=>{
     const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
     const mandatoryCards=mandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards]
-      .filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed'))
-      .filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term)))
       .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-  },[attendance,mandatory,documents,filter,term]);
+  },[attendance,mandatory,documents]);
+
+  const cards=useMemo(()=>allCards
+    .filter(card=>filter==='all'||(filter==='attendance'&&card.kind==='attendance')||(filter==='mandatory'&&card.kind==='mandatory')||(filter==='documents'&&card.kind==='document')||(filter==='pending'&&card.status!=='reviewed'))
+    .filter(card=>!term||[card.obra,card.title,card.subtitle,card.date].some(v=>String(v||'').toLowerCase().includes(term))),
+  [allCards,filter,term]);
 
   const workDocumentGroups=useMemo(()=>{
-    const map=new Map<string,number>();
-    cards.forEach(card=>{
+    const map=new Map<string,{total:number;pending:number}>();
+    allCards.forEach(card=>{
       const work=String(card.obra||'Sin obra').trim()||'Sin obra';
-      map.set(work,(map.get(work)||0)+1);
+      const current=map.get(work)||{total:0,pending:0};
+      current.total+=1;
+      if(card.status!=='reviewed')current.pending+=1;
+      map.set(work,current);
     });
     return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es',{numeric:true}));
-  },[cards]);
+  },[allCards]);
 
   useEffect(()=>{
     if(!workDocumentGroups.length){
@@ -187,12 +194,17 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     }
     if(!selectedDocsWork||!workDocumentGroups.some(([work])=>work===selectedDocsWork)){
       setSelectedDocsWork(workDocumentGroups[0][0]);
+      setSelectedDocsMonth('');
     }
   },[workDocumentGroups,selectedDocsWork]);
 
   useEffect(()=>{
     if(selectedDocsWork)localStorage.setItem('profea:foreman-docs:last-work',selectedDocsWork);
   },[selectedDocsWork]);
+
+  useEffect(()=>{
+    if(selectedDocsMonth)localStorage.setItem('profea:foreman-docs:last-month',selectedDocsMonth);
+  },[selectedDocsMonth]);
 
   const monthLabel=(key:string)=>{
     const [year,month]=key.split('-');
@@ -201,13 +213,16 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   };
 
   const monthDocumentGroups=useMemo(()=>{
-    const map=new Map<string,number>();
-    cards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork).forEach(card=>{
+    const map=new Map<string,{total:number;pending:number}>();
+    allCards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork).forEach(card=>{
       const key=String(card.date||'').slice(0,7)||'Sin fecha';
-      map.set(key,(map.get(key)||0)+1);
+      const current=map.get(key)||{total:0,pending:0};
+      current.total+=1;
+      if(card.status!=='reviewed')current.pending+=1;
+      map.set(key,current);
     });
     return [...map.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
-  },[cards,selectedDocsWork]);
+  },[allCards,selectedDocsWork]);
 
   useEffect(()=>{
     if(!monthDocumentGroups.length){
@@ -221,8 +236,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   const visibleCards=useMemo(()=>cards.filter(card=>
     String(card.obra||'Sin obra').trim()===selectedDocsWork &&
-    String(card.date||'').slice(0,7)===selectedDocsMonth
+    (String(card.date||'').slice(0,7)||'Sin fecha')===selectedDocsMonth
   ),[cards,selectedDocsWork,selectedDocsMonth]);
+
+  const selectedWorkStats=useMemo(()=>{
+    const group=workDocumentGroups.find(([work])=>work===selectedDocsWork);
+    return group?.[1]||{total:0,pending:0};
+  },[workDocumentGroups,selectedDocsWork]);
   const markReviewed=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
     await reviewForemanItem(kind,id);
     await refresh(true);
@@ -454,8 +474,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <span className="text-xs font-bold rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 px-2.5 py-1">{workDocumentGroups.length}</span>
         </div>
         <div className="space-y-2 max-h-[64vh] overflow-y-auto pr-1">
-          {workDocumentGroups.map(([work,count])=><button key={work} type="button" onClick={()=>{setSelectedDocsWork(work);setSelectedDocsMonth('')}} className={`w-full text-left rounded-xl border px-3.5 py-3 transition ${selectedDocsWork===work?'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 shadow-sm':'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}>
-            <div className="font-bold text-sm leading-tight">{work}</div><div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{count} documento(s)</div>
+          {workDocumentGroups.map(([work,stats])=><button key={work} type="button" onClick={()=>{setSelectedDocsWork(work);setSelectedDocsMonth('')}} className={`w-full text-left rounded-xl border px-3.5 py-3 transition ${selectedDocsWork===work?'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 shadow-sm':'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}>
+            <div className="flex items-start justify-between gap-2"><div className="font-bold text-sm leading-tight">{work}</div>{stats.pending>0&&<span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900">{stats.pending}</span>}</div><div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{stats.total} documento(s)</div>
           </button>)}
         </div>
       </aside>
@@ -463,16 +483,16 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <div className="lg:hidden rounded-2xl border bg-white dark:bg-slate-900 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-slate-700 dark:text-slate-200"><Building2 className="w-4 h-4 text-[#00548E]"/>Obras</div>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {workDocumentGroups.map(([work,count])=><button key={work} type="button" onClick={()=>{setSelectedDocsWork(work);setSelectedDocsMonth('')}} className={`shrink-0 rounded-xl border px-3 py-2.5 text-left ${selectedDocsWork===work?'border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950/30 dark:text-blue-100':'bg-white dark:bg-slate-900'}`}><div className="text-xs font-black">{work}</div><div className="text-[10px] text-slate-600 dark:text-slate-300">{count} doc.</div></button>)}
+            {workDocumentGroups.map(([work,stats])=><button key={work} type="button" onClick={()=>{setSelectedDocsWork(work);setSelectedDocsMonth('')}} className={`shrink-0 rounded-xl border px-3 py-2.5 text-left ${selectedDocsWork===work?'border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950/30 dark:text-blue-100':'bg-white dark:bg-slate-900'}`}><div className="flex items-center gap-2"><div className="text-xs font-black">{work}</div>{stats.pending>0&&<span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-900">{stats.pending}</span>}</div><div className="text-[10px] text-slate-600 dark:text-slate-300">{stats.total} doc.</div></button>)}
           </div>
         </div>
 
         <div className="rounded-2xl border bg-white dark:bg-slate-900 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Documentación organizada por meses.</p></div>
+            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{selectedWorkStats.total} documento(s) en esta obra · {selectedWorkStats.pending} pendiente(s) de revisión. Organizados por meses.</p></div>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {monthDocumentGroups.map(([month,count])=><button key={month} type="button" onClick={()=>setSelectedDocsMonth(month)} className={`shrink-0 rounded-xl border px-3 py-2.5 ${selectedDocsMonth===month?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}><div className="flex items-center gap-2 text-xs font-black"><CalendarDays className="w-3.5 h-3.5"/>{month==='Sin fecha'?'Sin fecha':monthLabel(month)}</div><div className={`mt-0.5 text-[10px] ${selectedDocsMonth===month?'text-blue-100':'text-slate-600 dark:text-slate-300'}`}>{count} documento(s)</div></button>)}
+            {monthDocumentGroups.map(([month,stats])=><button key={month} type="button" onClick={()=>setSelectedDocsMonth(month)} className={`shrink-0 rounded-xl border px-3 py-2.5 ${selectedDocsMonth===month?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}><div className="flex items-center gap-2 text-xs font-black"><CalendarDays className="w-3.5 h-3.5"/>{month==='Sin fecha'?'Sin fecha':monthLabel(month)}{stats.pending>0&&<span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${selectedDocsMonth===month?'bg-white/20 text-white':'bg-amber-100 text-amber-900'}`}>{stats.pending}</span>}</div><div className={`mt-0.5 text-[10px] ${selectedDocsMonth===month?'text-blue-100':'text-slate-600 dark:text-slate-300'}`}>{stats.total} documento(s)</div></button>)}
           </div>
         </div>
 
