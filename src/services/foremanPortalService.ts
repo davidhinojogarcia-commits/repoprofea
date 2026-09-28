@@ -19,6 +19,9 @@ export type ForemanAttendanceDay = {
   status: 'draft' | 'completed' | 'reviewed';
   completedAt?: string | null;
   updatedAt?: string | null;
+  correctionPending?: boolean;
+  correctionReason?: string | null;
+  correctionRequestedAt?: string | null;
 };
 
 export type ForemanMandatoryDocument = {
@@ -29,9 +32,12 @@ export type ForemanMandatoryDocument = {
   category: string;
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
-  status: 'pending' | 'in_progress' | 'completed' | 'reviewed';
+  status: 'pending' | 'in_progress' | 'returned' | 'completed' | 'reviewed';
   completedAt?: string | null;
   details?: Record<string, any>;
+  correctionPending?: boolean;
+  correctionReason?: string | null;
+  correctionRequestedAt?: string | null;
 };
 
 export type ForemanCompletedDocument = {
@@ -44,6 +50,9 @@ export type ForemanCompletedDocument = {
   signatures: Record<string, string>;
   status: 'draft' | 'completed' | 'reviewed';
   completedAt?: string | null;
+  correctionPending?: boolean;
+  correctionReason?: string | null;
+  correctionRequestedAt?: string | null;
 };
 
 export type ForemanPortalPayload = {
@@ -220,5 +229,42 @@ export async function createForemanOperationalDocument(input: {
     p_work_date: input.workDate,
     p_worker_ids: input.workerIds,
     p_details: input.details || {},
+  });
+}
+
+
+export async function returnForemanItemForCorrection(
+  entityType: 'mandatory' | 'attendance' | 'document',
+  id: string,
+  reason: string,
+) {
+  return supabase.rpc('return_foreman_item_for_correction', {
+    p_entity_type: entityType,
+    p_id: id,
+    p_reason: reason,
+  });
+}
+
+export async function reviewForemanItem(
+  entityType: 'mandatory' | 'attendance' | 'document',
+  id: string,
+) {
+  return supabase.rpc('review_foreman_item', {
+    p_entity_type: entityType,
+    p_id: id,
+  });
+}
+
+export async function resubmitForemanDocument(input: {
+  token: string;
+  documentId: string;
+  answers: Record<string, string>;
+  signatures: Record<string, string>;
+}) {
+  return supabase.rpc('resubmit_foreman_document', {
+    p_token: input.token,
+    p_document_id: input.documentId,
+    p_answers: input.answers,
+    p_signatures: input.signatures,
   });
 }
