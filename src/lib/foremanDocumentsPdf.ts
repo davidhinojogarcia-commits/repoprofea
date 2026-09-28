@@ -167,23 +167,63 @@ export function generateForemanMandatoryDocumentPdf(
   doc.line(18, y, 192, y);
   y += 8;
 
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8.5);
+  doc.text('TRABAJADOR/A', 18, y);
+  doc.text('FIRMA', 120, y);
+  y += 3;
+  doc.setLineWidth(0.35);
+  doc.line(18, y, 190, y);
+  y += 8;
+
+  const inicioRowHeight = 16;
+  const inicioSignatureHeight = 11;
+  const inicioSignatureWidth = 48;
+  const renderInicioHeader = () => {
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.text('TRABAJADOR/A', 18, y);
+    doc.text('FIRMA', 120, y);
+    y += 3;
+    doc.setLineWidth(0.35);
+    doc.line(18, y, 190, y);
+    y += 8;
+  };
+
   doc.setFontSize(9);
   for (const worker of record.workers || []) {
-    if (y > 265) {
+    if (y + inicioRowHeight > 274) {
       doc.addPage('a4','portrait');
-      y = 30;
+      y = 24;
+      renderInicioHeader();
     }
+
+    const rowTop = y - 5;
+    const rowBottom = rowTop + inicioRowHeight;
     const signatureRaw = (record.signatures || {})[String(worker.id)];
     const signature = typeof signatureRaw === 'string' ? signatureRaw : signatureRaw?.signature;
+
+    doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica','bold');
-    doc.text(String(worker.apellidosNombre || '').toUpperCase(), 18, y, { maxWidth: 112 });
-    doc.setFont('helvetica','normal');
+    doc.text(String(worker.apellidosNombre || '').toUpperCase(), 18, y, { maxWidth: 96 });
+
     if (signature) {
-      try { doc.addImage(signature, 'PNG', 145, y - 6, 43, 10, undefined, 'FAST'); } catch {}
+      const signatureY = rowTop + (inicioRowHeight - inicioSignatureHeight) / 2;
+      try { doc.addImage(signature, 'PNG', 120, signatureY, inicioSignatureWidth, inicioSignatureHeight, undefined, 'FAST'); } catch {}
     } else {
-      doc.line(145, y + 1, 190, y + 1);
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.25);
+      doc.line(120, rowTop + inicioRowHeight / 2 + 1, 170, rowTop + inicioRowHeight / 2 + 1);
     }
-    y += 11;
+
+    doc.setDrawColor(90, 90, 90);
+    doc.setLineWidth(0.2);
+    doc.line(18, rowBottom, 190, rowBottom);
+    y += inicioRowHeight;
   }
 
   doc.setFont('helvetica','normal');
