@@ -78,36 +78,55 @@ export function generateForemanMandatoryDocumentPdf(
     );
 
     let y = 50;
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
     doc.setFont('courier', 'bold');
-    doc.setFontSize(8.2);
+    doc.setFontSize(8.6);
     doc.text('APELLIDOS / NOMBRE', 14, y);
     doc.text('CATEGORÍA', 84, y);
     doc.text('N.I.F.', 132, y);
     doc.text('FIRMA', 165, y);
     y += 3;
+    doc.setLineWidth(0.35);
     doc.line(14, y, 196, y);
-    y += 7;
+    y += 8;
 
     doc.setFont('courier', 'normal');
-    doc.setFontSize(7.8);
+    doc.setFontSize(8.2);
+    const rowHeight = 16;
+    const signatureHeight = 11;
+    const signatureWidth = 28;
     for (const worker of record.workers || []) {
-      if (y > 276) {
+      if (y + rowHeight > 282) {
         doc.addPage('a4', 'portrait');
         y = 20;
+        doc.setTextColor(0, 0, 0);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.25);
       }
+
+      const rowTop = y - 5;
+      const rowBottom = rowTop + rowHeight;
       const signatureRaw = (record.signatures || {})[String(worker.id)];
       const signature = typeof signatureRaw === 'string' ? signatureRaw : signatureRaw?.signature;
+
+      doc.setTextColor(0, 0, 0);
       doc.text(String(worker.apellidosNombre || ''), 14, y, { maxWidth: 65 });
       doc.text(String(worker.categoria || ''), 84, y, { maxWidth: 43 });
       doc.text(String(worker.dni || ''), 132, y, { maxWidth: 28 });
+
       if (signature) {
-        try { doc.addImage(signature, 'PNG', 165, y - 6, 28, 9, undefined, 'FAST'); } catch {}
+        const signatureY = rowTop + (rowHeight - signatureHeight) / 2;
+        try { doc.addImage(signature, 'PNG', 165, signatureY, signatureWidth, signatureHeight, undefined, 'FAST'); } catch {}
       } else {
-        doc.line(165, y + 1, 195, y + 1);
+        doc.setDrawColor(0, 0, 0);
+        doc.line(165, rowTop + rowHeight / 2 + 1, 195, rowTop + rowHeight / 2 + 1);
       }
-      y += 12;
-      doc.setDrawColor(210);
-      doc.line(14, y - 3, 196, y - 3);
+
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineWidth(0.2);
+      doc.line(14, rowBottom, 196, rowBottom);
+      y += rowHeight;
     }
     applyInstitutionalPdfStandard(doc);
     return { doc, filename: `CONTROL_PRESENCIA_${record.workDate}.pdf` };
