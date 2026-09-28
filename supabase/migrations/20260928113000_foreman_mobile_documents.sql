@@ -13,7 +13,7 @@ create table if not exists public.foreman_portal_access (
 );
 
 create unique index if not exists foreman_portal_access_owner_obra_idx
-  on public.foreman_portal_access(owner_id, lower(obra));
+  on public.foreman_portal_access(owner_id, obra);
 
 create table if not exists public.foreman_documents (
   id uuid primary key default gen_random_uuid(),
@@ -94,7 +94,7 @@ begin
 
   insert into public.foreman_portal_access(owner_id, obra, foreman_name, token_hash, active, updated_at)
   values(auth.uid(), trim(p_obra), trim(coalesce(p_foreman_name,'')), v_hash, true, now())
-  on conflict(owner_id, lower(obra)) do update
+  on conflict(owner_id, obra) do update
     set foreman_name=excluded.foreman_name,
         token_hash=excluded.token_hash,
         active=true,
