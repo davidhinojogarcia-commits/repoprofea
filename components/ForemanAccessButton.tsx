@@ -36,12 +36,24 @@ const tokenFromPortalUrl = (value: string) => {
   }
 };
 
-const qrDataUrl = (accessUrl: string) =>
-  QRCode.toDataURL(accessUrl, {
-    errorCorrectionLevel: 'H',
-    width: 768,
-    margin: 2,
-  });
+const qrDataUrl = async (accessUrl: string) => {
+  try {
+    return await QRCode.toDataURL(accessUrl, {
+      errorCorrectionLevel: 'H',
+      width: 768,
+      margin: 2,
+    });
+  } catch (canvasError) {
+    console.warn('No se pudo generar el QR con canvas; usando SVG de respaldo.', canvasError);
+    const svg = await QRCode.toString(accessUrl, {
+      type: 'svg',
+      errorCorrectionLevel: 'H',
+      width: 768,
+      margin: 2,
+    });
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
+};
 
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -132,11 +144,23 @@ export const ForemanAccessButton: React.FC<{
     try {
       const token = await createForemanPortalAccess(obra, foremanName);
       const next = portalUrlForToken(token);
-      const nextQr = await qrDataUrl(next);
+
+      // El enlace se guarda inmediatamente después de obtener el token. Así,
+      // aunque el navegador no pueda dibujar el QR, el token nuevo no se pierde
+      // ni deja en pantalla un enlace antiguo que ya haya sido invalidado.
       setUrl(next);
-      setQr(nextQr);
       window.localStorage.setItem(storageKey, next);
       setAccess({ loaded: true, exists: true, active: true, lastUsedAt: null });
+
+      try {
+        const nextQr = await qrDataUrl(next);
+        setQr(nextQr);
+      } catch (qrError) {
+        console.error('No se pudo representar el QR del encargado:', qrError);
+        setQr('');
+        setError('El acceso se ha generado correctamente, pero este navegador no pudo dibujar el QR. Puedes usar Copiar enlace.');
+      }
+
       if (openModal) setOpen(true);
       return next;
     } catch (caught) {
