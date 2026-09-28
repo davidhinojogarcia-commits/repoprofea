@@ -268,3 +268,54 @@ export async function resubmitForemanDocument(input: {
     p_signatures: input.signatures,
   });
 }
+
+
+export async function updateForemanMandatoryDocument(input: {
+  id: string;
+  workDate: string;
+  category: string;
+  workers: Person[];
+  signatures: Record<string, { signature: string; signedAt?: string } | string>;
+  status: 'pending' | 'in_progress' | 'returned' | 'completed' | 'reviewed';
+}) {
+  const workerIds = new Set(input.workers.map((worker) => String(worker.id)));
+  const filteredSignatures = Object.fromEntries(
+    Object.entries(input.signatures || {}).filter(([workerId]) => workerIds.has(String(workerId))),
+  );
+  const signedCount = Object.keys(filteredSignatures).length;
+  const total = input.workers.length;
+  const nextStatus =
+    total > 0 && signedCount >= total
+      ? 'completed'
+      : signedCount > 0
+        ? 'in_progress'
+        : 'pending';
+
+  await supabase.query('foreman_mandatory_documents', {
+    method: 'PATCH',
+    prefer: 'return=minimal',
+    query: `id=eq.${encodeURIComponent(input.id)}`,
+    body: {
+      work_date: input.workDate,
+      category: input.category,
+      workers: input.workers,
+      signatures: filteredSignatures,
+      status: nextStatus,
+      completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
+      reviewed_at: null,
+      returned_at: null,
+      correction_pending: false,
+      correction_reason: null,
+      correction_requested_at: null,
+      updated_at: new Date().toISOString(),
+    },
+  });
+}
+
+export async function deleteForemanMandatoryDocument(id: string) {
+  await supabase.query('foreman_mandatory_documents', {
+    method: 'DELETE',
+    prefer: 'return=minimal',
+    query: `id=eq.${encodeURIComponent(id)}`,
+  });
+}
