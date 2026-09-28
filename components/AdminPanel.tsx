@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { appConfirm } from '../src/lib/appDialog';
 import {
   Filter,
   KeyRound,
@@ -428,8 +429,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                             </button>
                             <button
                               title="Eliminar"
-                              onClick={() => {
-                                if (confirm(`¿Eliminar ${u.email}?`))
+                              onClick={async () => {
+                                if (await appConfirm(`¿Eliminar ${u.email}?`, { title: 'Eliminar usuario', confirmLabel: 'Eliminar' }))
                                   run(
                                     () => deleteManagedUser({ uid: u.id }),
                                     "Usuario eliminado.",
@@ -570,8 +571,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                       <button
                         aria-label={`Eliminar ${u.email}`}
                         title="Eliminar"
-                        onClick={() => {
-                          if (confirm(`¿Eliminar ${u.email}?`))
+                        onClick={async () => {
+                          if (await appConfirm(`¿Eliminar ${u.email}?`, { title: 'Eliminar usuario', confirmLabel: 'Eliminar' }))
                             run(
                               () => deleteManagedUser({ uid: u.id }),
                               "Usuario eliminado.",
