@@ -21,6 +21,18 @@ export type ForemanAttendanceDay = {
   updatedAt?: string | null;
 };
 
+export type ForemanMandatoryDocument = {
+  id: string;
+  workDate: string;
+  periodKey: string;
+  documentType: 'inicio' | 'control_presencia';
+  category: string;
+  workers: Person[];
+  signatures: Record<string, { signature: string; signedAt?: string } | string>;
+  status: 'pending' | 'in_progress' | 'completed' | 'reviewed';
+  completedAt?: string | null;
+};
+
 export type ForemanCompletedDocument = {
   id: string;
   workDate: string;
@@ -40,6 +52,7 @@ export type ForemanPortalPayload = {
   workers: Person[];
   attendance: ForemanAttendanceDay[];
   documents: ForemanCompletedDocument[];
+  mandatoryDocuments: ForemanMandatoryDocument[];
 };
 
 export async function createForemanPortalAccess(obra: string, foremanName: string): Promise<string> {
@@ -65,6 +78,7 @@ export async function resolveForemanPortal(token: string): Promise<ForemanPortal
     workers: Array.isArray(result?.workers) ? result.workers : [],
     attendance: Array.isArray(result?.attendance) ? result.attendance : [],
     documents: Array.isArray(result?.documents) ? result.documents : [],
+    mandatoryDocuments: Array.isArray(result?.mandatoryDocuments) ? result.mandatoryDocuments : [],
   };
 }
 
@@ -97,5 +111,26 @@ export async function submitForemanDocument(input: {
     p_worker_id: input.workerId ?? null,
     p_answers: input.answers,
     p_signatures: input.signatures,
+  });
+}
+
+
+export async function prepareMandatoryForemanDocuments(workers: Person[]): Promise<number> {
+  if (!workers.length) return 0;
+  const result = await supabase.rpc('prepare_foreman_mandatory_documents', { p_workers: workers });
+  return Number(result) || 0;
+}
+
+export async function signMandatoryForemanDocument(
+  token: string,
+  documentId: string,
+  workerId: number,
+  signature: string,
+) {
+  return supabase.rpc('sign_foreman_mandatory_document', {
+    p_token: token,
+    p_document_id: documentId,
+    p_worker_id: workerId,
+    p_signature: signature,
   });
 }
