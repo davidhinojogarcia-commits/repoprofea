@@ -15,6 +15,7 @@ import { PrlTrainingScheduleBridge } from './components/PrlTrainingScheduleBridg
 import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
 import { WorkerQrPortal } from './components/WorkerQrPortal';
 import { RemoteScannerPortal } from './components/RemoteScannerPortal';
+import { ForemanMobilePortal } from './components/ForemanMobilePortal';
 import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installButtonSounds } from './src/lib/uiSounds';
@@ -106,12 +107,15 @@ const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimien
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
+const foremanToken = initialSearchParams.get('encargado')?.trim() || '';
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
       {isMedicalConfirmation ? (
         <MedicalAppointmentConfirmationPortal />
+      ) : foremanToken ? (
+        <ForemanMobilePortal token={foremanToken} />
       ) : workerQrToken ? (
         <WorkerQrPortal token={workerQrToken} />
       ) : remoteScannerToken ? (
