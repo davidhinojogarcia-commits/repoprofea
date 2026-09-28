@@ -449,6 +449,29 @@ begin
 end;
 $$;
 
+create table if not exists public.worker_document_evidence (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  worker_id bigint not null,
+  obra text not null,
+  document_id uuid not null references public.foreman_mandatory_documents(id) on delete cascade,
+  document_type text not null,
+  work_date date not null,
+  category text not null default '',
+  signed_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique(owner_id, worker_id, document_id)
+);
+
+alter table public.worker_document_evidence enable row level security;
+drop policy if exists worker_document_evidence_owner_all on public.worker_document_evidence;
+create policy worker_document_evidence_owner_all on public.worker_document_evidence
+  for all to authenticated
+  using (owner_id=auth.uid())
+  with check (owner_id=auth.uid());
+grant select,insert,update,delete on public.worker_document_evidence to authenticated;
+
 create or replace function public.sign_foreman_mandatory_document(
   p_token text,
   p_document_id uuid,
@@ -491,27 +514,16 @@ begin
          updated_at=now()
    where id=v_doc.id;
 
-  -- Asiento documental individual en la ficha del trabajador. Se conserva la
-  -- evidencia de qué documento colectivo firmó, en qué obra y en qué fecha.
-  update public.trabajadores
-     set data = jsonb_set(
-       coalesce(data,'{}'::jsonb),
-       '{documentacionEncargado}',
-       coalesce(data->'documentacionEncargado','{}'::jsonb) ||
-         jsonb_build_object(
-           v_doc.id::text,
-           jsonb_build_object(
-             'tipo',v_doc.document_type,
-             'obra',v_doc.obra,
-             'fecha',v_doc.work_date,
-             'categoria',v_doc.category,
-             'firmadoEn',now()
-           )
-         ),
-       true
-     ),
-     updated_at=now()
-   where owner_id=v_access.owner_id and id=p_worker_id;
+  -- Asiento documental individual vinculado al trabajador, sin modificar su
+  -- registro maestro ni sus metadatos de contratación.
+  insert into public.worker_document_evidence(
+    owner_id,worker_id,obra,document_id,document_type,work_date,category,signed_at,metadata
+  ) values(
+    v_access.owner_id,p_worker_id,v_doc.obra,v_doc.id,v_doc.document_type,v_doc.work_date,v_doc.category,now(),
+    jsonb_build_object('source','portal_encargado','status','signed')
+  )
+  on conflict(owner_id,worker_id,document_id) do update
+    set signed_at=excluded.signed_at, metadata=excluded.metadata;
 
   return jsonb_build_object('ok',true,'signed',v_signed,'total',v_total,'completed',v_signed>=v_total and v_total>0);
 end;
