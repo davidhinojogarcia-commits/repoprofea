@@ -27,6 +27,7 @@ import { PushNotificationManagerModal } from './components/PushNotificationManag
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
+import { prepareMandatoryForemanDocuments } from './src/services/foremanPortalService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
@@ -1038,9 +1039,13 @@ function App() {
 
     try {
       await importWorkersAtomic(formattedWorkers);
+      // A partir de la importación administrativa se preparan automáticamente:
+      // 1) los documentos de INICIO para quienes comienzan, agrupados por categoría;
+      // 2) el CONTROL DE PRESENCIA con todos los trabajadores activos de la obra.
+      await prepareMandatoryForemanDocuments(formattedWorkers);
     } catch (error) {
-      console.error('Error persistiendo trabajadores importados en Supabase:', error);
-      setToast({ message: 'La importación no se ha guardado en la base de datos. No se han aplicado cambios.', type: 'error' });
+      console.error('Error persistiendo trabajadores importados o preparando documentación obligatoria:', error);
+      setToast({ message: 'La importación no se ha guardado completamente. No se han aplicado cambios.', type: 'error' });
       return;
     }
 
@@ -1048,11 +1053,11 @@ function App() {
 
     if (skippedCount > 0) {
       setToast({
-        message: `Se han importado ${formattedWorkers.length} trabajadores correctamente. Se omitieron ${skippedCount} duplicado(s) en el mismo periodo/quincena.`,
+        message: `Se han importado ${formattedWorkers.length} trabajadores y se ha preparado la documentación obligatoria de inicio/presencia. Se omitieron ${skippedCount} duplicado(s) en el mismo periodo/quincena.`,
         type: 'success'
       });
     } else {
-      setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores correctamente`, type: 'success' });
+      setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores y se ha preparado la documentación obligatoria para firma.`, type: 'success' });
     }
 
 
