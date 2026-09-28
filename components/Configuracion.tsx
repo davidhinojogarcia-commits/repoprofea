@@ -566,7 +566,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
   const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
   const workerExportYears = useMemo(
-    () => Array.from(new Set(workerMasterRecords.map(workerRecordYear).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    () => Array.from(new Set<string>(workerMasterRecords.map(workerRecordYear).filter((year): year is string => typeof year === "string" && year.length > 0))).sort((a, b) => b.localeCompare(a)),
     [workerMasterRecords],
   );
   const filteredWorkerMasterRecords = useMemo(() => {
