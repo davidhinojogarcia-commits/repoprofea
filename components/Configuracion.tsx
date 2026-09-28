@@ -32,6 +32,7 @@ import {
   UserCheck,
   Users,
   Clock,
+  QrCode,
 } from "lucide-react";
 import { Person, DeletedPerson } from "../types";
 import {
