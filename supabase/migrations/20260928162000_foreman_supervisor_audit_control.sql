@@ -98,8 +98,6 @@ begin
 
   if auth.uid() is not null and auth.uid()=v_owner then
     v_actor_type := 'supervisor';
-  elsif tg_table_name='foreman_portal_access' then
-    v_actor_type := 'supervisor';
   else
     v_actor_type := 'encargado';
     select coalesce(a.foreman_name,'') into v_actor_name
