@@ -160,12 +160,25 @@ export function verifyOAuthState(state: string): OAuthState {
   return payload;
 }
 
+const CANONICAL_GMAIL_OAUTH_REDIRECT_URI =
+  'https://gestionprofea.vercel.app/api/gmail-oauth-callback';
+
 export function oauthRedirectUri(req: any) {
-  if (process.env.GMAIL_OAUTH_REDIRECT_URI) return process.env.GMAIL_OAUTH_REDIRECT_URI;
-  const proto = String(req.headers?.['x-forwarded-proto'] || 'https').split(',')[0];
+  const configured = String(process.env.GMAIL_OAUTH_REDIRECT_URI || '').trim();
+  if (configured) return configured;
+
+  const proto = String(req.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim() || 'https';
   const host = String(req.headers?.host || '').trim();
   if (!host) throw new Error('No se pudo determinar la URL de retorno OAuth.');
-  return `${proto}://${host}/api/gmail-oauth-callback`;
+
+  // En desarrollo local conservamos el callback del host actual. En cualquier
+  // despliegue de Vercel usamos la URL canónica de producción para evitar que
+  // previews, aliases o dominios temporales provoquen redirect_uri_mismatch.
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)) {
+    return `${proto}://${host}/api/gmail-oauth-callback`;
+  }
+
+  return CANONICAL_GMAIL_OAUTH_REDIRECT_URI;
 }
 
 export async function refreshGoogleAccessToken(refreshToken: string) {
