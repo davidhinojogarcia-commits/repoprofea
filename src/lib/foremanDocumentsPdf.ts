@@ -236,6 +236,8 @@ export function generateForemanMandatoryDocumentPdf(
 
   let y = 47;
   const width = 174;
+  doc.setTextColor(15, 23, 42);
+  doc.setDrawColor(71, 85, 105);
   const paragraphs = [
     'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
     'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
@@ -249,6 +251,8 @@ export function generateForemanMandatoryDocumentPdf(
     y += lines.length * 4.4 + 5;
   }
 
+  doc.setTextColor(15, 23, 42);
+  doc.setDrawColor(71, 85, 105);
   doc.setFont('helvetica','bold');
   doc.setFontSize(10.5);
   const workLines = doc.splitTextToSize(String(obra || '').toUpperCase(), width);
@@ -256,6 +260,7 @@ export function generateForemanMandatoryDocumentPdf(
   y += workLines.length * 5 + 5;
   doc.line(18, y, 192, y);
   y += 8;
+  doc.setTextColor(15, 23, 42);
   doc.text(`CATEGORÍA ${String(record.category || '').toUpperCase()}`, 18, y);
   y += 4;
   doc.line(18, y, 192, y);
