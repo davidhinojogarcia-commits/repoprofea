@@ -134,3 +134,39 @@ export async function signMandatoryForemanDocument(
     p_signature: signature,
   });
 }
+
+
+export async function prepareMandatoryDocumentFromEmail(input: {
+  documentType: 'inicio' | 'control_presencia';
+  workerIds: number[];
+  workDate: string;
+  category?: string;
+  periodKey: string;
+  gmailMessageId: string;
+  gmailThreadId: string;
+  rfcMessageId?: string;
+  emailFrom: string;
+  emailSubject: string;
+  attachmentName: string;
+}) {
+  return supabase.rpc('prepare_foreman_mandatory_from_email', {
+    p_document_type: input.documentType,
+    p_worker_ids: input.workerIds,
+    p_work_date: input.workDate,
+    p_category: input.category || '',
+    p_period_key: input.periodKey,
+    p_gmail_message_id: input.gmailMessageId,
+    p_gmail_thread_id: input.gmailThreadId,
+    p_rfc_message_id: input.rfcMessageId || '',
+    p_email_from: input.emailFrom,
+    p_email_subject: input.emailSubject,
+    p_attachment_name: input.attachmentName,
+  });
+}
+
+export async function markMandatoryDocumentReturned(id: string, gmailMessageId: string) {
+  await supabase.rpc('mark_foreman_mandatory_returned', {
+    p_id: id,
+    p_gmail_message_id: gmailMessageId,
+  });
+}
