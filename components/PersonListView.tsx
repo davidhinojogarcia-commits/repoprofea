@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import { Person } from '../types';
 import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, Undo2, Redo2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
@@ -380,6 +380,7 @@ export const PersonList: React.FC<PersonListProps> = ({
     return repeaters;
   }, [sameDniWorkersMap]);
 
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedObraSet = useMemo(() => new Set(selectedObraFilter), [selectedObraFilter]);
   const selectedQuincenaSet = useMemo(() => new Set(selectedQuincenaFilter), [selectedQuincenaFilter]);
@@ -397,7 +398,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   }, [people, selectedIdSet]);
 
   const filteredPeople = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim();
+    const term = deferredSearchTerm.toLowerCase().trim();
     return (people || []).filter(person => {
       const matchesSearch = !term || (
         person.apellidosNombre.toLowerCase().includes(term) ||
@@ -417,7 +418,7 @@ export const PersonList: React.FC<PersonListProps> = ({
       
       return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesNoApto;
     });
-  }, [people, searchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos]);
+  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos]);
 
   const isSelectionActive = selectedIds.length > 0;
   const peopleToExport = useMemo(
