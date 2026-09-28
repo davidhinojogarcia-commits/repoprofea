@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { appConfirm } from '../src/lib/appDialog';
 import {
   AlertTriangle,
   BriefcaseBusiness,
@@ -600,7 +601,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       return;
     }
     if (
-      !window.confirm(
+      !(await appConfirm(
         `¿Eliminar la solicitud de mano de obra de ${n.obra} (${n.mes} ${n.ano || ""}) y sus informes/candidatos asociados?`,
       )
     )
@@ -621,7 +622,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
 
   const removeReport = async (report: SaeReport) => {
     if (
-      !window.confirm(
+      !(await appConfirm(
         `¿Eliminar exclusivamente el informe “${report.fileName}” y sus candidatos importados? La solicitud de mano de obra y los trabajadores ya registrados se conservarán sin cambios.`,
       )
     )
@@ -1002,7 +1003,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       return;
     }
     if (
-      !window.confirm(
+      !(await appConfirm(
         `¿Revertir la contratación de ${candidate.normalizedName}? Se eliminará únicamente el registro de trabajador creado por esta contratación SAE y el candidato volverá a su quincena.`,
       )
     )
