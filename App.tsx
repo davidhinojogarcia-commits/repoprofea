@@ -27,6 +27,7 @@ import { PushNotificationManagerModal } from './components/PushNotificationManag
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
 import { importWorkersAtomic } from './src/services/workerImportService';
+import { prepareMandatoryForemanDocuments } from './src/services/foremanPortalService';
 import { persistMedicalRecognition } from './src/services/medicalRecognitionService';
 import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
@@ -71,6 +72,7 @@ const SaeSection = lazy(() => import('./components/SaeSection').then(module => (
 const InventorySection = lazy(() => import('./components/InventorySection').then(module => ({ default: module.InventorySection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
+const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
 
 let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
 const loadPdfJs = async () => {
@@ -133,6 +135,7 @@ const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: strin
   directorio: { step: 'Paso 2 de 6', title: 'Trabajadores', help: 'Revisa datos, documentación e historial.' },
   citas: { step: 'Paso 3 de 6', title: 'Reconocimientos médicos', help: 'Comprueba citas y aptitud médica.' },
   documentacion_obra: { step: 'Paso 4 de 6', title: 'Documentación de obra', help: 'Completa y revisa los documentos de la obra.' },
+  documentacion_encargados: { step: 'Seguimiento', title: 'Documentación de encargados', help: 'Revisa firmas, partes y registros diarios enviados desde obra.' },
   subcontratas: { step: 'Paso 5 de 6', title: 'CAE', help: 'Revisa la coordinación y documentación de empresas.' },
   inventario: { step: 'Paso 6 de 6', title: 'Maquinaria y herramientas', help: 'Consulta equipos disponibles, asignados o averiados.' },
   registro: { step: 'Tarea adicional', title: 'Añadir trabajador', help: 'Da de alta manualmente a un trabajador.' },
@@ -316,7 +319,7 @@ function App() {
     setInterfaceMode(nextMode);
     if (
       nextMode === 'guided' &&
-      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'subcontratas', 'inventario', 'sae'].includes(activeView)
+      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'subcontratas', 'inventario', 'sae'].includes(activeView)
     ) {
       setActiveView('dashboard');
       window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
@@ -1036,9 +1039,13 @@ function App() {
 
     try {
       await importWorkersAtomic(formattedWorkers);
+      // A partir de la importación administrativa se preparan automáticamente:
+      // 1) los documentos de INICIO para quienes comienzan, agrupados por categoría;
+      // 2) el CONTROL DE PRESENCIA con todos los trabajadores activos de la obra.
+      await prepareMandatoryForemanDocuments(formattedWorkers);
     } catch (error) {
-      console.error('Error persistiendo trabajadores importados en Supabase:', error);
-      setToast({ message: 'La importación no se ha guardado en la base de datos. No se han aplicado cambios.', type: 'error' });
+      console.error('Error persistiendo trabajadores importados o preparando documentación obligatoria:', error);
+      setToast({ message: 'La importación no se ha guardado completamente. No se han aplicado cambios.', type: 'error' });
       return;
     }
 
@@ -1046,11 +1053,11 @@ function App() {
 
     if (skippedCount > 0) {
       setToast({
-        message: `Se han importado ${formattedWorkers.length} trabajadores correctamente. Se omitieron ${skippedCount} duplicado(s) en el mismo periodo/quincena.`,
+        message: `Se han importado ${formattedWorkers.length} trabajadores y se ha preparado la documentación obligatoria de inicio/presencia. Se omitieron ${skippedCount} duplicado(s) en el mismo periodo/quincena.`,
         type: 'success'
       });
     } else {
-      setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores correctamente`, type: 'success' });
+      setToast({ message: `Se han importado ${formattedWorkers.length} trabajadores y se ha preparado la documentación obligatoria para firma.`, type: 'success' });
     }
 
 
@@ -2358,6 +2365,12 @@ function App() {
           {activeView === 'documentacion_obra' && (
             <Suspense fallback={<ViewLoadingFallback />}>
               <WorksiteDocumentationPortal />
+            </Suspense>
+          )}
+
+          {activeView === 'documentacion_encargados' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <ForemanDocumentsDashboard />
             </Suspense>
           )}
 

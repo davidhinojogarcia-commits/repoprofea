@@ -65,6 +65,7 @@ import {
 } from "../src/services/appSettingsService";
 import { downloadPDF } from "../src/lib/exportUtils";
 import { PageHeader } from "./ui/PageHeader";
+import { ForemanAccessButton } from "./ForemanAccessButton";
 import { GmailConnectionPanel } from "./GmailConnectionPanel";
 import { useAuthShell } from "./AuthGate";
 import { APP_BUILD, APP_RELEASE_DATE, APP_RELEASE_NOTES, APP_VERSION } from "../src/lib/appVersion";
@@ -2499,6 +2500,11 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">
+                                <ForemanAccessButton
+                                  obra={obra}
+                                  foremanName={recursoData?.recursoPreventivoNombre || ""}
+                                  phone={recursoData?.recursoPreventivoTelefono || ""}
+                                />
                                 <button
                                   type="button"
                                   onClick={() =>

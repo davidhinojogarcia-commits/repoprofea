@@ -55,7 +55,7 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
             <h3 className="text-sm font-black text-slate-900 dark:text-white">Cuenta Gmail del supervisor</h3>
           </div>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-            Autoriza una vez la cuenta institucional. GestionProfea usará únicamente el permiso para enviar correos y adjuntar los PDF de Acciones informativas rápidas.
+            Autoriza una vez la cuenta institucional. GestionProfea usará Gmail para enviar correos y, si lo autorizas, leer únicamente los mensajes necesarios para detectar automáticamente la documentación enviada por la administrativa.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             {loading ? (
@@ -78,6 +78,11 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
           {!emailMatches && (
             <p className="mt-2 text-xs font-bold text-rose-700 dark:text-rose-300">
               La cuenta conectada no coincide con el correo configurado del supervisor. Desconéctala y autoriza {configuredEmail}.
+            </p>
+          )}
+          {status.connected && !status.canRead && (
+            <p className="mt-2 text-xs font-bold text-amber-700 dark:text-amber-300">
+              Falta autorizar la lectura de Gmail necesaria para detectar automáticamente los correos de la administrativa.
             </p>
           )}
           {message && <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-200">{message}</p>}
@@ -108,7 +113,28 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
               Conectar con Gmail
             </button>
           ) : (
-            <button
+            <>
+              {!status.canRead && (
+                <button
+                  type="button"
+                  disabled={busy || loading || !configuredEmail}
+                  onClick={async () => {
+                    setBusy(true);
+                    setMessage('');
+                    try {
+                      await beginGmailOAuth(configuredEmail || status.email);
+                    } catch (error: any) {
+                      setMessage(error?.message || 'No se pudo ampliar la autorización de Gmail.');
+                      setBusy(false);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-2.5 text-xs font-black text-white hover:bg-[#00436f] disabled:opacity-50"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Autorizar detección automática
+                </button>
+              )}
+              <button
               type="button"
               disabled={busy}
               onClick={async () => {
@@ -130,6 +156,7 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
               Desconectar Gmail
             </button>
+            </>
           )}
         </div>
       </div>

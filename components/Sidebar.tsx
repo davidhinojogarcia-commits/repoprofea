@@ -1,9 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files, Wrench } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, Camera, Calendar, CalendarDays, HardHat, BriefcaseBusiness, ShieldCheck, LogOut, Loader2, Files, Wrench, ClipboardCheck } from 'lucide-react';
 import { useAuthShell } from './AuthGate';
 import { APP_BUILD, APP_VERSION } from '../src/lib/appVersion';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'inventario' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'documentacion_obra' | 'documentacion_encargados' | 'inventario' | 'administracion';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -67,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
+        { id: 'documentacion_encargados', label: 'Documentación de encargados', icon: ClipboardCheck },
         {
           id: 'subcontratas',
           label: 'CAE',
@@ -100,6 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'registro', label: '3. Añadir trabajador', subtitle: 'Alta manual si la necesitas', icon: UserPlus },
         { id: 'citas', label: '4. Reconocimientos', subtitle: 'Citas y aptitud médica', icon: Calendar },
         { id: 'documentacion_obra', label: '5. Documentación', subtitle: 'Documentos de la obra', icon: Files },
+        { id: 'documentacion_encargados', label: 'Documentación de encargados', subtitle: 'Firmas y partes recibidos', icon: ClipboardCheck },
         { id: 'subcontratas', label: '6. CAE', subtitle: 'Coordinación de empresas', icon: HardHat },
         { id: 'inventario', label: '7. Maquinaria', subtitle: 'Equipos y herramientas', icon: Wrench },
         { id: 'configuracion', label: 'Configuración', subtitle: 'Datos y preferencias de la app', icon: Settings },
