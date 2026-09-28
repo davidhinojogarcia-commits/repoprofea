@@ -3,34 +3,121 @@ import { Copy, Link2, Loader2, MessageCircle, QrCode, RotateCcw, X } from 'lucid
 import QRCode from 'qrcode';
 import { createForemanPortalAccess, revokeForemanPortalAccess } from '../src/services/foremanPortalService';
 
-export const ForemanAccessButton: React.FC<{ obra: string; foremanName: string; phone?: string }> = ({ obra, foremanName, phone }) => {
+export const ForemanAccessButton: React.FC<{ obra: string; foremanName: string; phone?: string; display?: 'icon' | 'card' }> = ({ obra, foremanName, phone, display = 'icon' }) => {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [qr, setQr] = useState('');
-  const ensure = async () => {
+  const generateAccess = async (openModal = true) => {
+    if (!foremanName.trim()) {
+      window.alert('Asigna primero un encargado o recurso preventivo a esta obra. Después podrás generar su acceso móvil.');
+      return '';
+    }
     setBusy(true);
     try {
       const token = await createForemanPortalAccess(obra, foremanName);
       const next = `${window.location.origin}/?encargado=${encodeURIComponent(token)}`;
       setUrl(next);
       setQr(await QRCode.toDataURL(next, { width: 320, margin: 1 }));
-      setOpen(true);
-    } finally { setBusy(false); }
+      if (openModal) setOpen(true);
+      return next;
+    } finally {
+      setBusy(false);
+    }
   };
-  const share = () => {
+
+  const whatsappUrl = (accessUrl: string) => {
     const digits = String(phone || '').replace(/\D/g, '');
     const normalized = digits.length === 9 ? `34${digits}` : digits;
-    const text = `Acceso móvil a la documentación de la obra ${obra}:\n${url}`;
-    if (normalized) window.open(`https://wa.me/${normalized}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
-    else navigator.clipboard?.writeText(text);
+    const text = [
+      `Hola ${foremanName || ''},`,
+      '',
+      `te envío el acceso móvil a la documentación de la obra ${obra}.`,
+      'Desde este enlace puedes cumplimentar y firmar la documentación que tengas asignada:',
+      accessUrl,
+    ].join('\n');
+    return normalized
+      ? `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
+
+  const sendByWhatsApp = async () => {
+    if (!foremanName.trim()) {
+      window.alert('Asigna primero un encargado o recurso preventivo a esta obra. Después podrás enviarle el acceso.');
+      return;
+    }
+
+    // Abrimos la pestaña de forma inmediata para que Safari/iPhone no bloquee
+    // WhatsApp mientras esperamos a que se genere el token seguro.
+    const popup = window.open('about:blank', '_blank');
+    try {
+      const accessUrl = url || await generateAccess(false);
+      if (!accessUrl) {
+        popup?.close();
+        return;
+      }
+      const target = whatsappUrl(accessUrl);
+      if (popup) {
+        popup.location.href = target;
+      } else {
+        window.location.href = target;
+      }
+    } catch (error) {
+      popup?.close();
+      console.error('No se pudo preparar el acceso del encargado:', error);
+      window.alert('No se pudo generar el acceso móvil del encargado. Inténtalo de nuevo.');
+    }
+  };
+
+  const share = () => void sendByWhatsApp();
   return <>
-    <button type="button" onClick={() => void ensure()} disabled={busy || !foremanName}
-      className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg"
-      title="Acceso móvil del encargado">
-      {busy ? <Loader2 className="w-4 h-4 animate-spin"/> : <QrCode className="w-4 h-4"/>}
-    </button>
+    {display === 'card' ? (
+      <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/20 p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <QrCode className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0"/>
+              <span className="text-xs font-black text-slate-900 dark:text-white">Acceso móvil del encargado</span>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+              {foremanName
+                ? 'Genera el QR o enlace para que el encargado gestione firmas, registro diario y documentación de esta obra desde su móvil.'
+                : 'Falta asignar un encargado/recurso preventivo. Puedes hacerlo con el botón de editar obra.'}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+            {foremanName && (
+              <button
+                type="button"
+                onClick={() => void generateAccess(true)}
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2.5 text-xs font-black text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-200"
+              >
+                <QrCode className="w-4 h-4"/>
+                Ver QR
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void sendByWhatsApp()}
+              disabled={busy}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition-colors ${foremanName
+                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                : 'border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200'}`}
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin"/> : <MessageCircle className="w-4 h-4"/>}
+              {foremanName ? 'Enviar por WhatsApp' : 'Configurar encargado'}
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <button type="button" onClick={() => void sendByWhatsApp()} disabled={busy}
+        className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg"
+        title="Enviar acceso móvil por WhatsApp">
+        {busy ? <Loader2 className="w-4 h-4 animate-spin"/> : <MessageCircle className="w-4 h-4"/>}
+      </button>
+    )}
     {open && <div className="fixed inset-0 z-[120] bg-slate-950/60 p-4 flex items-center justify-center">
       <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-3">

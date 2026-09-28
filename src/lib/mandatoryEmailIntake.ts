@@ -181,3 +181,76 @@ export async function processAdministrativeMandatoryInbox(options?: {
 
   return { scannedMessages: messages.length, importedDocuments, skippedAttachments, warnings };
 }
+
+
+export type MandatoryManualImportResult = {
+  importedDocuments: number;
+  skippedFiles: number;
+  warnings: string[];
+};
+
+export async function processManualMandatoryFiles(
+  files: File[],
+  options?: { onProgress?: (message: string) => void },
+): Promise<MandatoryManualImportResult> {
+  const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
+  const warnings: string[] = [];
+  let importedDocuments = 0;
+  let skippedFiles = 0;
+
+  for (const file of files) {
+    if (!(file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) {
+      skippedFiles += 1;
+      warnings.push(`${file.name}: solo se admiten documentos PDF.`);
+      continue;
+    }
+
+    options?.onProgress?.(`Analizando ${file.name}…`);
+    try {
+      const extracted = await extractClientDocumentText(file, options?.onProgress);
+      const type = documentType(file.name, extracted.text);
+      if (!type) {
+        skippedFiles += 1;
+        warnings.push(`${file.name}: no se reconoce como Inicio ni Control de presencia.`);
+        continue;
+      }
+
+      const category = type === 'inicio' ? extractCategory(extracted.text) : '';
+      const matched = matchWorkers(workers, extracted.text, category);
+      if (!matched.length) {
+        skippedFiles += 1;
+        warnings.push(`${file.name}: no se pudieron vincular trabajadores con seguridad.`);
+        continue;
+      }
+
+      const counts = new Map<string, number>();
+      for (const worker of matched) {
+        const work = String(worker.obra || '').trim();
+        if (work) counts.set(work, (counts.get(work) || 0) + 1);
+      }
+      const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
+      const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
+      const workDate = extractDate(extracted.text);
+
+      await prepareMandatoryDocumentFromEmail({
+        documentType: type,
+        workerIds: selected.map(worker => Number(worker.id)).filter(Number.isFinite),
+        workDate,
+        category,
+        periodKey: periodKeyFor(file.name, workDate),
+        gmailMessageId: null,
+        gmailThreadId: null,
+        rfcMessageId: null,
+        emailFrom: null,
+        emailSubject: null,
+        attachmentName: null,
+      });
+      importedDocuments += 1;
+    } catch (error: any) {
+      skippedFiles += 1;
+      warnings.push(`${file.name}: ${error?.message || 'no se pudo procesar'}`);
+    }
+  }
+
+  return { importedDocuments, skippedFiles, warnings };
+}

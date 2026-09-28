@@ -216,18 +216,6 @@ export async function restoreBackupToSupabase(rawPayload: ProfeaBackupPayload, m
         activeTrainingProviderId: typeof config.activeTrainingProviderId === 'string'
           ? config.activeTrainingProviderId
           : current.activeTrainingProviderId,
-        administrative: config.administrative && typeof config.administrative === 'object'
-          ? { ...current.administrative, ...config.administrative }
-          : current.administrative,
-        medicalProvider: config.medicalProvider && typeof config.medicalProvider === 'object'
-          ? { ...current.medicalProvider, ...config.medicalProvider }
-          : current.medicalProvider,
-        footwearProvider: config.footwearProvider && typeof config.footwearProvider === 'object'
-          ? { ...current.footwearProvider, ...config.footwearProvider }
-          : current.footwearProvider,
-        trainingProvider: config.trainingProvider && typeof config.trainingProvider === 'object'
-          ? { ...current.trainingProvider, ...config.trainingProvider }
-          : current.trainingProvider,
       } : {
         savedObras: Array.isArray(config.obras) ? config.obras : [],
         savedLugares: Array.isArray(config.lugares) ? config.lugares : [],

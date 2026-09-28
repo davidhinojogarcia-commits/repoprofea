@@ -146,12 +146,12 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   workDate: string;
   category?: string;
   periodKey: string;
-  gmailMessageId: string;
-  gmailThreadId: string;
-  rfcMessageId?: string;
-  emailFrom: string;
-  emailSubject: string;
-  attachmentName: string;
+  gmailMessageId?: string | null;
+  gmailThreadId?: string | null;
+  rfcMessageId?: string | null;
+  emailFrom?: string | null;
+  emailSubject?: string | null;
+  attachmentName?: string | null;
 }) {
   return supabase.rpc('prepare_foreman_mandatory_from_email', {
     p_document_type: input.documentType,
@@ -159,12 +159,12 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     p_work_date: input.workDate,
     p_category: input.category || '',
     p_period_key: input.periodKey,
-    p_gmail_message_id: input.gmailMessageId,
-    p_gmail_thread_id: input.gmailThreadId,
-    p_rfc_message_id: input.rfcMessageId || '',
-    p_email_from: input.emailFrom,
-    p_email_subject: input.emailSubject,
-    p_attachment_name: input.attachmentName,
+    p_gmail_message_id: input.gmailMessageId || null,
+    p_gmail_thread_id: input.gmailThreadId || null,
+    p_rfc_message_id: input.rfcMessageId || null,
+    p_email_from: input.emailFrom || null,
+    p_email_subject: input.emailSubject || null,
+    p_attachment_name: input.attachmentName || null,
   });
 }
 
@@ -172,5 +172,13 @@ export async function markMandatoryDocumentReturned(id: string, gmailMessageId: 
   await supabase.rpc('mark_foreman_mandatory_returned', {
     p_id: id,
     p_gmail_message_id: gmailMessageId,
+  });
+}
+
+
+export async function finalizeForemanMandatoryDocument(token: string, documentId: string) {
+  return supabase.rpc('finalize_foreman_mandatory_document', {
+    p_token: token,
+    p_document_id: documentId,
   });
 }
