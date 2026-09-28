@@ -66,27 +66,125 @@ const periodKeyFor = (filename: string, workDate: string) => {
   return `${year}-${String(month).padStart(2, '0')}-${q}`;
 };
 
+const NAME_STOPWORDS = new Set(['DEL','LOS','LAS','MARIA','JOSE','DE','LA','EL','Y']);
+
 const nameWords = (name: string) =>
-  norm(name).split(' ').filter(word => word.length >= 3 && !['DEL','LOS','LAS','MARIA','JOSE'].includes(word));
+  norm(name).split(' ').filter(word => word.length >= 3 && !NAME_STOPWORDS.has(word));
+
+const editDistanceAtMostOne = (a: string, b: string) => {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  if (a.length > b.length) [a,b] = [b,a];
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i += 1; j += 1; continue; }
+    edits += 1;
+    if (edits > 1) return false;
+    if (a.length === b.length) { i += 1; j += 1; }
+    else j += 1;
+  }
+  if (j < b.length) edits += 1;
+  return edits <= 1;
+};
+
+const categoryWords = (value: string) =>
+  norm(value)
+    .replace(/\b(OF|OFICIAL|PEON|PEON[A-Z]*|PRIMERA|SEGUNDA|1O|1A|2O|2A)\b/g, ' ')
+    .split(' ')
+    .filter(word => word.length >= 4);
+
+const categorySimilarity = (a: string, b: string) => {
+  const left = categoryWords(a);
+  const right = categoryWords(b);
+  if (!left.length || !right.length) return 0;
+  const hits = left.filter(word => right.some(other =>
+    other === word ||
+    (word.length >= 5 && other.length >= 5 && editDistanceAtMostOne(word, other))
+  )).length;
+  return hits / Math.max(1, Math.min(left.length, right.length));
+};
 
 const matchWorkers = (workers: Person[], text: string, category: string) => {
   const normalized = norm(text);
   const compactText = compact(text);
+  const textTokens = normalized.split(' ').filter(Boolean);
   const categoryNorm = norm(category);
-  return workers.filter(worker => {
-    if (categoryNorm && norm(worker.categoria) && norm(worker.categoria) !== categoryNorm) {
-      // En documentos de inicio la categoría es una pista fuerte, pero se permite
-      // continuar si el DNI aparece expresamente.
+
+  return workers
+    .map(worker => {
       const dni = compact(worker.dni);
-      if (!dni || !compactText.includes(dni)) return false;
-    }
-    const dni = compact(worker.dni);
-    if (dni && dni.length >= 7 && compactText.includes(dni)) return true;
-    const words = nameWords(worker.apellidosNombre || '');
-    if (!words.length) return false;
-    const hits = words.filter(word => normalized.includes(word)).length;
-    return hits >= Math.min(2, words.length);
-  });
+      if (dni && dni.length >= 7 && compactText.includes(dni)) {
+        return { worker, score: 100 };
+      }
+
+      const words = nameWords(worker.apellidosNombre || '');
+      if (!words.length) return { worker, score: 0 };
+
+      let exactHits = 0;
+      let fuzzyHits = 0;
+      for (const word of words) {
+        if (normalized.includes(word)) {
+          exactHits += 1;
+          continue;
+        }
+        if (
+          word.length >= 5 &&
+          textTokens.some(token =>
+            token.length >= 5 &&
+            (token.startsWith(word.slice(0, 5)) ||
+              word.startsWith(token.slice(0, 5)) ||
+              editDistanceAtMostOne(word, token))
+          )
+        ) {
+          fuzzyHits += 1;
+        }
+      }
+
+      const nameScore = exactHits * 3 + fuzzyHits * 2;
+      const surnameStrong = words.slice(0, 2).filter(word =>
+        normalized.includes(word) ||
+        (word.length >= 5 && textTokens.some(token => token.length >= 5 && editDistanceAtMostOne(word, token)))
+      ).length;
+      const categoryScore = categoryNorm ? categorySimilarity(categoryNorm, worker.categoria || '') : 0;
+      const score = nameScore + surnameStrong * 2 + categoryScore * 2;
+      return { worker, score };
+    })
+    .filter(item => item.score >= 5)
+    .sort((a,b) => b.score - a.score)
+    .map(item => item.worker);
+};
+
+const extractCategoryWithFilenameFallback = (text: string, filename: string) => {
+  const fromText = extractCategory(text);
+  if (fromText) return fromText;
+  const probe = norm(filename)
+    .replace(/\.PDF\b/g, '')
+    .replace(/\b(INICIO|INCORPORACION|CONTROL|PRESENCIA|OCT|NOV|DIC|ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SEPT)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return probe;
+};
+
+const matchMandatoryWorkersWithOcrRetry = async (
+  file: File,
+  workers: Person[],
+  firstText: string,
+  type: 'inicio' | 'control_presencia',
+  onProgress?: (message: string) => void,
+) => {
+  let text = firstText;
+  let category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
+  let matched = matchWorkers(workers, text, category);
+
+  if (!matched.length) {
+    onProgress?.(`No se localizaron trabajadores en ${file.name}. Reforzando lectura…`);
+    const reinforced = await extractClientDocumentText(file, onProgress, { forceOcr: true, ocrScale: 2.4 });
+    text = reinforced.text || text;
+    category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
+    matched = matchWorkers(workers, text, category);
+  }
+
+  return { text, category, matched };
 };
 
 export type MandatoryEmailIntakeResult = {
@@ -141,10 +239,17 @@ export async function processAdministrativeMandatoryInbox(options?: {
           skippedAttachments += 1;
           continue;
         }
-        const category = type === 'inicio' ? extractCategory(extracted.text) : '';
-        const matched = matchWorkers(workers, extracted.text, category);
+        const recognition = await matchMandatoryWorkersWithOcrRetry(
+          file,
+          workers,
+          extracted.text,
+          type,
+          options?.onProgress,
+        );
+        const category = recognition.category;
+        const matched = recognition.matched;
         if (!matched.length) {
-          warnings.push(`${attachment.filename}: no se pudieron vincular trabajadores con seguridad.`);
+          warnings.push(`${attachment.filename}: no se pudieron vincular trabajadores tras la lectura reforzada. Revisa el documento o usa Editar para asignarlos manualmente.`);
           skippedAttachments += 1;
           continue;
         }
@@ -215,11 +320,18 @@ export async function processManualMandatoryFiles(
         continue;
       }
 
-      const category = type === 'inicio' ? extractCategory(extracted.text) : '';
-      const matched = matchWorkers(workers, extracted.text, category);
+      const recognition = await matchMandatoryWorkersWithOcrRetry(
+        file,
+        workers,
+        extracted.text,
+        type,
+        options?.onProgress,
+      );
+      const category = recognition.category;
+      const matched = recognition.matched;
       if (!matched.length) {
         skippedFiles += 1;
-        warnings.push(`${file.name}: no se pudieron vincular trabajadores con seguridad.`);
+        warnings.push(`${file.name}: no se pudieron vincular trabajadores tras la lectura reforzada. Revisa el documento o usa Editar para asignarlos manualmente.`);
         continue;
       }
 

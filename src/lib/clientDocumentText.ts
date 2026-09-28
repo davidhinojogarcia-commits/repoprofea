@@ -77,6 +77,7 @@ const textItemsToLines = (items: any[]) => {
 export async function extractClientDocumentText(
   file: File,
   onProgress?: (message: string) => void,
+  options: { forceOcr?: boolean; ocrScale?: number } = {},
 ): Promise<ClientExtractedDocument> {
   const lower = file.name.toLowerCase();
   const isPdf = file.type === 'application/pdf' || lower.endsWith('.pdf');
@@ -98,21 +99,31 @@ export async function extractClientDocumentText(
     }
 
     const nativeText = nativePages.join('\n\n');
-    if (normalize(nativeText).length >= 80) return { text: nativeText, source: 'pdf-native' };
+    if (!options.forceOcr && normalize(nativeText).length >= 80) {
+      return { text: nativeText, source: 'pdf-native' };
+    }
 
-    onProgress?.('PDF escaneado detectado · iniciando OCR local de respaldo…');
+    onProgress?.(
+      options.forceOcr
+        ? 'Reforzando reconocimiento del PDF con OCR de alta resolución…'
+        : 'PDF escaneado detectado · iniciando OCR local de respaldo…',
+    );
     const worker = await createWorker('spa');
     try {
       const ocrPages: string[] = [];
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         onProgress?.(`OCR local · página ${pageNumber}/${pdf.numPages}…`);
         const page = await pdf.getPage(pageNumber);
-        const canvas = await canvasForPage(page, 1.8);
+        const canvas = await canvasForPage(page, options.ocrScale || (options.forceOcr ? 2.4 : 1.8));
         const result = await worker.recognize(canvas);
         const text = String(result?.data?.text || '').trim();
         if (text) ocrPages.push(`[PÁGINA ${pageNumber}]\n${text}`);
       }
-      return { text: ocrPages.join('\n\n'), source: ocrPages.length ? 'pdf-local-ocr' : 'none' };
+      const ocrText = ocrPages.join('\n\n');
+      const combined = options.forceOcr && nativeText
+        ? `${nativeText}\n\n[LECTURA OCR REFORZADA]\n${ocrText}`
+        : ocrText;
+      return { text: combined, source: ocrPages.length ? 'pdf-local-ocr' : (nativeText ? 'pdf-native' : 'none') };
     } finally {
       await worker.terminate();
     }
