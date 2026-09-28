@@ -279,3 +279,222 @@ grant execute on function public.revoke_foreman_portal_access(text) to authentic
 grant execute on function public.resolve_foreman_portal(text) to anon, authenticated;
 grant execute on function public.save_foreman_attendance(text,date,jsonb,text) to anon, authenticated;
 grant execute on function public.submit_foreman_document(text,text,date,bigint,jsonb,jsonb) to anon, authenticated;
+
+
+create table if not exists public.foreman_mandatory_documents (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  obra text not null,
+  period_key text not null,
+  work_date date not null,
+  document_type text not null check (document_type in ('inicio','control_presencia')),
+  category text not null default '',
+  workers jsonb not null default '[]'::jsonb,
+  signatures jsonb not null default '{}'::jsonb,
+  status text not null default 'pending' check (status in ('pending','in_progress','completed','reviewed')),
+  completed_at timestamptz,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists foreman_mandatory_document_unique_idx
+  on public.foreman_mandatory_documents(owner_id, obra, period_key, document_type, category);
+create index if not exists foreman_mandatory_documents_owner_date_idx
+  on public.foreman_mandatory_documents(owner_id, work_date desc);
+
+alter table public.foreman_mandatory_documents enable row level security;
+
+drop policy if exists foreman_mandatory_owner_all on public.foreman_mandatory_documents;
+create policy foreman_mandatory_owner_all on public.foreman_mandatory_documents
+  for all to authenticated
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+grant select,insert,update,delete on public.foreman_mandatory_documents to authenticated;
+
+create or replace function public.prepare_foreman_mandatory_documents(p_workers jsonb)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item jsonb;
+  v_owner uuid := auth.uid();
+  v_obra text;
+  v_category text;
+  v_start date;
+  v_period text;
+  v_created integer := 0;
+  v_new_ids bigint[];
+  v_workers jsonb;
+begin
+  if v_owner is null then raise exception 'Authentication required'; end if;
+  if jsonb_typeof(p_workers) <> 'array' then return 0; end if;
+
+  for v_item in select value from jsonb_array_elements(p_workers)
+  loop
+    v_obra := trim(coalesce(v_item->>'obra',''));
+    v_category := trim(coalesce(v_item->>'categoria',''));
+    begin v_start := nullif(v_item->>'periodoInicio','')::date; exception when others then v_start := current_date; end;
+    v_start := coalesce(v_start,current_date);
+    v_period := trim(coalesce(v_item->>'quincena',''));
+    if v_period = '' then v_period := to_char(v_start,'YYYY-MM-DD'); end if;
+    if v_obra = '' then continue; end if;
+
+    -- INICIO: solo personas de la importación que comienzan en este periodo,
+    -- agrupadas por obra + fecha de inicio + categoría.
+    select array_agg((x->>'id')::bigint)
+      into v_new_ids
+      from jsonb_array_elements(p_workers) x
+     where trim(coalesce(x->>'obra','')) = v_obra
+       and trim(coalesce(x->>'categoria','')) = v_category
+       and coalesce(nullif(x->>'periodoInicio','')::date,current_date) = v_start;
+
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,
+      'categoria',t.categoria,'obra',t.obra,'numOferta',t.num_oferta,
+      'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin
+    ) order by t.apellidos_nombre),'[]'::jsonb)
+      into v_workers
+      from public.trabajadores t
+     where t.owner_id=v_owner and t.id = any(coalesce(v_new_ids,'{}'::bigint[]));
+
+    if jsonb_array_length(v_workers) > 0 then
+      insert into public.foreman_mandatory_documents(owner_id,obra,period_key,work_date,document_type,category,workers,updated_at)
+      values(v_owner,v_obra,v_period||':'||to_char(v_start,'YYYY-MM-DD'),v_start,'inicio',v_category,v_workers,now())
+      on conflict(owner_id,obra,period_key,document_type,category) do update
+        set workers=excluded.workers, updated_at=now(),
+            status=case when public.foreman_mandatory_documents.status='reviewed' then 'reviewed' else public.foreman_mandatory_documents.status end;
+      v_created := v_created + 1;
+    end if;
+
+    -- CONTROL DE PRESENCIA: todos los trabajadores activos en la obra al inicio
+    -- del periodo, incluidos los que ya venían de periodos anteriores.
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,
+      'categoria',t.categoria,'obra',t.obra,'numOferta',t.num_oferta,
+      'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin
+    ) order by t.apellidos_nombre),'[]'::jsonb)
+      into v_workers
+      from public.trabajadores t
+     where t.owner_id=v_owner
+       and lower(t.obra)=lower(v_obra)
+       and (nullif(t.periodo_inicio,'') is null or nullif(t.periodo_inicio,'')::date <= v_start)
+       and (nullif(t.periodo_fin,'') is null or nullif(t.periodo_fin,'')::date >= v_start);
+
+    if jsonb_array_length(v_workers) > 0 then
+      insert into public.foreman_mandatory_documents(owner_id,obra,period_key,work_date,document_type,category,workers,updated_at)
+      values(v_owner,v_obra,v_period||':'||to_char(v_start,'YYYY-MM-DD'),v_start,'control_presencia','',v_workers,now())
+      on conflict(owner_id,obra,period_key,document_type,category) do update
+        set workers=excluded.workers, updated_at=now();
+      v_created := v_created + 1;
+    end if;
+  end loop;
+  return v_created;
+end;
+$$;
+
+create or replace function public.resolve_foreman_portal(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_access public.foreman_portal_access%rowtype;
+  v_hash text;
+begin
+  v_hash := encode(digest(trim(coalesce(p_token,'')), 'sha256'), 'hex');
+  select * into v_access
+    from public.foreman_portal_access
+   where token_hash=v_hash and active=true
+   limit 1;
+  if not found then return jsonb_build_object('valid',false); end if;
+
+  update public.foreman_portal_access set last_used_at=now() where id=v_access.id;
+
+  return jsonb_build_object(
+    'valid', true,
+    'obra', v_access.obra,
+    'foremanName', v_access.foreman_name,
+    'workers', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,
+        'obra',t.obra,'numOferta',t.num_oferta,'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin,'telefono',t.telefono
+      ) order by t.apellidos_nombre)
+      from public.trabajadores t where t.owner_id=v_access.owner_id and lower(t.obra)=lower(v_access.obra)
+    ), '[]'::jsonb),
+    'attendance', coalesce((
+      select jsonb_agg(jsonb_build_object('id',a.id,'workDate',a.work_date,'rows',a.rows,'status',a.status,'completedAt',a.completed_at,'updatedAt',a.updated_at) order by a.work_date desc)
+      from public.foreman_attendance_days a
+      where a.owner_id=v_access.owner_id and lower(a.obra)=lower(v_access.obra) and a.work_date >= current_date - 31
+    ), '[]'::jsonb),
+    'documents', coalesce((
+      select jsonb_agg(jsonb_build_object('id',d.id,'workDate',d.work_date,'documentType',d.document_type,'workerId',d.worker_id,'workerSnapshot',d.worker_snapshot,'answers',d.answers,'signatures',d.signatures,'status',d.status,'completedAt',d.completed_at) order by d.created_at desc)
+      from public.foreman_documents d
+      where d.owner_id=v_access.owner_id and lower(d.obra)=lower(v_access.obra) and d.created_at >= now() - interval '90 days'
+    ), '[]'::jsonb),
+    'mandatoryDocuments', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id',m.id,'workDate',m.work_date,'periodKey',m.period_key,'documentType',m.document_type,
+        'category',m.category,'workers',m.workers,'signatures',m.signatures,'status',m.status,'completedAt',m.completed_at
+      ) order by m.work_date desc,m.document_type,m.category)
+      from public.foreman_mandatory_documents m
+      where m.owner_id=v_access.owner_id and lower(m.obra)=lower(v_access.obra)
+        and m.work_date >= current_date - 62
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+create or replace function public.sign_foreman_mandatory_document(
+  p_token text,
+  p_document_id uuid,
+  p_worker_id bigint,
+  p_signature text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_access public.foreman_portal_access%rowtype;
+  v_doc public.foreman_mandatory_documents%rowtype;
+  v_hash text;
+  v_signatures jsonb;
+  v_total integer;
+  v_signed integer;
+begin
+  v_hash := encode(digest(trim(coalesce(p_token,'')), 'sha256'), 'hex');
+  select * into v_access from public.foreman_portal_access where token_hash=v_hash and active=true limit 1;
+  if not found then raise exception 'Acceso no válido o revocado'; end if;
+  select * into v_doc from public.foreman_mandatory_documents
+   where id=p_document_id and owner_id=v_access.owner_id and lower(obra)=lower(v_access.obra);
+  if not found then raise exception 'Documento no válido'; end if;
+  if not exists(select 1 from jsonb_array_elements(v_doc.workers) w where (w->>'id')::bigint=p_worker_id) then
+    raise exception 'Trabajador no incluido en el documento';
+  end if;
+
+  v_signatures := coalesce(v_doc.signatures,'{}'::jsonb) || jsonb_build_object(
+    p_worker_id::text, jsonb_build_object('signature',p_signature,'signedAt',now())
+  );
+  select count(*) into v_total from jsonb_array_elements(v_doc.workers);
+  select count(*) into v_signed from jsonb_each(v_signatures);
+
+  update public.foreman_mandatory_documents
+     set signatures=v_signatures,
+         status=case when v_signed>=v_total and v_total>0 then 'completed' else 'in_progress' end,
+         completed_at=case when v_signed>=v_total and v_total>0 then coalesce(completed_at,now()) else null end,
+         updated_at=now()
+   where id=v_doc.id;
+
+  return jsonb_build_object('ok',true,'signed',v_signed,'total',v_total,'completed',v_signed>=v_total and v_total>0);
+end;
+$$;
+
+revoke all on function public.prepare_foreman_mandatory_documents(jsonb) from public;
+grant execute on function public.prepare_foreman_mandatory_documents(jsonb) to authenticated;
+grant execute on function public.sign_foreman_mandatory_document(text,uuid,bigint,text) to anon,authenticated;
