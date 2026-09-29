@@ -49,9 +49,9 @@ begin
    where t.owner_id=v_owner
      and lower(coalesce(t.obra,''))=lower(v_obra);
 
-  select coalesce(jsonb_agg(value order by ord),'[]'::jsonb)
+  select coalesce(jsonb_agg(worker_id order by ord),'[]'::jsonb)
     into v_imported_ids
-    from unnest(v_valid_worker_ids) with ordinality values(value,ord);
+    from unnest(v_valid_worker_ids) with ordinality ids2(worker_id,ord);
 
   select * into v_existing
   from public.foreman_mandatory_documents
@@ -161,13 +161,24 @@ begin
     raise exception 'Metadatos de posiciones no válidos';
   end if;
 
-  if jsonb_object_length(coalesce(v_doc.signatures,'{}'::jsonb))>0 and exists(
-    select 1 from public.foreman_mandatory_pdf_files f
-    where f.document_id=p_document_id
-      and f.owner_id=v_owner
-      and coalesce(f.original_sha256,'')<>coalesce(p_original_sha256,'')
-  ) then
-    raise exception 'Este documento ya contiene firmas. El PDF original no puede sustituirse por otro archivo distinto';
+  if jsonb_object_length(coalesce(v_doc.signatures,'{}'::jsonb))>0 then
+    if exists(
+      select 1 from public.foreman_mandatory_pdf_files f
+      where f.document_id=p_document_id
+        and f.owner_id=v_owner
+        and coalesce(f.original_sha256,'')<>coalesce(p_original_sha256,'')
+    ) then
+      raise exception 'Este documento ya contiene firmas. El PDF original no puede sustituirse por otro archivo distinto';
+    end if;
+
+    if exists(
+      select 1 from public.foreman_mandatory_pdf_files f
+      where f.document_id=p_document_id
+        and f.owner_id=v_owner
+        and coalesce(f.original_sha256,'')=coalesce(p_original_sha256,'')
+    ) then
+      return jsonb_build_object('ok',true,'preserved',true,'message','El mismo PDF original ya estaba almacenado; se conservan sus firmas y posiciones.');
+    end if;
   end if;
 
   select count(*) into v_unresolved
