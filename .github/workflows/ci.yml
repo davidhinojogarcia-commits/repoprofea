@@ -88,7 +88,7 @@ jobs:
           grep -q '"name": "PFEA Encargados"' /tmp/profea-foreman-manifest.json
           test -s /tmp/profea-foreman.html
           grep -q 'CACHE_NAME' /tmp/profea-service-worker.js
-          if grep -E 'vendor-(pdf-export|pdf-viewer|spreadsheets|ocr|charts)' dist/index.html; then
+          if grep -E 'vendor-(pdf-export|pdf-viewer|spreadsheets|ocr|charts|motion)' dist/index.html; then
             echo 'Heavy optional vendor bundle is being eagerly preloaded from the initial page.'
             exit 1
           fi
