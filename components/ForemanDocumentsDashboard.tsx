@@ -527,6 +527,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         workers: selectedWorkers,
         signatures: editingMandatory.signatures || {},
         status: editingMandatory.status,
+        details: editingMandatory.details || {},
       });
       setMailMessage(`${mandatoryDocumentLabel(editingMandatory.document_type)} actualizado correctamente.`);
       setEditingMandatory(null);
