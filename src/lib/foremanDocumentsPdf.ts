@@ -166,6 +166,10 @@ export function generateForemanMandatoryDocumentPdf(
     return generateMachineryAuthorizationPdf(record.workers || [], context);
   }
 
+  if (record.details?.originalPdfMode === 'overlay' && ['inicio','control_presencia'].includes(record.documentType)) {
+    throw new Error('Este documento conserva el PDF original y no puede reconstruirse. Usa la copia Original/Firmado almacenada.');
+  }
+
   if (record.documentType === 'control_presencia') {
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     renderInstitutionalReportHeader(
