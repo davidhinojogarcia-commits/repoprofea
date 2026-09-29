@@ -284,6 +284,16 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     p_attachment_name: input.attachmentName || null,
   });
   const documentId = String(id || '').trim();
+  if (documentId && input.sourcePdfBase64) {
+    await supabase.rpc('save_foreman_mandatory_original_pdf', {
+      p_document_id: documentId,
+      p_pdf_base64: input.sourcePdfBase64,
+      p_filename: input.attachmentName || '',
+      p_original_sha256: input.sourcePdfSha256 || '',
+      p_page_meta: input.pageMeta || [],
+      p_worker_anchors: input.workerAnchors || [],
+    });
+  }
   if (documentId) {
     const currentRows = await supabase.query('foreman_mandatory_documents', {
       query: 'id=eq.' + encodeURIComponent(documentId) + '&select=details&limit=1',
@@ -307,16 +317,6 @@ export async function prepareMandatoryDocumentFromEmail(input: {
         },
         updated_at: new Date().toISOString(),
       },
-    });
-  }
-  if (documentId && input.sourcePdfBase64) {
-    await supabase.rpc('save_foreman_mandatory_original_pdf', {
-      p_document_id: documentId,
-      p_pdf_base64: input.sourcePdfBase64,
-      p_filename: input.attachmentName || '',
-      p_original_sha256: input.sourcePdfSha256 || '',
-      p_page_meta: input.pageMeta || [],
-      p_worker_anchors: input.workerAnchors || [],
     });
   }
   return id;
