@@ -696,10 +696,14 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     {anchorEditing&&<React.Suspense fallback={null}><MandatoryPdfAnchorEditor
       documentId={anchorEditing.id}
       title={`${mandatoryDocumentLabel(anchorEditing.document_type)} · ${anchorEditing.obra}`}
+      obra={anchorEditing.obra}
       anchors={(Array.isArray(anchorEditing.details?.workerAnchors)?anchorEditing.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
       onCancel={()=>setAnchorEditing(null)}
       onSave={async anchors=>{
         const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
+        const importedWorkerIds=anchors
+          .map(anchor=>Number(anchor.workerId))
+          .filter((id,index,list)=>Number.isFinite(id)&&id>0&&list.indexOf(id)===index);
         await supabase.query('foreman_mandatory_documents',{
           method:'PATCH',
           query:'id=eq.'+encodeURIComponent(anchorEditing.id),
@@ -707,6 +711,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             details:{
               ...(anchorEditing.details||{}),
               workerAnchors:anchors,
+              importedWorkerIds,
               unresolvedAnchorCount:unresolved,
             },
             updated_at:new Date().toISOString(),
