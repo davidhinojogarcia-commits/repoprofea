@@ -110,7 +110,15 @@ const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimien
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
-const foremanToken = initialSearchParams.get('encargado')?.trim() || '';
+const FOREMAN_DEVICE_TOKEN_KEY = 'pfea_foreman_device_token_v1';
+const foremanTokenFromUrl = initialSearchParams.get('encargado')?.trim() || '';
+if (foremanTokenFromUrl) {
+  try { localStorage.setItem(FOREMAN_DEVICE_TOKEN_KEY, foremanTokenFromUrl); } catch {}
+}
+const isForemanAppRoute = window.location.pathname === '/encargados' || window.location.pathname === '/encargados/';
+const foremanToken = foremanTokenFromUrl || (isForemanAppRoute ? (() => {
+  try { return localStorage.getItem(FOREMAN_DEVICE_TOKEN_KEY)?.trim() || ''; } catch { return ''; }
+})() : '');
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
