@@ -175,6 +175,10 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       const interactiveFollowUps = followUps.length
         ? followUps
         : ['¿Cuál es el siguiente paso?', 'Explícame qué debo comprobar ahora', 'Tengo otra duda sobre este proceso'];
+      const checkQuestion = String(data?.checkQuestion || '').trim();
+      const checkOptions = Array.isArray(data?.checkOptions)
+        ? data.checkOptions.map((value: unknown) => String(value || '').trim()).filter(Boolean).slice(0, 4)
+        : [];
       const nextTask: TutorTaskState = {
         title: String(data?.taskTitle || '').trim(),
         currentStep: Math.max(0, Number(data?.currentStep) || 0),
@@ -193,6 +197,8 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         suggestedLabel: data?.suggestedLabel || undefined,
         followUps: interactiveFollowUps,
         progressHint: String(data?.progressHint || '').trim() || undefined,
+        checkQuestion: checkQuestion || undefined,
+        checkOptions,
       }]);
     } catch (error) {
       console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
@@ -213,6 +219,8 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         suggestedView: fallback.view,
         suggestedLabel: fallback.view ? PROFEA_TUTOR_VIEW_LABELS[fallback.view] : undefined,
         followUps: ['¿Cuál es el siguiente paso?', 'Explícamelo más despacio', 'Tengo otra duda sobre esto'],
+        checkQuestion: '¿Has podido hacer el paso que te indiqué?',
+        checkOptions: ['Sí, ya está', 'No lo encuentro', 'Me da un error'],
       }]);
     } finally {
       setBusy(false);
