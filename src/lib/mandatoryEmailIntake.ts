@@ -9,6 +9,7 @@ import {
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getDocuments } from '../services/databaseService';
 import { prepareMandatoryDocumentFromEmail } from '../services/foremanPortalService';
+import { analyzeMandatoryOriginalPdf, fileToBase64, sha256Hex } from './mandatoryPdfOverlay';
 
 const norm = (value: unknown) =>
   String(value || '')
@@ -287,9 +288,15 @@ export async function processAdministrativeMandatoryInbox(options?: {
         const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
         const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
         const workDate = extractDate(extracted.text, message.internalDate);
+        const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress);
+        const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
+        const orderedSelected = analysis.orderedWorkerIds
+          .map(id => selectedById.get(Number(id)))
+          .filter((worker): worker is Person => Boolean(worker));
+        const sourceBytes = new Uint8Array(await file.arrayBuffer());
         await prepareMandatoryDocumentFromEmail({
           documentType: type,
-          workerIds: selected.map(worker => Number(worker.id)).filter(Number.isFinite),
+          workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
           workDate,
           category,
           periodKey: periodKeyFor(attachment.filename, workDate),
@@ -299,7 +306,11 @@ export async function processAdministrativeMandatoryInbox(options?: {
           emailFrom: administrativeEmail,
           emailSubject: message.subject,
           attachmentName: attachment.filename,
-          sourceText: stripRecognizedWorkerLines(recognition.text, selected),
+          sourceText: recognition.text,
+          sourcePdfBase64: await fileToBase64(file),
+          sourcePdfSha256: await sha256Hex(sourceBytes),
+          pageMeta: analysis.pages,
+          workerAnchors: analysis.anchors,
         });
         importedDocuments += 1;
         existing.add(key);
@@ -368,10 +379,16 @@ export async function processManualMandatoryFiles(
       const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
       const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
       const workDate = extractDate(extracted.text);
+      const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress);
+      const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
+      const orderedSelected = analysis.orderedWorkerIds
+        .map(id => selectedById.get(Number(id)))
+        .filter((worker): worker is Person => Boolean(worker));
+      const sourceBytes = new Uint8Array(await file.arrayBuffer());
 
       await prepareMandatoryDocumentFromEmail({
         documentType: type,
-        workerIds: selected.map(worker => Number(worker.id)).filter(Number.isFinite),
+        workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
         workDate,
         category,
         periodKey: periodKeyFor(file.name, workDate),
@@ -381,7 +398,11 @@ export async function processManualMandatoryFiles(
         emailFrom: null,
         emailSubject: null,
         attachmentName: file.name,
-        sourceText: stripRecognizedWorkerLines(recognition.text, selected),
+        sourceText: recognition.text,
+        sourcePdfBase64: await fileToBase64(file),
+        sourcePdfSha256: await sha256Hex(sourceBytes),
+        pageMeta: analysis.pages,
+        workerAnchors: analysis.anchors,
       });
       importedDocuments += 1;
     } catch (error: any) {
