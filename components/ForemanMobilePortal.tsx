@@ -223,6 +223,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     });
   },[data?.workers,selectedPeriodKeys]);
   const selectedWorkerIds=useMemo(()=>new Set(documentWorkers.map(worker=>Number(worker.id))),[documentWorkers]);
+  useEffect(()=>{
+    if(workerId!=='' && !documentWorkers.some(worker=>Number(worker.id)===Number(workerId))){
+      setWorkerId('');
+    }
+  },[documentWorkers,workerId]);
   const controlRows=useMemo(()=>rows.filter(row=>selectedWorkerIds.has(Number(row.workerId))),[rows,selectedWorkerIds]);
   const periodLabel = selectedPeriodKeys.size
     ? [...selectedPeriodKeys].map(key=>key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2))).join(' + ')
@@ -320,26 +325,29 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const renderPeriodSelector=()=> <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <div className="text-sm font-black text-slate-800">Trabajadores por periodo</div>
-        <div className="text-xs text-slate-500">Puedes combinar una o varias quincenas y meses. Si no seleccionas nada, se incluyen todos.</div>
+        <div className="text-base font-black text-slate-900">1. Selecciona el periodo o periodos</div>
+        <div className="mt-1 text-sm leading-5 text-slate-600">Después aparecerán únicamente los trabajadores que pertenecen a los periodos seleccionados para que puedas comprobarlos antes de recoger las firmas.</div>
       </div>
-      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 rounded-lg border bg-white px-3 py-2 text-xs font-black">Todos</button>}
+      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black">Mostrar todos</button>}
     </div>
     {!!availableQuincenas.length&&<div>
       <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Quincenas</div>
       <div className="flex flex-wrap gap-2">
-        {availableQuincenas.map(period=>{const key='q:'+period;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`rounded-full border px-3 py-2 text-xs font-black ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>{period}</button>;})}
+        {availableQuincenas.map(period=>{const key='q:'+period;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`min-h-[50px] rounded-xl border px-4 py-3 text-sm font-black leading-tight ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-800'}`}>{period}</button>;})}
       </div>
     </div>}
     {!!availableMonths.length&&<div>
       <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Meses</div>
       <div className="flex flex-wrap gap-2">
-        {availableMonths.map(month=>{const key='m:'+month;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`rounded-full border px-3 py-2 text-xs font-black ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>{monthLabel(month)}</button>;})}
+        {availableMonths.map(month=>{const key='m:'+month;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`min-h-[50px] rounded-xl border px-4 py-3 text-sm font-black leading-tight ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-800'}`}>{monthLabel(month)}</button>;})}
       </div>
     </div>}
-    <div className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700">{documentWorkers.length} trabajador(es) seleccionado(s) · {periodLabel}</div>
+    <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+      <div className="text-base font-black text-[#00548E]">2. Comprueba los trabajadores</div>
+      <div className="mt-1 text-sm font-semibold text-slate-700">{documentWorkers.length} trabajador(es) · {periodLabel}</div>
+    </div>
     {!!documentWorkers.length&&<div className="max-h-56 overflow-y-auto rounded-xl border bg-white divide-y">
-      {documentWorkers.map(worker=><div key={worker.id} className="px-3 py-2.5">
+      {documentWorkers.map(worker=><div key={worker.id} className="px-4 py-3.5">
         <div className="text-sm font-black text-slate-800">{worker.apellidosNombre}</div>
         <div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}{worker.quincena?' · '+worker.quincena:''}</div>
       </div>)}
@@ -354,7 +362,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const closed=doc.status==='completed'||doc.status==='reviewed';
     const sourceText=String(doc.details?.sourceText||'').trim();
     const workDate=String(doc.workDate||'').slice(0,10);
-    const candidates=(data?.workers||[]).filter(worker=>{
+    const candidates=documentWorkers.filter(worker=>{
       if(signedIds.has(Number(worker.id)))return false;
       if(doc.documentType!=='control_presencia')return true;
       const startDate=String(worker.periodoInicio||'').slice(0,10);
@@ -390,7 +398,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         })}</div>}
       </div>
       {!closed&&<div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
-        <label className="text-xs font-black uppercase tracking-wide text-[#00548E]">Siguiente trabajador que va a firmar</label>
+        <label className="text-sm font-black text-[#00548E]">3. Selecciona el trabajador que va a firmar</label>
         <select value={selectedId} onChange={e=>setMandatoryWorkerChoice(current=>({...current,[doc.id]:e.target.value}))} className="mt-2 min-h-[52px] w-full rounded-xl border bg-white px-3 py-3 text-base font-semibold">
           <option value="">Seleccionar trabajador…</option>
           {candidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
@@ -501,8 +509,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
           <h2 className="font-black">Asignados por el supervisor</h2>
-          <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Se conserva la estructura y el contenido del documento importado. La relación de personal empieza vacía y cada trabajador se incorpora únicamente cuando firma.</p>
+          <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Primero selecciona el periodo o periodos y comprueba los trabajadores. Después recoge la firma de cada uno. La relación empieza vacía y cada trabajador se incorpora únicamente cuando firma.</p>
         </div>
+        {renderPeriodSelector()}
         {assignedMandatoryDocuments.map(doc=>renderSigningDocument(doc))}
         {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay Inicio ni Control de presencia pendientes para esta obra.</div>}
       </section>}
@@ -602,8 +611,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
         <div className="border-t pt-4">
           <div className="text-base font-black">Otros documentos de obra</div>
-          <p className="mt-1 text-sm text-slate-600">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Se cumplimentan con sus campos originales y usan el mismo generador PDF.</p>
+          <p className="mt-1 text-sm text-slate-600">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Selecciona primero el periodo para trabajar únicamente con el personal correspondiente.</p>
         </div>
+        {renderPeriodSelector()}
         <label className="block text-sm font-black">Documento
           <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});setCorrectionDocumentId('');}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
@@ -612,7 +622,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <label className="block text-sm font-black">Trabajador
           <select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             <option value="">Seleccionar trabajador…</option>
-            {data.workers.map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
+            {documentWorkers.map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
           </select>
         </label>
         <label className="block text-sm font-black">Fecha
