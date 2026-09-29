@@ -107,6 +107,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
   const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
+  const [mandatoryWorkerChoice,setMandatoryWorkerChoice]=useState<Record<string,string>>({});
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
   useEffect(()=>{hasDataRef.current=Boolean(data);},[data]);
@@ -346,31 +347,60 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   </div>;
 
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
+    const signedWorkers=doc.workers||[];
     const signedCount=Object.keys(doc.signatures||{}).length;
+    const signedIds=new Set(signedWorkers.map(worker=>Number(worker.id)));
     const correction=Boolean(doc.correctionPending);
     const closed=doc.status==='completed'||doc.status==='reviewed';
     const sourceText=String(doc.details?.sourceText||'').trim();
+    const workDate=String(doc.workDate||'').slice(0,10);
+    const candidates=(data?.workers||[]).filter(worker=>{
+      if(signedIds.has(Number(worker.id)))return false;
+      if(doc.documentType!=='control_presencia')return true;
+      const startDate=String(worker.periodoInicio||'').slice(0,10);
+      const endDate=String(worker.periodoFin||'').slice(0,10);
+      return (!startDate||startDate<=workDate)&&(!endDate||endDate>=workDate);
+    });
+    const selectedId=mandatoryWorkerChoice[doc.id]||'';
+    const selectedCandidate=candidates.find(worker=>String(worker.id)===selectedId);
     return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
           <div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}{doc.details?.periodoLabel?' · '+String(doc.details.periodoLabel):''}</div>
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount} firma(s)</span>
       </div>
       {sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
-        <summary className="cursor-pointer text-xs font-black text-[#00548E]">Texto completo del documento importado</summary>
+        <summary className="cursor-pointer text-xs font-black text-[#00548E]">Datos del documento importado</summary>
         <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-xs leading-5 text-slate-700">{sourceText}</pre>
       </details>}
       {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
-      <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
-        const signed=Boolean((doc.signatures||{})[String(worker.id)]);
-        return <button key={worker.id} type="button" disabled={closed||(!correction&&signed)} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
-          <span><span className="block text-base font-black leading-tight">{worker.apellidosNombre}</span><span className="block mt-1 text-sm text-slate-500">{worker.dni} · {worker.categoria}</span></span>
-          <span className={`text-xs font-black ${signed&&!correction?'text-emerald-700':'text-[#00548E]'}`}>{correction?(signed?'Volver a firmar':'Firmar'):signed?'Firmado ✓':'Firmar'}</span>
-        </button>;
-      })}</div>
-      {!closed&&<button type="button" disabled={saving||signedCount!==doc.workers.length||doc.workers.length===0} onClick={async()=>{
+      <div className="mt-3 rounded-xl border bg-slate-50 p-3">
+        <div className="text-xs font-black uppercase tracking-wide text-slate-500">Trabajadores incorporados al documento</div>
+        {!signedWorkers.length&&<div className="mt-2 text-sm font-semibold text-slate-500">Ningún trabajador todavía. Se añadirá cada trabajador únicamente cuando firme.</div>}
+        {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=>{
+          const signed=Boolean((doc.signatures||{})[String(worker.id)]);
+          return <div key={worker.id} className="flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+            <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
+            {correction&&!closed
+              ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
+              : <span className="text-xs font-black text-emerald-700">{signed?'Firmado ✓':'Añadido'}</span>}
+          </div>;
+        })}</div>}
+      </div>
+      {!closed&&<div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+        <label className="text-xs font-black uppercase tracking-wide text-[#00548E]">Siguiente trabajador que va a firmar</label>
+        <select value={selectedId} onChange={e=>setMandatoryWorkerChoice(current=>({...current,[doc.id]:e.target.value}))} className="mt-2 min-h-[52px] w-full rounded-xl border bg-white px-3 py-3 text-base font-semibold">
+          <option value="">Seleccionar trabajador…</option>
+          {candidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
+        </select>
+        <button type="button" disabled={saving||!selectedCandidate} onClick={()=>{
+          if(!selectedCandidate)return;
+          setMandatorySigning({documentId:doc.id,workerId:Number(selectedCandidate.id),name:selectedCandidate.apellidosNombre});
+        }} className="mt-2 min-h-[52px] w-full rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Firmar y añadir al documento</button>
+      </div>}
+      {!closed&&<button type="button" disabled={saving||signedCount===0} onClick={async()=>{
         setSaving(true);
         try{
           await finalizeForemanMandatoryDocument(token,doc.id);
@@ -380,7 +410,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         }catch(e:any){setError(e?.message||'No se pudo finalizar el documento.');}
         finally{setSaving(false);}
       }} className="mt-4 min-h-[56px] w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500">
-        {signedCount===doc.workers.length&&doc.workers.length>0?'Finalizar y enviar al supervisor':`Faltan ${Math.max(0,doc.workers.length-signedCount)} firma(s)`}
+        {signedCount>0?'Finalizar y enviar al supervisor':'Debe firmar al menos un trabajador'}
       </button>}
       {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
     </div>;
@@ -639,6 +669,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     </main>
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
-    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);setData(previous=>previous?{...previous,mandatoryDocuments:previous.mandatoryDocuments.map(item=>item.id===current.documentId?{...item,signatures:{...(item.signatures||{}),[String(current.workerId)]:'signed'},status:item.status==='pending'?'in_progress':item.status}:item)}:previous);setError('');}catch(e:any){setError(e?.message||'No se pudo guardar la firma.');}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>}
+    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;const workerSnapshot=(data?.workers||[]).find(worker=>Number(worker.id)===Number(current.workerId));setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);setData(previous=>previous?{...previous,mandatoryDocuments:previous.mandatoryDocuments.map(item=>{if(item.id!==current.documentId)return item;const alreadyIncluded=(item.workers||[]).some(worker=>Number(worker.id)===Number(current.workerId));return {...item,workers:alreadyIncluded||!workerSnapshot?(item.workers||[]):[...(item.workers||[]),workerSnapshot],signatures:{...(item.signatures||{}),[String(current.workerId)]:'signed'},status:item.status==='pending'?'in_progress':item.status};})}:previous);setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));setError('');}catch(e:any){setError(e?.message||'No se pudo guardar la firma.');}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>} 
   </div>;
 };
