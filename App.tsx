@@ -2226,15 +2226,7 @@ function App() {
           window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view } }));
         }}
       />
-      
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-[100] px-6 py-4 rounded-2xl shadow-xl flex items-center gap-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${
-          toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-        }`}>
-          {toast.type === 'success' ? <CheckCircle className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
-          <span className="font-medium">{toast.message}</span>
-        </div>
-      )}
+
 
       <div className="profea-main-shell relative z-10 flex-1 transition-all duration-300 min-w-0">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-8 pb-12">
@@ -2659,7 +2651,7 @@ function App() {
           {/* Persistencia directa en Supabase */}
 
           {toast && (
-            <div aria-live="polite" role="status" className={`fixed top-5 right-5 z-[200] max-w-sm rounded-xl px-4 py-3 shadow-xl border text-sm font-semibold ${toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/40 dark:border-green-900 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'}`}>
+            <div aria-live="polite" role="status" className={`fixed top-[max(1rem,env(safe-area-inset-top))] left-3 right-3 sm:left-auto sm:right-5 z-[22000] sm:max-w-sm rounded-2xl px-4 py-3 shadow-2xl border text-sm font-semibold pointer-events-auto ${toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/40 dark:border-green-900 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'}`}>
               {toast.type === 'success' ? '✓' : '✕'} {toast.message}
             </div>
           )}
