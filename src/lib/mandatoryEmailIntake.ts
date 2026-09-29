@@ -378,7 +378,7 @@ export async function processManualMandatoryFiles(
         if (work) counts.set(work, (counts.get(work) || 0) + 1);
       }
       const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-      const obra = obraHint || inferredObra;
+      const obra = inferredObra || obraHint;
       const selected = obra ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase()) : matched;
       const workDate = extractDate(extracted.text);
       const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
