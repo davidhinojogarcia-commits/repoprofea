@@ -1,26 +1,44 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { getSupervisorMandatoryPdf } from '../src/services/foremanPortalService';
+import { supabase } from '../src/lib/supabase';
 import { base64ToBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 
 type Props = {
   documentId: string;
   title: string;
+  obra: string;
   anchors: MandatoryWorkerAnchor[];
   onCancel: () => void;
   onSave: (anchors: MandatoryWorkerAnchor[]) => Promise<void> | void;
 };
 
-export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, anchors, onCancel, onSave }) => {
+export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, anchors, onCancel, onSave }) => {
   const [draft,setDraft]=useState<MandatoryWorkerAnchor[]>(()=>anchors.map(anchor=>({...anchor})));
   const [index,setIndex]=useState(0);
   const [pdf,setPdf]=useState<any>(null);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
+  const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const viewportRef=useRef<any>(null);
   const current=draft[index]||null;
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        const rows=await supabase.query('trabajadores',{
+          query:`obra=eq.${encodeURIComponent(obra)}&select=id,apellidos_nombre,dni,categoria&order=apellidos_nombre.asc&limit=2000`,
+        });
+        if(!cancelled)setAvailableWorkers(Array.isArray(rows)?rows:[]);
+      }catch(e:any){
+        if(!cancelled)setError(e?.message||'No se pudo cargar la relación de trabajadores de la obra.');
+      }
+    })();
+    return()=>{cancelled=true;};
+  },[obra]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -99,6 +117,56 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, a
     setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,page:Math.max(1,Math.min(pageCount,value)),resolved:false}:anchor));
   };
 
+  const assignCurrentWorker=(workerId:number)=>{
+    const worker=availableWorkers.find(row=>Number(row.id)===Number(workerId));
+    if(!worker||!current)return;
+    const duplicate=draft.some((anchor,i)=>i!==index&&Number(anchor.workerId)===Number(worker.id));
+    if(duplicate){
+      setError('Ese trabajador ya está asociado a otra línea del documento.');
+      return;
+    }
+    setError('');
+    setDraft(list=>list.map((anchor,i)=>i===index?{
+      ...anchor,
+      workerId:Number(worker.id),
+      workerName:String(worker.apellidos_nombre||''),
+      dni:String(worker.dni||''),
+      resolved:Boolean(anchor.signatureX!=null&&anchor.signatureY!=null&&anchor.signatureWidth&&anchor.signatureHeight),
+      reason:anchor.signatureX!=null&&anchor.signatureY!=null
+        ? 'Identidad confirmada por el supervisor.'
+        : 'Identidad confirmada; falta indicar la zona de firma.',
+    }:anchor));
+  };
+
+  const addManualWorker=()=>{
+    const used=new Set(draft.map(anchor=>Number(anchor.workerId)));
+    const worker=availableWorkers.find(row=>!used.has(Number(row.id)));
+    if(!worker){
+      setError('No hay más trabajadores disponibles en esta obra para añadir.');
+      return;
+    }
+    const next:MandatoryWorkerAnchor={
+      workerId:Number(worker.id),
+      workerName:String(worker.apellidos_nombre||''),
+      dni:String(worker.dni||''),
+      page:1,
+      order:draft.length,
+      nameX:null,
+      nameY:null,
+      rowHeight:null,
+      signatureX:null,
+      signatureY:null,
+      signatureWidth:110,
+      signatureHeight:32,
+      confidence:0,
+      resolved:false,
+      reason:'Trabajador añadido manualmente: selecciona su página y toca la zona de firma.',
+    };
+    setDraft(list=>[...list,next]);
+    setIndex(draft.length);
+    setError('');
+  };
+
   const handleCanvasClick=(event:React.MouseEvent<HTMLCanvasElement>)=>{
     if(!current||!viewportRef.current||!canvasRef.current)return;
     const canvas=canvasRef.current;
@@ -142,8 +210,19 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, a
             <div className="text-xs font-black uppercase text-slate-500">Trabajador {index+1} de {draft.length}</div>
             <div className="mt-1 text-base font-black">{current?.workerName||'Sin identificar'}</div>
             <div className="text-sm text-slate-600">{current?.dni||''}</div>
-            <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700':'text-amber-700'}`}>{current?.resolved?'✓ Posición confirmada':'Posición pendiente'}</div>
+            <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700':'text-amber-700'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
           </div>
+
+          <label className="mt-4 block text-sm font-black">Trabajador asociado a esta línea
+            <select
+              value={current&&current.workerId>0?String(current.workerId):''}
+              onChange={event=>assignCurrentWorker(Number(event.target.value))}
+              className="mt-2 min-h-[48px] w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold"
+            >
+              <option value="">Seleccionar trabajador…</option>
+              {availableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
+            </select>
+          </label>
 
           <label className="mt-4 block text-sm font-black">Página
             <div className="mt-2 flex items-center gap-2">
@@ -157,6 +236,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, a
             <button type="button" disabled={index<=0} onClick={()=>setIndex(i=>Math.max(0,i-1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Anterior</button>
             <button type="button" disabled={index>=draft.length-1} onClick={()=>setIndex(i=>Math.min(draft.length-1,i+1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Siguiente</button>
           </div>
+          <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E]">Añadir trabajador no detectado</button>
 
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700">
             El recuadro azul marca la única zona donde se superpondrá la firma. El PDF original no se mueve ni se rediseña.
