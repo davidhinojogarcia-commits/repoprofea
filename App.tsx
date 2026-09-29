@@ -12,6 +12,7 @@ import { Header } from './components/Header';
 import { useAuthShell } from './components/AuthGate';
 import { GuidedHome } from './components/GuidedHome';
 import { PrintHeader } from './components/PrintHeader';
+import { ProfeaTutor } from './components/ProfeaTutor';
 import { Sidebar, ViewMode } from './components/Sidebar';
 import { Stats } from './components/Stats';
 import { RegistrationForm } from './components/RegistrationForm';
@@ -2214,6 +2215,14 @@ function App() {
       />
 
       <WatermarkLogo />
+      <ProfeaTutor
+        activeView={activeView}
+        guidedMode={interfaceMode === 'guided'}
+        onNavigate={(view) => {
+          setActiveView(view);
+          window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view } }));
+        }}
+      />
       
       {toast && (
         <div className={`fixed bottom-6 right-6 z-[100] px-6 py-4 rounded-2xl shadow-xl flex items-center gap-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${

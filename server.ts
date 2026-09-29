@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
+import { PROFEA_TUTOR_KNOWLEDGE, PROFEA_TUTOR_VIEW_LABELS } from "./src/lib/profeaTutorKnowledge";
 
 // Helper to extract clean text/tables from Excel (.xlsx/.xls) and Word (.docx/.doc) buffers
 async function extractTextFromOfficeBuffer(buffer: Buffer, filename: string): Promise<string> {
@@ -245,6 +246,112 @@ async function startServer() {
     (enhancedErr as any).originalError = lastError;
     throw enhancedErr;
   };
+
+  // Context-aware help endpoint for the in-app Tutor PROFEA.
+  app.post("/api/profea-tutor", async (req, res) => {
+    try {
+      const question = String(req.body?.question || "").trim();
+      const currentView = String(req.body?.currentView || "").trim();
+      const currentViewLabel = String(req.body?.currentViewLabel || "").trim();
+      const guidedMode = Boolean(req.body?.guidedMode);
+      const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
+
+      if (!question) {
+        return res.status(400).json({ error: "Escribe una pregunta sobre el manejo de GestionProfea." });
+      }
+      if (question.length > 1800) {
+        return res.status(400).json({ error: "La pregunta es demasiado larga." });
+      }
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({ error: "Tutor temporalmente no disponible." });
+      }
+
+      const allowedViews = Object.keys(PROFEA_TUTOR_VIEW_LABELS);
+      const history = rawHistory
+        .slice(-8)
+        .map((item: any) => ({
+          role: item?.role === "assistant" ? "assistant" : "user",
+          text: String(item?.text || "").slice(0, 1600),
+        }))
+        .filter((item: any) => item.text.trim());
+
+      const prompt = `
+Eres "Tutor PROFEA", el tutor de uso integrado en GestionProfea.
+Tu única función es enseñar a supervisores a utilizar la aplicación de forma clara, segura y paso a paso.
+
+CONTEXTO ACTUAL:
+- Pantalla actual: ${currentViewLabel || currentView || "No identificada"}.
+- Vista guiada: ${guidedMode ? "Sí" : "No"}.
+- Pregunta del supervisor: ${question}
+
+CONVERSACIÓN RECIENTE:
+${history.map((item: any) => `${item.role === "assistant" ? "Tutor" : "Supervisor"}: ${item.text}`).join("\n") || "Sin conversación previa."}
+
+BASE DE CONOCIMIENTO AUTORIZADA:
+${PROFEA_TUTOR_KNOWLEDGE}
+
+INSTRUCCIONES OBLIGATORIAS:
+1. Responde solo sobre el manejo de GestionProfea / PROFEA descrito en la base de conocimiento.
+2. No inventes botones, campos, menús, automatismos ni procedimientos.
+3. Si falta información para afirmar algo, dilo claramente y ofrece el camino seguro más cercano.
+4. No pidas datos personales, DNI, datos médicos ni información sensible para explicar cómo usar la aplicación.
+5. No afirmes que has realizado cambios: eres tutor, no ejecutor.
+6. Prioriza pasos numerados cortos. Si la respuesta es sencilla, usa 2-5 pasos.
+7. Si la pregunta depende de la pantalla actual, empieza desde esa pantalla.
+8. En Vista guiada usa lenguaje especialmente sencillo.
+9. Si conviene llevar al usuario a otro módulo, devuelve suggestedView con uno de estos valores exactos:
+   ${allowedViews.join(", ")}
+   Si no hace falta cambiar de módulo, devuelve suggestedView como cadena vacía.
+10. suggestedLabel debe ser el nombre humano del módulo sugerido o cadena vacía.
+11. No uses markdown complejo; se permiten números, guiones y frases cortas.
+12. Nunca muestres ni menciones claves, variables de entorno, proveedores de modelos ni detalles técnicos internos.
+
+Devuelve exclusivamente JSON con:
+{
+  "answer": "respuesta para el supervisor",
+  "suggestedView": "id de vista o cadena vacía",
+  "suggestedLabel": "nombre del módulo o cadena vacía"
+}
+`;
+
+      const ai = getGeminiClient();
+      const response = await callGeminiWithRetry(ai, {
+        preferredModel: "gemini-flash-latest",
+        contents: prompt,
+        config: {
+          maxOutputTokens: 1800,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              answer: { type: Type.STRING },
+              suggestedView: { type: Type.STRING },
+              suggestedLabel: { type: Type.STRING },
+            },
+            required: ["answer", "suggestedView", "suggestedLabel"],
+          },
+        },
+      });
+
+      const parsed = JSON.parse(cleanJsonText(response.text || "{}"));
+      const answer = String(parsed?.answer || "").trim();
+      const suggestedView = allowedViews.includes(String(parsed?.suggestedView || ""))
+        ? String(parsed.suggestedView)
+        : "";
+      const suggestedLabel = suggestedView
+        ? String(PROFEA_TUTOR_VIEW_LABELS[suggestedView as keyof typeof PROFEA_TUTOR_VIEW_LABELS] || parsed?.suggestedLabel || "")
+        : "";
+
+      if (!answer) {
+        return res.status(502).json({ error: "El Tutor PROFEA no ha podido preparar una respuesta." });
+      }
+
+      res.json({ success: true, answer, suggestedView, suggestedLabel });
+    } catch (error: any) {
+      console.error("Error en Tutor PROFEA:", error);
+      res.status(500).json({ error: "No se pudo consultar el Tutor PROFEA en este momento." });
+    }
+  });
 
   // API endpoint to recognize and extract worker details from document pages
   app.post("/api/recognize-workers", async (req, res) => {
