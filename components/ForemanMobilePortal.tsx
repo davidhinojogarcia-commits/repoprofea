@@ -536,67 +536,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
-          <h2 className="text-lg font-black">Documentos de obra</h2>
-          <p className="mt-1 text-sm text-slate-600">Este portal utiliza directamente los mismos generadores de Documentación de obra. Inicio y Control de presencia se mantienen aparte en Asignados porque son modelos distintos.</p>
-        </div>
-
-        <div className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-4">
-          <div>
-            <div className="text-base font-black text-slate-900">Documentos principales de la obra</div>
-            <p className="mt-1 text-sm text-slate-600">Entrega de EPIs, Formación e información, Autorización de maquinaria y Control horario, con el mismo PDF que genera el supervisor.</p>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <label className="block text-sm font-black">Documento
-              <select value={coreDocType} onChange={e=>setCoreDocType(e.target.value as CoreWorksiteDocumentType)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
-                {(Object.entries(CORE_WORKSITE_DOCUMENTS) as [CoreWorksiteDocumentType,string][]).map(([key,label])=><option key={key} value={key}>{label}</option>)}
-              </select>
-            </label>
-            <label className="block text-sm font-black">Periodo
-              <select value={documentPeriod} onChange={e=>setDocumentPeriod(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
-                <option value="">Todos los trabajadores de la obra</option>
-                {availablePeriods.map(period=><option key={period} value={period}>{period}</option>)}
-              </select>
-            </label>
-          </div>
-          <label className="block text-sm font-black">Fecha del documento
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
-          </label>
-
-          {coreDocType==='epis'&&<div>
-            <div className="mb-2 text-sm font-black">EPIs incluidos</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key} className="flex items-center gap-2 rounded-xl border bg-white p-3 text-sm font-bold">
-                <input type="checkbox" checked={epiSelection[key]!==false} onChange={e=>setEpiSelection(current=>({...current,[key]:e.target.checked}))}/>
-                {label}
-              </label>)}
-            </div>
-          </div>}
-
-          {coreDocType==='formacion'&&<div className="grid sm:grid-cols-[1fr_180px] gap-3">
-            <label className="block text-sm font-black">Acción formativa / información
-              <textarea rows={4} value={trainingAction} onChange={e=>setTrainingAction(e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
-            </label>
-            <label className="block text-sm font-black">Duración
-              <input value={trainingDuration} onChange={e=>setTrainingDuration(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
-            </label>
-          </div>}
-
-          {coreDocType==='maquinaria'&&<div className="space-y-3">
-            <label className="block text-sm font-black">Maquinaria o equipos para aplicar a todos
-              <textarea rows={3} value={globalMachinery} onChange={e=>setGlobalMachinery(e.target.value)} placeholder="Ej.: Dumper, hormigonera, radial…" className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
-            </label>
-            <button type="button" onClick={()=>setMachineryByWorker(Object.fromEntries(documentWorkers.map(worker=>[String(worker.id),globalMachinery])))} className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-black text-amber-900">Aplicar a todos</button>
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {documentWorkers.map(worker=><div key={worker.id} className="grid sm:grid-cols-[1fr_1.2fr] gap-2 rounded-xl border bg-white p-3">
-                <div><div className="text-sm font-black">{worker.apellidosNombre}</div><div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}</div></div>
-                <input value={machineryByWorker[String(worker.id)]||''} onChange={e=>setMachineryByWorker(current=>({...current,[String(worker.id)]:e.target.value}))} placeholder="Máquinas separadas por coma" className="min-h-[46px] rounded-xl border px-3 py-2"/>
-              </div>)}
-            </div>
-          </div>}
-
-          <button type="button" onClick={()=>void generateCoreDocument()} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white">
-            <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF {CORE_WORKSITE_DOCUMENTS[coreDocType]}
-          </button>
+          <h2 className="text-lg font-black">Otros documentos</h2>
+          <p className="mt-1 text-sm text-slate-600">Aquí quedan únicamente los documentos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario tienen ahora su propio botón en la cinta superior.</p>
         </div>
 
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
