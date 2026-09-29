@@ -1,23 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { jsPDF } from 'jspdf';
-import { applyPlugin } from 'jspdf-autotable';
 import { AuthGate } from './components/AuthGate';
 import { AppToastHost } from './components/AppToastHost';
 import { AppDialogHost } from './components/AppDialogHost';
 import { AppInstallPromo } from './components/AppInstallPromo';
-import { AnnualHiringPeriodsPanel } from './components/AnnualHiringPeriodsPanel';
-import { UiWorkflowEnhancements } from './components/UiWorkflowEnhancements';
-import { ExportRenunciationEnhancer } from './components/ExportRenunciationEnhancer';
-import { AdministrativeDataAssignmentBridge } from './components/AdministrativeDataAssignmentBridge';
-import { DirectoryAdministrativeExportBridge } from './components/DirectoryAdministrativeExportBridge';
-import { CompleteBackupDownloadBridge } from './components/CompleteBackupDownloadBridge';
-import { PrlTrainingScheduleBridge } from './components/PrlTrainingScheduleBridge';
-import { MedicalAppointmentConfirmationPortal } from './components/MedicalAppointmentConfirmationPortal';
-import { WorkerQrPortal } from './components/WorkerQrPortal';
-import { RemoteScannerPortal } from './components/RemoteScannerPortal';
-import { ForemanMobilePortal } from './components/ForemanMobilePortal';
-import { SaeRenunciationBridge } from './components/SaeRenunciationBridge';
+import { DeferredAppEnhancements } from './components/DeferredAppEnhancements';
 import { installModalRuntime } from './src/lib/modalRuntime';
 import { installAppDialogRuntime } from './src/lib/appDialog';
 import { installButtonSounds } from './src/lib/uiSounds';
@@ -32,35 +19,6 @@ import './dark-mode-hardening.css';
 import './medical-citations-contrast.css';
 import './guided-mobile-accessibility.css';
 import './accessibility-contrast.css';
-
-applyPlugin(jsPDF);
-(jsPDF as any).autoTableSetDefaults?.({
-  didParseCell: (data: any) => {
-    if (data?.section !== 'head' || !data?.cell) return;
-    const original = Array.isArray(data.cell.text) ? data.cell.text.join(' ').trim() : String(data.cell.text || '').trim();
-    const normalized = original.toUpperCase().replace(/\s+/g, ' ');
-    const replacements: Record<string, string> = {
-      'CONF.': 'CONFIRMACIÓN',
-      'CONF': 'CONFIRMACIÓN',
-      'TRABAJADOR / DNI / NAC.': 'TRABAJADOR / DNI / NACIMIENTO',
-      'TRABAJADOR/DNI/NAC.': 'TRABAJADOR / DNI / NACIMIENTO',
-      'SITIO RECONOCIMIENTO': 'SITIO RECONOCIMIENTO MÉDICO',
-    };
-    const completeText = replacements[normalized] || original;
-    data.cell.text = [completeText];
-    const words = completeText.split(/\s+/).filter(Boolean);
-    const longestWord = words.reduce((max: number, word: string) => Math.max(max, word.length), 0);
-    data.cell.styles.overflow = 'linebreak';
-    data.cell.styles.halign = 'center';
-    data.cell.styles.valign = 'middle';
-    data.cell.styles.fontStyle = 'bold';
-    data.cell.styles.cellPadding = 1.15;
-    data.cell.styles.minCellHeight = Math.max(Number(data.cell.styles.minCellHeight || 0), 9);
-    if (completeText.length >= 30 || longestWord >= 16) data.cell.styles.fontSize = 5.6;
-    else if (completeText.length >= 20 || longestWord >= 12) data.cell.styles.fontSize = 6.0;
-    else data.cell.styles.fontSize = 6.5;
-  },
-});
 
 if (typeof globalThis !== 'undefined') {
   const runtime = globalThis as any;
@@ -85,6 +43,10 @@ class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErro
 }
 
 const App = React.lazy(() => import('./App'));
+const MedicalAppointmentConfirmationPortal = React.lazy(() => import('./components/MedicalAppointmentConfirmationPortal').then(module => ({ default: module.MedicalAppointmentConfirmationPortal })));
+const WorkerQrPortal = React.lazy(() => import('./components/WorkerQrPortal').then(module => ({ default: module.WorkerQrPortal })));
+const RemoteScannerPortal = React.lazy(() => import('./components/RemoteScannerPortal').then(module => ({ default: module.RemoteScannerPortal })));
+const ForemanMobilePortal = React.lazy(() => import('./components/ForemanMobilePortal').then(module => ({ default: module.ForemanMobilePortal })));
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 const normalizeLegacyLoginRoute = () => {
@@ -120,19 +82,28 @@ const foremanToken = foremanTokenFromUrl || (isForemanAppRoute ? (() => {
   try { return localStorage.getItem(FOREMAN_DEVICE_TOKEN_KEY)?.trim() || ''; } catch { return ''; }
 })() : '');
 
+const RouteLoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
+    <div className="text-center">
+      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#00548E]" />
+      <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Cargando…</p>
+    </div>
+  </div>
+);
+
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
       <>
         <AppDialogHost />
         {isMedicalConfirmation ? (
-        <MedicalAppointmentConfirmationPortal />
+        <React.Suspense fallback={<RouteLoadingFallback />}><MedicalAppointmentConfirmationPortal /></React.Suspense>
       ) : (foremanToken || isForemanAppRoute) ? (
-        <ForemanMobilePortal token={foremanToken} />
+        <React.Suspense fallback={<RouteLoadingFallback />}><ForemanMobilePortal token={foremanToken} /></React.Suspense>
       ) : workerQrToken ? (
-        <WorkerQrPortal token={workerQrToken} />
+        <React.Suspense fallback={<RouteLoadingFallback />}><WorkerQrPortal token={workerQrToken} /></React.Suspense>
       ) : remoteScannerToken ? (
-        <RemoteScannerPortal token={remoteScannerToken} />
+        <React.Suspense fallback={<RouteLoadingFallback />}><RemoteScannerPortal token={remoteScannerToken} /></React.Suspense>
       ) : (
         <AuthGate>
           {workerQrDni ? (
@@ -145,16 +116,9 @@ ReactDOM.createRoot(rootElement).render(
           ) : (
             <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-500">Cargando aplicación…</div></div>}>
               <App />
-              <AnnualHiringPeriodsPanel />
-              <UiWorkflowEnhancements />
-              <ExportRenunciationEnhancer />
-              <AdministrativeDataAssignmentBridge />
-              <DirectoryAdministrativeExportBridge />
-              <CompleteBackupDownloadBridge />
-              <PrlTrainingScheduleBridge />
-              <SaeRenunciationBridge />
               <AppToastHost />
               <AppInstallPromo />
+              <DeferredAppEnhancements />
             </React.Suspense>
           )}
         </AuthGate>
