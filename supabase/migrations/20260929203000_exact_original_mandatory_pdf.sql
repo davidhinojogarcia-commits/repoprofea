@@ -325,7 +325,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions
-as $
+as $$
 declare
   v_hash text;
   v_access public.foreman_portal_access%rowtype;
@@ -348,7 +348,7 @@ begin
 
   return coalesce(v_doc.signatures,'{}'::jsonb);
 end;
-$;
+$$;
 
 revoke all on function public.get_foreman_mandatory_signatures(text,uuid) from public;
 grant execute on function public.get_foreman_mandatory_signatures(text,uuid) to anon, authenticated;
