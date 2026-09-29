@@ -339,6 +339,12 @@ INSTRUCCIONES OBLIGATORIAS:
 28. Si la tarea está completada, dilo de forma clara, marca taskStatus="completed" y ofrece followUps útiles de cierre o tareas relacionadas.
 29. Los followUps deben ayudar a CONTINUAR, COMPROBAR o RESOLVER el punto actual; evita sugerencias genéricas.
 30. En cada turno intenta reducir la incertidumbre: una respuesta principal + próxima acción + 2-4 continuaciones útiles.
+31. Cuando la tarea esté activa o en diagnóstico, formula UNA pregunta breve de comprobación en checkQuestion, por ejemplo: "¿Ves ya el botón Registrar?".
+32. checkOptions debe contener 2-4 respuestas cortas y útiles para esa pregunta, por ejemplo: ["Sí, lo veo", "No aparece", "Me da un error"].
+33. Usa la respuesta del usuario a checkQuestion para decidir el turno siguiente; no repitas la pregunta si ya quedó resuelta.
+34. Si el usuario responde con algo breve como "sí", "hecho", "no aparece" o "error", interprétalo usando la pregunta anterior y el estado de tarea.
+35. Nunca dejes un proceso activo sin una vía clara para continuar: debe haber nextAction, followUps o checkQuestion.
+36. Compórtate como un acompañante de pantalla: confirma dónde está el usuario, qué debe mirar ahora y qué ocurrirá después.
 
 Devuelve exclusivamente JSON con:
 {
@@ -351,7 +357,9 @@ Devuelve exclusivamente JSON con:
   "currentStep": 1,
   "totalSteps": 4,
   "taskStatus": "active | diagnostic | completed | idle",
-  "nextAction": "acción concreta que el usuario debe hacer ahora"
+  "nextAction": "acción concreta que el usuario debe hacer ahora",
+  "checkQuestion": "pregunta breve de comprobación o cadena vacía",
+  "checkOptions": ["respuesta rápida 1", "respuesta rápida 2", "respuesta rápida 3"]
 }
 `;
 
@@ -375,8 +383,10 @@ Devuelve exclusivamente JSON con:
               totalSteps: { type: Type.NUMBER },
               taskStatus: { type: Type.STRING },
               nextAction: { type: Type.STRING },
+              checkQuestion: { type: Type.STRING },
+              checkOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
-            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint", "taskTitle", "currentStep", "totalSteps", "taskStatus", "nextAction"],
+            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint", "taskTitle", "currentStep", "totalSteps", "taskStatus", "nextAction", "checkQuestion", "checkOptions"],
           },
         },
       });
@@ -400,6 +410,27 @@ Devuelve exclusivamente JSON con:
       const requestedStatus = String(parsed?.taskStatus || taskState.status || "idle");
       const taskStatus = ["idle","active","diagnostic","completed"].includes(requestedStatus) ? requestedStatus : "idle";
       const nextAction = String(parsed?.nextAction || "").trim().slice(0, 500);
+      const checkQuestion = String(parsed?.checkQuestion || "").trim().slice(0, 240);
+      const checkOptions = Array.isArray(parsed?.checkOptions)
+        ? parsed.checkOptions.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 4)
+        : [];
+      const effectiveFollowUps = followUps.length >= 2
+        ? followUps
+        : taskStatus === "diagnostic"
+          ? ["No encuentro lo que indicas", "Me aparece un error", "Prueba otra forma"]
+          : taskStatus === "completed"
+            ? ["Repasar lo que he hecho", "Hacer otra tarea relacionada"]
+            : ["Ya lo he hecho, continúa", "No encuentro ese paso", "¿Qué viene después?"];
+      const effectiveCheckQuestion = checkQuestion || (
+        taskStatus === "active" || taskStatus === "diagnostic"
+          ? "¿Has podido hacer el paso que te acabo de indicar?"
+          : ""
+      );
+      const effectiveCheckOptions = checkOptions.length
+        ? checkOptions
+        : effectiveCheckQuestion
+          ? ["Sí, ya está", "No lo encuentro", "Me da un error"]
+          : [];
 
       if (!answer) {
         return res.status(502).json({ error: "El Tutor PROFEA no ha podido preparar una respuesta." });
@@ -410,13 +441,15 @@ Devuelve exclusivamente JSON con:
         answer,
         suggestedView,
         suggestedLabel,
-        followUps,
+        followUps: effectiveFollowUps,
         progressHint,
         taskTitle,
         currentStep,
         totalSteps,
         taskStatus,
         nextAction,
+        checkQuestion: effectiveCheckQuestion,
+        checkOptions: effectiveCheckOptions,
       });
     } catch (error: any) {
       console.error("Error en Tutor PROFEA:", error);

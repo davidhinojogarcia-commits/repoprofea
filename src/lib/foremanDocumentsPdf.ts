@@ -6,6 +6,12 @@ import {
   type AdditionalWorksiteDocumentType,
 } from './worksiteAdditionalDocumentsPdf';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../services/foremanPortalService';
+import {
+  generateEpiDeliveryPdf,
+  generateTrainingInformationPdf,
+  generateMachineryAuthorizationPdf,
+  type WorksiteDocumentContext,
+} from './worksiteDocumentsPdf';
 
 export function generateForemanCompletedDocumentPdf(record: ForemanCompletedDocument, obra: string, foremanName: string) {
   return generateAdditionalWorksiteDocument(
@@ -59,6 +65,29 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
 }
 
 
+const renderImportedSourceText = (doc: jsPDF, text: string, startY: number, width = 174) => {
+  const cleaned = String(text || '').replace(/\r/g,'').trim();
+  if (!cleaned) return startY;
+  let y = startY;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(7.4);
+  doc.setTextColor(30,41,59);
+  const paragraphs = cleaned.split(/\n{2,}/).map(part=>part.trim()).filter(Boolean);
+  for (const paragraph of paragraphs) {
+    const lines = doc.splitTextToSize(paragraph, width);
+    for (const line of lines) {
+      if (y > 272) {
+        doc.addPage('a4','portrait');
+        y = 20;
+      }
+      doc.text(line,18,y);
+      y += 3.7;
+    }
+    y += 2;
+  }
+  return y + 2;
+};
+
 const fmtEs = (value: string) => {
   const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(value || '');
@@ -68,98 +97,38 @@ export function generateForemanMandatoryDocumentPdf(
   record: ForemanMandatoryDocument,
   obra: string,
 ) {
-  if (['epis','maquinaria','autorizacion_uso_maquinaria'].includes(record.documentType)) {
-    const titleMap: Record<string,string> = {
-      epis: 'ENTREGA DE EPIs',
-      maquinaria: 'AUTORIZACIÓN DE MAQUINARIA',
-      autorizacion_uso_maquinaria: 'AUTORIZACIÓN AL USO DE MAQUINARIA',
+  if (['epis','formacion','maquinaria','autorizacion_uso_maquinaria'].includes(record.documentType)) {
+    const workerSignatures = Object.fromEntries(
+      Object.entries(record.signatures || {})
+        .map(([workerId, raw]) => [workerId, typeof raw === 'string' ? raw : raw?.signature || ''])
+        .filter(([, signature]) => signature && signature !== 'signed'),
+    ) as Record<string,string>;
+    const fallbackMachinery = String(record.details?.maquinaria || '').trim();
+    const machineryByWorker = {
+      ...(record.details?.maquinariaPorTrabajador || {}),
+      ...Object.fromEntries(
+        (record.workers || [])
+          .filter(worker => fallbackMachinery && !record.details?.maquinariaPorTrabajador?.[String(worker.id)])
+          .map(worker => [String(worker.id), fallbackMachinery]),
+      ),
     };
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-    const title = titleMap[record.documentType] || 'DOCUMENTO DE OBRA';
-    renderInstitutionalReportHeader(
-      doc,
-      title,
-      `${obra} · ${fmtEs(record.workDate)}`,
-      { subtitle: 'DOCUMENTACIÓN CUMPLIMENTADA POR EL ENCARGADO · PROFEA' },
-    );
-
-    const detailText = record.documentType === 'epis'
-      ? Object.entries((record.details?.epis || {}) as Record<string,boolean>)
-          .filter(([,enabled])=>Boolean(enabled))
-          .map(([key])=>({
-            casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',
-            guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado',
-          } as Record<string,string>)[key] || key)
-          .join(', ')
-      : String(record.details?.maquinaria || '');
-
-    let y = 49;
-    doc.setTextColor(0,0,0);
-    doc.setDrawColor(0,0,0);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8.5);
-    doc.text('TRABAJADOR/A', 14, y);
-    doc.text('DNI/NIE', 92, y);
-    doc.text('CATEGORÍA', 126, y);
-    doc.text(record.documentType==='epis' ? 'EPIs ENTREGADOS' : 'MAQUINARIA / EQUIPOS', 174, y);
-    doc.text('FIRMA', 246, y);
-    y += 3;
-    doc.setLineWidth(0.35);
-    doc.line(14,y,283,y);
-    y += 8;
-
-    const rowHeight=17;
-    const signatureHeight=11;
-    for (const worker of record.workers || []) {
-      if (y + rowHeight > 192) {
-        doc.addPage('a4','landscape');
-        y=22;
-        doc.setTextColor(0,0,0);
-        doc.setDrawColor(0,0,0);
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(8.5);
-        doc.text('TRABAJADOR/A', 14, y);
-        doc.text('DNI/NIE', 92, y);
-        doc.text('CATEGORÍA', 126, y);
-        doc.text(record.documentType==='epis' ? 'EPIs ENTREGADOS' : 'MAQUINARIA / EQUIPOS', 174, y);
-        doc.text('FIRMA', 246, y);
-        y += 3;
-        doc.line(14,y,283,y);
-        y += 8;
-      }
-
-      const rowTop=y-5;
-      const rowBottom=rowTop+rowHeight;
-      const signatureRaw=(record.signatures||{})[String(worker.id)];
-      const signature=typeof signatureRaw==='string'?signatureRaw:signatureRaw?.signature;
-
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(8.3);
-      doc.text(String(worker.apellidosNombre||''),14,y,{maxWidth:74});
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(7.8);
-      doc.text(String(worker.dni||''),92,y,{maxWidth:30});
-      doc.text(String(worker.categoria||''),126,y,{maxWidth:44});
-      doc.text(detailText||'-',174,y,{maxWidth:68});
-
-      if(signature){
-        const sy=rowTop+(rowHeight-signatureHeight)/2;
-        try{doc.addImage(signature,'PNG',246,sy,34,signatureHeight,undefined,'FAST');}catch{}
-      }else{
-        doc.line(246,rowTop+rowHeight/2+1,280,rowTop+rowHeight/2+1);
-      }
-      doc.setDrawColor(90,90,90);
-      doc.setLineWidth(0.2);
-      doc.line(14,rowBottom,283,rowBottom);
-      y+=rowHeight;
-    }
-
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(7.5);
-    doc.text('Estado: '+(record.status==='reviewed'?'Revisado':record.status==='completed'?'Cumplimentado':'En cumplimentación'),14,201);
-    applyInstitutionalPdfStandard(doc);
-    const prefix=record.documentType==='epis'?'EPIS':record.documentType==='maquinaria'?'AUTORIZACION_MAQUINARIA':'AUTORIZACION_USO_MAQUINARIA';
-    return { doc, filename: `${prefix}_ENCARGADO_${record.workDate}.pdf` };
+    const context: WorksiteDocumentContext = {
+      obra,
+      municipio: String(record.details?.municipio || ''),
+      empresa: String(record.details?.empresa || 'AEPSA (Diputación Provincial de Cádiz)'),
+      cif: String(record.details?.cif || 'P1100000G'),
+      recursoPreventivo: String(record.details?.recursoPreventivo || ''),
+      fecha: String(record.workDate || '').slice(0,10),
+      periodoLabel: String(record.details?.periodoLabel || record.periodKey || ''),
+      accionFormativa: String(record.details?.accionFormativa || ''),
+      duracionFormacion: String(record.details?.duracionFormacion || ''),
+      epis: (record.details?.epis || {}) as Record<string,boolean>,
+      maquinariaPorTrabajador: machineryByWorker,
+      workerSignatures,
+    };
+    if (record.documentType === 'epis') return generateEpiDeliveryPdf(record.workers || [], context);
+    if (record.documentType === 'formacion') return generateTrainingInformationPdf(record.workers || [], context);
+    return generateMachineryAuthorizationPdf(record.workers || [], context);
   }
 
   if (record.documentType === 'control_presencia') {
@@ -172,6 +141,18 @@ export function generateForemanMandatoryDocumentPdf(
     );
 
     let y = 50;
+    const importedText = String(record.details?.sourceText || '').trim();
+    if (importedText) {
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(7.3);
+      doc.setTextColor(0,84,142);
+      doc.text('TEXTO DEL DOCUMENTO IMPORTADO',14,y);
+      y = renderImportedSourceText(doc, importedText, y + 5, 178);
+      if (y > 245) {
+        doc.addPage('a4','portrait');
+        y = 24;
+      }
+    }
     doc.setTextColor(0, 0, 0);
     doc.setDrawColor(0, 0, 0);
     doc.setFont('courier', 'bold');
@@ -238,17 +219,28 @@ export function generateForemanMandatoryDocumentPdf(
   const width = 174;
   doc.setTextColor(15, 23, 42);
   doc.setDrawColor(71, 85, 105);
-  const paragraphs = [
-    'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
-    'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
-    'Expresando los mismos, mediante su firma, su conformidad con las instrucciones de la Empresa.',
-  ];
+  const importedText = String(record.details?.sourceText || '').trim();
+  const paragraphs = importedText
+    ? importedText.split(/\n{2,}/).map(part=>part.trim()).filter(Boolean)
+    : [
+        'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
+        'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
+        'Expresando los mismos, mediante su firma, su conformidad con las instrucciones de la Empresa.',
+      ];
   doc.setFont('helvetica','normal');
   doc.setFontSize(9);
   for (const p of paragraphs) {
     const lines = doc.splitTextToSize(p, width);
+    if (y + lines.length * 4.4 > 252) {
+      doc.addPage('a4','portrait');
+      y = 24;
+    }
     doc.text(lines, 18, y);
     y += lines.length * 4.4 + 5;
+  }
+  if (y > 244) {
+    doc.addPage('a4','portrait');
+    y = 24;
   }
 
   doc.setTextColor(15, 23, 42);

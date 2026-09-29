@@ -82,12 +82,15 @@ DOCUMENTACIÓN DE ENCARGADOS
 
 PORTAL DEL ENCARGADO
 - Se abre mediante el enlace/QR asignado a la obra.
-- Pestañas principales: Asignados, Documentos, Jornada y Finalizados.
-- Asignados: Inicio / Incorporación y Control de presencia preparados por el supervisor.
-- Documentos: modelos reales de Documentación de obra.
-- Jornada: registro diario de entrada/salida con firma.
-- Finalizados: documentos enviados al supervisor.
-- El encargado puede firmar con el dedo en dispositivos móviles.
+- La navegación funciona como una cinta horizontal: Asignados, EPIs, Formación, Maquinaria, Control horario, Documentos y Finalizados.
+- Asignados: Inicio / Incorporación y Control de presencia preparados por el supervisor. Conservan el texto completo importado y muestran debajo los trabajadores que deben firmar.
+- EPIs: permite seleccionar una o varias quincenas, uno o varios meses o combinar ambos; muestra los trabajadores seleccionados y prepara la relación para sus firmas.
+- Formación: funciona igual que EPIs y además permite indicar acción formativa/información y duración.
+- Maquinaria: permite seleccionar periodos, indicar los equipos autorizados para cada trabajador y recoger las firmas.
+- Control horario: sustituye al antiguo botón Jornada. Permite seleccionar quincenas, meses o ambos y muestra los trabajadores del periodo para firmar entrada y salida.
+- Documentos: queda reservado para Otros documentos independientes de Documentación de obra.
+- Finalizados: reúne Inicio, Control de presencia, EPIs, Formación, Maquinaria, Control horario y Otros documentos ya enviados al supervisor.
+- Las firmas se realizan con el dedo en móvil/tablet y se insertan sin fondo blanco para no tapar el documento.
 
 CAE / SUBCONTRATAS
 - Gestiona empresas, trabajadores de subcontratas, autorizados/no autorizados y documentación de coordinación.

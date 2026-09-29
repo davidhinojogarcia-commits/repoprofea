@@ -16,6 +16,8 @@ type TutorMessage = {
   suggestedLabel?: string;
   followUps?: string[];
   progressHint?: string;
+  checkQuestion?: string;
+  checkOptions?: string[];
 };
 
 type TutorTaskState = {
@@ -77,6 +79,22 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeLabel = PROFEA_TUTOR_VIEW_LABELS[activeView as ProfeaTutorView] || 'GestionProfea';
+  const lastAssistantId = useMemo(
+    () => [...messages].reverse().find(message => message.role === 'assistant')?.id || '',
+    [messages],
+  );
+  const universalActions = useMemo(() => {
+    if (taskState.status === 'diagnostic') {
+      return ['Sí, eso lo veo', 'No aparece', 'Me da un error', 'Prueba otra solución'];
+    }
+    if (taskState.status === 'completed') {
+      return ['Repasemos lo que he hecho', 'Quiero hacer otra tarea', 'Volver al menú inicial'];
+    }
+    if (taskState.status === 'active') {
+      return ['Ya lo he hecho · Continuar', 'No encuentro lo que me dices', '¿Qué viene después?', 'Explícamelo más despacio'];
+    }
+    return ['Guíame paso a paso', '¿Dónde tengo que entrar?', 'Explícame esta pantalla'];
+  }, [taskState.status]);
 
   const greeting = useMemo(
     () => guidedMode
@@ -154,6 +172,13 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       const followUps = Array.isArray(data?.followUps)
         ? data.followUps.map((value: unknown) => String(value || '').trim()).filter(Boolean).slice(0, 4)
         : [];
+      const interactiveFollowUps = followUps.length
+        ? followUps
+        : ['¿Cuál es el siguiente paso?', 'Explícame qué debo comprobar ahora', 'Tengo otra duda sobre este proceso'];
+      const checkQuestion = String(data?.checkQuestion || '').trim();
+      const checkOptions = Array.isArray(data?.checkOptions)
+        ? data.checkOptions.map((value: unknown) => String(value || '').trim()).filter(Boolean).slice(0, 4)
+        : [];
       const nextTask: TutorTaskState = {
         title: String(data?.taskTitle || '').trim(),
         currentStep: Math.max(0, Number(data?.currentStep) || 0),
@@ -170,8 +195,10 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         text: answer,
         suggestedView: data?.suggestedView || undefined,
         suggestedLabel: data?.suggestedLabel || undefined,
-        followUps,
+        followUps: interactiveFollowUps,
         progressHint: String(data?.progressHint || '').trim() || undefined,
+        checkQuestion: checkQuestion || undefined,
+        checkOptions,
       }]);
     } catch (error) {
       console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
@@ -192,6 +219,8 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         suggestedView: fallback.view,
         suggestedLabel: fallback.view ? PROFEA_TUTOR_VIEW_LABELS[fallback.view] : undefined,
         followUps: ['¿Cuál es el siguiente paso?', 'Explícamelo más despacio', 'Tengo otra duda sobre esto'],
+        checkQuestion: '¿Has podido hacer el paso que te indiqué?',
+        checkOptions: ['Sí, ya está', 'No lo encuentro', 'Me da un error'],
       }]);
     } finally {
       setBusy(false);
@@ -329,7 +358,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                           {message.progressHint}
                         </div>
                       )}
-                      {message.role === 'assistant' && message.suggestedView && (
+                      {message.role === 'assistant' && message.id === lastAssistantId && message.suggestedView && (
                         <button
                           type="button"
                           onClick={() => navigate(message.suggestedView)}
@@ -339,7 +368,27 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                           <ArrowRight className="h-3.5 w-3.5" />
                         </button>
                       )}
-                      {message.role === 'assistant' && Boolean(message.followUps?.length) && (
+                      {message.role === 'assistant' && message.id === lastAssistantId && message.checkQuestion && (
+                        <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/80 p-3 dark:border-blue-800 dark:bg-blue-950/30">
+                          <div className="text-xs font-black leading-5 text-slate-800 dark:text-slate-100">{message.checkQuestion}</div>
+                          {Boolean(message.checkOptions?.length) && (
+                            <div className="mt-2 grid gap-2">
+                              {message.checkOptions?.map((option, index) => (
+                                <button
+                                  key={`${message.id}-check-${index}`}
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void ask(option)}
+                                  className="min-h-9 rounded-xl border border-blue-200 bg-white/90 px-3 py-2 text-left text-xs font-black text-[#00548E] transition hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-slate-900/90 dark:text-blue-200"
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {message.role === 'assistant' && message.id === lastAssistantId && Boolean(message.followUps?.length) && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {message.followUps?.map((suggestion, index) => (
                             <button
@@ -362,6 +411,23 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                     <div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200/80 bg-white/68 px-3.5 py-3 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900/65 dark:text-slate-300">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Preparando los pasos…
+                    </div>
+                  </div>
+                )}
+                {!busy && lastAssistantId && (
+                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/55">
+                    <div className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-slate-500 dark:text-slate-400">Continuar la ayuda</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {universalActions.map(action => (
+                        <button
+                          key={action}
+                          type="button"
+                          onClick={() => void ask(action)}
+                          className="min-h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-[11px] font-black leading-4 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                        >
+                          {action}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}

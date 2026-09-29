@@ -59,7 +59,7 @@ export type ForemanMandatoryDocument = {
   id: string;
   workDate: string;
   periodKey: string;
-  documentType: 'inicio' | 'control_presencia' | 'epis' | 'maquinaria' | 'autorizacion_uso_maquinaria';
+  documentType: 'inicio' | 'control_presencia' | 'epis' | 'formacion' | 'maquinaria' | 'autorizacion_uso_maquinaria';
   category: string;
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
@@ -264,8 +264,9 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   emailFrom?: string | null;
   emailSubject?: string | null;
   attachmentName?: string | null;
+  sourceText?: string | null;
 }) {
-  return supabase.rpc('prepare_foreman_mandatory_from_email', {
+  const id = await supabase.rpc('prepare_foreman_mandatory_from_email', {
     p_document_type: input.documentType,
     p_worker_ids: input.workerIds,
     p_work_date: input.workDate,
@@ -278,6 +279,22 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     p_email_subject: input.emailSubject || null,
     p_attachment_name: input.attachmentName || null,
   });
+  const documentId = String(id || '').trim();
+  if (documentId && input.sourceText) {
+    await supabase.query('foreman_mandatory_documents', {
+      method: 'PATCH',
+      query: 'id=eq.' + encodeURIComponent(documentId),
+      prefer: 'return=minimal',
+      body: {
+        details: {
+          sourceText: input.sourceText,
+          sourceFilename: input.attachmentName || '',
+        },
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+  return id;
 }
 
 export async function markMandatoryDocumentReturned(id: string, gmailMessageId: string) {
@@ -301,7 +318,7 @@ export async function finalizeForemanMandatoryDocument(token: string, documentId
 
 export async function createForemanOperationalDocument(input: {
   token: string;
-  documentType: 'epis' | 'maquinaria' | 'autorizacion_uso_maquinaria';
+  documentType: 'epis' | 'formacion' | 'maquinaria' | 'autorizacion_uso_maquinaria';
   workDate: string;
   workerIds: number[];
   details?: Record<string, any>;

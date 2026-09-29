@@ -275,6 +275,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           emailFrom: administrativeEmail,
           emailSubject: message.subject,
           attachmentName: attachment.filename,
+          sourceText: recognition.text,
         });
         importedDocuments += 1;
         existing.add(key);
@@ -355,7 +356,8 @@ export async function processManualMandatoryFiles(
         rfcMessageId: null,
         emailFrom: null,
         emailSubject: null,
-        attachmentName: null,
+        attachmentName: file.name,
+        sourceText: recognition.text,
       });
       importedDocuments += 1;
     } catch (error: any) {
