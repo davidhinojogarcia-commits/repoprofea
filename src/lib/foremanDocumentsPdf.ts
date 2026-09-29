@@ -65,28 +65,63 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
 }
 
 
-const renderImportedSourceText = (doc: jsPDF, text: string, startY: number, width = 174) => {
+const renderImportedSourceText = (
+  doc: jsPDF,
+  text: string,
+  startY: number,
+  options: { width?: number; x?: number; fontSize?: number; lineHeight?: number; paragraphGap?: number } = {},
+) => {
   const cleaned = String(text || '').replace(/\r/g,'').trim();
   if (!cleaned) return startY;
+  const width = options.width ?? 174;
+  const x = options.x ?? 18;
+  const fontSize = options.fontSize ?? 8.8;
+  const lineHeight = options.lineHeight ?? 4.35;
+  const paragraphGap = options.paragraphGap ?? 2.8;
   let y = startY;
+
   doc.setFont('helvetica','normal');
-  doc.setFontSize(7.4);
+  doc.setFontSize(fontSize);
   doc.setTextColor(30,41,59);
-  const paragraphs = cleaned.split(/\n{2,}/).map(part=>part.trim()).filter(Boolean);
-  for (const paragraph of paragraphs) {
+
+  const blocks = cleaned
+    .split(/\n\s*\n/)
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  for (const block of blocks) {
+    const rawLines = block.split(/\n/).map(line => line.trim()).filter(Boolean);
+    const paragraph = rawLines.join(' ');
     const lines = doc.splitTextToSize(paragraph, width);
     for (const line of lines) {
-      if (y > 272) {
+      if (y > 270) {
         doc.addPage('a4','portrait');
-        y = 20;
+        y = 24;
       }
-      doc.text(line,18,y);
-      y += 3.7;
+      doc.text(line, x, y);
+      y += lineHeight;
     }
-    y += 2;
+    y += paragraphGap;
   }
-  return y + 2;
+  return y;
 };
+
+const drawMandatoryWorkersHeader = (
+  doc: jsPDF,
+  y: number,
+  options: { control?: boolean } = {},
+) => {
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8.4);
+  doc.text('TRABAJADOR/A', 18, y);
+  doc.text('FIRMA', options.control ? 164 : 132, y);
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.25);
+  doc.line(18, y + 3, 192, y + 3);
+  return y + 9;
+};
+
 
 const fmtEs = (value: string) => {
   const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -140,69 +175,65 @@ export function generateForemanMandatoryDocumentPdf(
       { subtitle: 'UNIDAD DE GESTIÓN A.E.P.S.A. · PROFEA' },
     );
 
-    let y = 50;
+    let y = 49;
     const importedText = String(record.details?.sourceText || '').trim();
     if (importedText) {
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(7.3);
-      doc.setTextColor(0,84,142);
-      doc.text('TEXTO DEL DOCUMENTO IMPORTADO',14,y);
-      y = renderImportedSourceText(doc, importedText, y + 5, 178);
-      if (y > 245) {
-        doc.addPage('a4','portrait');
-        y = 24;
-      }
+      y = renderImportedSourceText(doc, importedText, y, {
+        width: 174,
+        x: 18,
+        fontSize: 8.4,
+        lineHeight: 4.15,
+        paragraphGap: 2.4,
+      });
+      y += 3;
     }
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(0, 0, 0);
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(8.6);
-    doc.text('APELLIDOS / NOMBRE', 14, y);
-    doc.text('CATEGORÍA', 84, y);
-    doc.text('N.I.F.', 132, y);
-    doc.text('FIRMA', 165, y);
-    y += 3;
-    doc.setLineWidth(0.35);
-    doc.line(14, y, 196, y);
-    y += 8;
 
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(8.2);
-    const rowHeight = 16;
-    const signatureHeight = 11;
-    const signatureWidth = 28;
+    if (y > 242) {
+      doc.addPage('a4','portrait');
+      y = 24;
+    }
+
+    y = drawMandatoryWorkersHeader(doc, y, { control: true });
+
+    const rowHeight = 18;
+    const signatureHeight = 10.5;
+    const signatureWidth = 29;
+
     for (const worker of record.workers || []) {
-      if (y + rowHeight > 282) {
-        doc.addPage('a4', 'portrait');
-        y = 20;
-        doc.setTextColor(0, 0, 0);
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(0.25);
+      if (y + rowHeight > 276) {
+        doc.addPage('a4','portrait');
+        y = drawMandatoryWorkersHeader(doc, 24, { control: true });
       }
 
-      const rowTop = y - 5;
-      const rowBottom = rowTop + rowHeight;
+      const rowTop = y - 2;
       const signatureRaw = (record.signatures || {})[String(worker.id)];
       const signature = typeof signatureRaw === 'string' ? signatureRaw : signatureRaw?.signature;
 
-      doc.setTextColor(0, 0, 0);
-      doc.text(String(worker.apellidosNombre || ''), 14, y, { maxWidth: 65 });
-      doc.text(String(worker.categoria || ''), 84, y, { maxWidth: 43 });
-      doc.text(String(worker.dni || ''), 132, y, { maxWidth: 28 });
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8.5);
+      doc.text(String(worker.apellidosNombre || '').toUpperCase(), 18, y, { maxWidth: 92 });
+
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7.6);
+      doc.text(`DNI/NIE: ${String(worker.dni || '-')}`, 18, y + 4.5, { maxWidth: 54 });
+      doc.text(`Categoría: ${String(worker.categoria || '-')}`, 75, y + 4.5, { maxWidth: 58 });
+
+      // Control de presencia conserva su línea horizontal de firma,
+      // diferenciándose expresamente del documento de Inicio.
+      const signatureLineY = rowTop + 10.5;
+      doc.setDrawColor(71, 85, 105);
+      doc.setLineWidth(0.25);
+      doc.line(158, signatureLineY, 192, signatureLineY);
 
       if (signature) {
-        const signatureY = rowTop + (rowHeight - signatureHeight) / 2;
-        try { doc.addImage(signature, 'PNG', 165, signatureY, signatureWidth, signatureHeight, undefined, 'FAST'); } catch {}
-      } else {
-        doc.setDrawColor(0, 0, 0);
-        doc.line(165, rowTop + rowHeight / 2 + 1, 195, rowTop + rowHeight / 2 + 1);
+        const signatureY = rowTop + 1.2;
+        try { doc.addImage(signature, 'PNG', 160, signatureY, signatureWidth, signatureHeight, undefined, 'FAST'); } catch {}
       }
 
-      doc.setDrawColor(80, 80, 80);
-      doc.setLineWidth(0.2);
-      doc.line(14, rowBottom, 196, rowBottom);
       y += rowHeight;
     }
+
     applyInstitutionalPdfStandard(doc);
     return { doc, filename: `CONTROL_PRESENCIA_${record.workDate}.pdf` };
   }
@@ -215,111 +246,100 @@ export function generateForemanMandatoryDocumentPdf(
     { subtitle: 'ÁREA DE COOPERACIÓN · GESTIÓN DE FONDOS PROFEA' },
   );
 
-  let y = 47;
+  let y = 48;
   const width = 174;
-  doc.setTextColor(15, 23, 42);
-  doc.setDrawColor(71, 85, 105);
   const importedText = String(record.details?.sourceText || '').trim();
-  const paragraphs = importedText
-    ? importedText.split(/\n{2,}/).map(part=>part.trim()).filter(Boolean)
-    : [
+
+  if (importedText) {
+    y = renderImportedSourceText(doc, importedText, y, {
+      width,
+      x: 18,
+      fontSize: 8.8,
+      lineHeight: 4.45,
+      paragraphGap: 3.2,
+    });
+  } else {
+    y = renderImportedSourceText(
+      doc,
+      [
         'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
-        'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
-        'Expresando los mismos, mediante su firma, su conformidad con las instrucciones de la Empresa.',
-      ];
-  doc.setFont('helvetica','normal');
-  doc.setFontSize(9);
-  for (const p of paragraphs) {
-    const lines = doc.splitTextToSize(p, width);
-    if (y + lines.length * 4.4 > 252) {
-      doc.addPage('a4','portrait');
-      y = 24;
-    }
-    doc.text(lines, 18, y);
-    y += lines.length * 4.4 + 5;
+        'Estando prevista su incorporación al centro de trabajo, las personas relacionadas han resultado aptas para las tareas que se les encomienden dentro de las labores para las que han sido contratadas y según los riesgos inherentes al puesto de trabajo.',
+        'Expresando las mismas, mediante su firma, su conformidad con las instrucciones de la Empresa.',
+      ].join('\n\n'),
+      y,
+      { width, x: 18, fontSize: 8.8, lineHeight: 4.45, paragraphGap: 3.2 },
+    );
   }
-  if (y > 244) {
+
+  if (y > 228) {
     doc.addPage('a4','portrait');
     y = 24;
   }
 
   doc.setTextColor(15, 23, 42);
-  doc.setDrawColor(71, 85, 105);
   doc.setFont('helvetica','bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(10.2);
   const workLines = doc.splitTextToSize(String(obra || '').toUpperCase(), width);
   doc.text(workLines, 18, y);
-  y += workLines.length * 5 + 5;
-  doc.line(18, y, 192, y);
-  y += 8;
-  doc.setTextColor(15, 23, 42);
-  doc.text(`CATEGORÍA ${String(record.category || '').toUpperCase()}`, 18, y);
-  y += 4;
-  doc.line(18, y, 192, y);
-  y += 8;
+  y += workLines.length * 5 + 3;
 
-  doc.setTextColor(0, 0, 0);
-  doc.setDrawColor(0, 0, 0);
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8.5);
-  doc.text('TRABAJADOR/A', 18, y);
-  doc.text('FIRMA', 120, y);
-  y += 3;
-  doc.setLineWidth(0.35);
-  doc.line(18, y, 190, y);
-  y += 8;
+  if (record.category) {
+    doc.setFontSize(8.7);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`CATEGORÍA: ${String(record.category).toUpperCase()}`, 18, y);
+    y += 7;
+  } else {
+    y += 2;
+  }
 
-  const inicioRowHeight = 16;
-  const inicioSignatureHeight = 11;
+  y = drawMandatoryWorkersHeader(doc, y, { control: false });
+
+  // En Inicio se conserva la estética original: firma a la derecha,
+  // sin línea continua larga. Se da más aire entre trabajadores para
+  // evitar que las firmas se junten.
+  const inicioRowHeight = 21;
+  const inicioSignatureHeight = 12;
   const inicioSignatureWidth = 48;
-  const renderInicioHeader = () => {
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(0, 0, 0);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8.5);
-    doc.text('TRABAJADOR/A', 18, y);
-    doc.text('FIRMA', 120, y);
-    y += 3;
-    doc.setLineWidth(0.35);
-    doc.line(18, y, 190, y);
-    y += 8;
-  };
 
-  doc.setFontSize(9);
   for (const worker of record.workers || []) {
-    if (y + inicioRowHeight > 274) {
+    if (y + inicioRowHeight > 272) {
       doc.addPage('a4','portrait');
-      y = 24;
-      renderInicioHeader();
+      y = drawMandatoryWorkersHeader(doc, 24, { control: false });
     }
 
-    const rowTop = y - 5;
-    const rowBottom = rowTop + inicioRowHeight;
+    const rowTop = y - 1;
     const signatureRaw = (record.signatures || {})[String(worker.id)];
     const signature = typeof signatureRaw === 'string' ? signatureRaw : signatureRaw?.signature;
 
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica','bold');
+    doc.setFontSize(8.8);
     doc.text(String(worker.apellidosNombre || '').toUpperCase(), 18, y, { maxWidth: 96 });
 
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7.5);
+    if (worker.dni) doc.text(`DNI/NIE: ${String(worker.dni)}`, 18, y + 4.5, { maxWidth: 48 });
+    if (worker.categoria) doc.text(`Categoría: ${String(worker.categoria)}`, 70, y + 4.5, { maxWidth: 45 });
+
     if (signature) {
-      const signatureY = rowTop + (inicioRowHeight - inicioSignatureHeight) / 2;
-      try { doc.addImage(signature, 'PNG', 120, signatureY, inicioSignatureWidth, inicioSignatureHeight, undefined, 'FAST'); } catch {}
-    } else {
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.25);
-      doc.line(120, rowTop + inicioRowHeight / 2 + 1, 170, rowTop + inicioRowHeight / 2 + 1);
+      const signatureY = rowTop + 0.8;
+      try { doc.addImage(signature, 'PNG', 132, signatureY, inicioSignatureWidth, inicioSignatureHeight, undefined, 'FAST'); } catch {}
     }
 
-    doc.setDrawColor(90, 90, 90);
-    doc.setLineWidth(0.2);
-    doc.line(18, rowBottom, 190, rowBottom);
+    // Sin línea horizontal bajo la firma ni separador largo de fila.
+    // El espaciado vertical mantiene la lectura limpia y la estética del original.
     y += inicioRowHeight;
   }
 
+  if (y > 274) {
+    doc.addPage('a4','portrait');
+    y = 24;
+  }
   doc.setFont('helvetica','normal');
-  doc.setFontSize(9);
-  doc.text(`Cádiz, a ${fmtEs(record.workDate)}`, 132, 286);
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Cádiz, a ${fmtEs(record.workDate)}`, 132, Math.min(282, Math.max(y + 4, 266)));
+
   applyInstitutionalPdfStandard(doc);
   return { doc, filename: `INICIO_${String(record.category || 'GENERAL').replace(/[^a-zA-Z0-9]+/g,'_')}_${record.workDate}.pdf` };
 }

@@ -501,7 +501,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
           <h2 className="font-black">Asignados por el supervisor</h2>
-          <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Se conserva el texto completo leído del documento importado y debajo figuran los trabajadores que deben firmar.</p>
+          <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Se conserva la estructura y el contenido del documento importado. La relación de personal empieza vacía y cada trabajador se incorpora únicamente cuando firma.</p>
         </div>
         {assignedMandatoryDocuments.map(doc=>renderSigningDocument(doc))}
         {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay Inicio ni Control de presencia pendientes para esta obra.</div>}
