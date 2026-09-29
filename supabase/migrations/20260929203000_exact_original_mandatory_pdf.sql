@@ -1,6 +1,110 @@
 -- Preserve imported Inicio / Control de presencia PDFs byte-for-byte as the master source.
 -- Signed copies are stored separately and may differ only by signature overlays.
 
+create or replace function public.prepare_foreman_mandatory_from_email(
+  p_document_type text,
+  p_worker_ids bigint[],
+  p_work_date date,
+  p_category text,
+  p_period_key text,
+  p_gmail_message_id text,
+  p_gmail_thread_id text,
+  p_rfc_message_id text,
+  p_email_from text,
+  p_email_subject text,
+  p_attachment_name text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_owner uuid := auth.uid();
+  v_obra text;
+  v_id uuid;
+  v_existing public.foreman_mandatory_documents%rowtype;
+  v_category text := coalesce(trim(p_category),'');
+  v_valid_worker_ids bigint[] := '{}'::bigint[];
+  v_imported_ids jsonb := '[]'::jsonb;
+begin
+  if v_owner is null then raise exception 'Authentication required'; end if;
+  if p_document_type not in ('inicio','control_presencia') then raise exception 'Tipo de documento no válido'; end if;
+  if coalesce(array_length(p_worker_ids,1),0)=0 then raise exception 'No hay datos suficientes para identificar la obra'; end if;
+
+  select t.obra into v_obra
+  from unnest(p_worker_ids) with ordinality ids(id,ord)
+  join public.trabajadores t on t.id=ids.id and t.owner_id=v_owner
+  group by t.obra
+  order by count(*) desc, min(ids.ord)
+  limit 1;
+
+  if coalesce(trim(v_obra),'')='' then raise exception 'No se ha podido identificar la obra'; end if;
+  if p_document_type='control_presencia' then v_category := ''; end if;
+
+  select coalesce(array_agg(t.id order by ids.ord),'{}'::bigint[])
+    into v_valid_worker_ids
+    from unnest(p_worker_ids) with ordinality ids(id,ord)
+    join public.trabajadores t on t.id=ids.id
+   where t.owner_id=v_owner
+     and lower(coalesce(t.obra,''))=lower(v_obra);
+
+  select coalesce(jsonb_agg(value order by ord),'[]'::jsonb)
+    into v_imported_ids
+    from unnest(v_valid_worker_ids) with ordinality values(value,ord);
+
+  select * into v_existing
+  from public.foreman_mandatory_documents
+  where owner_id=v_owner
+    and lower(obra)=lower(v_obra)
+    and period_key=coalesce(nullif(trim(p_period_key),''),to_char(coalesce(p_work_date,current_date),'YYYY-MM-DD'))
+    and document_type=p_document_type
+    and category=v_category
+  limit 1
+  for update;
+
+  if found then
+    update public.foreman_mandatory_documents
+    set source_gmail_message_id=coalesce(p_gmail_message_id,source_gmail_message_id),
+        source_gmail_thread_id=coalesce(p_gmail_thread_id,source_gmail_thread_id),
+        source_rfc_message_id=coalesce(p_rfc_message_id,source_rfc_message_id),
+        source_email_from=coalesce(p_email_from,source_email_from),
+        source_email_subject=coalesce(p_email_subject,source_email_subject),
+        source_attachment_name=coalesce(p_attachment_name,source_attachment_name),
+        details=case
+          when jsonb_object_length(coalesce(signatures,'{}'::jsonb))>0
+            then coalesce(details,'{}'::jsonb)
+          else coalesce(details,'{}'::jsonb) || jsonb_build_object(
+            'importedWorkerIds',v_imported_ids,
+            'sourceFilename',coalesce(p_attachment_name,source_attachment_name,'')
+          )
+        end,
+        updated_at=now()
+    where id=v_existing.id
+    returning id into v_id;
+    return v_id;
+  end if;
+
+  insert into public.foreman_mandatory_documents(
+    owner_id,obra,period_key,work_date,document_type,category,workers,signatures,status,
+    source_gmail_message_id,source_gmail_thread_id,source_rfc_message_id,source_email_from,
+    source_email_subject,source_attachment_name,details,updated_at
+  ) values(
+    v_owner,v_obra,coalesce(nullif(trim(p_period_key),''),to_char(coalesce(p_work_date,current_date),'YYYY-MM-DD')),
+    coalesce(p_work_date,current_date),p_document_type,v_category,'[]'::jsonb,'{}'::jsonb,'pending',
+    p_gmail_message_id,p_gmail_thread_id,p_rfc_message_id,p_email_from,p_email_subject,p_attachment_name,
+    jsonb_build_object('importedWorkerIds',v_imported_ids,'sourceFilename',coalesce(p_attachment_name,'')),
+    now()
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$;
+
+revoke all on function public.prepare_foreman_mandatory_from_email(text,bigint[],date,text,text,text,text,text,text,text,text) from public;
+grant execute on function public.prepare_foreman_mandatory_from_email(text,bigint[],date,text,text,text,text,text,text,text,text) to authenticated;
+
 create table if not exists public.foreman_mandatory_pdf_files (
   document_id uuid primary key references public.foreman_mandatory_documents(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -55,6 +159,15 @@ begin
 
   if jsonb_typeof(coalesce(p_worker_anchors,'[]'::jsonb)) <> 'array' then
     raise exception 'Metadatos de posiciones no válidos';
+  end if;
+
+  if jsonb_object_length(coalesce(v_doc.signatures,'{}'::jsonb))>0 and exists(
+    select 1 from public.foreman_mandatory_pdf_files f
+    where f.document_id=p_document_id
+      and f.owner_id=v_owner
+      and coalesce(f.original_sha256,'')<>coalesce(p_original_sha256,'')
+  ) then
+    raise exception 'Este documento ya contiene firmas. El PDF original no puede sustituirse por otro archivo distinto';
   end if;
 
   select count(*) into v_unresolved
