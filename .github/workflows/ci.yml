@@ -63,6 +63,22 @@ jobs:
             echo 'Misleading period selector label detected.'
             exit 1
           fi
+      - name: Validate exact imported PDF preservation
+        run: |
+          set -euo pipefail
+          MIGRATION=supabase/migrations/20260929203000_exact_original_mandatory_pdf.sql
+          test -s "$MIGRATION"
+          grep -q "foreman_mandatory_pdf_files" "$MIGRATION"
+          grep -q "original_pdf bytea" "$MIGRATION"
+          grep -q "signed_pdf bytea" "$MIGRATION"
+          grep -q "guard_exact_mandatory_pdf_completion" "$MIGRATION"
+          grep -q "workerAnchors" "$MIGRATION"
+          grep -q "buildSignedMandatoryPdf" src/lib/mandatoryPdfOverlay.ts
+          grep -q "verifyMandatoryPdfFidelity" src/lib/mandatoryPdfOverlay.ts
+          grep -q "originalPdfMode === 'overlay'" src/lib/foremanDocumentsPdf.ts
+          grep -q "getSupervisorMandatoryPdf" components/ForemanDocumentsDashboard.tsx
+          grep -q "get_foreman_mandatory_signatures" "$MIGRATION"
+          grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
       - name: TypeScript validation
         run: |
           set -o pipefail

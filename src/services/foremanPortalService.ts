@@ -265,6 +265,10 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   emailSubject?: string | null;
   attachmentName?: string | null;
   sourceText?: string | null;
+  sourcePdfBase64?: string | null;
+  sourcePdfSha256?: string | null;
+  pageMeta?: any[];
+  workerAnchors?: any[];
 }) {
   const id = await supabase.rpc('prepare_foreman_mandatory_from_email', {
     p_document_type: input.documentType,
@@ -280,6 +284,16 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     p_attachment_name: input.attachmentName || null,
   });
   const documentId = String(id || '').trim();
+  if (documentId && input.sourcePdfBase64) {
+    await supabase.rpc('save_foreman_mandatory_original_pdf', {
+      p_document_id: documentId,
+      p_pdf_base64: input.sourcePdfBase64,
+      p_filename: input.attachmentName || '',
+      p_original_sha256: input.sourcePdfSha256 || '',
+      p_page_meta: input.pageMeta || [],
+      p_worker_anchors: input.workerAnchors || [],
+    });
+  }
   if (documentId) {
     const currentRows = await supabase.query('foreman_mandatory_documents', {
       query: 'id=eq.' + encodeURIComponent(documentId) + '&select=details&limit=1',
@@ -306,6 +320,63 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     });
   }
   return id;
+}
+
+export async function getForemanMandatoryPdf(
+  token: string,
+  documentId: string,
+  variant: 'original' | 'signed' = 'original',
+) {
+  return withForemanTimeout(
+    supabase.rpc('get_foreman_mandatory_pdf', {
+      p_token: token,
+      p_document_id: documentId,
+      p_variant: variant,
+    }),
+    'No se pudo abrir el PDF a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  ) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
+}
+
+export async function getSupervisorMandatoryPdf(
+  documentId: string,
+  variant: 'original' | 'signed' = 'signed',
+) {
+  return supabase.rpc('get_supervisor_mandatory_pdf', {
+    p_document_id: documentId,
+    p_variant: variant,
+  }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
+}
+
+export async function getForemanMandatorySignatures(
+  token: string,
+  documentId: string,
+): Promise<Record<string, { signature: string; signedAt?: string } | string>> {
+  return withForemanTimeout(
+    supabase.rpc('get_foreman_mandatory_signatures', {
+      p_token: token,
+      p_document_id: documentId,
+    }),
+    'No se pudieron cargar las firmas a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  ) as Promise<Record<string, { signature: string; signedAt?: string } | string>>;
+}
+
+export async function storeForemanMandatorySignedPdf(input: {
+  token: string;
+  documentId: string;
+  pdfBase64: string;
+  signedSha256: string;
+  fidelity: any;
+}) {
+  return withForemanTimeout(
+    supabase.rpc('store_foreman_mandatory_signed_pdf', {
+      p_token: input.token,
+      p_document_id: input.documentId,
+      p_pdf_base64: input.pdfBase64,
+      p_signed_sha256: input.signedSha256,
+      p_fidelity: input.fidelity || {},
+    }),
+    'No se pudo guardar el PDF firmado a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 export async function markMandatoryDocumentReturned(id: string, gmailMessageId: string) {
@@ -394,6 +465,7 @@ export async function updateForemanMandatoryDocument(input: {
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
   status: 'pending' | 'in_progress' | 'returned' | 'completed' | 'reviewed';
+  details?: Record<string, any>;
 }) {
   const workerIds = new Set(input.workers.map((worker) => String(worker.id)));
   const filteredSignatures = Object.fromEntries(
@@ -401,12 +473,28 @@ export async function updateForemanMandatoryDocument(input: {
   );
   const signedCount = Object.keys(filteredSignatures).length;
   const total = input.workers.length;
-  const nextStatus =
-    total > 0 && signedCount >= total
+  const exactOriginalMode = input.details?.originalPdfMode === 'overlay';
+  const nextStatus = exactOriginalMode
+    ? (signedCount > 0 ? 'in_progress' : 'pending')
+    : total > 0 && signedCount >= total
       ? 'completed'
       : signedCount > 0
         ? 'in_progress'
         : 'pending';
+
+  if (exactOriginalMode) {
+    await supabase.query('foreman_mandatory_pdf_files', {
+      method: 'PATCH',
+      prefer: 'return=minimal',
+      query: `document_id=eq.${encodeURIComponent(input.id)}`,
+      body: {
+        signed_pdf: null,
+        signed_sha256: null,
+        fidelity: null,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
 
   await supabase.query('foreman_mandatory_documents', {
     method: 'PATCH',

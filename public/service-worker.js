@@ -1,8 +1,9 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-static-v8';
-const RUNTIME_CACHE = 'profea-runtime-v8';
+const CACHE_NAME = 'profea-static-v9';
+const RUNTIME_CACHE = 'profea-runtime-v9';
+const PDF_LIB_CDN = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
 const STATIC_ASSETS = ['/','/manifest.webmanifest','/manifest-encargados.webmanifest','/icons/profea-icon-v4-32.png','/icons/profea-icon-v4-180.png','/icons/profea-icon-v4-192.png','/icons/profea-icon-v4-512.png','/icons/profea-icon-v4-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
 
 // 1. INSTALACIÓN: Guardar en caché recursos estáticos básicos
@@ -39,6 +40,23 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+
+  if (url.href === PDF_LIB_CDN) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response.ok || response.type === 'opaque') {
+            const copy = response.clone();
+            event.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, copy)));
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
   if (url.origin !== self.location.origin) return;
 
   if (event.request.mode === 'navigate') {

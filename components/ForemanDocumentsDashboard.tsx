@@ -8,8 +8,11 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
+import { pdfBlobFromBase64, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
+
+const MandatoryPdfAnchorEditor = React.lazy(() => import('./MandatoryPdfAnchorEditor'));
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -55,6 +58,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
   const [activityNotice,setActivityNotice]=useState('');
+  const [anchorEditing,setAnchorEditing]=useState<DbMandatory|null>(null);
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -263,19 +267,42 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     await returnForemanItemForCorrection(kind,id,reason.trim());
     await refresh(true);
   };
-  const openPdf=(card:any)=>{
-    if(card.kind==='attendance'){
-      const day:ForemanAttendanceDay={id:card.item.id,workDate:card.item.work_date,rows:card.item.rows||[],status:card.item.status,completedAt:card.item.completed_at,updatedAt:card.item.updated_at};
-      const out=generateForemanAttendancePdf(day,card.item.obra,card.item.foreman_name); downloadPDF(out.doc,out.filename); return;
+  const downloadStoredMandatoryPdf=async(item:DbMandatory,variant:'original'|'signed')=>{
+    const stored=await getSupervisorMandatoryPdf(item.id,variant);
+    const blob=pdfBlobFromBase64(stored.base64);
+    const suffix=stored.variant==='signed'?'_FIRMADO':'_ORIGINAL';
+    const base=String(stored.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=`${base}${suffix}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
+
+  const openPdf=async(card:any)=>{
+    try{
+      if(card.kind==='attendance'){
+        const day:ForemanAttendanceDay={id:card.item.id,workDate:card.item.work_date,rows:card.item.rows||[],status:card.item.status,completedAt:card.item.completed_at,updatedAt:card.item.updated_at};
+        const out=generateForemanAttendancePdf(day,card.item.obra,card.item.foreman_name); downloadPDF(out.doc,out.filename); return;
+      }
+      if(card.kind==='mandatory'){
+        const m=card.item as DbMandatory;
+        if(m.details?.originalPdfMode==='overlay'){
+          await downloadStoredMandatoryPdf(m,m.status==='completed'||m.status==='reviewed'?'signed':'original');
+          return;
+        }
+        const record:ForemanMandatoryDocument={id:m.id,workDate:m.work_date,periodKey:m.period_key,documentType:m.document_type,category:m.category,workers:m.workers||[],signatures:m.signatures||{},status:m.status,completedAt:m.completed_at,details:m.details||{}};
+        const out=generateForemanMandatoryDocumentPdf(record,m.obra); downloadPDF(out.doc,out.filename); return;
+      }
+      const d=card.item as DbDocument;
+      const record:ForemanCompletedDocument={id:d.id,workDate:d.work_date,documentType:d.document_type,workerId:d.worker_id,workerSnapshot:d.worker_snapshot||{},answers:d.answers||{},signatures:d.signatures||{},status:d.status,completedAt:d.completed_at};
+      const out=generateForemanCompletedDocumentPdf(record,d.obra,d.completed_by); downloadPDF(out.doc,out.filename);
+    }catch(error:any){
+      setMailMessage(error?.message||'No se pudo abrir el PDF.');
     }
-    if(card.kind==='mandatory'){
-      const m=card.item as DbMandatory;
-      const record:ForemanMandatoryDocument={id:m.id,workDate:m.work_date,periodKey:m.period_key,documentType:m.document_type,category:m.category,workers:m.workers||[],signatures:m.signatures||{},status:m.status,completedAt:m.completed_at,details:m.details||{}};
-      const out=generateForemanMandatoryDocumentPdf(record,m.obra); downloadPDF(out.doc,out.filename); return;
-    }
-    const d=card.item as DbDocument;
-    const record:ForemanCompletedDocument={id:d.id,workDate:d.work_date,documentType:d.document_type,workerId:d.worker_id,workerSnapshot:d.worker_snapshot||{},answers:d.answers||{},signatures:d.signatures||{},status:d.status,completedAt:d.completed_at};
-    const out=generateForemanCompletedDocumentPdf(record,d.obra,d.completed_by); downloadPDF(out.doc,out.filename);
   };
   const approveAndReturnMandatory = async (item: DbMandatory) => {
     if (item.status !== 'completed') return;
@@ -291,14 +318,22 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     ))) return;
     setMailBusy(true);
     try {
-      const record:ForemanMandatoryDocument={
-        id:item.id,workDate:item.work_date,periodKey:item.period_key,documentType:item.document_type,
-        category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
-        completedAt:item.completed_at,details:item.details||{}
-      };
-      const out=generateForemanMandatoryDocumentPdf(record,item.obra);
-      const blob=out.doc.output('blob');
-      const file=new File([blob],out.filename,{type:'application/pdf'});
+      let file:File;
+      if(item.details?.originalPdfMode==='overlay'){
+        const stored=await getSupervisorMandatoryPdf(item.id,'signed');
+        const blob=pdfBlobFromBase64(stored.base64);
+        const base=String(stored.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
+        file=new File([blob],`${base}_FIRMADO.pdf`,{type:'application/pdf'});
+      }else{
+        const record:ForemanMandatoryDocument={
+          id:item.id,workDate:item.work_date,periodKey:item.period_key,documentType:item.document_type,
+          category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
+          completedAt:item.completed_at,details:item.details||{}
+        };
+        const out=generateForemanMandatoryDocumentPdf(record,item.obra);
+        const blob=out.doc.output('blob');
+        file=new File([blob],out.filename,{type:'application/pdf'});
+      }
       const subjectRaw=String(item.source_email_subject||'Documentación PROFEA firmada').trim();
       const subject=/^re:/i.test(subjectRaw)?subjectRaw:`Re: ${subjectRaw}`;
       const sent=await sendPdfWithConnectedGmail({
@@ -492,6 +527,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         workers: selectedWorkers,
         signatures: editingMandatory.signatures || {},
         status: editingMandatory.status,
+        details: editingMandatory.details || {},
       });
       setMailMessage(`${mandatoryDocumentLabel(editingMandatory.document_type)} actualizado correctamente.`);
       setEditingMandatory(null);
@@ -634,7 +670,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={()=>openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>PDF</button>
+          <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
+          {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
+            <button onClick={()=>void downloadStoredMandatoryPdf(card.item as DbMandatory,'original')} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700"><FileSignature className="w-4 h-4"/>Original</button>
+            {card.status!=='completed'&&card.status!=='reviewed'&&<button onClick={()=>setAnchorEditing(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><Pencil className="w-4 h-4"/>Ajustar zonas de firma</button>}
+          </>}
           <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
@@ -652,6 +692,38 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
     </>}
+
+    {anchorEditing&&<React.Suspense fallback={null}><MandatoryPdfAnchorEditor
+      documentId={anchorEditing.id}
+      title={`${mandatoryDocumentLabel(anchorEditing.document_type)} · ${anchorEditing.obra}`}
+      obra={anchorEditing.obra}
+      anchors={(Array.isArray(anchorEditing.details?.workerAnchors)?anchorEditing.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
+      signedWorkerIds={Object.keys(anchorEditing.signatures||{}).map(Number).filter(Number.isFinite)}
+      onCancel={()=>setAnchorEditing(null)}
+      onSave={async anchors=>{
+        const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
+        const importedWorkerIds=anchors
+          .map(anchor=>Number(anchor.workerId))
+          .filter((id,index,list)=>Number.isFinite(id)&&id>0&&list.indexOf(id)===index);
+        await supabase.query('foreman_mandatory_documents',{
+          method:'PATCH',
+          query:'id=eq.'+encodeURIComponent(anchorEditing.id),
+          body:{
+            details:{
+              ...(anchorEditing.details||{}),
+              workerAnchors:anchors,
+              importedWorkerIds,
+              unresolvedAnchorCount:unresolved,
+            },
+            updated_at:new Date().toISOString(),
+          },
+          prefer:'return=minimal',
+        });
+        setAnchorEditing(null);
+        setMailMessage('Posiciones de firma guardadas sobre el PDF original.');
+        await refresh(true);
+      }}
+    /></React.Suspense>}
 
     {editingCard&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
