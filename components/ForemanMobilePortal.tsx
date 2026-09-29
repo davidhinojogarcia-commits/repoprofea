@@ -19,7 +19,13 @@ import {
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 const nowTime = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 const DEFAULT_EPIS = { casco:true, chaleco:true, orejeras:true, gafas:true, guantes:true, mascarillas:true, calzado:true };
 
@@ -75,7 +81,9 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
       <canvas ref={ref} className="mt-4 w-full h-[240px] sm:h-[280px] touch-none rounded-2xl border-2 border-slate-300 bg-white"
         onPointerDown={e=>{e.preventDefault();drawing.current=true;last.current=point(e);e.currentTarget.setPointerCapture?.(e.pointerId)}}
         onPointerMove={e=>{if(!drawing.current||!last.current)return;e.preventDefault();const ctx=e.currentTarget.getContext('2d');if(!ctx)return;const n=point(e);ctx.beginPath();ctx.moveTo(last.current.x,last.current.y);ctx.lineTo(n.x,n.y);ctx.stroke();last.current=n}}
-        onPointerUp={e=>{drawing.current=false;last.current=null;e.currentTarget.releasePointerCapture?.(e.pointerId)}}/>
+        onPointerUp={e=>{drawing.current=false;last.current=null;e.currentTarget.releasePointerCapture?.(e.pointerId)}}
+        onPointerCancel={()=>{drawing.current=false;last.current=null}}
+        onLostPointerCapture={()=>{drawing.current=false;last.current=null}}/>
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
         <button onClick={onCancel} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold">Cancelar</button>
@@ -215,7 +223,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   });
   const documentWorkers = useMemo(()=>{
     const workers=data?.workers||[];
-    if(!selectedPeriodKeys.size)return workers;
+    if(!selectedPeriodKeys.size)return [];
     return workers.filter(worker=>{
       const q=String(worker.quincena||'').trim();
       if(q&&selectedPeriodKeys.has('q:'+q))return true;
@@ -231,7 +239,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const controlRows=useMemo(()=>rows.filter(row=>selectedWorkerIds.has(Number(row.workerId))),[rows,selectedWorkerIds]);
   const periodLabel = selectedPeriodKeys.size
     ? [...selectedPeriodKeys].map(key=>key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2))).join(' + ')
-    : 'Todos los trabajadores de la obra';
+    : 'Selecciona al menos un periodo';
   const worksiteContext: WorksiteDocumentContext = {
     obra: data?.obra || '',
     municipio: data?.worksite?.municipio || '',
@@ -326,7 +334,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     <div className="flex items-center justify-between gap-3">
       <div>
         <div className="text-base font-black text-slate-900">1. Selecciona el periodo o periodos</div>
-        <div className="mt-1 text-sm leading-5 text-slate-600">Después aparecerán únicamente los trabajadores que pertenecen a los periodos seleccionados para que puedas comprobarlos antes de recoger las firmas.</div>
+        <div className="mt-1 text-sm leading-5 text-slate-600">Elige una o varias quincenas o meses. Hasta que no selecciones un periodo no se mostrará ningún trabajador adicional, evitando mezclar personal de otros periodos.</div>
       </div>
       {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black">Mostrar todos</button>}
     </div>
@@ -355,18 +363,15 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   </div>;
 
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
-    const signedWorkers=doc.workers||[];
-    const signedCount=Object.keys(doc.signatures||{}).length;
-    const signedIds=new Set(signedWorkers.map(worker=>Number(worker.id)));
+    const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
+    const assignedWorkers=doc.workers||[];
+    const signatureIds=new Set(Object.keys(doc.signatures||{}).map(Number));
+    const signedWorkers=assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
+    const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
     const closed=doc.status==='completed'||doc.status==='reviewed';
     const sourceText=String(doc.details?.sourceText||'').trim();
     const workDate=String(doc.workDate||'').slice(0,10);
-    const importedWorkerIds=new Set<number>(
-      (Array.isArray(doc.details?.importedWorkerIds)?doc.details.importedWorkerIds:[])
-        .map((id:any)=>Number(id))
-        .filter((id:number)=>Number.isFinite(id)),
-    );
 
     const validForDocument=(worker:any)=>{
       if(doc.documentType!=='control_presencia')return true;
@@ -375,20 +380,44 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       return (!startDate||startDate<=workDate)&&(!endDate||endDate>=workDate);
     };
 
-    const importedCandidates=(data?.workers||[]).filter(worker=>
-      importedWorkerIds.has(Number(worker.id)) &&
-      !signedIds.has(Number(worker.id)) &&
-      validForDocument(worker)
+    const importedWorkerIds=new Set<number>(
+      isImportedMandatory && Array.isArray(doc.details?.importedWorkerIds)
+        ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
+        : [],
     );
 
-    const additionalCandidates=documentWorkers.filter(worker=>
-      !importedWorkerIds.has(Number(worker.id)) &&
-      !signedIds.has(Number(worker.id)) &&
-      validForDocument(worker)
-    );
+    const importedCandidates=isImportedMandatory
+      ? (data?.workers||[]).filter(worker=>
+          importedWorkerIds.has(Number(worker.id)) &&
+          !signatureIds.has(Number(worker.id)) &&
+          validForDocument(worker)
+        )
+      : [];
+
+    const additionalCandidates=isImportedMandatory && selectedPeriodKeys.size>0
+      ? documentWorkers.filter(worker=>
+          !importedWorkerIds.has(Number(worker.id)) &&
+          !signatureIds.has(Number(worker.id)) &&
+          validForDocument(worker)
+        )
+      : [];
+
+    const operationalCandidates=!isImportedMandatory
+      ? assignedWorkers.filter(worker=>!signatureIds.has(Number(worker.id)))
+      : [];
 
     const selectedId=mandatoryWorkerChoice[doc.id]||'';
-    const selectedCandidate=additionalCandidates.find(worker=>String(worker.id)===selectedId);
+    const selectedCandidate=(isImportedMandatory?additionalCandidates:operationalCandidates)
+      .find(worker=>String(worker.id)===selectedId);
+
+    const requiredSignatureTotal=isImportedMandatory
+      ? Math.max(importedWorkerIds.size, signedCount)
+      : assignedWorkers.length;
+    const pendingRequired=isImportedMandatory
+      ? importedCandidates.length
+      : operationalCandidates.length;
+    const canFinalize=signedCount>0 && pendingRequired===0 &&
+      (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
 
     return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
       <div className="flex items-start justify-between gap-3">
@@ -396,7 +425,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
           <div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}{doc.details?.periodoLabel?' · '+String(doc.details.periodoLabel):''}</div>
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount} firma(s)</span>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0} firma(s)</span>
       </div>
 
       {sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
@@ -406,10 +435,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
 
-      {!closed&&importedWorkerIds.size>0&&<div className="mt-3 rounded-2xl border-2 border-[#00548E]/20 bg-blue-50/50 p-3">
+      {!closed&&isImportedMandatory&&importedWorkerIds.size>0&&<div className="mt-3 rounded-2xl border-2 border-[#00548E]/20 bg-blue-50/50 p-3">
         <div className="text-base font-black text-[#00548E]">Personas que vienen en el documento importado</div>
         <p className="mt-1 text-sm leading-5 text-slate-600">Comprueba cada persona y pulsa su botón para recoger la firma. Solo pasará al documento final cuando firme.</p>
-
         {importedCandidates.length>0
           ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=><button
               key={worker.id}
@@ -425,48 +453,62 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
       </div>}
 
-      {!closed&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        No hay personas identificadas automáticamente en este documento importado. Puedes seleccionar el periodo y añadirlas manualmente desde la obra.
+      {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        No hay personas identificadas automáticamente en este documento importado. Selecciona el periodo correcto y añádelas manualmente desde la obra.
       </div>}
 
-      <div className="mt-3 rounded-xl border bg-slate-50 p-3">
-        <div className="text-xs font-black uppercase tracking-wide text-slate-500">Trabajadores incorporados al documento</div>
-        {!signedWorkers.length&&<div className="mt-2 text-sm font-semibold text-slate-500">Ningún trabajador todavía. Se añadirá cada trabajador únicamente cuando firme.</div>}
-        {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=>{
-          const signed=Boolean((doc.signatures||{})[String(worker.id)]);
-          return <div key={worker.id} className="flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-            <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
-            {correction&&!closed
-              ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
-              : <span className="text-xs font-black text-emerald-700">{signed?'Firmado ✓':'Añadido'}</span>}
-          </div>;
-        })}</div>}
-      </div>
-
-      {!closed&&<div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
-        <div className="text-base font-black text-slate-900">¿Falta alguna persona del periodo?</div>
-        <p className="mt-1 text-sm leading-5 text-slate-600">Puedes añadir otro trabajador de los periodos seleccionados aunque no apareciera en el documento importado.</p>
+      {!closed&&!isImportedMandatory&&operationalCandidates.length>0&&<div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
+        <div className="text-base font-black text-[#00548E]">Trabajadores pendientes de firma</div>
+        <p className="mt-1 text-sm text-slate-600">Selecciona cada trabajador y recoge su firma. El documento no podrá finalizarse hasta completar todas.</p>
         <select value={selectedId} onChange={e=>setMandatoryWorkerChoice(current=>({...current,[doc.id]:e.target.value}))} className="mt-3 min-h-[56px] w-full rounded-xl border bg-white px-3 py-3 text-base font-semibold">
-          <option value="">Seleccionar trabajador adicional…</option>
-          {additionalCandidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
+          <option value="">Seleccionar trabajador…</option>
+          {operationalCandidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
         </select>
         <button type="button" disabled={saving||!selectedCandidate} onClick={()=>{
           if(!selectedCandidate)return;
           setMandatorySigning({documentId:doc.id,workerId:Number(selectedCandidate.id),name:selectedCandidate.apellidosNombre});
-        }} className="mt-2 min-h-[56px] w-full rounded-xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E] disabled:border-slate-200 disabled:text-slate-400">Añadir trabajador y recoger firma</button>
+        }} className="mt-2 min-h-[56px] w-full rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Recoger firma del trabajador</button>
       </div>}
 
-      {!closed&&<button type="button" disabled={saving||signedCount===0} onClick={async()=>{
+      <div className="mt-3 rounded-xl border bg-slate-50 p-3">
+        <div className="text-xs font-black uppercase tracking-wide text-slate-500">Trabajadores que ya han firmado</div>
+        {!signedWorkers.length&&<div className="mt-2 text-sm font-semibold text-slate-500">Todavía no hay firmas guardadas.</div>}
+        {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=><div key={worker.id} className="flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+          <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
+          {correction&&!closed
+            ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
+            : <span className="text-xs font-black text-emerald-700">Firmado ✓</span>}
+        </div>)}</div>}
+      </div>
+
+      {!closed&&isImportedMandatory&&<div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+        <div className="text-base font-black text-slate-900">¿Falta alguna persona del periodo?</div>
+        <p className="mt-1 text-sm leading-5 text-slate-600">Selecciona primero el periodo. Después podrás añadir un trabajador que no apareciera en el documento importado.</p>
+        {!selectedPeriodKeys.size&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-bold text-amber-900">Selecciona un periodo arriba para poder añadir trabajadores.</div>}
+        {!!selectedPeriodKeys.size&&<>
+          <select value={selectedId} onChange={e=>setMandatoryWorkerChoice(current=>({...current,[doc.id]:e.target.value}))} className="mt-3 min-h-[56px] w-full rounded-xl border bg-white px-3 py-3 text-base font-semibold">
+            <option value="">Seleccionar trabajador adicional…</option>
+            {additionalCandidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
+          </select>
+          <button type="button" disabled={saving||!selectedCandidate} onClick={()=>{
+            if(!selectedCandidate)return;
+            setMandatorySigning({documentId:doc.id,workerId:Number(selectedCandidate.id),name:selectedCandidate.apellidosNombre});
+          }} className="mt-2 min-h-[56px] w-full rounded-xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E] disabled:border-slate-200 disabled:text-slate-400">Añadir trabajador y recoger firma</button>
+        </>}
+      </div>}
+
+      {!closed&&<button type="button" disabled={saving||!canFinalize} onClick={async()=>{
         setSaving(true);
         try{
           await finalizeForemanMandatoryDocument(token,doc.id);
           setData(current=>current?{...current,mandatoryDocuments:current.mandatoryDocuments.map(item=>item.id===doc.id?{...item,status:'completed',correctionPending:false,completedAt:new Date().toISOString()}:item)}:current);
           setError('');
+          setMandatoryWorkerChoice(current=>({...current,[doc.id]:''}));
           setTab('completed');
         }catch(e:any){setError(e?.message||'No se pudo finalizar el documento.');}
         finally{setSaving(false);}
       }} className="mt-4 min-h-[58px] w-full rounded-2xl bg-emerald-600 px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500">
-        {signedCount>0?'Finalizar y enviar al supervisor':'Debe firmar al menos un trabajador'}
+        {canFinalize?'Finalizar y enviar al supervisor':pendingRequired>0?`Faltan ${pendingRequired} firma(s)`:'Debe firmar al menos un trabajador'}
       </button>}
 
       {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
