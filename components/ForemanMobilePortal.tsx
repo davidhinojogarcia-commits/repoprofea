@@ -139,7 +139,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     cif: data?.worksite?.cif || '',
     recursoPreventivo: data?.worksite?.recursoPreventivo || data?.foremanName || '',
     fecha: date,
-    periodoLabel,
+    periodoLabel: periodLabel,
     accionFormativa: trainingAction,
     duracionFormacion: trainingDuration,
     epis: epiSelection,
