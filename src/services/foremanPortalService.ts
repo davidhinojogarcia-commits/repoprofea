@@ -280,15 +280,16 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     p_attachment_name: input.attachmentName || null,
   });
   const documentId = String(id || '').trim();
-  if (documentId && input.sourceText) {
+  if (documentId) {
     await supabase.query('foreman_mandatory_documents', {
       method: 'PATCH',
       query: 'id=eq.' + encodeURIComponent(documentId),
       prefer: 'return=minimal',
       body: {
         details: {
-          sourceText: input.sourceText,
+          sourceText: input.sourceText || '',
           sourceFilename: input.attachmentName || '',
+          importedWorkerIds: input.workerIds,
         },
         updated_at: new Date().toISOString(),
       },
