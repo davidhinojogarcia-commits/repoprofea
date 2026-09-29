@@ -265,6 +265,10 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   emailSubject?: string | null;
   attachmentName?: string | null;
   sourceText?: string | null;
+  sourcePdfBase64?: string | null;
+  sourcePdfSha256?: string | null;
+  pageMeta?: any[];
+  workerAnchors?: any[];
 }) {
   const id = await supabase.rpc('prepare_foreman_mandatory_from_email', {
     p_document_type: input.documentType,
@@ -305,7 +309,61 @@ export async function prepareMandatoryDocumentFromEmail(input: {
       },
     });
   }
+  if (documentId && input.sourcePdfBase64) {
+    await supabase.rpc('save_foreman_mandatory_original_pdf', {
+      p_document_id: documentId,
+      p_pdf_base64: input.sourcePdfBase64,
+      p_filename: input.attachmentName || '',
+      p_original_sha256: input.sourcePdfSha256 || '',
+      p_page_meta: input.pageMeta || [],
+      p_worker_anchors: input.workerAnchors || [],
+    });
+  }
   return id;
+}
+
+export async function getForemanMandatoryPdf(
+  token: string,
+  documentId: string,
+  variant: 'original' | 'signed' = 'original',
+) {
+  return withForemanTimeout(
+    supabase.rpc('get_foreman_mandatory_pdf', {
+      p_token: token,
+      p_document_id: documentId,
+      p_variant: variant,
+    }),
+    'No se pudo abrir el PDF a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  ) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
+}
+
+export async function getSupervisorMandatoryPdf(
+  documentId: string,
+  variant: 'original' | 'signed' = 'signed',
+) {
+  return supabase.rpc('get_supervisor_mandatory_pdf', {
+    p_document_id: documentId,
+    p_variant: variant,
+  }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
+}
+
+export async function storeForemanMandatorySignedPdf(input: {
+  token: string;
+  documentId: string;
+  pdfBase64: string;
+  signedSha256: string;
+  fidelity: any;
+}) {
+  return withForemanTimeout(
+    supabase.rpc('store_foreman_mandatory_signed_pdf', {
+      p_token: input.token,
+      p_document_id: input.documentId,
+      p_pdf_base64: input.pdfBase64,
+      p_signed_sha256: input.signedSha256,
+      p_fidelity: input.fidelity || {},
+    }),
+    'No se pudo guardar el PDF firmado a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 export async function markMandatoryDocumentReturned(id: string, gmailMessageId: string) {
