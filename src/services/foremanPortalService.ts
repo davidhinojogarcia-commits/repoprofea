@@ -452,6 +452,7 @@ export async function updateForemanMandatoryDocument(input: {
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
   status: 'pending' | 'in_progress' | 'returned' | 'completed' | 'reviewed';
+  details?: Record<string, any>;
 }) {
   const workerIds = new Set(input.workers.map((worker) => String(worker.id)));
   const filteredSignatures = Object.fromEntries(
@@ -459,12 +460,28 @@ export async function updateForemanMandatoryDocument(input: {
   );
   const signedCount = Object.keys(filteredSignatures).length;
   const total = input.workers.length;
-  const nextStatus =
-    total > 0 && signedCount >= total
+  const exactOriginalMode = input.details?.originalPdfMode === 'overlay';
+  const nextStatus = exactOriginalMode
+    ? (signedCount > 0 ? 'in_progress' : 'pending')
+    : total > 0 && signedCount >= total
       ? 'completed'
       : signedCount > 0
         ? 'in_progress'
         : 'pending';
+
+  if (exactOriginalMode) {
+    await supabase.query('foreman_mandatory_pdf_files', {
+      method: 'PATCH',
+      prefer: 'return=minimal',
+      query: `document_id=eq.${encodeURIComponent(input.id)}`,
+      body: {
+        signed_pdf: null,
+        signed_sha256: null,
+        fidelity: null,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
 
   await supabase.query('foreman_mandatory_documents', {
     method: 'PATCH',
