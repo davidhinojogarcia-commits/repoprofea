@@ -1,9 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ClipboardList, Clock3, FileSignature, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Clock3, FileDown, FileSignature, GraduationCap, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
+  generateAdditionalWorksiteDocument,
   type AdditionalWorksiteDocumentType,
 } from '../src/lib/worksiteAdditionalDocumentsPdf';
+import {
+  generateEpiDeliveryPdf,
+  generateMachineryAuthorizationPdf,
+  generateTrainingInformationPdf,
+  type WorksiteDocumentContext,
+} from '../src/lib/worksiteDocumentsPdf';
+import { generateContractAttendancePdf } from '../src/lib/worksiteAttendancePdf';
+import { downloadPDF } from '../src/lib/exportUtils';
 import {
   resolveForemanPortal,
   saveForemanAttendance,
@@ -17,6 +26,14 @@ import {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowTime = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+type CoreWorksiteDocumentType = 'epis' | 'formacion' | 'maquinaria' | 'control';
+const CORE_WORKSITE_DOCUMENTS: Record<CoreWorksiteDocumentType,string> = {
+  epis: 'Entrega de EPIs',
+  formacion: 'Formación e información',
+  maquinaria: 'Autorización de maquinaria',
+  control: 'Control horario',
+};
+const DEFAULT_EPIS = { casco:true, chaleco:true, orejeras:true, gafas:true, guantes:true, mascarillas:true, calzado:true };
 
 const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; onCancel: () => void }> = ({ title, onSave, onCancel }) => {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -57,6 +74,13 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [rows,setRows]=useState<ForemanAttendanceRow[]>([]);
   const [signing,setSigning]=useState<{workerId:number;kind:'entry'|'exit'}|null>(null);
   const [saving,setSaving]=useState(false);
+  const [coreDocType,setCoreDocType]=useState<CoreWorksiteDocumentType>('epis');
+  const [documentPeriod,setDocumentPeriod]=useState('');
+  const [trainingAction,setTrainingAction]=useState('Información y formación preventiva del puesto de trabajo y de la obra');
+  const [trainingDuration,setTrainingDuration]=useState('');
+  const [epiSelection,setEpiSelection]=useState<Record<string,boolean>>(DEFAULT_EPIS);
+  const [machineryByWorker,setMachineryByWorker]=useState<Record<string,string>>({});
+  const [globalMachinery,setGlobalMachinery]=useState('');
   const [docType,setDocType]=useState<AdditionalWorksiteDocumentType>('ausencia_trabajador');
   const [workerId,setWorkerId]=useState<number|''>('');
   const [answers,setAnswers]=useState<Record<string,string>>({});
@@ -99,6 +123,62 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
   const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
   const selectedWorker=data?.workers.find(w=>Number(w.id)===Number(workerId));
+  const availablePeriods = Array.from(new Set((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean)));
+  const documentWorkers = documentPeriod
+    ? (data?.workers||[]).filter(worker=>String(worker.quincena||'').trim()===documentPeriod)
+    : (data?.workers||[]);
+  const periodLabel = documentPeriod || (
+    documentWorkers.length
+      ? [documentWorkers.map(worker=>String(worker.periodoInicio||'')).filter(Boolean).sort()[0], documentWorkers.map(worker=>String(worker.periodoFin||'')).filter(Boolean).sort().at(-1)].filter(Boolean).join(' – ')
+      : 'Sin periodo'
+  );
+  const worksiteContext: WorksiteDocumentContext = {
+    obra: data?.obra || '',
+    municipio: data?.worksite?.municipio || '',
+    empresa: data?.worksite?.empresa || '',
+    cif: data?.worksite?.cif || '',
+    recursoPreventivo: data?.worksite?.recursoPreventivo || data?.foremanName || '',
+    fecha: date,
+    periodoLabel,
+    accionFormativa: trainingAction,
+    duracionFormacion: trainingDuration,
+    epis: epiSelection,
+    maquinariaPorTrabajador: machineryByWorker,
+  };
+  const generateCoreDocument = () => {
+    if (!documentWorkers.length) return window.alert('No hay trabajadores para el periodo seleccionado.');
+    if (coreDocType === 'epis') {
+      const out=generateEpiDeliveryPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
+    }
+    if (coreDocType === 'formacion') {
+      const out=generateTrainingInformationPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
+    }
+    if (coreDocType === 'maquinaria') {
+      const out=generateMachineryAuthorizationPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
+    }
+    const out=generateContractAttendancePdf(documentWorkers,{...worksiteContext,codigoObra:data?.worksite?.codigo||''});
+    downloadPDF(out.doc,out.filename);
+  };
+  const generateAdditionalPdf = () => {
+    if (!selectedWorker) return window.alert('Selecciona un trabajador.');
+    const context = {
+      obra: data?.obra || '',
+      municipio: data?.worksite?.municipio || '',
+      empresa: data?.worksite?.empresa || '',
+      cif: data?.worksite?.cif || '',
+      fecha: date,
+      responsable: data?.worksite?.recursoPreventivo || data?.foremanName || '',
+      supervisor: selectedWorker.supervisorResponsable || '',
+    };
+    const out=generateAdditionalWorksiteDocument(
+      docType,
+      selectedWorker,
+      context,
+      answers,
+      { worker:docSignatures.worker, foreman:docSignatures.foreman },
+    );
+    downloadPDF(out.doc,out.filename);
+  };
   const mandatoryLabel=(type:string)=>({
     inicio:'Inicio / incorporación',
     control_presencia:'Control de presencia',
@@ -233,7 +313,66 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
           <h2 className="text-lg font-black">Documentos de obra</h2>
-          <p className="mt-1 text-sm text-slate-600">Modelos normalizados de Documentación de obra. Son exactamente los mismos documentos, campos y formato PDF disponibles para el supervisor.</p>
+          <p className="mt-1 text-sm text-slate-600">Este portal utiliza directamente los mismos generadores de Documentación de obra. Inicio y Control de presencia se mantienen aparte en Asignados porque son modelos distintos.</p>
+        </div>
+
+        <div className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-4">
+          <div>
+            <div className="text-base font-black text-slate-900">Documentos principales de la obra</div>
+            <p className="mt-1 text-sm text-slate-600">Entrega de EPIs, Formación e información, Autorización de maquinaria y Control horario, con el mismo PDF que genera el supervisor.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="block text-sm font-black">Documento
+              <select value={coreDocType} onChange={e=>setCoreDocType(e.target.value as CoreWorksiteDocumentType)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+                {(Object.entries(CORE_WORKSITE_DOCUMENTS) as [CoreWorksiteDocumentType,string][]).map(([key,label])=><option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-black">Periodo
+              <select value={documentPeriod} onChange={e=>setDocumentPeriod(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+                <option value="">Todos los trabajadores de la obra</option>
+                {availablePeriods.map(period=><option key={period} value={period}>{period}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="block text-sm font-black">Fecha del documento
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>
+
+          {coreDocType==='epis'&&<div>
+            <div className="mb-2 text-sm font-black">EPIs incluidos</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key} className="flex items-center gap-2 rounded-xl border bg-white p-3 text-sm font-bold">
+                <input type="checkbox" checked={epiSelection[key]!==false} onChange={e=>setEpiSelection(current=>({...current,[key]:e.target.checked}))}/>
+                {label}
+              </label>)}
+            </div>
+          </div>}
+
+          {coreDocType==='formacion'&&<div className="grid sm:grid-cols-[1fr_180px] gap-3">
+            <label className="block text-sm font-black">Acción formativa / información
+              <textarea rows={4} value={trainingAction} onChange={e=>setTrainingAction(e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+            </label>
+            <label className="block text-sm font-black">Duración
+              <input value={trainingDuration} onChange={e=>setTrainingDuration(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+            </label>
+          </div>}
+
+          {coreDocType==='maquinaria'&&<div className="space-y-3">
+            <label className="block text-sm font-black">Maquinaria o equipos para aplicar a todos
+              <textarea rows={3} value={globalMachinery} onChange={e=>setGlobalMachinery(e.target.value)} placeholder="Ej.: Dumper, hormigonera, radial…" className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+            </label>
+            <button type="button" onClick={()=>setMachineryByWorker(Object.fromEntries(documentWorkers.map(worker=>[String(worker.id),globalMachinery])))} className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-black text-amber-900">Aplicar a todos</button>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {documentWorkers.map(worker=><div key={worker.id} className="grid sm:grid-cols-[1fr_1.2fr] gap-2 rounded-xl border bg-white p-3">
+                <div><div className="text-sm font-black">{worker.apellidosNombre}</div><div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}</div></div>
+                <input value={machineryByWorker[String(worker.id)]||''} onChange={e=>setMachineryByWorker(current=>({...current,[String(worker.id)]:e.target.value}))} placeholder="Máquinas separadas por coma" className="min-h-[46px] rounded-xl border px-3 py-2"/>
+              </div>)}
+            </div>
+          </div>}
+
+          <button type="button" onClick={generateCoreDocument} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white">
+            <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF {CORE_WORKSITE_DOCUMENTS[coreDocType]}
+          </button>
         </div>
 
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -261,8 +400,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>}
 
         <div className="border-t pt-4">
-          <div className="text-base font-black">Documentos normalizados</div>
-          <p className="mt-1 text-sm text-slate-600">Selecciona uno de los mismos modelos disponibles en Documentación de obra, cumpliméntalo y fírmalo desde el móvil.</p>
+          <div className="text-base font-black">Otros documentos de obra</div>
+          <p className="mt-1 text-sm text-slate-600">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Se cumplimentan con sus campos originales y usan el mismo generador PDF.</p>
         </div>
         <label className="block text-sm font-black">Documento
           <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});setCorrectionDocumentId('');}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
@@ -291,6 +430,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma encargado {docSignatures.foreman?'✓':''}</button>
         </div>
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
+        <button type="button" onClick={generateAdditionalPdf} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
+          <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF exactamente como Documentación de obra
+        </button>
         <button
           onClick={async()=>{
             if(!selectedWorker)return alert('Selecciona un trabajador.');
