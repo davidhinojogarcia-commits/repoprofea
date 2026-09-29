@@ -771,7 +771,7 @@ function App() {
 
       const jsonStr = JSON.stringify(backupData, null, 2);
       const now = new Date();
-      const datePart = now.toISOString().split('T')[0];
+      const datePart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const timePart = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
       
       let blob: Blob;
