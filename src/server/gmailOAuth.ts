@@ -16,14 +16,24 @@ export type AuthenticatedUser = { id: string; email: string };
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
-export function requireServerConfig() {
+export function getServerConfigStatus() {
   const missing: string[] = [];
   if (!SERVICE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
   if (!GOOGLE_CLIENT_ID) missing.push('GOOGLE_GMAIL_CLIENT_ID');
   if (!GOOGLE_CLIENT_SECRET) missing.push('GOOGLE_GMAIL_CLIENT_SECRET');
   if (!TOKEN_SECRET) missing.push('GMAIL_TOKEN_ENCRYPTION_KEY');
   if (!STATE_SECRET) missing.push('GMAIL_OAUTH_STATE_SECRET');
-  if (missing.length) throw new Error(`Falta configuración de Gmail en servidor: ${missing.join(', ')}.`);
+  return { configured: missing.length === 0, missing };
+}
+
+export function requireServerConfig() {
+  const status = getServerConfigStatus();
+  if (!status.configured) {
+    throw Object.assign(
+      new Error('La conexión Gmail del servidor todavía no está configurada.'),
+      { status: 503, code: 'GMAIL_SERVER_NOT_CONFIGURED', missing: status.missing },
+    );
+  }
 }
 
 export async function authenticateRequest(req: any): Promise<AuthenticatedUser> {
@@ -202,10 +212,18 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
 }
 
 export function apiError(res: any, error: any, fallback = 'No se pudo completar la operación.') {
-  console.error('[gmail-api]', error);
   const status = Number(error?.status || 500);
+  const code = String(error?.code || '');
+  if (code === 'GMAIL_SERVER_NOT_CONFIGURED') {
+    console.warn('[gmail-api] Módulo Gmail no configurado en este entorno.');
+  } else if (status >= 500) {
+    console.error('[gmail-api]', error);
+  } else {
+    console.warn('[gmail-api]', error?.message || error);
+  }
   return res.status(status >= 400 && status < 600 ? status : 500).json({
     ok: false,
+    code: code || undefined,
     message: error?.message || fallback,
   });
 }
