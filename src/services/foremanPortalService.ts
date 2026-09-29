@@ -269,6 +269,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   sourcePdfSha256?: string | null;
   pageMeta?: any[];
   workerAnchors?: any[];
+  obraHint?: string | null;
 }) {
   const id = await supabase.rpc('prepare_foreman_mandatory_from_email', {
     p_document_type: input.documentType,
@@ -282,6 +283,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
     p_email_from: input.emailFrom || null,
     p_email_subject: input.emailSubject || null,
     p_attachment_name: input.attachmentName || null,
+    p_obra_hint: input.obraHint || null,
   });
   const documentId = String(id || '').trim();
   if (documentId && input.sourcePdfBase64) {
