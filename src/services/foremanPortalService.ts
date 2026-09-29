@@ -289,6 +289,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
         details: {
           sourceText: input.sourceText,
           sourceFilename: input.attachmentName || '',
+          importedWorkerIds: input.workerIds,
         },
         updated_at: new Date().toISOString(),
       },
