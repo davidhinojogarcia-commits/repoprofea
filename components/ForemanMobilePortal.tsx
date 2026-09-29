@@ -383,7 +383,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   if(loading&&!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="text-center"><Loader2 className="w-9 h-9 animate-spin mx-auto text-[#00548E]"/><p className="mt-3 font-bold">Abriendo documentación de obra…</p></div></div>;
   if(!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><div className="max-w-md rounded-3xl bg-white border border-amber-200 p-7 text-center shadow-xl"><ShieldCheck className="w-10 h-10 mx-auto text-amber-500"/><h1 className="mt-3 text-xl font-black">Acceso no disponible</h1><p className="mt-2 text-sm text-slate-600">{error||'No se pudo cargar la documentación de la obra.'}</p><button type="button" onClick={()=>void refresh()} className="mt-4 min-h-[48px] rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white"><RefreshCw className="mr-2 inline h-4 w-4"/>Reintentar</button></div></div>;
 
-  const completedToday=rows.filter(r=>r.entrySignature&&r.exitSignature).length;
+  const completedToday=controlRows.filter(r=>r.entrySignature&&r.exitSignature).length;
   return <div className="min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
     <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="max-w-4xl mx-auto">
@@ -410,16 +410,18 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>
       </div>
 
-      {tab==='attendance'&&<section className="space-y-3">
-        <div className="rounded-2xl bg-white border p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 className="text-lg font-black">Registro diario de jornada</h2><p className="text-sm text-slate-600">{completedToday}/{rows.length} con entrada y salida firmadas</p><p className="mt-1 text-sm font-semibold text-slate-500">Horario predeterminado: {data.defaultWorkStartHour}–{data.defaultWorkEndHour}. Puedes cambiarlo para cada trabajador.</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="min-h-[50px] w-full sm:w-auto rounded-xl border px-3 py-2 text-base font-bold bg-white"/></div>
+      {tab==='control'&&<section className="space-y-3">
+        <div className="rounded-2xl bg-white border p-4 space-y-4">
+          <div><h2 className="text-lg font-black">Control horario</h2><p className="text-sm text-slate-600">Selecciona quincenas, meses o ambos. Los trabajadores del periodo aparecen debajo para firmar entrada y salida.</p></div>
+          {renderPeriodSelector()}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><p className="text-sm font-black text-slate-800">{completedToday}/{controlRows.length} trabajadores con entrada y salida firmadas</p><p className="mt-1 text-sm font-semibold text-slate-500">Horario predeterminado: {data.defaultWorkStartHour}–{data.defaultWorkEndHour}.</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="min-h-[50px] w-full sm:w-auto rounded-xl border px-3 py-2 text-base font-bold bg-white"/></div>
         </div>
         {data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionPending&&
           <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
             <div className="font-black text-amber-900">Corrección solicitada por el supervisor</div>
             <p className="mt-1 text-sm text-amber-800">{data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionReason||'Revisa esta jornada antes de volver a finalizarla.'}</p>
           </div>}
-        {rows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
+        {controlRows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
           <div><div className="font-black">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div className={`rounded-xl border p-2.5 ${row.entrySignature?'border-emerald-300 bg-emerald-50':'bg-white'}`}>
@@ -455,8 +457,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           </div>
         </div>)}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button disabled={saving||!rows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
-          <button disabled={saving||!rows.length} onClick={()=>void persist(rows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar jornada</>}</button>
+          <button disabled={saving||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
+          <button disabled={saving||!controlRows.length||completedToday!==controlRows.length} onClick={()=>void persist(rows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
         </div>
       </section>}
 
