@@ -49,6 +49,20 @@ jobs:
           grep -q 'persistSession: true' src/lib/supabase.ts
           grep -q 'IDLE_TIMEOUT_MS = 30 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
+      - name: Validate foreman document integrity
+        run: |
+          set -euo pipefail
+          MIGRATION=supabase/migrations/20260929193000_harden_foreman_imported_signature_integrity.sql
+          test -s "$MIGRATION"
+          grep -q "for update;" "$MIGRATION"
+          grep -q "importedWorkerIds" "$MIGRATION"
+          grep -q "Faltan firmas de personas incluidas en el documento importado" "$MIGRATION"
+          grep -q "count(distinct imported_id)" "$MIGRATION"
+          grep -q "currentDetails.importedWorkerIds" src/services/foremanPortalService.ts
+          if grep -q ">Mostrar todos</button>" components/ForemanMobilePortal.tsx; then
+            echo 'Misleading period selector label detected.'
+            exit 1
+          fi
       - name: TypeScript validation
         run: |
           set -o pipefail
