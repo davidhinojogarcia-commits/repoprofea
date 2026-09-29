@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ClipboardList, Clock3, FileDown, FileSignature, GraduationCap, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck, Wrench } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Clock3, FileDown, FileSignature, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   generateAdditionalWorksiteDocument,
@@ -129,7 +129,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     : (data?.workers||[]);
   const periodLabel = documentPeriod || (
     documentWorkers.length
-      ? [documentWorkers.map(worker=>String(worker.periodoInicio||'')).filter(Boolean).sort()[0], documentWorkers.map(worker=>String(worker.periodoFin||'')).filter(Boolean).sort().at(-1)].filter(Boolean).join(' – ')
+      ? [documentWorkers.map(worker=>String(worker.periodoInicio||'')).filter(Boolean).sort()[0], documentWorkers.map(worker=>String(worker.periodoFin||'')).filter(Boolean).sort().slice(-1)[0]].filter(Boolean).join(' – ')
       : 'Sin periodo'
   );
   const worksiteContext: WorksiteDocumentContext = {
