@@ -332,7 +332,7 @@ export type MandatoryManualImportResult = {
 
 export async function processManualMandatoryFiles(
   files: File[],
-  options?: { onProgress?: (message: string) => void },
+  options?: { onProgress?: (message: string) => void; obraHint?: string },
 ): Promise<MandatoryManualImportResult> {
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
   const warnings: string[] = [];
@@ -365,9 +365,10 @@ export async function processManualMandatoryFiles(
       );
       const category = recognition.category;
       const matched = recognition.matched;
-      if (!matched.length) {
+      const obraHint = String(options?.obraHint || '').trim();
+      if (!matched.length && !obraHint) {
         skippedFiles += 1;
-        warnings.push(`${file.name}: no se pudieron vincular trabajadores tras la lectura reforzada. Revisa el documento o usa Editar para asignarlos manualmente.`);
+        warnings.push(`${file.name}: no se pudieron vincular trabajadores con seguridad. Selecciona primero la obra y vuelve a importar para asignarlos manualmente sin alterar el PDF.`);
         continue;
       }
 
@@ -376,8 +377,9 @@ export async function processManualMandatoryFiles(
         const work = String(worker.obra || '').trim();
         if (work) counts.set(work, (counts.get(work) || 0) + 1);
       }
-      const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-      const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
+      const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
+      const obra = inferredObra || obraHint;
+      const selected = obra ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase()) : matched;
       const workDate = extractDate(extracted.text);
       const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
       const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
@@ -403,6 +405,7 @@ export async function processManualMandatoryFiles(
         sourcePdfSha256: await sha256Hex(sourceBytes),
         pageMeta: analysis.pages,
         workerAnchors: analysis.anchors,
+        obraHint: obra || null,
       });
       importedDocuments += 1;
     } catch (error: any) {

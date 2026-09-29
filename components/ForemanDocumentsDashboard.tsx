@@ -153,6 +153,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     try {
       const result=await processManualMandatoryFiles(files,{
         onProgress: message=>setMailMessage(message),
+        obraHint:selectedDocsWork,
       });
       if(result.importedDocuments>0){
         setMailMessage(`${result.importedDocuments} documento(s) importado(s) y preparados para que el encargado recoja las firmas.${result.skippedFiles ? ` ${result.skippedFiles} archivo(s) no se pudieron importar.` : ''}`);
