@@ -291,6 +291,69 @@ begin
 end;
 $$;
 
+create or replace function public.ensure_exact_pdf_worker_anchor_placeholders()
+returns trigger
+language plpgsql
+set search_path = public
+as $
+declare
+  v_anchors jsonb := coalesce(new.details->'workerAnchors','[]'::jsonb);
+  v_worker jsonb;
+  v_id text;
+  v_order integer;
+  v_unresolved integer;
+begin
+  if new.document_type not in ('inicio','control_presencia')
+     or coalesce(new.details->>'originalPdfMode','') <> 'overlay' then
+    return new;
+  end if;
+
+  v_order := jsonb_array_length(v_anchors);
+  for v_worker in select value from jsonb_array_elements(coalesce(new.workers,'[]'::jsonb))
+  loop
+    v_id := v_worker->>'id';
+    if coalesce(v_id,'')<>'' and not exists(
+      select 1 from jsonb_array_elements(v_anchors) a where a->>'workerId'=v_id
+    ) then
+      v_anchors := v_anchors || jsonb_build_array(jsonb_build_object(
+        'workerId',(v_id)::bigint,
+        'workerName',coalesce(v_worker->>'apellidosNombre',''),
+        'dni',coalesce(v_worker->>'dni',''),
+        'page',1,
+        'order',v_order,
+        'nameX',null,
+        'nameY',null,
+        'rowHeight',null,
+        'signatureX',null,
+        'signatureY',null,
+        'signatureWidth',null,
+        'signatureHeight',null,
+        'confidence',0,
+        'resolved',false,
+        'reason','Trabajador añadido desde el periodo: el supervisor debe confirmar la línea y la zona de firma.'
+      ));
+      v_order := v_order + 1;
+    end if;
+  end loop;
+
+  select count(*) into v_unresolved
+  from jsonb_array_elements(v_anchors) a
+  where coalesce((a->>'resolved')::boolean,false)=false;
+
+  new.details := coalesce(new.details,'{}'::jsonb) || jsonb_build_object(
+    'workerAnchors',v_anchors,
+    'unresolvedAnchorCount',v_unresolved
+  );
+  return new;
+end;
+$;
+
+drop trigger if exists trg_exact_pdf_anchor_placeholders on public.foreman_mandatory_documents;
+create trigger trg_exact_pdf_anchor_placeholders
+before update of workers on public.foreman_mandatory_documents
+for each row
+execute function public.ensure_exact_pdf_worker_anchor_placeholders();
+
 drop trigger if exists trg_guard_exact_mandatory_pdf_completion on public.foreman_mandatory_documents;
 create trigger trg_guard_exact_mandatory_pdf_completion
 before update of status on public.foreman_mandatory_documents
