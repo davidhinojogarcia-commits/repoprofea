@@ -317,6 +317,42 @@ begin
 end;
 $$;
 
+create or replace function public.get_foreman_mandatory_signatures(
+  p_token text,
+  p_document_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $
+declare
+  v_hash text;
+  v_access public.foreman_portal_access%rowtype;
+  v_doc public.foreman_mandatory_documents%rowtype;
+begin
+  v_hash := encode(digest(trim(coalesce(p_token,'')),'sha256'),'hex');
+  select * into v_access
+  from public.foreman_portal_access
+  where token_hash=v_hash and active=true
+  limit 1;
+  if not found then raise exception 'Acceso no válido o revocado'; end if;
+
+  select * into v_doc
+  from public.foreman_mandatory_documents
+  where id=p_document_id
+    and owner_id=v_access.owner_id
+    and lower(obra)=lower(v_access.obra)
+  limit 1;
+  if not found then raise exception 'Documento no válido'; end if;
+
+  return coalesce(v_doc.signatures,'{}'::jsonb);
+end;
+$;
+
+revoke all on function public.get_foreman_mandatory_signatures(text,uuid) from public;
+grant execute on function public.get_foreman_mandatory_signatures(text,uuid) to anon, authenticated;
+
 create or replace function public.store_foreman_mandatory_signed_pdf(
   p_token text,
   p_document_id uuid,
