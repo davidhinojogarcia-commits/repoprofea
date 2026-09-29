@@ -448,6 +448,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           validForDocument(worker)
         )
       : [];
+    const availableImportedIds=new Set(importedCandidates.map(worker=>Number(worker.id)));
+    const unavailableImportedCount=isImportedMandatory
+      ? [...importedWorkerIds].filter(id=>!signatureIds.has(id)&&!availableImportedIds.has(id)).length
+      : 0;
 
     const additionalCandidates=isImportedMandatory && selectedPeriodKeys.size>0
       ? documentWorkers.filter(worker=>
@@ -469,7 +473,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? Math.max(importedWorkerIds.size, signedCount)
       : assignedWorkers.length;
     const pendingRequired=isImportedMandatory
-      ? importedCandidates.length
+      ? importedCandidates.length + unavailableImportedCount
       : operationalCandidates.length;
     const canFinalize=signedCount>0 && pendingRequired===0 &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
@@ -506,6 +510,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               <span className="mt-2 block text-sm font-black text-[#00548E]">Firmar esta persona</span>
             </button>)}</div>
           : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
+      </div>}
+
+      {!closed&&isImportedMandatory&&unavailableImportedCount>0&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-5 text-rose-900">
+        <b>No se puede finalizar todavía.</b> {unavailableImportedCount===1?'Hay 1 persona del documento importado que ya no está disponible en la relación actual de la obra.':`Hay ${unavailableImportedCount} personas del documento importado que ya no están disponibles en la relación actual de la obra.`} El supervisor debe revisar la asignación antes de cerrar el documento.
       </div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
