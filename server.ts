@@ -410,6 +410,27 @@ Devuelve exclusivamente JSON con:
       const requestedStatus = String(parsed?.taskStatus || taskState.status || "idle");
       const taskStatus = ["idle","active","diagnostic","completed"].includes(requestedStatus) ? requestedStatus : "idle";
       const nextAction = String(parsed?.nextAction || "").trim().slice(0, 500);
+      const checkQuestion = String(parsed?.checkQuestion || "").trim().slice(0, 240);
+      const checkOptions = Array.isArray(parsed?.checkOptions)
+        ? parsed.checkOptions.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 4)
+        : [];
+      const effectiveFollowUps = followUps.length >= 2
+        ? followUps
+        : taskStatus === "diagnostic"
+          ? ["No encuentro lo que indicas", "Me aparece un error", "Prueba otra forma"]
+          : taskStatus === "completed"
+            ? ["Repasar lo que he hecho", "Hacer otra tarea relacionada"]
+            : ["Ya lo he hecho, continúa", "No encuentro ese paso", "¿Qué viene después?"];
+      const effectiveCheckQuestion = checkQuestion || (
+        taskStatus === "active" || taskStatus === "diagnostic"
+          ? "¿Has podido hacer el paso que te acabo de indicar?"
+          : ""
+      );
+      const effectiveCheckOptions = checkOptions.length
+        ? checkOptions
+        : effectiveCheckQuestion
+          ? ["Sí, ya está", "No lo encuentro", "Me da un error"]
+          : [];
 
       if (!answer) {
         return res.status(502).json({ error: "El Tutor PROFEA no ha podido preparar una respuesta." });
@@ -420,13 +441,15 @@ Devuelve exclusivamente JSON con:
         answer,
         suggestedView,
         suggestedLabel,
-        followUps,
+        followUps: effectiveFollowUps,
         progressHint,
         taskTitle,
         currentStep,
         totalSteps,
         taskStatus,
         nextAction,
+        checkQuestion: effectiveCheckQuestion,
+        checkOptions: effectiveCheckOptions,
       });
     } catch (error: any) {
       console.error("Error en Tutor PROFEA:", error);
