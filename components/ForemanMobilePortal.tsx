@@ -515,8 +515,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const importedCandidates=isImportedMandatory
       ? importedWorkerOrder
           .map(id=>workerById.get(id))
-          .filter((worker): worker is NonNullable<typeof worker> => Boolean(worker))
-          .filter(worker=>!signatureIds.has(Number(worker.id))&&validForDocument(worker))
+          .filter(Boolean)
+          .filter((worker:any)=>!signatureIds.has(Number(worker.id))&&validForDocument(worker))
       : [];
     const availableImportedIds=new Set(importedCandidates.map(worker=>Number(worker.id)));
     const unavailableImportedCount=isImportedMandatory
