@@ -414,6 +414,23 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                     </div>
                   </div>
                 )}
+                {!busy && lastAssistantId && (
+                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/55">
+                    <div className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-slate-500 dark:text-slate-400">Continuar la ayuda</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {universalActions.map(action => (
+                        <button
+                          key={action}
+                          type="button"
+                          onClick={() => void ask(action)}
+                          className="min-h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-[11px] font-black leading-4 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                        >
+                          {action}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div ref={bottomRef} />
               </div>
             )}
