@@ -90,6 +90,17 @@ const RouteLoadingFallback = () => (
   </div>
 );
 
+const ForemanUnlinkedScreen = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
+    <div className="w-full max-w-md rounded-3xl border border-blue-100 bg-white p-7 text-center shadow-xl">
+      <div className="text-xs font-black uppercase tracking-[.15em] text-[#00548E]">PFEA Encargados</div>
+      <h1 className="mt-3 text-xl font-black text-slate-900">Este dispositivo no está vinculado</h1>
+      <p className="mt-3 text-sm leading-6 text-slate-600">Abre una vez el enlace de acceso que te facilite el supervisor. Después, el icono PFEA Encargados abrirá directamente tu portal.</p>
+      <button type="button" onClick={() => window.location.href = '/'} className="mt-5 min-h-[52px] w-full rounded-2xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Volver a GestionProfea</button>
+    </div>
+  </div>
+);
+
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
@@ -97,8 +108,10 @@ ReactDOM.createRoot(rootElement).render(
         <AppDialogHost />
         {isMedicalConfirmation ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><MedicalAppointmentConfirmationPortal /></React.Suspense>
-      ) : (foremanToken || isForemanAppRoute) ? (
+      ) : foremanToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><ForemanMobilePortal token={foremanToken} /></React.Suspense>
+      ) : isForemanAppRoute ? (
+        <ForemanUnlinkedScreen />
       ) : workerQrToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><WorkerQrPortal token={workerQrToken} /></React.Suspense>
       ) : remoteScannerToken ? (
