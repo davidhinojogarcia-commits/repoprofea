@@ -464,54 +464,74 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
-          <h2 className="font-black">Documentos asignados por el supervisor</h2>
-          <p className="mt-1 text-xs text-slate-500">Aquí solo aparecen los documentos que el supervisor ha preparado para esta obra. Recoge todas las firmas y después pulsa Finalizar para enviárselos.</p>
+          <h2 className="font-black">Asignados por el supervisor</h2>
+          <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Se conserva el texto completo leído del documento importado y debajo figuran los trabajadores que deben firmar.</p>
         </div>
-        {assignedMandatoryDocuments.map(doc=>{
-          const label=mandatoryLabel(doc.documentType);
-          const signedCount=Object.keys(doc.signatures||{}).length;
-          const correction=Boolean(doc.correctionPending);
-          return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
-            <div className="flex items-start justify-between gap-3"><div><div className="font-black">{label}</div><div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${doc.status==='completed'||doc.status==='reviewed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span></div>
-            {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
-            <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
-              const signed=Boolean((doc.signatures||{})[String(worker.id)]);
-              const closed=doc.status==='completed'||doc.status==='reviewed';
-              return <button key={worker.id} type="button" disabled={closed||(!correction&&signed)} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
-                <span><span className="block text-base font-black leading-tight">{worker.apellidosNombre}</span><span className="block mt-1 text-sm text-slate-500">{worker.dni} · {worker.categoria}</span></span>
-                <span className={`text-xs font-black ${signed&&!correction?'text-emerald-700':'text-[#00548E]'}`}>{correction?(signed?'Volver a firmar':'Firmar'):signed?'Firmado ✓':'Firmar'}</span>
-              </button>;
-            })}</div>
-            {doc.status!=='completed'&&doc.status!=='reviewed'&&(
-              <button
-                type="button"
-                disabled={saving || signedCount !== doc.workers.length || doc.workers.length===0}
-                onClick={async()=>{
-                  setSaving(true);
-                  try{
-                    await finalizeForemanMandatoryDocument(token,doc.id);
-                    setData(current=>current?{...current,mandatoryDocuments:current.mandatoryDocuments.map(item=>item.id===doc.id?{...item,status:'completed',correctionPending:false,completedAt:new Date().toISOString()}:item)}:current);
-                    setError('');
-                    setTab('completed');
-                  }catch(error:any){
-                    window.alert(error?.message||'No se pudo finalizar el documento.');
-                  }finally{
-                    setSaving(false);
-                  }
-                }}
-                className="mt-4 min-h-[56px] w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500"
-              >
-                {signedCount===doc.workers.length&&doc.workers.length>0 ? 'Finalizar y enviar al supervisor' : `Faltan ${Math.max(0,doc.workers.length-signedCount)} firma(s)`}
-              </button>
-            )}
-            {(doc.status==='completed'||doc.status==='reviewed')&&(
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">
-                Documento finalizado y enviado al supervisor
-              </div>
-            )}
-          </div>;
-        })}
-        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay documentos obligatorios pendientes para esta obra.</div>}
+        {assignedMandatoryDocuments.map(doc=>renderSigningDocument(doc))}
+        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay Inicio ni Control de presencia pendientes para esta obra.</div>}
+      </section>}
+
+      {tab==='epis'&&<section className="space-y-3">
+        <div className="rounded-2xl bg-white border p-4 space-y-4">
+          <div><h2 className="text-lg font-black">Entrega de EPIs</h2><p className="mt-1 text-sm text-slate-600">Selecciona quincenas, meses o ambos, revisa los trabajadores y prepara el documento para que firmen uno a uno.</p></div>
+          {renderPeriodSelector()}
+          <label className="block text-sm font-black">Fecha
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>
+          <div>
+            <div className="mb-2 text-sm font-black">EPIs entregados</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key} className="flex items-center gap-2 rounded-xl border bg-white p-3 text-sm font-bold">
+                <input type="checkbox" checked={epiSelection[key]!==false} onChange={e=>setEpiSelection(current=>({...current,[key]:e.target.checked}))}/>
+                {label}
+              </label>)}
+            </div>
+          </div>
+          <button type="button" disabled={saving||!documentWorkers.length} onClick={()=>void prepareOperationalDocument('epis')} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white disabled:opacity-50">Preparar relación para firmas ({documentWorkers.length})</button>
+        </div>
+        {operationalDocumentsFor('epis').map(doc=>renderSigningDocument(doc))}
+      </section>}
+
+      {tab==='formacion'&&<section className="space-y-3">
+        <div className="rounded-2xl bg-white border p-4 space-y-4">
+          <div><h2 className="text-lg font-black">Formación e información</h2><p className="mt-1 text-sm text-slate-600">Selecciona quincenas, meses o ambos. Los trabajadores seleccionados quedarán listos para firmar la misma relación de Formación e información de Documentación de obra.</p></div>
+          {renderPeriodSelector()}
+          <label className="block text-sm font-black">Fecha
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>
+          <div className="grid sm:grid-cols-[1fr_180px] gap-3">
+            <label className="block text-sm font-black">Acción formativa / información
+              <textarea rows={4} value={trainingAction} onChange={e=>setTrainingAction(e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+            </label>
+            <label className="block text-sm font-black">Duración
+              <input value={trainingDuration} onChange={e=>setTrainingDuration(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+            </label>
+          </div>
+          <button type="button" disabled={saving||!documentWorkers.length} onClick={()=>void prepareOperationalDocument('formacion')} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white disabled:opacity-50">Preparar relación para firmas ({documentWorkers.length})</button>
+        </div>
+        {operationalDocumentsFor('formacion').map(doc=>renderSigningDocument(doc))}
+      </section>}
+
+      {tab==='maquinaria'&&<section className="space-y-3">
+        <div className="rounded-2xl bg-white border p-4 space-y-4">
+          <div><h2 className="text-lg font-black">Autorización al uso de maquinaria</h2><p className="mt-1 text-sm text-slate-600">Mantiene el detalle por trabajador: selecciona periodos, indica la maquinaria/equipos y después recoge las firmas.</p></div>
+          {renderPeriodSelector()}
+          <label className="block text-sm font-black">Fecha
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>
+          <label className="block text-sm font-black">Maquinaria o equipos para aplicar a todos
+            <textarea rows={3} value={globalMachinery} onChange={e=>setGlobalMachinery(e.target.value)} placeholder="Ej.: Dumper, hormigonera, radial…" className="mt-2 w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          </label>
+          <button type="button" onClick={()=>setMachineryByWorker(current=>({...current,...Object.fromEntries(documentWorkers.map(worker=>[String(worker.id),globalMachinery]))}))} className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-black text-amber-900">Aplicar a todos los seleccionados</button>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {documentWorkers.map(worker=><div key={worker.id} className="grid sm:grid-cols-[1fr_1.2fr] gap-2 rounded-xl border bg-white p-3">
+              <div><div className="text-sm font-black">{worker.apellidosNombre}</div><div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}</div></div>
+              <input value={machineryByWorker[String(worker.id)]||''} onChange={e=>setMachineryByWorker(current=>({...current,[String(worker.id)]:e.target.value}))} placeholder="Máquinas separadas por coma" className="min-h-[46px] rounded-xl border px-3 py-2"/>
+            </div>)}
+          </div>
+          <button type="button" disabled={saving||!documentWorkers.length} onClick={()=>void prepareOperationalDocument('autorizacion_uso_maquinaria')} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white disabled:opacity-50">Preparar autorización para firmas ({documentWorkers.length})</button>
+        </div>
+        {operationalDocumentsFor('maquinaria').map(doc=>renderSigningDocument(doc))}
       </section>}
 
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
