@@ -81,7 +81,15 @@ jobs:
           done
           test -s /tmp/profea-index.html
           curl --fail --silent --show-error http://127.0.0.1:3000/manifest.webmanifest -o /tmp/profea-manifest.json
+          curl --fail --silent --show-error http://127.0.0.1:3000/manifest-encargados.webmanifest -o /tmp/profea-foreman-manifest.json
+          curl --fail --silent --show-error http://127.0.0.1:3000/encargados -o /tmp/profea-foreman.html
           curl --fail --silent --show-error http://127.0.0.1:3000/service-worker.js -o /tmp/profea-service-worker.js
           grep -q '"name": "PROFEA"' /tmp/profea-manifest.json
+          grep -q '"name": "PFEA Encargados"' /tmp/profea-foreman-manifest.json
+          test -s /tmp/profea-foreman.html
           grep -q 'CACHE_NAME' /tmp/profea-service-worker.js
-          echo "Production smoke test passed."
+          if grep -E 'vendor-(pdf-export|pdf-viewer|spreadsheets|ocr|charts)' dist/index.html; then
+            echo 'Heavy optional vendor bundle is being eagerly preloaded from the initial page.'
+            exit 1
+          fi
+          echo "Production and foreman portal smoke tests passed."
