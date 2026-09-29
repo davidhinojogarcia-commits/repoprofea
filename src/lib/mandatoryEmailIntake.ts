@@ -154,6 +154,30 @@ const matchWorkers = (workers: Person[], text: string, category: string) => {
     .map(item => item.worker);
 };
 
+const stripRecognizedWorkerLines = (text: string, workers: Person[]) => {
+  if (!text || !workers.length) return text.trim();
+  const workerMarkers = workers.map(worker => ({
+    dni: compact(worker.dni || ''),
+    names: nameWords(worker.apellidosNombre || '').filter(word => word.length >= 4),
+  }));
+
+  return text
+    .split(/\r?\n/)
+    .filter(line => {
+      const normalizedLine = norm(line);
+      const compactLine = compact(line);
+      return !workerMarkers.some(marker => {
+        if (marker.dni && marker.dni.length >= 7 && compactLine.includes(marker.dni)) return true;
+        if (marker.names.length < 2) return false;
+        const hits = marker.names.filter(word => normalizedLine.includes(word)).length;
+        return hits >= 2;
+      });
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const extractCategoryWithFilenameFallback = (text: string, filename: string) => {
   const fromText = extractCategory(text);
   if (fromText) return fromText;
@@ -275,7 +299,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           emailFrom: administrativeEmail,
           emailSubject: message.subject,
           attachmentName: attachment.filename,
-          sourceText: recognition.text,
+          sourceText: stripRecognizedWorkerLines(recognition.text, selected),
         });
         importedDocuments += 1;
         existing.add(key);
@@ -357,7 +381,7 @@ export async function processManualMandatoryFiles(
         emailFrom: null,
         emailSubject: null,
         attachmentName: file.name,
-        sourceText: recognition.text,
+        sourceText: stripRecognizedWorkerLines(recognition.text, selected),
       });
       importedDocuments += 1;
     } catch (error: any) {
