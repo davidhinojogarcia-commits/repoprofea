@@ -255,6 +255,16 @@ async function startServer() {
       const currentViewLabel = String(req.body?.currentViewLabel || "").trim();
       const guidedMode = Boolean(req.body?.guidedMode);
       const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
+      const rawTaskState = req.body?.taskState && typeof req.body.taskState === "object" ? req.body.taskState : {};
+      const taskState = {
+        title: String(rawTaskState?.title || "").slice(0, 180),
+        currentStep: Math.max(0, Number(rawTaskState?.currentStep) || 0),
+        totalSteps: Math.max(0, Number(rawTaskState?.totalSteps) || 0),
+        status: ["idle","active","diagnostic","completed"].includes(String(rawTaskState?.status))
+          ? String(rawTaskState.status)
+          : "idle",
+        nextAction: String(rawTaskState?.nextAction || "").slice(0, 500),
+      };
 
       if (!question) {
         return res.status(400).json({ error: "Escribe una pregunta sobre el manejo de GestionProfea." });
@@ -286,6 +296,12 @@ CONTEXTO ACTUAL:
 - Vista guiada: ${guidedMode ? "Sí" : "No"}.
 - Pregunta del supervisor: ${question}
 
+ESTADO DE LA TAREA QUE VIENE DEL TURNO ANTERIOR:
+- Tarea: ${taskState.title || "Sin tarea definida"}.
+- Estado: ${taskState.status}.
+- Paso actual: ${taskState.currentStep || 0} de ${taskState.totalSteps || 0}.
+- Próxima acción guardada: ${taskState.nextAction || "Sin próxima acción"}.
+
 CONVERSACIÓN RECIENTE:
 ${history.map((item: any) => `${item.role === "assistant" ? "Tutor" : "Supervisor"}: ${item.text}`).join("\n") || "Sin conversación previa."}
 
@@ -313,6 +329,16 @@ INSTRUCCIONES OBLIGATORIAS:
 18. No cierres con frases genéricas como "si necesitas algo más". Deja siempre una continuación accionable cuando haya un proceso en curso.
 19. Si hay varias rutas posibles, usa followUps para que el supervisor elija en vez de asumir una sola.
 20. Si el usuario comunica un problema ("no encuentro", "no sale", "me da error"), entra en modo diagnóstico: una comprobación sencilla cada vez y una alternativa segura.
+21. Mantén un ESTADO DE TAREA explícito. Si ya existe una tarea activa, NO la sustituyas por otra salvo que el usuario cambie claramente de objetivo.
+22. taskTitle debe ser una frase breve y estable, por ejemplo "Registrar un trabajador desde SAE".
+23. currentStep y totalSteps deben representar el progreso real del proceso. Si todavía no puedes determinar el número total, usa totalSteps=0.
+24. taskStatus debe ser: "active" mientras se guía un proceso, "diagnostic" cuando se está resolviendo un problema, "completed" cuando el objetivo se ha terminado, o "idle" si no hay tarea.
+25. nextAction debe ser una acción breve y concreta que el usuario pueda hacer ahora mismo.
+26. Cuando el usuario diga que ya ha completado el paso actual, avanza currentStep y explica SOLO el siguiente paso; no vuelvas al principio.
+27. Si el usuario pulsa o comunica que ha navegado a otro módulo, continúa la misma tarea desde esa pantalla y confirma qué debe buscar allí.
+28. Si la tarea está completada, dilo de forma clara, marca taskStatus="completed" y ofrece followUps útiles de cierre o tareas relacionadas.
+29. Los followUps deben ayudar a CONTINUAR, COMPROBAR o RESOLVER el punto actual; evita sugerencias genéricas.
+30. En cada turno intenta reducir la incertidumbre: una respuesta principal + próxima acción + 2-4 continuaciones útiles.
 
 Devuelve exclusivamente JSON con:
 {
@@ -320,7 +346,12 @@ Devuelve exclusivamente JSON con:
   "suggestedView": "id de vista o cadena vacía",
   "suggestedLabel": "nombre del módulo o cadena vacía",
   "followUps": ["continuación 1", "continuación 2", "continuación 3"],
-  "progressHint": "estado breve del proceso o cadena vacía"
+  "progressHint": "estado breve del proceso o cadena vacía",
+  "taskTitle": "nombre breve y estable de la tarea o cadena vacía",
+  "currentStep": 1,
+  "totalSteps": 4,
+  "taskStatus": "active | diagnostic | completed | idle",
+  "nextAction": "acción concreta que el usuario debe hacer ahora"
 }
 `;
 
@@ -339,8 +370,13 @@ Devuelve exclusivamente JSON con:
               suggestedLabel: { type: Type.STRING },
               followUps: { type: Type.ARRAY, items: { type: Type.STRING } },
               progressHint: { type: Type.STRING },
+              taskTitle: { type: Type.STRING },
+              currentStep: { type: Type.NUMBER },
+              totalSteps: { type: Type.NUMBER },
+              taskStatus: { type: Type.STRING },
+              nextAction: { type: Type.STRING },
             },
-            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint"],
+            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint", "taskTitle", "currentStep", "totalSteps", "taskStatus", "nextAction"],
           },
         },
       });
@@ -358,12 +394,30 @@ Devuelve exclusivamente JSON con:
         ? parsed.followUps.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 3)
         : [];
       const progressHint = String(parsed?.progressHint || "").trim().slice(0, 180);
+      const taskTitle = String(parsed?.taskTitle || taskState.title || "").trim().slice(0, 180);
+      const currentStep = Math.max(0, Number(parsed?.currentStep) || 0);
+      const totalSteps = Math.max(0, Number(parsed?.totalSteps) || 0);
+      const requestedStatus = String(parsed?.taskStatus || taskState.status || "idle");
+      const taskStatus = ["idle","active","diagnostic","completed"].includes(requestedStatus) ? requestedStatus : "idle";
+      const nextAction = String(parsed?.nextAction || "").trim().slice(0, 500);
 
       if (!answer) {
         return res.status(502).json({ error: "El Tutor PROFEA no ha podido preparar una respuesta." });
       }
 
-      res.json({ success: true, answer, suggestedView, suggestedLabel, followUps, progressHint });
+      res.json({
+        success: true,
+        answer,
+        suggestedView,
+        suggestedLabel,
+        followUps,
+        progressHint,
+        taskTitle,
+        currentStep,
+        totalSteps,
+        taskStatus,
+        nextAction,
+      });
     } catch (error: any) {
       console.error("Error en Tutor PROFEA:", error);
       res.status(500).json({ error: "No se pudo consultar el Tutor PROFEA en este momento." });
