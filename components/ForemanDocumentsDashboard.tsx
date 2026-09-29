@@ -698,6 +698,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       title={`${mandatoryDocumentLabel(anchorEditing.document_type)} · ${anchorEditing.obra}`}
       obra={anchorEditing.obra}
       anchors={(Array.isArray(anchorEditing.details?.workerAnchors)?anchorEditing.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
+      signedWorkerIds={Object.keys(anchorEditing.signatures||{}).map(Number).filter(Number.isFinite)}
       onCancel={()=>setAnchorEditing(null)}
       onSave={async anchors=>{
         const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
