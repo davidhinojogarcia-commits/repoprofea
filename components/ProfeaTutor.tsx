@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CircleHelp, LifeBuoy, Loader2, MessageCircleQuestion, Send, X } from 'lucide-react';
 import type { ViewMode } from './Sidebar';
 import {
@@ -36,8 +36,17 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeLabel = PROFEA_TUTOR_VIEW_LABELS[activeView as ProfeaTutorView] || 'GestionProfea';
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 40);
+    return () => window.clearTimeout(id);
+  }, [open, messages, busy]);
 
   const greeting = useMemo(
     () => guidedMode
@@ -96,13 +105,16 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       const followUps = Array.isArray(data?.followUps)
         ? data.followUps.map((value: unknown) => String(value || '').trim()).filter(Boolean).slice(0, 3)
         : [];
+      const interactiveFollowUps = followUps.length
+        ? followUps
+        : ['¿Cuál es el siguiente paso?', 'Explícame qué debo comprobar ahora', 'Tengo otra duda sobre este proceso'];
       setMessages(current => [...current, {
         id: makeId(),
         role: 'assistant',
         text: answer,
         suggestedView: data?.suggestedView || undefined,
         suggestedLabel: data?.suggestedLabel || undefined,
-        followUps,
+        followUps: interactiveFollowUps,
         progressHint: String(data?.progressHint || '').trim() || undefined,
       }]);
     } catch (error) {
@@ -245,6 +257,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} aria-hidden="true" className="h-px" />
               </div>
             )}
           </div>
