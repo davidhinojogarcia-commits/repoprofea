@@ -2,6 +2,10 @@
 -- The imported PDF remains the immutable visual master. The signed copy is the
 -- same document with signature images overlaid in confirmed coordinates only.
 
+drop function if exists public.prepare_foreman_mandatory_from_email(
+  text,bigint[],date,text,text,text,text,text,text,text,text
+);
+
 create or replace function public.prepare_foreman_mandatory_from_email(
   p_document_type text,
   p_worker_ids bigint[],
@@ -13,7 +17,8 @@ create or replace function public.prepare_foreman_mandatory_from_email(
   p_rfc_message_id text,
   p_email_from text,
   p_email_subject text,
-  p_attachment_name text
+  p_attachment_name text,
+  p_obra_hint text default null
 )
 returns uuid
 language plpgsql
@@ -36,38 +41,44 @@ begin
   if p_document_type not in ('inicio','control_presencia') then
     raise exception 'Tipo de documento no válido';
   end if;
-  if coalesce(array_length(p_worker_ids,1),0)=0 then
-    raise exception 'No hay datos suficientes para identificar la obra';
+
+  if coalesce(array_length(p_worker_ids,1),0)>0 then
+    select t.obra
+      into v_obra
+    from unnest(p_worker_ids) with ordinality ids(id,ord)
+    join public.trabajadores t
+      on t.id=ids.id
+     and t.owner_id=v_owner
+    group by t.obra
+    order by count(*) desc, min(ids.ord)
+    limit 1;
   end if;
 
-  select t.obra
-    into v_obra
-  from unnest(p_worker_ids) with ordinality ids(id,ord)
-  join public.trabajadores t
-    on t.id=ids.id
-   and t.owner_id=v_owner
-  group by t.obra
-  order by count(*) desc, min(ids.ord)
-  limit 1;
+  if coalesce(trim(v_obra),'')='' and coalesce(trim(p_obra_hint),'')<>'' then
+    select t.obra
+      into v_obra
+    from public.trabajadores t
+    where t.owner_id=v_owner
+      and lower(coalesce(t.obra,''))=lower(trim(p_obra_hint))
+    limit 1;
+  end if;
 
   if coalesce(trim(v_obra),'')='' then
-    raise exception 'No se ha podido identificar la obra';
+    raise exception 'No se ha podido identificar la obra. Selecciona la obra antes de importar el documento';
   end if;
 
   if p_document_type='control_presencia' then
     v_category := '';
   end if;
 
-  select coalesce(array_agg(t.id order by ids.ord),'{}'::bigint[])
-    into v_valid_worker_ids
-  from unnest(p_worker_ids) with ordinality ids(id,ord)
-  join public.trabajadores t
-    on t.id=ids.id
-  where t.owner_id=v_owner
-    and lower(coalesce(t.obra,''))=lower(v_obra);
-
-  if coalesce(array_length(v_valid_worker_ids,1),0)=0 then
-    raise exception 'No hay trabajadores válidos para la obra identificada';
+  if coalesce(array_length(p_worker_ids,1),0)>0 then
+    select coalesce(array_agg(t.id order by ids.ord),'{}'::bigint[])
+      into v_valid_worker_ids
+    from unnest(p_worker_ids) with ordinality ids(id,ord)
+    join public.trabajadores t
+      on t.id=ids.id
+    where t.owner_id=v_owner
+      and lower(coalesce(t.obra,''))=lower(v_obra);
   end if;
 
   select coalesce(jsonb_agg(worker_id order by ord),'[]'::jsonb)
@@ -91,7 +102,6 @@ begin
   for update;
 
   if found then
-    -- Once a signature exists, the imported master identity/order is frozen.
     if jsonb_object_length(coalesce(v_existing.signatures,'{}'::jsonb))>0 then
       return v_existing.id;
     end if;
@@ -136,10 +146,10 @@ end;
 $$;
 
 revoke all on function public.prepare_foreman_mandatory_from_email(
-  text,bigint[],date,text,text,text,text,text,text,text,text
+  text,bigint[],date,text,text,text,text,text,text,text,text,text
 ) from public;
 grant execute on function public.prepare_foreman_mandatory_from_email(
-  text,bigint[],date,text,text,text,text,text,text,text,text
+  text,bigint[],date,text,text,text,text,text,text,text,text,text
 ) to authenticated;
 
 
