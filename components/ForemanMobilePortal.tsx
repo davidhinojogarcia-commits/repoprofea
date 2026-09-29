@@ -469,8 +469,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const selectedCandidate=(isImportedMandatory?additionalCandidates:operationalCandidates)
       .find(worker=>String(worker.id)===selectedId);
 
+    const signedAdditionalCount=isImportedMandatory
+      ? signedWorkers.filter(worker=>!importedWorkerIds.has(Number(worker.id))).length
+      : 0;
     const requiredSignatureTotal=isImportedMandatory
-      ? Math.max(importedWorkerIds.size, signedCount)
+      ? Math.max(importedWorkerIds.size + signedAdditionalCount, signedCount)
       : assignedWorkers.length;
     const pendingRequired=isImportedMandatory
       ? importedCandidates.length + unavailableImportedCount
@@ -509,7 +512,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               <span className="mt-1 block text-sm text-slate-600">{worker.dni} · {worker.categoria}</span>
               <span className="mt-2 block text-sm font-black text-[#00548E]">Firmar esta persona</span>
             </button>)}</div>
-          : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
+          : unavailableImportedCount===0
+            ? <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>
+            : null}
       </div>}
 
       {!closed&&isImportedMandatory&&unavailableImportedCount>0&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-5 text-rose-900">
