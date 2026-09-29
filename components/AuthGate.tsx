@@ -4,7 +4,6 @@ import { supabase, type SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, KeyRound, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getUserProfile, signInWithEmail, signOutUser, subscribeToAuth, type AppRole, type AuthProfile } from '../src/lib/authService';
 import { hydrateStoredSubcontratasPreferences } from '../src/lib/subcontratasDefaults';
-import { hydrateStoredPdfConfig } from '../src/lib/exportUtils';
 import { clearUserActivity, initializeUserActivity, useIdleTimeout } from '../src/hooks/useIdleTimeout';
 import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from '../src/services/appSettingsService';
 
@@ -70,9 +69,8 @@ export function AuthGate({ children }: AuthGateProps) {
         if (validationId !== authValidationRef.current) return;
         setProfile(currentProfile);
         if (currentRole) {
-          const [, , businessSettings] = await Promise.all([
+          const [, businessSettings] = await Promise.all([
             hydrateStoredSubcontratasPreferences().catch(err => console.warn('No se pudieron precargar preferencias de subcontratas:', err)),
-            hydrateStoredPdfConfig().catch(err => console.warn('No se pudo precargar la configuración PDF:', err)),
             loadAppBusinessSettings().catch(err => { console.warn('No se pudo precargar la configuración del supervisor:', err); return null; }),
           ]);
           if (businessSettings?.supervisor) setSupervisorSettings(businessSettings.supervisor);
