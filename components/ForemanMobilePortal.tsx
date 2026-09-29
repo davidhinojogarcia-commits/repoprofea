@@ -391,7 +391,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <div className="text-base font-black text-slate-900">1. Selecciona el periodo o periodos</div>
         <div className="mt-1 text-sm leading-5 text-slate-600">Elige una o varias quincenas o meses. Hasta que no selecciones un periodo no se mostrará ningún trabajador adicional, evitando mezclar personal de otros periodos.</div>
       </div>
-      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black">Mostrar todos</button>}
+      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black" >Limpiar selección</button>}
     </div>
     {!!availableQuincenas.length&&<div>
       <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Quincenas</div>
