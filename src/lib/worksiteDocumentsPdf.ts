@@ -19,6 +19,7 @@ export type WorksiteDocumentContext = {
   duracionFormacion?: string;
   epis?: Record<string, boolean>;
   maquinariaPorTrabajador?: Record<string, string>;
+  workerSignatures?: Record<string, string>;
 };
 
 const BLUE: [number, number, number] = [0, 84, 142];
@@ -35,6 +36,32 @@ const slug = (value: string) =>
     .replace(/[^A-Za-z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
+
+const drawWorkerSignature = (
+  doc: jsPDF,
+  cell: any,
+  worker: Person | undefined,
+  context: WorksiteDocumentContext,
+) => {
+  if (!worker) return;
+  const signature = context.workerSignatures?.[String(worker.id)];
+  if (!signature || signature === 'signed') return;
+  try {
+    const pad = 1.1;
+    const maxW = Math.max(4, Number(cell.width || 0) - pad * 2);
+    const maxH = Math.max(4, Number(cell.height || 0) - pad * 2);
+    doc.addImage(
+      signature,
+      'PNG',
+      Number(cell.x || 0) + pad,
+      Number(cell.y || 0) + pad,
+      maxW,
+      maxH,
+      undefined,
+      'FAST',
+    );
+  } catch {}
+};
 
 const splitName = (value: string) => {
   const text = safe(value);
@@ -271,6 +298,11 @@ export const generateEpiDeliveryPdf = (
       10: { cellWidth: 20, halign: "center" },
       11: { cellWidth: 31 },
     },
+    didDrawCell: (data: any) => {
+      if (data.section === 'body' && data.column.index === 11) {
+        drawWorkerSignature(doc, data.cell, workers[data.row.index], context);
+      }
+    },
     didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
 
@@ -347,6 +379,11 @@ export const generateTrainingInformationPdf = (
       5: { cellWidth: 24 },
       6: { cellWidth: 20 },
       7: { cellWidth: 30 },
+    },
+    didDrawCell: (data: any) => {
+      if (data.section === 'body' && data.column.index === 7) {
+        drawWorkerSignature(doc, data.cell, workers[data.row.index], context);
+      }
     },
     didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
@@ -473,6 +510,11 @@ export const generateMachineryAuthorizationPdf = (
       7: { cellWidth: 22 },
       8: { cellWidth: 23 },
       9: { cellWidth: 27 },
+    },
+    didDrawCell: (data: any) => {
+      if (data.section === 'body' && data.column.index === 9) {
+        drawWorkerSignature(doc, data.cell, workers[data.row.index], context);
+      }
     },
     didDrawPage: () => drawResponsibleSignatureBand(doc, context),
   });
