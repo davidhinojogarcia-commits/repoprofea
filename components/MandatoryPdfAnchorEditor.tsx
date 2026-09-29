@@ -9,11 +9,12 @@ type Props = {
   title: string;
   obra: string;
   anchors: MandatoryWorkerAnchor[];
+  signedWorkerIds?: number[];
   onCancel: () => void;
   onSave: (anchors: MandatoryWorkerAnchor[]) => Promise<void> | void;
 };
 
-export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, anchors, onCancel, onSave }) => {
+export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, anchors, signedWorkerIds = [], onCancel, onSave }) => {
   const [draft,setDraft]=useState<MandatoryWorkerAnchor[]>(()=>anchors.map(anchor=>({...anchor})));
   const [index,setIndex]=useState(0);
   const [pdf,setPdf]=useState<any>(null);
@@ -24,6 +25,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const viewportRef=useRef<any>(null);
   const current=draft[index]||null;
+  const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
+  const currentIdentityLocked=Boolean(current&&current.workerId>0&&signedIds.has(Number(current.workerId)));
 
   useEffect(()=>{
     let cancelled=false;
@@ -110,7 +113,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     return()=>{cancelled=true;};
   },[pdf,current,currentPage]);
 
-  const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
+  const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved||Number(anchor.workerId)<=0).length,[draft]);
 
   const selectPage=(value:number)=>{
     if(!current)return;
@@ -118,6 +121,10 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   const assignCurrentWorker=(workerId:number)=>{
+    if(currentIdentityLocked){
+      setError('Este trabajador ya ha firmado y su identidad no puede cambiarse.');
+      return;
+    }
     const worker=availableWorkers.find(row=>Number(row.id)===Number(workerId));
     if(!worker||!current)return;
     const duplicate=draft.some((anchor,i)=>i!==index&&Number(anchor.workerId)===Number(worker.id));
@@ -187,8 +194,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       signatureY,
       signatureWidth:boxWidth,
       signatureHeight:boxHeight,
-      resolved:true,
-      confidence:1,
+      resolved:Number(current.workerId)>0,
+      confidence:Number(current.workerId)>0?1:0,
       reason:'Posición confirmada manualmente por el supervisor.',
     }:anchor));
   };
@@ -217,12 +224,14 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <select
               value={current&&current.workerId>0?String(current.workerId):''}
               onChange={event=>assignCurrentWorker(Number(event.target.value))}
-              className="mt-2 min-h-[48px] w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold"
+              disabled={currentIdentityLocked}
+              className="mt-2 min-h-[48px] w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold disabled:bg-slate-100 disabled:text-slate-500"
             >
               <option value="">Seleccionar trabajador…</option>
               {availableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
             </select>
           </label>
+          {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
 
           <label className="mt-4 block text-sm font-black">Página
             <div className="mt-2 flex items-center gap-2">
