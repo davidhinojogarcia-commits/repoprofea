@@ -22,6 +22,14 @@ export default defineConfig(({ mode }) => {
       },
       build: {
         chunkSizeWarningLimit: 900,
+        modulePreload: {
+          resolveDependencies(_filename, deps, context) {
+            if (context.hostType !== 'html') return deps;
+            return deps.filter(dep =>
+              !/vendor-(pdf-export|pdf-viewer|spreadsheets|ocr|charts|motion)/.test(dep),
+            );
+          },
+        },
         rollupOptions: {
           output: {
             manualChunks(id) {

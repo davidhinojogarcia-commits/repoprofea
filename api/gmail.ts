@@ -6,6 +6,7 @@ import {
   decryptToken,
   deleteConnection,
   getConnection,
+  getServerConfigStatus,
   oauthRedirectUri,
   refreshGoogleAccessToken,
   requireServerConfig,
@@ -55,14 +56,26 @@ function buildMime(input: {
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    requireServerConfig();
-    const user = await authenticateRequest(req);
     const action = String(req.query?.action || '').trim();
+    const user = await authenticateRequest(req);
 
     if (action === 'status' && req.method === 'GET') {
+      const serverConfig = getServerConfigStatus();
+      if (!serverConfig.configured) {
+        return res.status(200).json({
+          ok: true,
+          configured: false,
+          connected: false,
+          email: '',
+          connectedAt: null,
+          lastSentAt: null,
+          canRead: false,
+        });
+      }
       const connection = await getConnection(user.id);
       return res.status(200).json({
         ok: true,
+        configured: true,
         connected: Boolean(connection),
         email: connection?.email || '',
         connectedAt: connection?.connected_at || null,
@@ -70,6 +83,8 @@ export default async function handler(req: any, res: any) {
         canRead: String(connection?.scope || '').includes('gmail.readonly'),
       });
     }
+
+    requireServerConfig();
 
     if (action === 'start' && req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
