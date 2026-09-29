@@ -136,6 +136,7 @@ export async function analyzeMandatoryOriginalPdf(
   file: File,
   workers: Person[],
   onProgress?: (message:string)=>void,
+  fallbackText = '',
 ): Promise<MandatoryPdfAnalysis> {
   const pdfjs = await setupPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
@@ -248,8 +249,21 @@ export async function analyzeMandatoryOriginalPdf(
 
   orderedResolved.forEach((anchor,index) => { anchor.order = index; });
   let nextOrder = orderedResolved.length;
+  const normalizedFallback = normalize(fallbackText);
+  const compactFallback = compact(fallbackText);
   anchors
     .filter(anchor => !anchor.resolved)
+    .sort((a,b) => {
+      const indexFor = (anchor:MandatoryWorkerAnchor) => {
+        const dni=compact(anchor.dni);
+        if(dni&&compactFallback.includes(dni))return compactFallback.indexOf(dni);
+        const tokens=normalize(anchor.workerName).split(' ').filter(token=>token.length>=3);
+        const probe=tokens.slice(0,Math.min(3,tokens.length)).join(' ');
+        return probe ? normalizedFallback.indexOf(probe) : Number.MAX_SAFE_INTEGER;
+      };
+      const ai=indexFor(a), bi=indexFor(b);
+      return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);
+    })
     .forEach(anchor => { anchor.order = nextOrder++; });
 
   const ordered = [...anchors].sort((a,b) => a.order - b.order);
