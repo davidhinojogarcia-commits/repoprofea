@@ -391,7 +391,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <div className="text-base font-black text-slate-900">1. Selecciona el periodo o periodos</div>
         <div className="mt-1 text-sm leading-5 text-slate-600">Elige una o varias quincenas o meses. Hasta que no selecciones un periodo no se mostrará ningún trabajador adicional, evitando mezclar personal de otros periodos.</div>
       </div>
-      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black">Mostrar todos</button>}
+      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black" >Limpiar selección</button>}
     </div>
     {!!availableQuincenas.length&&<div>
       <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Quincenas</div>
@@ -448,6 +448,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           validForDocument(worker)
         )
       : [];
+    const availableImportedIds=new Set(importedCandidates.map(worker=>Number(worker.id)));
+    const unavailableImportedCount=isImportedMandatory
+      ? [...importedWorkerIds].filter(id=>!signatureIds.has(id)&&!availableImportedIds.has(id)).length
+      : 0;
 
     const additionalCandidates=isImportedMandatory && selectedPeriodKeys.size>0
       ? documentWorkers.filter(worker=>
@@ -465,11 +469,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const selectedCandidate=(isImportedMandatory?additionalCandidates:operationalCandidates)
       .find(worker=>String(worker.id)===selectedId);
 
+    const signedAdditionalCount=isImportedMandatory
+      ? signedWorkers.filter(worker=>!importedWorkerIds.has(Number(worker.id))).length
+      : 0;
     const requiredSignatureTotal=isImportedMandatory
-      ? Math.max(importedWorkerIds.size, signedCount)
+      ? Math.max(importedWorkerIds.size + signedAdditionalCount, signedCount)
       : assignedWorkers.length;
     const pendingRequired=isImportedMandatory
-      ? importedCandidates.length
+      ? importedCandidates.length + unavailableImportedCount
       : operationalCandidates.length;
     const canFinalize=signedCount>0 && pendingRequired===0 &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
@@ -505,7 +512,13 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               <span className="mt-1 block text-sm text-slate-600">{worker.dni} · {worker.categoria}</span>
               <span className="mt-2 block text-sm font-black text-[#00548E]">Firmar esta persona</span>
             </button>)}</div>
-          : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
+          : unavailableImportedCount===0
+            ? <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>
+            : null}
+      </div>}
+
+      {!closed&&isImportedMandatory&&unavailableImportedCount>0&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-5 text-rose-900">
+        <b>No se puede finalizar todavía.</b> {unavailableImportedCount===1?'Hay 1 persona del documento importado que ya no está disponible en la relación actual de la obra.':`Hay ${unavailableImportedCount} personas del documento importado que ya no están disponibles en la relación actual de la obra.`} El supervisor debe revisar la asignación antes de cerrar el documento.
       </div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

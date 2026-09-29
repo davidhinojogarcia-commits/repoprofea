@@ -281,15 +281,25 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   });
   const documentId = String(id || '').trim();
   if (documentId) {
+    const currentRows = await supabase.query('foreman_mandatory_documents', {
+      query: 'id=eq.' + encodeURIComponent(documentId) + '&select=details&limit=1',
+    });
+    const currentDetails =
+      Array.isArray(currentRows) && currentRows[0]?.details && typeof currentRows[0].details === 'object'
+        ? currentRows[0].details
+        : {};
     await supabase.query('foreman_mandatory_documents', {
       method: 'PATCH',
       query: 'id=eq.' + encodeURIComponent(documentId),
       prefer: 'return=minimal',
       body: {
         details: {
+          ...currentDetails,
           sourceText: input.sourceText || '',
           sourceFilename: input.attachmentName || '',
-          importedWorkerIds: input.workerIds,
+          importedWorkerIds: Array.isArray(currentDetails.importedWorkerIds)
+            ? currentDetails.importedWorkerIds
+            : input.workerIds,
         },
         updated_at: new Date().toISOString(),
       },

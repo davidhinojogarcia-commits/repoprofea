@@ -25,13 +25,40 @@ if (typeof globalThis !== 'undefined') {
   runtime['handle' + 'GoogleLogout'] ??= async () => undefined;
 }
 
+const CHUNK_RECOVERY_KEY = 'profea_chunk_recovery_v1';
+const isRecoverableChunkError = (value: unknown) =>
+  /chunkloaderror|loading chunk|failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module/i
+    .test(String((value as any)?.message || value || ''));
+
+const recoverFromStaleChunkOnce = (error: unknown) => {
+  if (!isRecoverableChunkError(error)) return false;
+  try {
+    if (sessionStorage.getItem(CHUNK_RECOVERY_KEY) === '1') return false;
+    sessionStorage.setItem(CHUNK_RECOVERY_KEY, '1');
+  } catch {
+    return false;
+  }
+  window.location.reload();
+  return true;
+};
+
+window.addEventListener('unhandledrejection', (event) => {
+  if (recoverFromStaleChunkOnce(event.reason)) event.preventDefault();
+});
+window.setTimeout(() => {
+  try { sessionStorage.removeItem(CHUNK_RECOVERY_KEY); } catch {}
+}, 30_000);
+
 type RootErrorBoundaryProps = { children: React.ReactNode };
 type RootErrorBoundaryState = { error: Error | null };
 class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErrorBoundaryState> {
   declare props: Readonly<RootErrorBoundaryProps>;
   state: RootErrorBoundaryState = { error: null };
   static getDerivedStateFromError(error: Error): RootErrorBoundaryState { return { error }; }
-  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('Error fatal de la aplicación', error, info); }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('Error fatal de la aplicación', error, info);
+    recoverFromStaleChunkOnce(error);
+  }
   render() {
     if (this.state.error) {
       const diagnostic = `${this.state.error.name || 'Error'}: ${this.state.error.message || 'Error desconocido'}`.slice(0, 300);

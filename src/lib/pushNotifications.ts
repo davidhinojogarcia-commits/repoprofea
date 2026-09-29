@@ -19,6 +19,13 @@ export interface NotificationPreferences {
 
 const PREFS_STORAGE_KEY = 'profea_notification_preferences';
 
+const localDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export function getNotificationPreferences(): NotificationPreferences {
   if (typeof localStorage === 'undefined') {
     return {
@@ -192,15 +199,15 @@ export interface AlertsSummary {
 }
 
 export function getNotificationAlertsSummary(people: Person[]): AlertsSummary {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateKey(new Date());
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tomorrowStr = localDateKey(tomorrow);
 
   const threeDays = new Date();
   threeDays.setDate(threeDays.getDate() + 3);
-  const threeDaysStr = threeDays.toISOString().split('T')[0];
+  const threeDaysStr = localDateKey(threeDays);
 
   const citasVencidas: Person[] = [];
   const citasHoy: Person[] = [];
@@ -270,7 +277,7 @@ export async function checkAndTriggerUpcomingAlerts(
   }
 
   const prefs = getNotificationPreferences();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateKey(new Date());
   const storageKey = `profea_sent_notifications_${todayStr}`;
   let sentSet = new Set<string>();
 
