@@ -212,17 +212,18 @@ export async function analyzeMandatoryOriginalPdf(
     used.add(`${best.page}:${best.lineIndex}`);
     const line = best.line;
     const rowHeight = Math.max(18, Math.min(42, line.height * 2.2));
-    const dynamicHeaderX = best.signatureHeaderX != null && best.signatureHeaderX > line.minX + 30
+    const dynamicHeaderX = best.signatureHeaderX != null && best.signatureHeaderX > line.maxX + 6
       ? best.signatureHeaderX
       : null;
-    const candidateX = dynamicHeaderX != null
-      ? dynamicHeaderX
-      : Math.max(line.maxX + 10, line.minX + Math.max(160, (best.width - line.minX) * 0.58));
+    // Solo se confirma automáticamente una zona cuando el propio PDF contiene
+    // una columna/encabezado de FIRMA claramente a la derecha de la fila.
+    // Si no existe esa referencia documental, no se inventan coordenadas.
+    const candidateX = dynamicHeaderX;
     const rightMargin = Math.max(16, best.width * 0.025);
-    const availableWidth = best.width - rightMargin - candidateX;
+    const availableWidth = candidateX == null ? 0 : best.width - rightMargin - candidateX;
     const signatureWidth = Math.min(Math.max(78, availableWidth), 132);
     const signatureHeight = Math.min(38, Math.max(24, rowHeight * 1.15));
-    const resolved = best.score >= 0.78 && availableWidth >= 70 && candidateX < best.width - 70;
+    const resolved = best.score >= 0.78 && candidateX != null && availableWidth >= 70 && candidateX < best.width - 70;
     const signatureY = Math.max(6, line.y - signatureHeight * 0.38);
 
     anchors.push({
@@ -234,7 +235,7 @@ export async function analyzeMandatoryOriginalPdf(
       nameX: line.minX,
       nameY: line.y,
       rowHeight,
-      signatureX: resolved ? candidateX : null,
+      signatureX: resolved ? Number(candidateX) : null,
       signatureY: resolved ? signatureY : null,
       signatureWidth: resolved ? signatureWidth : null,
       signatureHeight: resolved ? signatureHeight : null,
