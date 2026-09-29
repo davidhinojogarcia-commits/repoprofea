@@ -347,6 +347,19 @@ export async function getSupervisorMandatoryPdf(
   }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
 }
 
+export async function getForemanMandatorySignatures(
+  token: string,
+  documentId: string,
+): Promise<Record<string, { signature: string; signedAt?: string } | string>> {
+  return withForemanTimeout(
+    supabase.rpc('get_foreman_mandatory_signatures', {
+      p_token: token,
+      p_document_id: documentId,
+    }),
+    'No se pudieron cargar las firmas a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  ) as Promise<Record<string, { signature: string; signedAt?: string } | string>>;
+}
+
 export async function storeForemanMandatorySignedPdf(input: {
   token: string;
   documentId: string;
