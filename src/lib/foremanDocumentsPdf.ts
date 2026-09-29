@@ -170,6 +170,13 @@ export function generateForemanMandatoryDocumentPdf(
     throw new Error('Este documento conserva el PDF original y no puede reconstruirse. Usa la copia Original/Firmado almacenada.');
   }
 
+  if (
+    ['inicio','control_presencia'].includes(record.documentType) &&
+    record.details?.originalPdfMode === 'overlay'
+  ) {
+    throw new Error('Este documento conserva el PDF original. Debe abrirse desde la copia Original/Firmado, no regenerarse.');
+  }
+
   if (record.documentType === 'control_presencia') {
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     renderInstitutionalReportHeader(
