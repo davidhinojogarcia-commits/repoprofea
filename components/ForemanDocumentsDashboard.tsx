@@ -13,7 +13,7 @@ import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDo
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
 type ActivityRow = { id:number; obra:string; entity_type:string; entity_id?:string|null; document_type?:string|null; action:string; actor_type:'supervisor'|'encargado'|'sistema'; actor_name?:string; worker_id?:number|null; metadata?:Record<string,any>; created_at:string };
 type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; snapshot:Record<string,any>; created_at:string };
@@ -22,6 +22,7 @@ const mandatoryDocumentLabel = (type:string) => ({
   inicio:'Inicio / incorporación',
   control_presencia:'Control de presencia',
   epis:'Entrega de EPIs',
+  formacion:'Formación e información',
   maquinaria:'Autorización de maquinaria',
   autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
 } as Record<string,string>)[type] || type;
@@ -164,7 +165,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   };
   const term=search.trim().toLowerCase();
   const visibleMandatory = useMemo(
-    () => mandatory.filter(item => ['inicio','control_presencia'].includes(String(item.document_type || ''))),
+    () => mandatory.filter(item => ['inicio','control_presencia','epis','formacion','maquinaria','autorizacion_uso_maquinaria'].includes(String(item.document_type || ''))),
     [mandatory],
   );
 
