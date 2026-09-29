@@ -300,7 +300,9 @@ export async function fileToBase64(file: File) {
 
 export async function sha256Hex(input: Uint8Array | ArrayBuffer) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', copy.buffer);
   return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2,'0')).join('');
 }
 
@@ -480,5 +482,7 @@ export function pdfBlobFromBase64(value:string) {
 }
 
 export function pdfBlobFromBytes(value:Uint8Array) {
-  return new Blob([value], { type:'application/pdf' });
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return new Blob([copy.buffer], { type:'application/pdf' });
 }
