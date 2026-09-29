@@ -15,6 +15,7 @@ import {
   createForemanOperationalDocument,
   resubmitForemanDocument,
   type ForemanAttendanceRow,
+  type ForemanMandatoryDocument,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
 
@@ -183,15 +184,48 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
   const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
   const selectedWorker=useMemo(()=>data?.workers.find(w=>Number(w.id)===Number(workerId)),[data?.workers,workerId]);
-  const availablePeriods = useMemo(()=>Array.from(new Set((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))),[data?.workers]);
-  const documentWorkers = useMemo(()=>documentPeriod
-    ? (data?.workers||[]).filter(worker=>String(worker.quincena||'').trim()===documentPeriod)
-    : (data?.workers||[]),[data?.workers,documentPeriod]);
-  const periodLabel = documentPeriod || (
-    documentWorkers.length
-      ? [documentWorkers.map(worker=>String(worker.periodoInicio||'')).filter(Boolean).sort()[0], documentWorkers.map(worker=>String(worker.periodoFin||'')).filter(Boolean).sort().slice(-1)[0]].filter(Boolean).join(' – ')
-      : 'Sin periodo'
-  );
+  const monthLabel = (key:string) => {
+    const [year,month]=key.split('-');
+    const names=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return `${names[Math.max(0,Number(month)-1)]||month} ${year}`;
+  };
+  const monthsForWorker = (worker:any) => {
+    const start=String(worker.periodoInicio||'').slice(0,7);
+    const end=String(worker.periodoFin||'').slice(0,7);
+    if(!/^\d{4}-\d{2}$/.test(start)) return end ? [end] : [];
+    if(!/^\d{4}-\d{2}$/.test(end) || end<start) return [start];
+    const result:string[]=[];
+    let [year,month]=start.split('-').map(Number);
+    const [endYear,endMonth]=end.split('-').map(Number);
+    for(let guard=0;guard<24;guard++){
+      const key=`${year}-${String(month).padStart(2,'0')}`;
+      result.push(key);
+      if(year===endYear&&month===endMonth)break;
+      month+=1;if(month>12){month=1;year+=1;}
+    }
+    return result;
+  };
+  const availableQuincenas=useMemo(()=>Array.from(new Set((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})),[data?.workers]);
+  const availableMonths=useMemo(()=>Array.from(new Set((data?.workers||[]).flatMap(worker=>monthsForWorker(worker)))).sort(),[data?.workers]);
+  const togglePeriodKey=(key:string)=>setSelectedPeriodKeys(current=>{
+    const next=new Set(current);
+    if(next.has(key))next.delete(key);else next.add(key);
+    return next;
+  });
+  const documentWorkers = useMemo(()=>{
+    const workers=data?.workers||[];
+    if(!selectedPeriodKeys.size)return workers;
+    return workers.filter(worker=>{
+      const q=String(worker.quincena||'').trim();
+      if(q&&selectedPeriodKeys.has('q:'+q))return true;
+      return monthsForWorker(worker).some(month=>selectedPeriodKeys.has('m:'+month));
+    });
+  },[data?.workers,selectedPeriodKeys]);
+  const selectedWorkerIds=useMemo(()=>new Set(documentWorkers.map(worker=>Number(worker.id))),[documentWorkers]);
+  const controlRows=useMemo(()=>rows.filter(row=>selectedWorkerIds.has(Number(row.workerId))),[rows,selectedWorkerIds]);
+  const periodLabel = selectedPeriodKeys.size
+    ? [...selectedPeriodKeys].map(key=>key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2))).join(' + ')
+    : 'Todos los trabajadores de la obra';
   const worksiteContext: WorksiteDocumentContext = {
     obra: data?.obra || '',
     municipio: data?.worksite?.municipio || '',
@@ -205,30 +239,41 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     epis: epiSelection,
     maquinariaPorTrabajador: machineryByWorker,
   };
-  const generateCoreDocument = async () => {
-    if (!documentWorkers.length) return window.alert('No hay trabajadores para el periodo seleccionado.');
+  const prepareOperationalDocument=async(type:'epis'|'formacion'|'autorizacion_uso_maquinaria')=>{
+    if(!documentWorkers.length)return window.alert('Selecciona al menos un periodo con trabajadores.');
+    if(type==='autorizacion_uso_maquinaria' && documentWorkers.some(worker=>!String(machineryByWorker[String(worker.id)]||'').trim())){
+      return window.alert('Indica la maquinaria o equipos autorizados para todos los trabajadores seleccionados.');
+    }
     setSaving(true);
-    try {
-      if (coreDocType === 'epis') {
-        const { generateEpiDeliveryPdf } = await import('../src/lib/worksiteDocumentsPdf');
-        const out=generateEpiDeliveryPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
-      }
-      if (coreDocType === 'formacion') {
-        const { generateTrainingInformationPdf } = await import('../src/lib/worksiteDocumentsPdf');
-        const out=generateTrainingInformationPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
-      }
-      if (coreDocType === 'maquinaria') {
-        const { generateMachineryAuthorizationPdf } = await import('../src/lib/worksiteDocumentsPdf');
-        const out=generateMachineryAuthorizationPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
-      }
-      const { generateContractAttendancePdf } = await import('../src/lib/worksiteAttendancePdf');
-      const out=generateContractAttendancePdf(documentWorkers,{...worksiteContext,codigoObra:data?.worksite?.codigo||''});
-      out.doc.save(out.filename);
-    } catch (e:any) {
-      setError(e?.message||'No se pudo generar el PDF.');
-    } finally {
+    try{
+      await createForemanOperationalDocument({
+        token,
+        documentType:type,
+        workDate:date,
+        workerIds:documentWorkers.map(worker=>Number(worker.id)).filter(Number.isFinite),
+        details:{
+          periodoLabel:periodLabel,
+          municipio:data?.worksite?.municipio||'',
+          empresa:data?.worksite?.empresa||'',
+          cif:data?.worksite?.cif||'',
+          recursoPreventivo:data?.worksite?.recursoPreventivo||data?.foremanName||'',
+          epis:epiSelection,
+          accionFormativa:trainingAction,
+          duracionFormacion:trainingDuration,
+          maquinariaPorTrabajador:machineryByWorker,
+        },
+      });
+      await refresh();
+      setError('');
+    }catch(e:any){
+      setError(e?.message||'No se pudo preparar el documento para firmas.');
+    }finally{
       setSaving(false);
     }
+  };
+  const operationalDocumentsFor=(type:'epis'|'formacion'|'maquinaria')=>{
+    const accepted=type==='maquinaria'?['maquinaria','autorizacion_uso_maquinaria']:[type];
+    return (data?.mandatoryDocuments||[]).filter(doc=>accepted.includes(String(doc.documentType)));
   };
   const generateAdditionalPdf = async () => {
     if (!selectedWorker) return window.alert('Selecciona un trabajador.');
