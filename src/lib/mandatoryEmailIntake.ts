@@ -288,7 +288,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
         const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
         const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
         const workDate = extractDate(extracted.text, message.internalDate);
-        const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress);
+        const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
         const orderedSelected = analysis.orderedWorkerIds
           .map(id => selectedById.get(Number(id)))
@@ -379,7 +379,7 @@ export async function processManualMandatoryFiles(
       const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
       const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
       const workDate = extractDate(extracted.text);
-      const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress);
+      const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
       const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
       const orderedSelected = analysis.orderedWorkerIds
         .map(id => selectedById.get(Number(id)))
