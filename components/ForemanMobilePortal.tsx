@@ -337,6 +337,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </div>
     </div>}
     <div className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700">{documentWorkers.length} trabajador(es) seleccionado(s) · {periodLabel}</div>
+    {!!documentWorkers.length&&<div className="max-h-56 overflow-y-auto rounded-xl border bg-white divide-y">
+      {documentWorkers.map(worker=><div key={worker.id} className="px-3 py-2.5">
+        <div className="text-sm font-black text-slate-800">{worker.apellidosNombre}</div>
+        <div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}{worker.quincena?' · '+worker.quincena:''}</div>
+      </div>)}
+    </div>}
   </div>;
 
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
