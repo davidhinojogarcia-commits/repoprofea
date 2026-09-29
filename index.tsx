@@ -127,7 +127,7 @@ ReactDOM.createRoot(rootElement).render(
         <AppDialogHost />
         {isMedicalConfirmation ? (
         <MedicalAppointmentConfirmationPortal />
-      ) : foremanToken ? (
+      ) : (foremanToken || isForemanAppRoute) ? (
         <ForemanMobilePortal token={foremanToken} />
       ) : workerQrToken ? (
         <WorkerQrPortal token={workerQrToken} />
