@@ -750,7 +750,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                 await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
               }
               setAnswers({});setDocSignatures({});setWorkerId('');setCorrectionDocumentId('');
+              setError('');
               await refresh();setTab('completed');
+            }catch(e:any){
+              setError(e?.message||'No se pudo enviar el documento al supervisor.');
             }finally{setSaving(false);}
           }}
           disabled={saving}
