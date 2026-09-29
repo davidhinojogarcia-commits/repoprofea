@@ -268,10 +268,12 @@ async function startServer() {
 
       const allowedViews = Object.keys(PROFEA_TUTOR_VIEW_LABELS);
       const history = rawHistory
-        .slice(-8)
+        .slice(-14)
         .map((item: any) => ({
           role: item?.role === "assistant" ? "assistant" : "user",
-          text: String(item?.text || "").slice(0, 1600),
+          text: String(item?.text || "").slice(0, 1800),
+          suggestedView: String(item?.suggestedView || "").slice(0, 80),
+          followUps: Array.isArray(item?.followUps) ? item.followUps.map((value: unknown) => String(value || "").slice(0, 180)).slice(0, 3) : [],
         }))
         .filter((item: any) => item.text.trim());
 
@@ -296,21 +298,29 @@ INSTRUCCIONES OBLIGATORIAS:
 3. Si falta información para afirmar algo, dilo claramente y ofrece el camino seguro más cercano.
 4. No pidas datos personales, DNI, datos médicos ni información sensible para explicar cómo usar la aplicación.
 5. No afirmes que has realizado cambios: eres tutor, no ejecutor.
-6. Prioriza pasos numerados cortos. Si la respuesta es sencilla, usa 2-5 pasos.
-7. Si la pregunta depende de la pantalla actual, empieza desde esa pantalla.
-8. En Vista guiada usa lenguaje especialmente sencillo.
-9. Si conviene llevar al usuario a otro módulo, devuelve suggestedView con uno de estos valores exactos:
-   ${allowedViews.join(", ")}
-   Si no hace falta cambiar de módulo, devuelve suggestedView como cadena vacía.
-10. suggestedLabel debe ser el nombre humano del módulo sugerido o cadena vacía.
-11. No uses markdown complejo; se permiten números, guiones y frases cortas.
-12. Nunca muestres ni menciones claves, variables de entorno, proveedores de modelos ni detalles técnicos internos.
+6. Actúa como un ASISTENTE CONTINUO, no como una FAQ. Interpreta qué tarea intenta completar el supervisor y en qué punto del proceso está.
+7. No des toda la guía de golpe si la tarea tiene varias fases. Explica el paso actual y deja preparado el siguiente.
+8. Si el usuario dice "siguiente", "continúa", "qué hago ahora", "ya lo he hecho" o equivalente, usa la conversación previa para avanzar SIN repetir desde el principio.
+9. Si detectas un posible atasco posterior, anticípalo brevemente con una frase como: "Cuando termines esto, lo siguiente será...".
+10. Devuelve entre 2 y 3 followUps concretos, distintos y relacionados con el punto actual. Deben ser frases que el usuario pueda pulsar para continuar.
+11. Usa progressHint para indicar brevemente el avance cuando exista un proceso claro, por ejemplo: "Paso 2 de 4 · Ahora toca registrar al trabajador". Si no aplica, devuelve cadena vacía.
+12. Si la pregunta depende de la pantalla actual, empieza desde esa pantalla y continúa desde la nueva pantalla si acaba de navegar.
+13. En Vista guiada usa lenguaje especialmente sencillo.
+14. Si conviene llevar al usuario a otro módulo, devuelve suggestedView usando solo uno de los valores permitidos. Si no hace falta, cadena vacía.
+15. suggestedLabel debe ser el nombre humano del módulo sugerido o cadena vacía.
+16. No uses markdown complejo; se permiten números, guiones y frases cortas.
+17. Nunca muestres ni menciones claves, variables de entorno, proveedores de modelos ni detalles técnicos internos.
+18. No cierres con frases genéricas como "si necesitas algo más". Deja siempre una continuación accionable cuando haya un proceso en curso.
+19. Si hay varias rutas posibles, usa followUps para que el supervisor elija en vez de asumir una sola.
+20. Si el usuario comunica un problema ("no encuentro", "no sale", "me da error"), entra en modo diagnóstico: una comprobación sencilla cada vez y una alternativa segura.
 
 Devuelve exclusivamente JSON con:
 {
   "answer": "respuesta para el supervisor",
   "suggestedView": "id de vista o cadena vacía",
-  "suggestedLabel": "nombre del módulo o cadena vacía"
+  "suggestedLabel": "nombre del módulo o cadena vacía",
+  "followUps": ["continuación 1", "continuación 2", "continuación 3"],
+  "progressHint": "estado breve del proceso o cadena vacía"
 }
 `;
 
@@ -327,8 +337,10 @@ Devuelve exclusivamente JSON con:
               answer: { type: Type.STRING },
               suggestedView: { type: Type.STRING },
               suggestedLabel: { type: Type.STRING },
+              followUps: { type: Type.ARRAY, items: { type: Type.STRING } },
+              progressHint: { type: Type.STRING },
             },
-            required: ["answer", "suggestedView", "suggestedLabel"],
+            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint"],
           },
         },
       });
@@ -342,11 +354,16 @@ Devuelve exclusivamente JSON con:
         ? String(PROFEA_TUTOR_VIEW_LABELS[suggestedView as keyof typeof PROFEA_TUTOR_VIEW_LABELS] || parsed?.suggestedLabel || "")
         : "";
 
+      const followUps = Array.isArray(parsed?.followUps)
+        ? parsed.followUps.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 3)
+        : [];
+      const progressHint = String(parsed?.progressHint || "").trim().slice(0, 180);
+
       if (!answer) {
         return res.status(502).json({ error: "El Tutor PROFEA no ha podido preparar una respuesta." });
       }
 
-      res.json({ success: true, answer, suggestedView, suggestedLabel });
+      res.json({ success: true, answer, suggestedView, suggestedLabel, followUps, progressHint });
     } catch (error: any) {
       console.error("Error en Tutor PROFEA:", error);
       res.status(500).json({ error: "No se pudo consultar el Tutor PROFEA en este momento." });
