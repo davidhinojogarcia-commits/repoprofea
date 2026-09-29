@@ -1,21 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardList, Clock3, FileDown, FileSignature, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
-  generateAdditionalWorksiteDocument,
   type AdditionalWorksiteDocumentType,
-} from '../src/lib/worksiteAdditionalDocumentsPdf';
-import {
-  generateEpiDeliveryPdf,
-  generateMachineryAuthorizationPdf,
-  generateTrainingInformationPdf,
-  type WorksiteDocumentContext,
-} from '../src/lib/worksiteDocumentsPdf';
-import { generateContractAttendancePdf } from '../src/lib/worksiteAttendancePdf';
-import { downloadPDF } from '../src/lib/exportUtils';
+} from '../src/lib/worksiteAdditionalDocumentsCatalog';
+import type { WorksiteDocumentContext } from '../src/lib/worksiteDocumentsPdf';
 import {
   resolveForemanPortal,
   saveForemanAttendance,
+  signForemanAttendance,
   submitForemanDocument,
   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
@@ -41,13 +34,45 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
   const last = useRef<{x:number;y:number}|null>(null);
   useEffect(() => {
     const canvas=ref.current; if(!canvas) return;
-    const rect=canvas.getBoundingClientRect(); const ratio=Math.max(1,window.devicePixelRatio||1);
+    const rect=canvas.getBoundingClientRect(); const ratio=Math.min(1.5,Math.max(1,window.devicePixelRatio||1));
     canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
     const ctx=canvas.getContext('2d'); if(!ctx) return;
     ctx.setTransform(ratio,0,0,ratio,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,rect.width,rect.height);
     ctx.strokeStyle='#111827'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
   },[]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+  const exportSignature = () => {
+    const canvas=ref.current;
+    const ctx=canvas?.getContext('2d');
+    if(!canvas||!ctx)return;
+    const image=ctx.getImageData(0,0,canvas.width,canvas.height);
+    let minX=canvas.width,minY=canvas.height,maxX=-1,maxY=-1;
+    for(let y=0;y<canvas.height;y+=2){
+      for(let x=0;x<canvas.width;x+=2){
+        const i=(y*canvas.width+x)*4;
+        if(image.data[i]<235||image.data[i+1]<235||image.data[i+2]<235){
+          minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+        }
+      }
+    }
+    if(maxX<0||maxY<0){
+      window.alert('Realiza la firma antes de guardarla.');
+      return;
+    }
+    const pad=14;
+    minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);
+    maxX=Math.min(canvas.width-1,maxX+pad);maxY=Math.min(canvas.height-1,maxY+pad);
+    const sourceW=Math.max(1,maxX-minX+1),sourceH=Math.max(1,maxY-minY+1);
+    const maxW=720,maxH=260,scale=Math.min(1,maxW/sourceW,maxH/sourceH);
+    const out=document.createElement('canvas');
+    out.width=Math.max(1,Math.round(sourceW*scale));
+    out.height=Math.max(1,Math.round(sourceH*scale));
+    const outCtx=out.getContext('2d');
+    if(!outCtx)return;
+    outCtx.fillStyle='#fff';outCtx.fillRect(0,0,out.width,out.height);
+    outCtx.drawImage(canvas,minX,minY,sourceW,sourceH,0,0,out.width,out.height);
+    onSave(out.toDataURL('image/png'));
+  };
   return <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{paddingTop:'env(safe-area-inset-top)'}}>
     <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-2xl" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
       <h3 className="text-lg font-black text-slate-900">{title}</h3>
@@ -59,7 +84,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
         <button onClick={onCancel} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold">Cancelar</button>
-        <button onClick={()=>{const c=ref.current;if(c)onSave(c.toDataURL('image/png'));}} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Guardar</button>
+        <button onClick={exportSignature} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Guardar</button>
       </div>
     </div>
   </div>;
@@ -88,9 +113,30 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
   const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
+  const refreshInFlightRef=useRef<Promise<void>|null>(null);
+  const hasDataRef=useRef(false);
+  useEffect(()=>{hasDataRef.current=Boolean(data);},[data]);
 
-  const refresh=async()=>{setLoading(true);setError('');try{const next=await resolveForemanPortal(token);if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');setData(next);}catch(e:any){setError(e?.message||'No se pudo abrir la documentación de la obra.');}finally{setLoading(false);}};
-  useEffect(()=>{void refresh();},[token]);
+  const refresh=useCallback(async()=>{
+    if(refreshInFlightRef.current)return refreshInFlightRef.current;
+    const task=(async()=>{
+      if(!hasDataRef.current)setLoading(true);
+      setError('');
+      try{
+        const next=await resolveForemanPortal(token);
+        if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');
+        setData(next);
+      }catch(e:any){
+        setError(e?.message||'No se pudo actualizar la documentación de la obra.');
+      }finally{
+        setLoading(false);
+        refreshInFlightRef.current=null;
+      }
+    })();
+    refreshInFlightRef.current=task;
+    return task;
+  },[token]);
+  useEffect(()=>{void refresh();},[refresh]);
 
   useEffect(()=>{
     if(!data)return;
@@ -114,19 +160,40 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   },[data,date]);
 
   const persist=async(nextRows:ForemanAttendanceRow[],status:'draft'|'completed'='draft')=>{
-    setSaving(true);try{await saveForemanAttendance(token,date,nextRows,status);setRows(nextRows);if(status==='completed')await refresh();}finally{setSaving(false);}
+    setSaving(true);
+    try{
+      await saveForemanAttendance(token,date,nextRows,status);
+      setRows(nextRows);
+      setError('');
+      if(status==='completed')await refresh();
+    }catch(e:any){
+      setError(e?.message||'No se pudo guardar la jornada.');
+    }finally{
+      setSaving(false);
+    }
   };
   const applySignature=async(image:string)=>{
     if(!signing)return;
-    const next=rows.map(r=>r.workerId===signing.workerId?{...r,...(signing.kind==='entry'?{entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}:{exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})}:r);
-    setSigning(null); await persist(next,'draft');
+    const currentSigning=signing;
+    const next=rows.map(r=>r.workerId===currentSigning.workerId?{...r,...(currentSigning.kind==='entry'?{entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}:{exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})}:r);
+    setSigning(null);
+    setSaving(true);
+    try{
+      await signForemanAttendance(token,date,next,currentSigning.workerId,currentSigning.kind,image);
+      setRows(next);
+      setError('');
+    }catch(e:any){
+      setError(e?.message||'No se pudo guardar la firma.');
+    }finally{
+      setSaving(false);
+    }
   };
   const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
-  const selectedWorker=data?.workers.find(w=>Number(w.id)===Number(workerId));
-  const availablePeriods = Array.from(new Set((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean)));
-  const documentWorkers = documentPeriod
+  const selectedWorker=useMemo(()=>data?.workers.find(w=>Number(w.id)===Number(workerId)),[data?.workers,workerId]);
+  const availablePeriods = useMemo(()=>Array.from(new Set((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))),[data?.workers]);
+  const documentWorkers = useMemo(()=>documentPeriod
     ? (data?.workers||[]).filter(worker=>String(worker.quincena||'').trim()===documentPeriod)
-    : (data?.workers||[]);
+    : (data?.workers||[]),[data?.workers,documentPeriod]);
   const periodLabel = documentPeriod || (
     documentWorkers.length
       ? [documentWorkers.map(worker=>String(worker.periodoInicio||'')).filter(Boolean).sort()[0], documentWorkers.map(worker=>String(worker.periodoFin||'')).filter(Boolean).sort().slice(-1)[0]].filter(Boolean).join(' – ')
@@ -145,39 +212,58 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     epis: epiSelection,
     maquinariaPorTrabajador: machineryByWorker,
   };
-  const generateCoreDocument = () => {
+  const generateCoreDocument = async () => {
     if (!documentWorkers.length) return window.alert('No hay trabajadores para el periodo seleccionado.');
-    if (coreDocType === 'epis') {
-      const out=generateEpiDeliveryPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
+    setSaving(true);
+    try {
+      if (coreDocType === 'epis') {
+        const { generateEpiDeliveryPdf } = await import('../src/lib/worksiteDocumentsPdf');
+        const out=generateEpiDeliveryPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
+      }
+      if (coreDocType === 'formacion') {
+        const { generateTrainingInformationPdf } = await import('../src/lib/worksiteDocumentsPdf');
+        const out=generateTrainingInformationPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
+      }
+      if (coreDocType === 'maquinaria') {
+        const { generateMachineryAuthorizationPdf } = await import('../src/lib/worksiteDocumentsPdf');
+        const out=generateMachineryAuthorizationPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
+      }
+      const { generateContractAttendancePdf } = await import('../src/lib/worksiteAttendancePdf');
+      const out=generateContractAttendancePdf(documentWorkers,{...worksiteContext,codigoObra:data?.worksite?.codigo||''});
+      out.doc.save(out.filename);
+    } catch (e:any) {
+      setError(e?.message||'No se pudo generar el PDF.');
+    } finally {
+      setSaving(false);
     }
-    if (coreDocType === 'formacion') {
-      const out=generateTrainingInformationPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
-    }
-    if (coreDocType === 'maquinaria') {
-      const out=generateMachineryAuthorizationPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
-    }
-    const out=generateContractAttendancePdf(documentWorkers,{...worksiteContext,codigoObra:data?.worksite?.codigo||''});
-    downloadPDF(out.doc,out.filename);
   };
-  const generateAdditionalPdf = () => {
+  const generateAdditionalPdf = async () => {
     if (!selectedWorker) return window.alert('Selecciona un trabajador.');
-    const context = {
-      obra: data?.obra || '',
-      municipio: data?.worksite?.municipio || '',
-      empresa: data?.worksite?.empresa || '',
-      cif: data?.worksite?.cif || '',
-      fecha: date,
-      responsable: data?.worksite?.recursoPreventivo || data?.foremanName || '',
-      supervisor: selectedWorker.supervisorResponsable || '',
-    };
-    const out=generateAdditionalWorksiteDocument(
-      docType,
-      selectedWorker,
-      context,
-      answers,
-      { worker:docSignatures.worker, foreman:docSignatures.foreman },
-    );
-    downloadPDF(out.doc,out.filename);
+    setSaving(true);
+    try {
+      const { generateAdditionalWorksiteDocument } = await import('../src/lib/worksiteAdditionalDocumentsPdf');
+      const context = {
+        obra: data?.obra || '',
+        municipio: data?.worksite?.municipio || '',
+        empresa: data?.worksite?.empresa || '',
+        cif: data?.worksite?.cif || '',
+        fecha: date,
+        responsable: data?.worksite?.recursoPreventivo || data?.foremanName || '',
+        supervisor: selectedWorker.supervisorResponsable || '',
+      };
+      const out=generateAdditionalWorksiteDocument(
+        docType,
+        selectedWorker,
+        context,
+        answers,
+        { worker:docSignatures.worker, foreman:docSignatures.foreman },
+      );
+      out.doc.save(out.filename);
+    } catch (e:any) {
+      setError(e?.message||'No se pudo generar el PDF.');
+    } finally {
+      setSaving(false);
+    }
   };
   const mandatoryLabel=(type:string)=>({
     inicio:'Inicio / incorporación',
@@ -190,7 +276,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
 
   if(loading&&!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="text-center"><Loader2 className="w-9 h-9 animate-spin mx-auto text-[#00548E]"/><p className="mt-3 font-bold">Abriendo documentación de obra…</p></div></div>;
-  if(error||!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><div className="max-w-md rounded-3xl bg-white border border-amber-200 p-7 text-center shadow-xl"><ShieldCheck className="w-10 h-10 mx-auto text-amber-500"/><h1 className="mt-3 text-xl font-black">Acceso no disponible</h1><p className="mt-2 text-sm text-slate-600">{error}</p></div></div>;
+  if(!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><div className="max-w-md rounded-3xl bg-white border border-amber-200 p-7 text-center shadow-xl"><ShieldCheck className="w-10 h-10 mx-auto text-amber-500"/><h1 className="mt-3 text-xl font-black">Acceso no disponible</h1><p className="mt-2 text-sm text-slate-600">{error||'No se pudo cargar la documentación de la obra.'}</p><button type="button" onClick={()=>void refresh()} className="mt-4 min-h-[48px] rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white"><RefreshCw className="mr-2 inline h-4 w-4"/>Reintentar</button></div></div>;
 
   const completedToday=rows.filter(r=>r.entrySignature&&r.exitSignature).length;
   return <div className="min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
@@ -202,6 +288,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </div>
     </header>
     <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-28 sm:pb-6 space-y-4">
+      {error&&<div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="font-black">Conexión inestable</div>
+        <div className="mt-1">{error}</div>
+        <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
+      </div>}
       <div className="fixed bottom-0 left-0 right-0 z-30 sm:static grid grid-cols-4 gap-1 bg-white/95 backdrop-blur border-t sm:border sm:rounded-2xl p-2 shadow-[0_-8px_30px_rgba(15,23,42,0.10)] sm:shadow-none" style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))'}}>
         <button onClick={()=>setTab('mandatory')} className={`min-h-[58px] rounded-xl px-1 py-2 text-[11px] sm:text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/>Asignados</button>
         <button onClick={()=>setTab('documents')} className={`min-h-[58px] rounded-xl px-1 py-2 text-[11px] sm:text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/>Documentos</button>
@@ -228,7 +319,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                 value={row.entryTime || data.defaultWorkStartHour || '08:00'}
                 onChange={e=>{
                   const value=e.target.value;
-                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:undefined}:item));
+                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item));
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
@@ -243,7 +334,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                 value={row.exitTime || data.defaultWorkEndHour || '15:00'}
                 onChange={e=>{
                   const value=e.target.value;
-                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:undefined}:item));
+                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item));
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
@@ -287,7 +378,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                   setSaving(true);
                   try{
                     await finalizeForemanMandatoryDocument(token,doc.id);
-                    await refresh();
+                    setData(current=>current?{...current,mandatoryDocuments:current.mandatoryDocuments.map(item=>item.id===doc.id?{...item,status:'completed',correctionPending:false,completedAt:new Date().toISOString()}:item)}:current);
+                    setError('');
                     setTab('completed');
                   }catch(error:any){
                     window.alert(error?.message||'No se pudo finalizar el documento.');
@@ -370,7 +462,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             </div>
           </div>}
 
-          <button type="button" onClick={generateCoreDocument} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white">
+          <button type="button" onClick={()=>void generateCoreDocument()} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white">
             <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF {CORE_WORKSITE_DOCUMENTS[coreDocType]}
           </button>
         </div>
@@ -430,7 +522,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma encargado {docSignatures.foreman?'✓':''}</button>
         </div>
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
-        <button type="button" onClick={generateAdditionalPdf} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
+        <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
           <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF exactamente como Documentación de obra
         </button>
         <button
@@ -467,6 +559,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     </main>
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
-    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);await refresh();}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>}
+    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);setData(previous=>previous?{...previous,mandatoryDocuments:previous.mandatoryDocuments.map(item=>item.id===current.documentId?{...item,signatures:{...(item.signatures||{}),[String(current.workerId)]:'signed'},status:item.status==='pending'?'in_progress':item.status}:item)}:previous);setError('');}catch(e:any){setError(e?.message||'No se pudo guardar la firma.');}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>}
   </div>;
 };

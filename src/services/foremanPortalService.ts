@@ -1,6 +1,37 @@
 import type { Person } from '../../types';
 import { supabase } from '../lib/supabase';
 
+const FOREMAN_REQUEST_TIMEOUT_MS = 15000;
+
+const withForemanTimeout = async <T>(promise: Promise<T>, message: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), FOREMAN_REQUEST_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+const compactAttendanceRows = (rows: ForemanAttendanceRow[]) =>
+  rows.map(row => {
+    const next: Record<string, unknown> = {
+      workerId: row.workerId,
+      name: row.name,
+      dni: row.dni,
+      category: row.category,
+      entryTime: row.entryTime || '',
+      exitTime: row.exitTime || '',
+    };
+    if (row.entrySignature === '') next.entrySignature = '';
+    if (row.exitSignature === '') next.exitSignature = '';
+    return next;
+  });
+
 export type ForemanAttendanceRow = {
   workerId: number;
   name: string;
@@ -112,7 +143,10 @@ export async function revokeForemanPortalAccess(obra: string): Promise<void> {
 }
 
 export async function resolveForemanPortal(token: string): Promise<ForemanPortalPayload> {
-  const result = await supabase.rpc('resolve_foreman_portal', { p_token: token });
+  const result = await withForemanTimeout(
+    supabase.rpc('resolve_foreman_portal', { p_token: token }),
+    'La conexión con el portal está tardando demasiado. Comprueba la cobertura y pulsa Reintentar.',
+  );
   return {
     valid: Boolean(result?.valid),
     obra: String(result?.obra || ''),
@@ -140,12 +174,36 @@ export async function saveForemanAttendance(
   rows: ForemanAttendanceRow[],
   status: 'draft' | 'completed' = 'draft',
 ) {
-  return supabase.rpc('save_foreman_attendance', {
-    p_token: token,
-    p_work_date: workDate,
-    p_rows: rows,
-    p_status: status,
-  });
+  return withForemanTimeout(
+    supabase.rpc('save_foreman_attendance', {
+      p_token: token,
+      p_work_date: workDate,
+      p_rows: compactAttendanceRows(rows),
+      p_status: status,
+    }),
+    'No se pudo guardar la jornada a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
+}
+
+export async function signForemanAttendance(
+  token: string,
+  workDate: string,
+  rows: ForemanAttendanceRow[],
+  workerId: number,
+  kind: 'entry' | 'exit',
+  signature: string,
+) {
+  return withForemanTimeout(
+    supabase.rpc('sign_foreman_attendance', {
+      p_token: token,
+      p_work_date: workDate,
+      p_rows: compactAttendanceRows(rows),
+      p_worker_id: workerId,
+      p_kind: kind,
+      p_signature: signature,
+    }),
+    'La firma está tardando demasiado en guardarse. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 export async function submitForemanDocument(input: {
@@ -156,14 +214,17 @@ export async function submitForemanDocument(input: {
   answers: Record<string, string>;
   signatures: Record<string, string>;
 }) {
-  return supabase.rpc('submit_foreman_document', {
-    p_token: input.token,
-    p_document_type: input.documentType,
-    p_work_date: input.workDate,
-    p_worker_id: input.workerId ?? null,
-    p_answers: input.answers,
-    p_signatures: input.signatures,
-  });
+  return withForemanTimeout(
+    supabase.rpc('submit_foreman_document', {
+      p_token: input.token,
+      p_document_type: input.documentType,
+      p_work_date: input.workDate,
+      p_worker_id: input.workerId ?? null,
+      p_answers: input.answers,
+      p_signatures: input.signatures,
+    }),
+    'No se pudo enviar el documento a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 
@@ -179,12 +240,15 @@ export async function signMandatoryForemanDocument(
   workerId: number,
   signature: string,
 ) {
-  return supabase.rpc('sign_foreman_mandatory_document', {
-    p_token: token,
-    p_document_id: documentId,
-    p_worker_id: workerId,
-    p_signature: signature,
-  });
+  return withForemanTimeout(
+    supabase.rpc('sign_foreman_mandatory_document', {
+      p_token: token,
+      p_document_id: documentId,
+      p_worker_id: workerId,
+      p_signature: signature,
+    }),
+    'La firma está tardando demasiado en guardarse. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 
@@ -225,10 +289,13 @@ export async function markMandatoryDocumentReturned(id: string, gmailMessageId: 
 
 
 export async function finalizeForemanMandatoryDocument(token: string, documentId: string) {
-  return supabase.rpc('finalize_foreman_mandatory_document', {
-    p_token: token,
-    p_document_id: documentId,
-  });
+  return withForemanTimeout(
+    supabase.rpc('finalize_foreman_mandatory_document', {
+      p_token: token,
+      p_document_id: documentId,
+    }),
+    'No se pudo finalizar el documento a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 
@@ -277,12 +344,15 @@ export async function resubmitForemanDocument(input: {
   answers: Record<string, string>;
   signatures: Record<string, string>;
 }) {
-  return supabase.rpc('resubmit_foreman_document', {
-    p_token: input.token,
-    p_document_id: input.documentId,
-    p_answers: input.answers,
-    p_signatures: input.signatures,
-  });
+  return withForemanTimeout(
+    supabase.rpc('resubmit_foreman_document', {
+      p_token: input.token,
+      p_document_id: input.documentId,
+      p_answers: input.answers,
+      p_signatures: input.signatures,
+    }),
+    'No se pudo reenviar el documento a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 
