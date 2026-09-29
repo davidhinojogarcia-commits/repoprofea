@@ -61,6 +61,14 @@ export type ForemanPortalPayload = {
   foremanName: string;
   defaultWorkStartHour: string;
   defaultWorkEndHour: string;
+  worksite: {
+    codigo: string;
+    nombre: string;
+    municipio: string;
+    empresa: string;
+    cif: string;
+    recursoPreventivo: string;
+  };
   workers: Person[];
   attendance: ForemanAttendanceDay[];
   documents: ForemanCompletedDocument[];
@@ -111,6 +119,14 @@ export async function resolveForemanPortal(token: string): Promise<ForemanPortal
     foremanName: String(result?.foremanName || ''),
     defaultWorkStartHour: String(result?.defaultWorkStartHour || '08:00'),
     defaultWorkEndHour: String(result?.defaultWorkEndHour || '15:00'),
+    worksite: {
+      codigo: String(result?.worksite?.codigo || ''),
+      nombre: String(result?.worksite?.nombre || result?.obra || ''),
+      municipio: String(result?.worksite?.municipio || ''),
+      empresa: String(result?.worksite?.empresa || ''),
+      cif: String(result?.worksite?.cif || ''),
+      recursoPreventivo: String(result?.worksite?.recursoPreventivo || result?.foremanName || ''),
+    },
     workers: Array.isArray(result?.workers) ? result.workers : [],
     attendance: Array.isArray(result?.attendance) ? result.attendance : [],
     documents: Array.isArray(result?.documents) ? result.documents : [],
