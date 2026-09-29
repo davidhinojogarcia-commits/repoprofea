@@ -306,12 +306,79 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const mandatoryLabel=(type:string)=>({
     inicio:'Inicio / incorporación',
     control_presencia:'Control de presencia',
+    epis:'Entrega de EPIs',
+    formacion:'Formación e información',
+    maquinaria:'Autorización de maquinaria',
+    autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
   } as Record<string,string>)[type]||type;
 
   const assignedMandatoryDocuments = data?.mandatoryDocuments.filter(
     document => ['inicio','control_presencia'].includes(String(document.documentType || '')),
   ) || [];
 
+  const renderPeriodSelector=()=> <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <div className="text-sm font-black text-slate-800">Trabajadores por periodo</div>
+        <div className="text-xs text-slate-500">Puedes combinar una o varias quincenas y meses. Si no seleccionas nada, se incluyen todos.</div>
+      </div>
+      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 rounded-lg border bg-white px-3 py-2 text-xs font-black">Todos</button>}
+    </div>
+    {!!availableQuincenas.length&&<div>
+      <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Quincenas</div>
+      <div className="flex flex-wrap gap-2">
+        {availableQuincenas.map(period=>{const key='q:'+period;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`rounded-full border px-3 py-2 text-xs font-black ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>{period}</button>;})}
+      </div>
+    </div>}
+    {!!availableMonths.length&&<div>
+      <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Meses</div>
+      <div className="flex flex-wrap gap-2">
+        {availableMonths.map(month=>{const key='m:'+month;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`rounded-full border px-3 py-2 text-xs font-black ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>{monthLabel(month)}</button>;})}
+      </div>
+    </div>}
+    <div className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700">{documentWorkers.length} trabajador(es) seleccionado(s) · {periodLabel}</div>
+  </div>;
+
+  const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
+    const signedCount=Object.keys(doc.signatures||{}).length;
+    const correction=Boolean(doc.correctionPending);
+    const closed=doc.status==='completed'||doc.status==='reviewed';
+    const sourceText=String(doc.details?.sourceText||'').trim();
+    return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
+          <div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}{doc.details?.periodoLabel?' · '+String(doc.details.periodoLabel):''}</div>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{doc.workers.length} firmas</span>
+      </div>
+      {sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
+        <summary className="cursor-pointer text-xs font-black text-[#00548E]">Texto completo del documento importado</summary>
+        <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-xs leading-5 text-slate-700">{sourceText}</pre>
+      </details>}
+      {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
+      <div className="mt-3 space-y-2">{doc.workers.map(worker=>{
+        const signed=Boolean((doc.signatures||{})[String(worker.id)]);
+        return <button key={worker.id} type="button" disabled={closed||(!correction&&signed)} onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className={`w-full min-h-[64px] flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left touch-manipulation ${signed?'bg-emerald-50 border-emerald-200':'bg-white active:bg-blue-50'}`}>
+          <span><span className="block text-base font-black leading-tight">{worker.apellidosNombre}</span><span className="block mt-1 text-sm text-slate-500">{worker.dni} · {worker.categoria}</span></span>
+          <span className={`text-xs font-black ${signed&&!correction?'text-emerald-700':'text-[#00548E]'}`}>{correction?(signed?'Volver a firmar':'Firmar'):signed?'Firmado ✓':'Firmar'}</span>
+        </button>;
+      })}</div>
+      {!closed&&<button type="button" disabled={saving||signedCount!==doc.workers.length||doc.workers.length===0} onClick={async()=>{
+        setSaving(true);
+        try{
+          await finalizeForemanMandatoryDocument(token,doc.id);
+          setData(current=>current?{...current,mandatoryDocuments:current.mandatoryDocuments.map(item=>item.id===doc.id?{...item,status:'completed',correctionPending:false,completedAt:new Date().toISOString()}:item)}:current);
+          setError('');
+          setTab('completed');
+        }catch(e:any){setError(e?.message||'No se pudo finalizar el documento.');}
+        finally{setSaving(false);}
+      }} className="mt-4 min-h-[56px] w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500">
+        {signedCount===doc.workers.length&&doc.workers.length>0?'Finalizar y enviar al supervisor':`Faltan ${Math.max(0,doc.workers.length-signedCount)} firma(s)`}
+      </button>}
+      {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
+    </div>;
+  };
 
   if(loading&&!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="text-center"><Loader2 className="w-9 h-9 animate-spin mx-auto text-[#00548E]"/><p className="mt-3 font-bold">Abriendo documentación de obra…</p></div></div>;
   if(!data)return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><div className="max-w-md rounded-3xl bg-white border border-amber-200 p-7 text-center shadow-xl"><ShieldCheck className="w-10 h-10 mx-auto text-amber-500"/><h1 className="mt-3 text-xl font-black">Acceso no disponible</h1><p className="mt-2 text-sm text-slate-600">{error||'No se pudo cargar la documentación de la obra.'}</p><button type="button" onClick={()=>void refresh()} className="mt-4 min-h-[48px] rounded-xl bg-[#00548E] px-5 py-3 text-sm font-black text-white"><RefreshCw className="mr-2 inline h-4 w-4"/>Reintentar</button></div></div>;
