@@ -324,13 +324,16 @@ export async function createForemanOperationalDocument(input: {
   workerIds: number[];
   details?: Record<string, any>;
 }) {
-  return supabase.rpc('create_foreman_operational_document', {
-    p_token: input.token,
-    p_document_type: input.documentType,
-    p_work_date: input.workDate,
-    p_worker_ids: input.workerIds,
-    p_details: input.details || {},
-  });
+  return withForemanTimeout(
+    supabase.rpc('create_foreman_operational_document', {
+      p_token: input.token,
+      p_document_type: input.documentType,
+      p_work_date: input.workDate,
+      p_worker_ids: input.workerIds,
+      p_details: input.details || {},
+    }),
+    'No se pudo preparar el documento a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
 }
 
 
