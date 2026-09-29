@@ -13,6 +13,7 @@ import {
   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
   getForemanMandatoryPdf,
+  getForemanMandatorySignatures,
   storeForemanMandatorySignedPdf,
   createForemanOperationalDocument,
   resubmitForemanDocument,
@@ -410,11 +411,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const buildExactSignedPreview=async(doc:ForemanMandatoryDocument, verify=false)=>{
-    const source=await getForemanMandatoryPdf(token,doc.id,'original');
+    const [source,realSignatures]=await Promise.all([
+      getForemanMandatoryPdf(token,doc.id,'original'),
+      getForemanMandatorySignatures(token,doc.id),
+    ]);
     const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const unresolvedSigned=anchors.filter(anchor=>{
       if(anchor.resolved)return false;
-      const raw=doc.signatures?.[String(anchor.workerId)];
+      const raw=realSignatures?.[String(anchor.workerId)];
       const signature=typeof raw==='string'?raw:raw?.signature;
       return Boolean(signature);
     });
@@ -426,7 +430,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const bytes=await buildSignedMandatoryPdf({
       originalPdfBase64:source.base64,
       anchors,
-      signatures:doc.signatures||{},
+      signatures:realSignatures||{},
     });
     const fidelity=verify
       ? await verifyMandatoryPdfFidelity(source.base64,bytes,anchors)
