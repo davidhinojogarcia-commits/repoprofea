@@ -90,7 +90,7 @@ export function AppDialogHost() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[12000] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[2147483000] isolate flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
       role="presentation"
       onKeyDown={onKeyDown}
     >
