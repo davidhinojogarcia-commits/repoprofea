@@ -16,6 +16,8 @@ type TutorMessage = {
   suggestedLabel?: string;
   followUps?: string[];
   progressHint?: string;
+  checkQuestion?: string;
+  checkOptions?: string[];
 };
 
 type TutorTaskState = {
@@ -77,6 +79,22 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeLabel = PROFEA_TUTOR_VIEW_LABELS[activeView as ProfeaTutorView] || 'GestionProfea';
+  const lastAssistantId = useMemo(
+    () => [...messages].reverse().find(message => message.role === 'assistant')?.id || '',
+    [messages],
+  );
+  const universalActions = useMemo(() => {
+    if (taskState.status === 'diagnostic') {
+      return ['Sí, eso lo veo', 'No aparece', 'Me da un error', 'Prueba otra solución'];
+    }
+    if (taskState.status === 'completed') {
+      return ['Repasemos lo que he hecho', 'Quiero hacer otra tarea', 'Volver al menú inicial'];
+    }
+    if (taskState.status === 'active') {
+      return ['Ya lo he hecho · Continuar', 'No encuentro lo que me dices', '¿Qué viene después?', 'Explícamelo más despacio'];
+    }
+    return ['Guíame paso a paso', '¿Dónde tengo que entrar?', 'Explícame esta pantalla'];
+  }, [taskState.status]);
 
   const greeting = useMemo(
     () => guidedMode
