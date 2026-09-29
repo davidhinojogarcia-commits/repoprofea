@@ -383,8 +383,10 @@ Devuelve exclusivamente JSON con:
               totalSteps: { type: Type.NUMBER },
               taskStatus: { type: Type.STRING },
               nextAction: { type: Type.STRING },
+              checkQuestion: { type: Type.STRING },
+              checkOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
-            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint", "taskTitle", "currentStep", "totalSteps", "taskStatus", "nextAction"],
+            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint", "taskTitle", "currentStep", "totalSteps", "taskStatus", "nextAction", "checkQuestion", "checkOptions"],
           },
         },
       });
