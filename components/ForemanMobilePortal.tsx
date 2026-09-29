@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ClipboardList, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck, Wrench } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   type AdditionalWorksiteDocumentType,
@@ -28,6 +28,18 @@ const today = () => {
 };
 const nowTime = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 const DEFAULT_EPIS = { casco:true, chaleco:true, orejeras:true, gafas:true, guantes:true, mascarillas:true, calzado:true };
+const FOREMAN_DEVICE_TOKEN_KEY = 'pfea_foreman_device_token_v1';
+const isStandaloneDisplay = () =>
+  typeof window !== 'undefined' &&
+  (window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true);
+const isIosDevice = () => {
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = String(navigator.platform || '').toLowerCase();
+  return /iphone|ipad|ipod/.test(ua) || (platform.includes('mac') && navigator.maxTouchPoints > 1);
+};
+const isAndroidDevice = () => /android/i.test(navigator.userAgent);
+
 
 const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; onCancel: () => void }> = ({ title, onSave, onCancel }) => {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -116,9 +128,52 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
   const [mandatoryWorkerChoice,setMandatoryWorkerChoice]=useState<Record<string,string>>({});
+  const [installPromptAvailable,setInstallPromptAvailable]=useState(Boolean(window.__profeaInstallPrompt));
+  const [installHelpVisible,setInstallHelpVisible]=useState(false);
+  const [installedStandalone,setInstalledStandalone]=useState(isStandaloneDisplay());
+
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
   useEffect(()=>{hasDataRef.current=Boolean(data);},[data]);
+  useEffect(()=>{
+    const updatePrompt=()=>setInstallPromptAvailable(Boolean(window.__profeaInstallPrompt));
+    const installed=()=>{setInstalledStandalone(true);setInstallPromptAvailable(false);setInstallHelpVisible(false);};
+    const media=window.matchMedia('(display-mode: standalone)');
+    const mediaChanged=()=>setInstalledStandalone(isStandaloneDisplay());
+    window.addEventListener('profea:install-prompt-ready',updatePrompt);
+    window.addEventListener('appinstalled',installed);
+    media.addEventListener?.('change',mediaChanged);
+    return ()=>{
+      window.removeEventListener('profea:install-prompt-ready',updatePrompt);
+      window.removeEventListener('appinstalled',installed);
+      media.removeEventListener?.('change',mediaChanged);
+    };
+  },[]);
+
+  const installForemanApp=async()=>{
+    const prompt=window.__profeaInstallPrompt;
+    if(prompt){
+      try{
+        await prompt.prompt();
+        const choice=await prompt.userChoice;
+        delete window.__profeaInstallPrompt;
+        setInstallPromptAvailable(false);
+        if(choice.outcome==='accepted')setInstalledStandalone(true);
+        else setInstallHelpVisible(true);
+        return;
+      }catch{
+        setInstallHelpVisible(true);
+        return;
+      }
+    }
+    setInstallHelpVisible(true);
+  };
+
+  const unlinkForemanDevice=()=>{
+    if(!window.confirm('¿Desvincular este dispositivo del portal de encargados?'))return;
+    try{localStorage.removeItem(FOREMAN_DEVICE_TOKEN_KEY);}catch{}
+    window.location.href='/';
+  };
 
   const refresh=useCallback(async()=>{
     if(refreshInFlightRef.current)return refreshInFlightRef.current;
@@ -522,12 +577,34 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   return <div className="min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
     <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="max-w-4xl mx-auto">
-        <div className="text-[11px] sm:text-xs font-black uppercase tracking-[.14em] text-[#00548E]">Portal del encargado · PROFEA</div>
+        <div className="text-[11px] sm:text-xs font-black uppercase tracking-[.14em] text-[#00548E]">PFEA Encargados</div>
         <h1 className="mt-0.5 text-lg sm:text-xl font-black leading-tight break-words">{data.obra}</h1>
         <p className="mt-0.5 text-sm text-slate-600">{data.foremanName||'Encargado de obra'}</p>
       </div>
     </header>
     <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-28 sm:pb-6 space-y-4">
+      {!installedStandalone&&<section className="rounded-3xl border-2 border-[#00548E]/20 bg-white p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#00548E] text-white"><Smartphone className="h-6 w-6"/></div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-black text-slate-900">Instalar PFEA Encargados</h2>
+            <p className="mt-1 text-sm leading-5 text-slate-600">Instálala en este móvil para abrir directamente el portal desde un icono, como una aplicación.</p>
+          </div>
+        </div>
+        <button type="button" onClick={()=>void installForemanApp()} className="mt-4 min-h-[58px] w-full rounded-2xl bg-[#00548E] px-4 py-4 text-base font-black text-white">
+          {isIosDevice()&&!installPromptAvailable?<><Share2 className="mr-2 inline h-5 w-5"/>Cómo instalar en iPhone</>:<><Download className="mr-2 inline h-5 w-5"/>Instalar PFEA Encargados</>}
+        </button>
+        {installHelpVisible&&<div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-slate-700">
+          {isIosDevice()
+            ? <><b>iPhone/iPad:</b> abre este portal en Safari, pulsa <b>Compartir</b> y después <b>Añadir a pantalla de inicio</b>. Confirma con <b>Añadir</b>.</>
+            : isAndroidDevice()
+              ? <><b>Android:</b> abre el portal en Chrome o Edge y pulsa <b>Instalar aplicación</b>. Si no aparece el aviso automático, usa el menú del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</>
+              : <>Usa la opción <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b> de tu navegador.</>}
+        </div>}
+        <p className="mt-3 text-xs leading-5 text-slate-500">Este dispositivo conservará localmente el acceso del encargado para que el icono instalado abra directamente su obra.</p>
+        <button type="button" onClick={unlinkForemanDevice} className="mt-2 min-h-[46px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-700">Desvincular este dispositivo</button>
+      </section>}
+
       {error&&<div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <div className="font-black">Conexión inestable</div>
         <div className="mt-1">{error}</div>
