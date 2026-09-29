@@ -26,6 +26,7 @@ export function AppToastHost() {
   return (
     <div
       className={`profea-toast ${success ? 'profea-toast--success' : 'profea-toast--error'}`}
+      style={{ zIndex: 23000, position: 'fixed' }}
       role={success ? 'status' : 'alert'}
       aria-live={success ? 'polite' : 'assertive'}
     >
