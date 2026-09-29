@@ -148,6 +148,9 @@ $$;
 revoke all on function public.prepare_foreman_mandatory_from_email(
   text,bigint[],date,text,text,text,text,text,text,text,text,text
 ) from public;
+revoke execute on function public.prepare_foreman_mandatory_from_email(
+  text,bigint[],date,text,text,text,text,text,text,text,text,text
+) from anon;
 grant execute on function public.prepare_foreman_mandatory_from_email(
   text,bigint[],date,text,text,text,text,text,text,text,text,text
 ) to authenticated;
@@ -174,8 +177,8 @@ create policy "foreman_pdf_files_owner_all"
 on public.foreman_mandatory_pdf_files
 for all
 to authenticated
-using (owner_id = auth.uid())
-with check (owner_id = auth.uid());
+using (owner_id = (select auth.uid()))
+with check (owner_id = (select auth.uid()));
 
 revoke all on table public.foreman_mandatory_pdf_files from anon;
 grant select,insert,update,delete on table public.foreman_mandatory_pdf_files to authenticated;
@@ -709,6 +712,9 @@ execute function public.guard_exact_mandatory_pdf_completion();
 revoke all on function public.save_foreman_mandatory_original_pdf(
   uuid,text,text,text,jsonb,jsonb
 ) from public;
+revoke execute on function public.save_foreman_mandatory_original_pdf(
+  uuid,text,text,text,jsonb,jsonb
+) from anon;
 grant execute on function public.save_foreman_mandatory_original_pdf(
   uuid,text,text,text,jsonb,jsonb
 ) to authenticated;
@@ -717,6 +723,7 @@ revoke all on function public.get_foreman_mandatory_pdf(text,uuid,text) from pub
 grant execute on function public.get_foreman_mandatory_pdf(text,uuid,text) to anon, authenticated;
 
 revoke all on function public.get_supervisor_mandatory_pdf(uuid,text) from public;
+revoke execute on function public.get_supervisor_mandatory_pdf(uuid,text) from anon;
 grant execute on function public.get_supervisor_mandatory_pdf(uuid,text) to authenticated;
 
 revoke all on function public.get_foreman_mandatory_signatures(text,uuid) from public;
