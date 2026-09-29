@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import type { Person } from '../../types';
 import { applyInstitutionalPdfStandard, getStoredPdfConfig, renderInstitutionalReportHeader } from './exportUtils';
 
 import {
