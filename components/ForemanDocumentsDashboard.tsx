@@ -318,14 +318,22 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     ))) return;
     setMailBusy(true);
     try {
-      const record:ForemanMandatoryDocument={
-        id:item.id,workDate:item.work_date,periodKey:item.period_key,documentType:item.document_type,
-        category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
-        completedAt:item.completed_at,details:item.details||{}
-      };
-      const out=generateForemanMandatoryDocumentPdf(record,item.obra);
-      const blob=out.doc.output('blob');
-      const file=new File([blob],out.filename,{type:'application/pdf'});
+      let file:File;
+      if(item.details?.originalPdfMode==='overlay'){
+        const stored=await getSupervisorMandatoryPdf(item.id,'signed');
+        const blob=pdfBlobFromBase64(stored.base64);
+        const base=String(stored.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
+        file=new File([blob],`${base}_FIRMADO.pdf`,{type:'application/pdf'});
+      }else{
+        const record:ForemanMandatoryDocument={
+          id:item.id,workDate:item.work_date,periodKey:item.period_key,documentType:item.document_type,
+          category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
+          completedAt:item.completed_at,details:item.details||{}
+        };
+        const out=generateForemanMandatoryDocumentPdf(record,item.obra);
+        const blob=out.doc.output('blob');
+        file=new File([blob],out.filename,{type:'application/pdf'});
+      }
       const subjectRaw=String(item.source_email_subject||'Documentación PROFEA firmada').trim();
       const subject=/^re:/i.test(subjectRaw)?subjectRaw:`Re: ${subjectRaw}`;
       const sent=await sendPdfWithConnectedGmail({
