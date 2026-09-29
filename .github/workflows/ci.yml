@@ -77,6 +77,8 @@ jobs:
           grep -q "verifyMandatoryPdfFidelity" src/lib/mandatoryPdfOverlay.ts
           grep -q "originalPdfMode === 'overlay'" src/lib/foremanDocumentsPdf.ts
           grep -q "getSupervisorMandatoryPdf" components/ForemanDocumentsDashboard.tsx
+          grep -q "get_foreman_mandatory_signatures" "$MIGRATION"
+          grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
       - name: TypeScript validation
         run: |
           set -o pipefail
