@@ -18,7 +18,23 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PROFEA" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var foremanPortal = params.has('encargado') || window.location.pathname === '/encargados' || window.location.pathname === '/encargados/';
+        var manifest = document.createElement('link');
+        manifest.rel = 'manifest';
+        manifest.href = foremanPortal ? '/manifest-encargados.webmanifest' : '/manifest.webmanifest';
+        document.head.appendChild(manifest);
+        if (foremanPortal) {
+          document.title = 'PFEA Encargados';
+          var appName = document.querySelector('meta[name="application-name"]');
+          if (appName) appName.setAttribute('content', 'PFEA Encargados');
+          var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+          if (appleTitle) appleTitle.setAttribute('content', 'PFEA Encargados');
+        }
+      })();
+    </script>
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/profea-icon-v4-180.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/profea-icon-v4-32.png" />
     <link rel="shortcut icon" href="/icons/profea-icon-v4-32.png" />
