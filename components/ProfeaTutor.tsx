@@ -358,7 +358,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                           {message.progressHint}
                         </div>
                       )}
-                      {message.role === 'assistant' && message.suggestedView && (
+                      {message.role === 'assistant' && message.id === lastAssistantId && message.suggestedView && (
                         <button
                           type="button"
                           onClick={() => navigate(message.suggestedView)}
@@ -368,7 +368,27 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                           <ArrowRight className="h-3.5 w-3.5" />
                         </button>
                       )}
-                      {message.role === 'assistant' && Boolean(message.followUps?.length) && (
+                      {message.role === 'assistant' && message.id === lastAssistantId && message.checkQuestion && (
+                        <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/80 p-3 dark:border-blue-800 dark:bg-blue-950/30">
+                          <div className="text-xs font-black leading-5 text-slate-800 dark:text-slate-100">{message.checkQuestion}</div>
+                          {Boolean(message.checkOptions?.length) && (
+                            <div className="mt-2 grid gap-2">
+                              {message.checkOptions?.map((option, index) => (
+                                <button
+                                  key={`${message.id}-check-${index}`}
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void ask(option)}
+                                  className="min-h-9 rounded-xl border border-blue-200 bg-white/90 px-3 py-2 text-left text-xs font-black text-[#00548E] transition hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-slate-900/90 dark:text-blue-200"
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {message.role === 'assistant' && message.id === lastAssistantId && Boolean(message.followUps?.length) && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {message.followUps?.map((suggestion, index) => (
                             <button
