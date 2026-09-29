@@ -14,16 +14,7 @@ import { GuidedHome } from './components/GuidedHome';
 import { PrintHeader } from './components/PrintHeader';
 import { ProfeaTutor } from './components/ProfeaTutor';
 import { Sidebar, ViewMode } from './components/Sidebar';
-import { Stats } from './components/Stats';
-import { RegistrationForm } from './components/RegistrationForm';
-import { PersonList } from './components/PersonList';
-import { EditPersonModal } from './components/EditPersonModal';
-import { BulkEditModal } from './components/BulkEditModal';
-import { PeriodicReportModal } from './components/PeriodicReportModal';
-import { CameraScannerModal } from './components/CameraScannerModal';
 import { ImportDuplicateModal } from './components/ImportDuplicateModal';
-import { PdfViewerModal } from './components/PdfViewerModal';
-import { PushNotificationManagerModal } from './components/PushNotificationManagerModal';
 
 import { detectImportDuplicates, DuplicateMatch } from './src/lib/duplicateFilter';
 import { createDocument, updateDocument, deleteDocument, subscribeToDocuments } from './src/services/databaseService';
@@ -33,25 +24,6 @@ import { persistMedicalRecognition } from './src/services/medicalRecognitionServ
 import { loadAppBusinessSettings, saveAppBusinessSettings, clearLegacyBusinessSettings } from './src/services/appSettingsService';
 import { Person, StatsData, DeletedPerson } from './types';
 import { CheckCircle, AlertTriangle, Cloud, RefreshCw, Home } from 'lucide-react';
-import { 
-  preparePRLExcelData, 
-  preparePRLPDFData, 
-  prepareRRMMExcelData, 
-  prepareRRMMPDFData, 
-  prepareExcelData, 
-  preparePDFData, 
-  prepareCalzadoExcelData,
-  prepareCalzadoPDFData,
-  handleEmailFiles,
-  downloadExcel,
-  downloadPDF,
-  generateWorkerIDCardPDF,
-  generateWorkerHistoryOnlyPDF,
-  generateObraSummaryPDF,
-  generateStatsSummaryPDF,
-  getStoredPdfConfig,
-  saveStoredPdfConfig
-} from './src/lib/exportUtils';
 import { checkAndTriggerUpcomingAlerts, getNotificationAlertsSummary } from './src/lib/pushNotifications';
 import { 
   loadDriveBackupConfig, 
@@ -74,6 +46,21 @@ const InventorySection = lazy(() => import('./components/InventorySection').then
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
+const Stats = lazy(() => import('./components/Stats').then(module => ({ default: module.Stats })));
+const RegistrationForm = lazy(() => import('./components/RegistrationForm').then(module => ({ default: module.RegistrationForm })));
+const PersonList = lazy(() => import('./components/PersonList').then(module => ({ default: module.PersonList })));
+const EditPersonModal = lazy(() => import('./components/EditPersonModal').then(module => ({ default: module.EditPersonModal })));
+const BulkEditModal = lazy(() => import('./components/BulkEditModal').then(module => ({ default: module.BulkEditModal })));
+const PeriodicReportModal = lazy(() => import('./components/PeriodicReportModal').then(module => ({ default: module.PeriodicReportModal })));
+const CameraScannerModal = lazy(() => import('./components/CameraScannerModal').then(module => ({ default: module.CameraScannerModal })));
+const PdfViewerModal = lazy(() => import('./components/PdfViewerModal').then(module => ({ default: module.PdfViewerModal })));
+const PushNotificationManagerModal = lazy(() => import('./components/PushNotificationManagerModal').then(module => ({ default: module.PushNotificationManagerModal })));
+
+let exportUtilsPromise: Promise<typeof import('./src/lib/exportUtils')> | null = null;
+const loadExportUtils = () => {
+  exportUtilsPromise ??= import('./src/lib/exportUtils');
+  return exportUtilsPromise;
+};
 
 let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
 const loadPdfJs = async () => {
@@ -554,6 +541,7 @@ function App() {
       
       const timer = setTimeout(async () => {
         try {
+          const { generateWorkerIDCardPDF } = await loadExportUtils();
           const { doc } = await generateWorkerIDCardPDF(worker, people);
           const pdfBlob = doc.output('blob');
           const pdfUrl = URL.createObjectURL(pdfBlob);
@@ -1392,16 +1380,18 @@ function App() {
     const filteredData = dataToExport.filter(p => p.formacion === 'No');
     if (filteredData.length === 0) return alert('No hay trabajadores sin formación para exportar');
     
+    const { preparePRLExcelData, downloadExcel } = await loadExportUtils();
     const { buffer, filename } = await preparePRLExcelData(filteredData);
     downloadExcel(buffer, filename);
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     uploadToGoogleDrive(blob, filename);
   };
 
-  const handleExportPRLPDF = (dataToExport: Person[]) => {
+  const handleExportPRLPDF = async (dataToExport: Person[]) => {
     const filteredData = dataToExport.filter(p => p.formacion === 'No');
     if (filteredData.length === 0) return alert('No hay trabajadores sin formación para exportar');
 
+    const { preparePRLPDFData, downloadPDF } = await loadExportUtils();
     const { doc, filename } = preparePRLPDFData(filteredData);
     downloadPDF(doc, filename);
     const blob = doc.output('blob');
@@ -1410,14 +1400,16 @@ function App() {
 
   const handleExportRRMMExcel = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
+    const { prepareRRMMExcelData, downloadExcel } = await loadExportUtils();
     const { buffer, filename } = await prepareRRMMExcelData(dataToExport);
     downloadExcel(buffer, filename);
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     uploadToGoogleDrive(blob, filename);
   };
 
-  const handleExportRRMMPDF = (dataToExport: Person[]) => {
+  const handleExportRRMMPDF = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
+    const { prepareRRMMPDFData, downloadPDF } = await loadExportUtils();
     const { doc, filename } = prepareRRMMPDFData(dataToExport);
     downloadPDF(doc, filename);
     const blob = doc.output('blob');
@@ -1426,6 +1418,7 @@ function App() {
 
   const handleExportExcel = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
+    const { prepareExcelData, downloadExcel } = await loadExportUtils();
     const { buffer, filename } = await prepareExcelData(dataToExport, people);
     downloadExcel(buffer, filename);
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1433,8 +1426,9 @@ function App() {
     return filename;
   };
 
-  const handleExportPDF = (dataToExport: Person[]) => {
+  const handleExportPDF = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
+    const { preparePDFData, downloadPDF } = await loadExportUtils();
     const { doc, filename } = preparePDFData(dataToExport, people);
     downloadPDF(doc, filename);
     const blob = doc.output('blob');
@@ -1442,7 +1436,8 @@ function App() {
     return filename;
   };
 
-  const handleEmailFilesWrapped = (dataToExport: Person[]) => {
+  const handleEmailFilesWrapped = async (dataToExport: Person[]) => {
+    const { handleEmailFiles } = await loadExportUtils();
     return handleEmailFiles(dataToExport, people);
   };
 
@@ -1512,6 +1507,7 @@ function App() {
     }
     
     try {
+      const { generateObraSummaryPDF, downloadPDF } = await loadExportUtils();
       const { doc, filename } = await generateObraSummaryPDF(targetObra, targetWorkers);
       downloadPDF(doc, filename);
       setToast({ message: `Dossier de pie de obra para "${targetObra}" generado correctamente`, type: 'success' });
@@ -1584,6 +1580,7 @@ function App() {
     }
 
     try {
+      const { generateStatsSummaryPDF, downloadPDF } = await loadExportUtils();
       const { doc, filename } = await generateStatsSummaryPDF({
         stats,
         filterMode: statsFilterMode,
@@ -1604,6 +1601,7 @@ function App() {
 
   const handleGenerateIDCard = async (person: Person) => {
     try {
+      const { generateWorkerIDCardPDF, downloadPDF } = await loadExportUtils();
       const { doc, filename } = await generateWorkerIDCardPDF(person, people);
       downloadPDF(doc, filename);
       const blob = doc.output('blob');
@@ -1617,6 +1615,7 @@ function App() {
 
   const handleGenerateWorkerHistoryPDF = async (person: Person) => {
     try {
+      const { generateWorkerHistoryOnlyPDF, downloadPDF } = await loadExportUtils();
       const { doc, filename } = await generateWorkerHistoryOnlyPDF(person, people);
       downloadPDF(doc, filename);
       const blob = doc.output('blob');
@@ -1630,14 +1629,16 @@ function App() {
 
   const handleExportCalzadoExcel = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
+    const { prepareCalzadoExcelData, downloadExcel } = await loadExportUtils();
     const { buffer, filename } = await prepareCalzadoExcelData(dataToExport);
     downloadExcel(buffer, filename);
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     uploadToGoogleDrive(blob, filename);
   };
 
-  const handleExportCalzadoPDF = (dataToExport: Person[]) => {
+  const handleExportCalzadoPDF = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
+    const { prepareCalzadoPDFData, downloadPDF } = await loadExportUtils();
     const { doc, filename } = prepareCalzadoPDFData(dataToExport);
     downloadPDF(doc, filename);
     const blob = doc.output('blob');
@@ -2295,6 +2296,7 @@ function App() {
                   onShowCompleteView={() => void applyInterfaceMode('full')}
                 />
               ) : (
+                <Suspense fallback={<ViewLoadingFallback />}>
                 <Stats
                   stats={stats}
                   filterMode={statsFilterMode}
@@ -2310,12 +2312,14 @@ function App() {
                   onExportObraSummary={handleExportObraSummary}
                   onExportStatsSummaryPDF={handleExportStatsPDF}
                 />
+                </Suspense>
               )}
             </div>
           )}
 
           {activeView === 'registro' && (
             <div className="max-w-3xl mx-auto">
+               <Suspense fallback={<ViewLoadingFallback />}>
                <RegistrationForm 
                  onRegister={handleRegister} 
                  savedObras={savedObras} 
@@ -2325,12 +2329,14 @@ function App() {
                  savedCategorias={savedCategorias}
                  people={visiblePeople}
                />
+               </Suspense>
             </div>
           )}
 
           {activeView === 'directorio' && (
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
+                <Suspense fallback={<ViewLoadingFallback />}>
                 <PersonList 
                   people={visiblePeople} 
                   onDelete={handleDelete} 
@@ -2345,7 +2351,7 @@ function App() {
                   onExportPRLPDF={handleExportPRLPDF}
                   onExportCalzadoExcel={handleExportCalzadoExcel}
                   onExportCalzadoPDF={handleExportCalzadoPDF}
-                  onEmail={handleEmailFiles}
+                  onEmail={handleEmailFilesWrapped}
                   onImport={handleImportExcel}
                   onGenerateIDCard={handleGenerateIDCard}
                   onExportHistoryPDF={handleGenerateWorkerHistoryPDF}
@@ -2364,12 +2370,14 @@ function App() {
                   canUndo={canUndo}
                   canRedo={canRedo}
                 />
+                </Suspense>
               </div>
             </div>
           )}
 
           {activeView === 'estadisticas' && (
             <div className="max-w-6xl mx-auto">
+              <Suspense fallback={<ViewLoadingFallback />}>
               <Stats 
                 stats={stats} 
                 filterMode={statsFilterMode}
@@ -2385,6 +2393,7 @@ function App() {
                 onExportObraSummary={handleExportObraSummary}
                 onExportStatsSummaryPDF={handleExportStatsPDF}
               />
+              </Suspense>
             </div>
           )}
 
@@ -2538,7 +2547,7 @@ function App() {
           )}
 
           {editingPerson && (
-            <EditPersonModal 
+            <Suspense fallback={null}><EditPersonModal 
               key={editingPerson.id}
               person={editingPerson} 
               isOpen={!!editingPerson} 
@@ -2550,11 +2559,11 @@ function App() {
               savedTelefonos={savedTelefonos}
               savedCategorias={savedCategorias}
               allPeople={people}
-            />
+            /></Suspense>
           )}
 
           {bulkEditingPeople && (
-            <BulkEditModal
+            <Suspense fallback={null}><BulkEditModal
               selectedPeople={bulkEditingPeople}
               isOpen={!!bulkEditingPeople}
               onClose={() => setBulkEditingPeople(null)}
@@ -2564,15 +2573,15 @@ function App() {
               savedSitios={savedSitios}
               savedTelefonos={savedTelefonos}
               savedCategorias={savedCategorias}
-            />
+            /></Suspense>
           )}
 
           {isReportModalOpen && (
-            <PeriodicReportModal
+            <Suspense fallback={null}><PeriodicReportModal
               isOpen={isReportModalOpen}
               onClose={() => setIsReportModalOpen(false)}
               people={people}
-            />
+            /></Suspense>
           )}
 
           {pendingImportModal && (
@@ -2599,7 +2608,7 @@ function App() {
             />
           )}
 
-          <CameraScannerModal
+          <Suspense fallback={null}><CameraScannerModal
             isOpen={isScannerOpen}
             onClose={() => setIsScannerOpen(false)}
             onToast={(msg, type) => setToast({ message: msg, type })}
@@ -2628,22 +2637,22 @@ function App() {
               updateAutocompleteLists(updated);
               setPeople(current => current.map(person => person.id === updated.id ? updated : person));
             }}
-          />
+          /></Suspense>
 
-          <PdfViewerModal
+          <Suspense fallback={null}><PdfViewerModal
             isOpen={activePdfViewerModal.isOpen}
             onClose={() => setActivePdfViewerModal(prev => ({ ...prev, isOpen: false }))}
             pdfUrl={activePdfViewerModal.url}
             title={activePdfViewerModal.title}
             downloadFilename={activePdfViewerModal.downloadFilename}
-          />
+          /></Suspense>
 
-          <PushNotificationManagerModal
+          <Suspense fallback={null}><PushNotificationManagerModal
             isOpen={isNotificationModalOpen}
             onClose={() => setIsNotificationModalOpen(false)}
             people={visiblePeople}
             onToast={(msg, type) => setToast({ message: msg, type })}
-          />
+          /></Suspense>
 
           {/* Persistencia directa en Supabase */}
 
