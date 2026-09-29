@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ClipboardList, Clock3, FileDown, FileSignature, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, ClipboardList, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   type AdditionalWorksiteDocumentType,
@@ -12,6 +12,7 @@ import {
   submitForemanDocument,
   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
+  createForemanOperationalDocument,
   resubmitForemanDocument,
   type ForemanAttendanceRow,
   type ForemanPortalPayload,
@@ -19,13 +20,6 @@ import {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowTime = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-type CoreWorksiteDocumentType = 'epis' | 'formacion' | 'maquinaria' | 'control';
-const CORE_WORKSITE_DOCUMENTS: Record<CoreWorksiteDocumentType,string> = {
-  epis: 'Entrega de EPIs',
-  formacion: 'Formación e información',
-  maquinaria: 'Autorización de maquinaria',
-  control: 'Control horario',
-};
 const DEFAULT_EPIS = { casco:true, chaleco:true, orejeras:true, gafas:true, guantes:true, mascarillas:true, calzado:true };
 
 const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; onCancel: () => void }> = ({ title, onSave, onCancel }) => {
@@ -37,7 +31,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     const rect=canvas.getBoundingClientRect(); const ratio=Math.min(1.5,Math.max(1,window.devicePixelRatio||1));
     canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
     const ctx=canvas.getContext('2d'); if(!ctx) return;
-    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,rect.width,rect.height);
+    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.clearRect(0,0,rect.width,rect.height);
     ctx.strokeStyle='#111827'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
   },[]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
@@ -50,7 +44,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     for(let y=0;y<canvas.height;y+=2){
       for(let x=0;x<canvas.width;x+=2){
         const i=(y*canvas.width+x)*4;
-        if(image.data[i]<235||image.data[i+1]<235||image.data[i+2]<235){
+        if(image.data[i+3]>20){
           minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
         }
       }
@@ -69,7 +63,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     out.height=Math.max(1,Math.round(sourceH*scale));
     const outCtx=out.getContext('2d');
     if(!outCtx)return;
-    outCtx.fillStyle='#fff';outCtx.fillRect(0,0,out.width,out.height);
+    outCtx.clearRect(0,0,out.width,out.height);
     outCtx.drawImage(canvas,minX,minY,sourceW,sourceH,0,0,out.width,out.height);
     onSave(out.toDataURL('image/png'));
   };
@@ -82,7 +76,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
         onPointerMove={e=>{if(!drawing.current||!last.current)return;e.preventDefault();const ctx=e.currentTarget.getContext('2d');if(!ctx)return;const n=point(e);ctx.beginPath();ctx.moveTo(last.current.x,last.current.y);ctx.lineTo(n.x,n.y);ctx.stroke();last.current=n}}
         onPointerUp={e=>{drawing.current=false;last.current=null;e.currentTarget.releasePointerCapture?.(e.pointerId)}}/>
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
+        <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
         <button onClick={onCancel} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold">Cancelar</button>
         <button onClick={exportSignature} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Guardar</button>
       </div>
@@ -94,13 +88,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [tab,setTab]=useState<'attendance'|'mandatory'|'documents'|'completed'>('mandatory');
+  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'>('mandatory');
   const [date,setDate]=useState(today());
   const [rows,setRows]=useState<ForemanAttendanceRow[]>([]);
   const [signing,setSigning]=useState<{workerId:number;kind:'entry'|'exit'}|null>(null);
   const [saving,setSaving]=useState(false);
-  const [coreDocType,setCoreDocType]=useState<CoreWorksiteDocumentType>('epis');
-  const [documentPeriod,setDocumentPeriod]=useState('');
+  const [selectedPeriodKeys,setSelectedPeriodKeys]=useState<Set<string>>(new Set());
   const [trainingAction,setTrainingAction]=useState('Información y formación preventiva del puesto de trabajo y de la obra');
   const [trainingDuration,setTrainingDuration]=useState('');
   const [epiSelection,setEpiSelection]=useState<Record<string,boolean>>(DEFAULT_EPIS);
