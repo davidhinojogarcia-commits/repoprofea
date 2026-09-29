@@ -176,15 +176,16 @@ export async function analyzeMandatoryOriginalPdf(
     } | null = null;
 
     for (const pageInfo of pageLines) {
-      pageInfo.lines.forEach((line, lineIndex) => {
+      for (let lineIndex=0; lineIndex<pageInfo.lines.length; lineIndex+=1) {
+        const line=pageInfo.lines[lineIndex];
         const score = scoreLineForWorker(worker, line.text);
-        if (score <= 0) return;
+        if (score <= 0) continue;
         const key = `${pageInfo.page}:${lineIndex}`;
-        if (used.has(key)) return;
+        if (used.has(key)) continue;
         if (!best || score > best.score) {
           best = { ...pageInfo, line, lineIndex, score };
         }
-      });
+      }
     }
 
     if (!best) {
