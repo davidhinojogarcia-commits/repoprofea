@@ -119,8 +119,7 @@ begin
       'obra',t.obra,
       'numOferta',t.num_oferta,
       'periodoInicio',t.periodo_inicio,
-      'periodoFin',t.periodo_fin,
-      'quincena',t.quincena
+      'periodoFin',t.periodo_fin
     )
     into v_worker
     from public.trabajadores t
