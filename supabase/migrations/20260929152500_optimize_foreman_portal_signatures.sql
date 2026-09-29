@@ -38,11 +38,15 @@ begin
   select coalesce(jsonb_agg(
     n.row
     || case
+         when n.row ? 'entrySignature' and coalesce(n.row->>'entrySignature','')='signed' and old.row ? 'entrySignature' then jsonb_build_object('entrySignature',old.row->'entrySignature')
+         when n.row ? 'entrySignature' and coalesce(n.row->>'entrySignature','')='signed' then '{}'::jsonb
          when n.row ? 'entrySignature' then jsonb_build_object('entrySignature',n.row->'entrySignature')
          when old.row ? 'entrySignature' then jsonb_build_object('entrySignature',old.row->'entrySignature')
          else '{}'::jsonb
        end
     || case
+         when n.row ? 'exitSignature' and coalesce(n.row->>'exitSignature','')='signed' and old.row ? 'exitSignature' then jsonb_build_object('exitSignature',old.row->'exitSignature')
+         when n.row ? 'exitSignature' and coalesce(n.row->>'exitSignature','')='signed' then '{}'::jsonb
          when n.row ? 'exitSignature' then jsonb_build_object('exitSignature',n.row->'exitSignature')
          when old.row ? 'exitSignature' then jsonb_build_object('exitSignature',old.row->'exitSignature')
          else '{}'::jsonb
@@ -128,11 +132,15 @@ begin
   select coalesce(jsonb_agg(
     n.row
     || case
+         when n.row ? 'entrySignature' and coalesce(n.row->>'entrySignature','')='signed' and old.row ? 'entrySignature' then jsonb_build_object('entrySignature',old.row->'entrySignature')
+         when n.row ? 'entrySignature' and coalesce(n.row->>'entrySignature','')='signed' then '{}'::jsonb
          when n.row ? 'entrySignature' then jsonb_build_object('entrySignature',n.row->'entrySignature')
          when old.row ? 'entrySignature' then jsonb_build_object('entrySignature',old.row->'entrySignature')
          else '{}'::jsonb
        end
     || case
+         when n.row ? 'exitSignature' and coalesce(n.row->>'exitSignature','')='signed' and old.row ? 'exitSignature' then jsonb_build_object('exitSignature',old.row->'exitSignature')
+         when n.row ? 'exitSignature' and coalesce(n.row->>'exitSignature','')='signed' then '{}'::jsonb
          when n.row ? 'exitSignature' then jsonb_build_object('exitSignature',n.row->'exitSignature')
          when old.row ? 'exitSignature' then jsonb_build_object('exitSignature',old.row->'exitSignature')
          else '{}'::jsonb
