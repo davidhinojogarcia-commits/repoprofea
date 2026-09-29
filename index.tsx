@@ -10,7 +10,6 @@ import { installAppDialogRuntime } from './src/lib/appDialog';
 import { installButtonSounds } from './src/lib/uiSounds';
 import { installSidebarSwipe } from './src/lib/sidebarSwipe';
 import { initializeOfflineSync } from './src/lib/supabase';
-import './src/lib/worksiteAdditionalDocumentsLegalBodies';
 import './src/styles/design-system.css';
 import './notification-modal-layout.css';
 import './subcontratas-mobile.css';
