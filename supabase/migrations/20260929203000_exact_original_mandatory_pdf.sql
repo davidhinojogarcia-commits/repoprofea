@@ -18,7 +18,7 @@ returns uuid
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_owner uuid := auth.uid();
   v_obra text;
@@ -100,7 +100,7 @@ begin
 
   return v_id;
 end;
-$;
+$$;
 
 revoke all on function public.prepare_foreman_mandatory_from_email(text,bigint[],date,text,text,text,text,text,text,text,text) from public;
 grant execute on function public.prepare_foreman_mandatory_from_email(text,bigint[],date,text,text,text,text,text,text,text,text) to authenticated;
@@ -419,7 +419,7 @@ create or replace function public.ensure_exact_pdf_worker_anchor_placeholders()
 returns trigger
 language plpgsql
 set search_path = public
-as $
+as $$
 declare
   v_anchors jsonb := coalesce(new.details->'workerAnchors','[]'::jsonb);
   v_worker jsonb;
@@ -470,7 +470,7 @@ begin
   );
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists trg_exact_pdf_anchor_placeholders on public.foreman_mandatory_documents;
 create trigger trg_exact_pdf_anchor_placeholders
