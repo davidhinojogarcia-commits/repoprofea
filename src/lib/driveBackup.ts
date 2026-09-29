@@ -1,6 +1,5 @@
 import { compressToGzip, isCompressionSupported } from './compression';
 import { Person, DeletedPerson } from '../../types';
-import { buildSupabaseSystemBackup } from '../services/backupExportService';
 
 export type BackupFrequency = 'daily' | 'every_6h' | 'every_12h' | 'weekly';
 
@@ -124,6 +123,7 @@ export async function buildCompleteSystemBackup(data: {
   workEndHour?: string;
   accountEmail?: string;
 }) {
+  const { buildSupabaseSystemBackup } = await import('../services/backupExportService');
   return buildSupabaseSystemBackup(data.accountEmail || '');
 }
 
