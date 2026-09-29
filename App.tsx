@@ -428,7 +428,9 @@ function App() {
   // Check for upcoming medical appointments and contract ends to trigger background SW alerts
   useEffect(() => {
     if (people && people.length > 0) {
-      checkAndTriggerUpcomingAlerts(people);
+      void checkAndTriggerUpcomingAlerts(people).catch(error => {
+        console.warn('No se pudieron actualizar las alertas locales:', error);
+      });
     }
   }, [people]);
 
