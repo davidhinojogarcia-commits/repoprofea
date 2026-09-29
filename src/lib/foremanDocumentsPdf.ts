@@ -65,6 +65,29 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
 }
 
 
+const renderImportedSourceText = (doc: jsPDF, text: string, startY: number, width = 174) => {
+  const cleaned = String(text || '').replace(/\r/g,'').trim();
+  if (!cleaned) return startY;
+  let y = startY;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(7.4);
+  doc.setTextColor(30,41,59);
+  const paragraphs = cleaned.split(/\n{2,}/).map(part=>part.trim()).filter(Boolean);
+  for (const paragraph of paragraphs) {
+    const lines = doc.splitTextToSize(paragraph, width);
+    for (const line of lines) {
+      if (y > 272) {
+        doc.addPage('a4','portrait');
+        y = 20;
+      }
+      doc.text(line,18,y);
+      y += 3.7;
+    }
+    y += 2;
+  }
+  return y + 2;
+};
+
 const fmtEs = (value: string) => {
   const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(value || '');
@@ -118,6 +141,18 @@ export function generateForemanMandatoryDocumentPdf(
     );
 
     let y = 50;
+    const importedText = String(record.details?.sourceText || '').trim();
+    if (importedText) {
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(7.3);
+      doc.setTextColor(0,84,142);
+      doc.text('TEXTO DEL DOCUMENTO IMPORTADO',14,y);
+      y = renderImportedSourceText(doc, importedText, y + 5, 178);
+      if (y > 245) {
+        doc.addPage('a4','portrait');
+        y = 24;
+      }
+    }
     doc.setTextColor(0, 0, 0);
     doc.setDrawColor(0, 0, 0);
     doc.setFont('courier', 'bold');
@@ -184,17 +219,28 @@ export function generateForemanMandatoryDocumentPdf(
   const width = 174;
   doc.setTextColor(15, 23, 42);
   doc.setDrawColor(71, 85, 105);
-  const paragraphs = [
-    'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
-    'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
-    'Expresando los mismos, mediante su firma, su conformidad con las instrucciones de la Empresa.',
-  ];
+  const importedText = String(record.details?.sourceText || '').trim();
+  const paragraphs = importedText
+    ? importedText.split(/\n{2,}/).map(part=>part.trim()).filter(Boolean)
+    : [
+        'Teniendo la Excma. Diputación Provincial suscritos contratos de trabajo acogidos al R.D. 939/97 (desarrollado según Orden de 26/10/98 y Resolución de 30/03/99).',
+        'Estando prevista su incorporación al centro de trabajo, indicar que dichas personas no han sido incapacitadas en el reconocimiento médico obligatorio y previo al ingreso en el trabajo realizado por la empresa responsable de los reconocimientos médicos, de acuerdo con el Convenio Colectivo de Construcción y obras Públicas para la provincia de Cádiz vigente, para desempeñar las tareas que se les encomienden dentro de las labores para las que han sido contratadas y en función de los riesgos inherentes al propio puesto de trabajo, según consta en la documentación por la empresa responsable de los reconocimientos médicos.',
+        'Expresando los mismos, mediante su firma, su conformidad con las instrucciones de la Empresa.',
+      ];
   doc.setFont('helvetica','normal');
   doc.setFontSize(9);
   for (const p of paragraphs) {
     const lines = doc.splitTextToSize(p, width);
+    if (y + lines.length * 4.4 > 252) {
+      doc.addPage('a4','portrait');
+      y = 24;
+    }
     doc.text(lines, 18, y);
     y += lines.length * 4.4 + 5;
+  }
+  if (y > 244) {
+    doc.addPage('a4','portrait');
+    y = 24;
   }
 
   doc.setTextColor(15, 23, 42);
