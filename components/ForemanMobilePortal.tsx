@@ -2,17 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, ClipboardList, Clock3, FileDown, FileSignature, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
-  generateAdditionalWorksiteDocument,
   type AdditionalWorksiteDocumentType,
-} from '../src/lib/worksiteAdditionalDocumentsPdf';
-import {
-  generateEpiDeliveryPdf,
-  generateMachineryAuthorizationPdf,
-  generateTrainingInformationPdf,
-  type WorksiteDocumentContext,
-} from '../src/lib/worksiteDocumentsPdf';
-import { generateContractAttendancePdf } from '../src/lib/worksiteAttendancePdf';
-import { downloadPDF } from '../src/lib/exportUtils';
+} from '../src/lib/worksiteAdditionalDocumentsCatalog';
+import type { WorksiteDocumentContext } from '../src/lib/worksiteDocumentsPdf';
 import {
   resolveForemanPortal,
   saveForemanAttendance,
@@ -220,39 +212,58 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     epis: epiSelection,
     maquinariaPorTrabajador: machineryByWorker,
   };
-  const generateCoreDocument = () => {
+  const generateCoreDocument = async () => {
     if (!documentWorkers.length) return window.alert('No hay trabajadores para el periodo seleccionado.');
-    if (coreDocType === 'epis') {
-      const out=generateEpiDeliveryPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
+    setSaving(true);
+    try {
+      if (coreDocType === 'epis') {
+        const { generateEpiDeliveryPdf } = await import('../src/lib/worksiteDocumentsPdf');
+        const out=generateEpiDeliveryPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
+      }
+      if (coreDocType === 'formacion') {
+        const { generateTrainingInformationPdf } = await import('../src/lib/worksiteDocumentsPdf');
+        const out=generateTrainingInformationPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
+      }
+      if (coreDocType === 'maquinaria') {
+        const { generateMachineryAuthorizationPdf } = await import('../src/lib/worksiteDocumentsPdf');
+        const out=generateMachineryAuthorizationPdf(documentWorkers,worksiteContext); out.doc.save(out.filename); return;
+      }
+      const { generateContractAttendancePdf } = await import('../src/lib/worksiteAttendancePdf');
+      const out=generateContractAttendancePdf(documentWorkers,{...worksiteContext,codigoObra:data?.worksite?.codigo||''});
+      out.doc.save(out.filename);
+    } catch (e:any) {
+      setError(e?.message||'No se pudo generar el PDF.');
+    } finally {
+      setSaving(false);
     }
-    if (coreDocType === 'formacion') {
-      const out=generateTrainingInformationPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
-    }
-    if (coreDocType === 'maquinaria') {
-      const out=generateMachineryAuthorizationPdf(documentWorkers,worksiteContext); downloadPDF(out.doc,out.filename); return;
-    }
-    const out=generateContractAttendancePdf(documentWorkers,{...worksiteContext,codigoObra:data?.worksite?.codigo||''});
-    downloadPDF(out.doc,out.filename);
   };
-  const generateAdditionalPdf = () => {
+  const generateAdditionalPdf = async () => {
     if (!selectedWorker) return window.alert('Selecciona un trabajador.');
-    const context = {
-      obra: data?.obra || '',
-      municipio: data?.worksite?.municipio || '',
-      empresa: data?.worksite?.empresa || '',
-      cif: data?.worksite?.cif || '',
-      fecha: date,
-      responsable: data?.worksite?.recursoPreventivo || data?.foremanName || '',
-      supervisor: selectedWorker.supervisorResponsable || '',
-    };
-    const out=generateAdditionalWorksiteDocument(
-      docType,
-      selectedWorker,
-      context,
-      answers,
-      { worker:docSignatures.worker, foreman:docSignatures.foreman },
-    );
-    downloadPDF(out.doc,out.filename);
+    setSaving(true);
+    try {
+      const { generateAdditionalWorksiteDocument } = await import('../src/lib/worksiteAdditionalDocumentsPdf');
+      const context = {
+        obra: data?.obra || '',
+        municipio: data?.worksite?.municipio || '',
+        empresa: data?.worksite?.empresa || '',
+        cif: data?.worksite?.cif || '',
+        fecha: date,
+        responsable: data?.worksite?.recursoPreventivo || data?.foremanName || '',
+        supervisor: selectedWorker.supervisorResponsable || '',
+      };
+      const out=generateAdditionalWorksiteDocument(
+        docType,
+        selectedWorker,
+        context,
+        answers,
+        { worker:docSignatures.worker, foreman:docSignatures.foreman },
+      );
+      out.doc.save(out.filename);
+    } catch (e:any) {
+      setError(e?.message||'No se pudo generar el PDF.');
+    } finally {
+      setSaving(false);
+    }
   };
   const mandatoryLabel=(type:string)=>({
     inicio:'Inicio / incorporación',
@@ -451,7 +462,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             </div>
           </div>}
 
-          <button type="button" onClick={generateCoreDocument} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white">
+          <button type="button" onClick={()=>void generateCoreDocument()} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white">
             <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF {CORE_WORKSITE_DOCUMENTS[coreDocType]}
           </button>
         </div>
@@ -511,7 +522,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma encargado {docSignatures.foreman?'✓':''}</button>
         </div>
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
-        <button type="button" onClick={generateAdditionalPdf} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
+        <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
           <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF exactamente como Documentación de obra
         </button>
         <button
