@@ -410,11 +410,21 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     });
   };
 
+  const assertStoredOriginalIntegrity=async(source:{base64:string;sha256?:string})=>{
+    const expected=String(source.sha256||'').trim().toLowerCase();
+    if(!expected)return;
+    const actual=(await sha256Hex(base64ToBytes(source.base64))).toLowerCase();
+    if(actual!==expected){
+      throw new Error('El PDF original almacenado no coincide con el archivo importado. Se ha bloqueado la firma para proteger el documento.');
+    }
+  };
+
   const buildExactSignedPreview=async(doc:ForemanMandatoryDocument, verify=false)=>{
     const [source,realSignatures]=await Promise.all([
       getForemanMandatoryPdf(token,doc.id,'original'),
       getForemanMandatorySignatures(token,doc.id),
     ]);
+    await assertStoredOriginalIntegrity(source);
     const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const unresolvedSigned=anchors.filter(anchor=>{
       if(anchor.resolved)return false;
@@ -443,6 +453,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     try{
       if(variant==='original'){
         const source=await getForemanMandatoryPdf(token,doc.id,'original');
+        await assertStoredOriginalIntegrity(source);
         showPdfPreview(pdfBlobFromBase64(source.base64),`${mandatoryLabel(doc.documentType)} · Original`);
       }else{
         const prepared=await buildExactSignedPreview(doc,false);
