@@ -19,6 +19,24 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        chunkSizeWarningLimit: 900,
+        rollupOptions: {
+          output: {
+            manualChunks(id) {
+              if (!id.includes('node_modules')) return undefined;
+              if (id.includes('pdfjs-dist')) return 'vendor-pdf-viewer';
+              if (id.includes('jspdf') || id.includes('qrcode')) return 'vendor-pdf-export';
+              if (id.includes('exceljs') || id.includes('/xlsx/')) return 'vendor-spreadsheets';
+              if (id.includes('tesseract.js')) return 'vendor-ocr';
+              if (id.includes('recharts')) return 'vendor-charts';
+              if (id.includes('/motion/')) return 'vendor-motion';
+              if (id.includes('@supabase')) return 'vendor-supabase';
+              return undefined;
+            },
+          },
+        },
       }
     };
 });
