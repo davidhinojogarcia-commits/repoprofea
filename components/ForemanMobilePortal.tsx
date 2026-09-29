@@ -205,7 +205,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }
     return result;
   };
-  const availableQuincenas=useMemo(()=>Array.from(new Set((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})),[data?.workers]);
+  const availableQuincenas=useMemo<string[]>(()=>Array.from(new Set<string>((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})),[data?.workers]);
   const availableMonths=useMemo(()=>Array.from(new Set((data?.workers||[]).flatMap(worker=>monthsForWorker(worker)))).sort(),[data?.workers]);
   const togglePeriodKey=(key:string)=>setSelectedPeriodKeys(current=>{
     const next=new Set(current);
