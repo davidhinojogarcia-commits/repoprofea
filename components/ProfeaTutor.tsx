@@ -14,6 +14,8 @@ type TutorMessage = {
   text: string;
   suggestedView?: ProfeaTutorView;
   suggestedLabel?: string;
+  followUps?: string[];
+  progressHint?: string;
 };
 
 interface ProfeaTutorProps {
@@ -47,7 +49,14 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   const navigate = (view?: ProfeaTutorView) => {
     if (!view) return;
     onNavigate(view as ViewMode);
-    setOpen(false);
+    const label = PROFEA_TUTOR_VIEW_LABELS[view] || view;
+    setMessages(current => [...current, {
+      id: makeId(),
+      role: 'assistant',
+      text: `Ya estás en ${label}. Dime qué ves o pulsa una de las sugerencias y continuamos desde aquí.`,
+      followUps: ['¿Cuál es el siguiente paso?', 'Explícame esta pantalla', 'Tengo un problema aquí'],
+    }]);
+    window.setTimeout(() => inputRef.current?.focus(), 60);
   };
 
   const ask = async (rawQuestion?: string) => {
@@ -69,7 +78,12 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
           currentView: activeView,
           currentViewLabel: activeLabel,
           guidedMode,
-          history: nextMessages.slice(-8).map(item => ({ role: item.role, text: item.text })),
+          history: nextMessages.slice(-14).map(item => ({
+            role: item.role,
+            text: item.text,
+            followUps: item.followUps || [],
+            suggestedView: item.suggestedView || '',
+          })),
         }),
       });
 
@@ -79,12 +93,17 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       const answer = String(data?.answer || '').trim();
       if (!answer) throw new Error('Respuesta vacía');
 
+      const followUps = Array.isArray(data?.followUps)
+        ? data.followUps.map((value: unknown) => String(value || '').trim()).filter(Boolean).slice(0, 3)
+        : [];
       setMessages(current => [...current, {
         id: makeId(),
         role: 'assistant',
         text: answer,
         suggestedView: data?.suggestedView || undefined,
         suggestedLabel: data?.suggestedLabel || undefined,
+        followUps,
+        progressHint: String(data?.progressHint || '').trim() || undefined,
       }]);
     } catch (error) {
       console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
@@ -95,6 +114,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         text: fallback.answer,
         suggestedView: fallback.view,
         suggestedLabel: fallback.view ? PROFEA_TUTOR_VIEW_LABELS[fallback.view] : undefined,
+        followUps: ['¿Cuál es el siguiente paso?', 'Explícamelo más despacio', 'Tengo otra duda sobre esto'],
       }]);
     } finally {
       setBusy(false);
@@ -184,6 +204,11 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                         : 'border border-slate-200/80 bg-white/68 text-slate-800 rounded-bl-md dark:border-slate-700 dark:bg-slate-900/65 dark:text-slate-100'
                     }`}>
                       <div className="whitespace-pre-wrap">{message.text}</div>
+                      {message.role === 'assistant' && message.progressHint && (
+                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                          {message.progressHint}
+                        </div>
+                      )}
                       {message.role === 'assistant' && message.suggestedView && (
                         <button
                           type="button"
@@ -193,6 +218,21 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                           Ir a {message.suggestedLabel || PROFEA_TUTOR_VIEW_LABELS[message.suggestedView]}
                           <ArrowRight className="h-3.5 w-3.5" />
                         </button>
+                      )}
+                      {message.role === 'assistant' && Boolean(message.followUps?.length) && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {message.followUps?.map((suggestion, index) => (
+                            <button
+                              key={`${message.id}-follow-${index}`}
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void ask(suggestion)}
+                              className="min-h-9 rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-left text-xs font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-blue-700"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -222,7 +262,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                   }
                 }}
                 rows={1}
-                placeholder="Pregúntame cómo hacer una tarea…"
+                placeholder="Cuéntame qué ves o qué quieres hacer ahora…"
                 className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
               />
               <button
@@ -236,7 +276,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
               </button>
             </div>
             <p className="mt-2 px-1 text-[10px] leading-4 text-slate-400">
-              Ayuda de uso de GestionProfea. Comprueba los datos antes de realizar cambios administrativos.
+              Puedes seguir preguntando durante todo el proceso. El Tutor recuerda el hilo de esta conversación.
             </p>
           </div>
         </section>
