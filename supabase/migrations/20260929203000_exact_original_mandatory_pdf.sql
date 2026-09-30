@@ -102,7 +102,7 @@ begin
   for update;
 
   if found then
-    if jsonb_object_length(coalesce(v_existing.signatures,'{}'::jsonb))>0 then
+    if exists (select 1 from jsonb_object_keys(coalesce(v_existing.signatures,'{}'::jsonb))) then
       return v_existing.id;
     end if;
 
@@ -250,12 +250,12 @@ begin
 
   if found then
     if coalesce(v_file.original_sha256,'')<>v_computed_sha
-       and jsonb_object_length(coalesce(v_doc.signatures,'{}'::jsonb))>0 then
+       and exists (select 1 from jsonb_object_keys(coalesce(v_doc.signatures,'{}'::jsonb))) then
       raise exception 'Este documento ya contiene firmas. El PDF original no puede sustituirse por otro archivo distinto';
     end if;
 
     if coalesce(v_file.original_sha256,'')=v_computed_sha
-       and jsonb_object_length(coalesce(v_doc.signatures,'{}'::jsonb))>0 then
+       and exists (select 1 from jsonb_object_keys(coalesce(v_doc.signatures,'{}'::jsonb))) then
       return jsonb_build_object(
         'ok',true,
         'preserved',true,
