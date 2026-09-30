@@ -10,7 +10,7 @@ import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
-import { pdfBlobFromBase64, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
+import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 
 const MandatoryPdfAnchorEditor = React.lazy(() => import('./MandatoryPdfAnchorEditor'));
 
@@ -398,15 +398,39 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     await returnForemanItemForCorrection(kind,id,reason.trim());
     await refresh(true);
   };
+  const buildSupervisorSignedPdf=async(item:DbMandatory)=>{
+    const original=await getSupervisorMandatoryPdf(item.id,'original');
+    const anchors=(Array.isArray(item.details?.workerAnchors)?item.details?.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const bytes=await buildSignedMandatoryPdf({
+      originalPdfBase64:original.base64,
+      anchors,
+      signatures:item.signatures||{},
+    });
+    return {bytes,filename:original.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf'};
+  };
+
   const downloadStoredMandatoryPdf=async(item:DbMandatory,variant:'original'|'signed')=>{
-    const stored=await getSupervisorMandatoryPdf(item.id,variant);
+    if(variant==='signed'){
+      const built=await buildSupervisorSignedPdf(item);
+      const blob=pdfBlobFromBytes(built.bytes);
+      const base=String(built.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=url;
+      link.download=`${base}_FIRMADO.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+      return;
+    }
+    const stored=await getSupervisorMandatoryPdf(item.id,'original');
     const blob=pdfBlobFromBase64(stored.base64);
-    const suffix=stored.variant==='signed'?'_FIRMADO':'_ORIGINAL';
     const base=String(stored.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
     const url=URL.createObjectURL(blob);
     const link=document.createElement('a');
     link.href=url;
-    link.download=`${base}${suffix}.pdf`;
+    link.download=`${base}_ORIGINAL.pdf`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -451,9 +475,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     try {
       let file:File;
       if(item.details?.originalPdfMode==='overlay'){
-        const stored=await getSupervisorMandatoryPdf(item.id,'signed');
-        const blob=pdfBlobFromBase64(stored.base64);
-        const base=String(stored.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
+        const built=await buildSupervisorSignedPdf(item);
+        const blob=pdfBlobFromBytes(built.bytes);
+        const base=String(built.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
         file=new File([blob],`${base}_FIRMADO.pdf`,{type:'application/pdf'});
       }else{
         const record:ForemanMandatoryDocument={
@@ -839,7 +863,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
             <button onClick={()=>void downloadStoredMandatoryPdf(card.item as DbMandatory,'original')} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700"><FileSignature className="w-4 h-4"/>Original</button>
-            {card.status!=='completed'&&card.status!=='reviewed'&&<button onClick={()=>setAnchorEditing(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><Pencil className="w-4 h-4"/>Ajustar zonas de firma</button>}
+            {(card.status==='completed'||card.status==='reviewed')&&Object.keys(card.item.signatures||{}).length>0&&<button onClick={()=>setAnchorEditing(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><Pencil className="w-4 h-4"/>Ajustar firmas</button>}
           </>}
           <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
@@ -886,7 +910,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           prefer:'return=minimal',
         });
         setAnchorEditing(null);
-        setMailMessage('Posiciones de firma guardadas sobre el PDF original.');
+        setMailMessage('Posiciones de las firmas ajustadas. El PDF firmado se regenerará con estas posiciones al abrirlo o enviarlo.');
         await refresh(true);
       }}
     /></React.Suspense>}
