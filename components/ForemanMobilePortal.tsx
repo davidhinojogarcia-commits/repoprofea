@@ -254,6 +254,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const unlinkForemanDevice=()=>{
     if(!window.confirm('¿Desvincular este dispositivo del portal de encargados?'))return;
     try{localStorage.removeItem(FOREMAN_DEVICE_TOKEN_KEY);}catch{}
+    try{document.cookie=`${FOREMAN_DEVICE_TOKEN_KEY}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;}catch{}
     window.location.href='/';
   };
 
