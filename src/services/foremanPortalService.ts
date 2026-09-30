@@ -363,6 +363,22 @@ export async function getSupervisorMandatoryPdf(
   }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
 }
 
+export async function repairForemanMandatoryAnchors(
+  token: string,
+  documentId: string,
+  workerAnchors: any[],
+) {
+  return withForemanTimeout(
+    supabase.rpc('repair_foreman_mandatory_anchors', {
+      p_token: token,
+      p_document_id: documentId,
+      p_worker_anchors: workerAnchors || [],
+    }),
+    'No se pudieron preparar las zonas de firma a tiempo.',
+  );
+}
+
+
 export async function getForemanMandatorySignatures(
   token: string,
   documentId: string,
