@@ -46,6 +46,12 @@ const documentType = (filename: string, text: string): 'inicio' | 'control_prese
   return null;
 };
 
+const extractWorksiteFromText = (text: string) => {
+  const normalized = norm(text);
+  const match = normalized.match(/\b(\d{5})\s+(EE|GR)\b/) || normalized.match(/\b(\d{5})\s*-?\s*(EE|GR)\b/);
+  return match ? `${match[1]} ${match[2]}` : '';
+};
+
 const extractCategory = (text: string) => {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   for (const line of lines) {
@@ -105,54 +111,90 @@ const categorySimilarity = (a: string, b: string) => {
   return hits / Math.max(1, Math.min(left.length, right.length));
 };
 
-const matchWorkers = (workers: Person[], text: string, category: string) => {
-  const normalized = norm(text);
-  const compactText = compact(text);
-  const textTokens = normalized.split(' ').filter(Boolean);
-  const categoryNorm = norm(category);
+const cleanWorkerName = (value: unknown) =>
+  norm(String(value || '').replace(/\[[^\]]*\]\s*$/g, '').replace(/\([^)]*\)\s*$/g, ''));
 
-  return workers
-    .map(worker => {
-      const dni = compact(worker.dni);
-      if (dni && dni.length >= 7 && compactText.includes(dni)) {
-        return { worker, score: 100 };
-      }
+const sourceWorkerId = (name: string) => {
+  const value = norm(name);
+  let hash = 2166136261;
+  for (let i=0;i<value.length;i+=1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash,16777619);
+  }
+  return -(3000000000 + (hash >>> 0));
+};
 
-      const words = nameWords(worker.apellidosNombre || '');
-      if (!words.length) return { worker, score: 0 };
+const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: string, obra: string): Person[] => {
+  const canonicalByName = new Map<string,Person>();
+  for (const worker of workers) {
+    const key=cleanWorkerName(worker.apellidosNombre || '');
+    if(key && !canonicalByName.has(key))canonicalByName.set(key,worker);
+  }
 
-      let exactHits = 0;
-      let fuzzyHits = 0;
-      for (const word of words) {
-        if (normalized.includes(word)) {
-          exactHits += 1;
-          continue;
+  const seen=new Set<string>();
+  const result:Person[]=[];
+  for (const rawLine of String(text||'').split(/\r?\n/)) {
+    const line=rawLine.trim();
+    if(!line.includes(','))continue;
+    if(/[a-záéíóúüñç]/.test(line))continue;
+    const normalized=norm(line);
+    if(!/^[A-ZÁÉÍÓÚÜÑÇ ]+\s+[A-ZÁÉÍÓÚÜÑÇ ]+$/.test(normalized))continue;
+    if(/^(CADIZ|DIPUTACION|CATEGORIA|AREA|GESTION|EXCMA|EMPRESA)\b/.test(normalized))continue;
+    const key=normalized;
+    if(seen.has(key))continue;
+    seen.add(key);
+
+    const canonical=canonicalByName.get(key);
+    result.push(canonical || ({
+      id:sourceWorkerId(key),
+      apellidosNombre:line.replace(/\s+/g,' '),
+      dni:'',
+      categoria:category || '',
+      obra:obra || '',
+    } as Person));
+  }
+  return result;
+};
+
+
+
+const matchWorkers = (workers: Person[], text: string) => {
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map(line => ({ raw: line, normalized: norm(line), compacted: compact(line) }))
+    .filter(line => line.normalized);
+
+  const usedIdentity = new Set<string>();
+  const matches: Person[] = [];
+
+  for (const line of lines) {
+    const candidates = workers
+      .map(worker => {
+        const dni = compact(worker.dni || '');
+        const name = cleanWorkerName(worker.apellidosNombre || '');
+        if (dni && dni.length >= 7 && line.compacted.includes(dni)) {
+          return { worker, score: 200, identity: 'dni:' + dni };
         }
-        if (
-          word.length >= 5 &&
-          textTokens.some(token =>
-            token.length >= 5 &&
-            (token.startsWith(word.slice(0, 5)) ||
-              word.startsWith(token.slice(0, 5)) ||
-              editDistanceAtMostOne(word, token))
-          )
-        ) {
-          fuzzyHits += 1;
-        }
-      }
+        if (!name) return null;
+        const exactName = line.normalized === name;
+        const nameInsideLine = line.normalized.includes(name);
+        if (!exactName && !nameInsideLine) return null;
+        return {
+          worker,
+          score: exactName ? 120 : 100,
+          identity: 'name:' + name,
+        };
+      })
+      .filter((item): item is {worker:Person;score:number;identity:string} => Boolean(item))
+      .sort((a,b) => b.score - a.score || Number(b.worker.id || 0) - Number(a.worker.id || 0));
 
-      const nameScore = exactHits * 3 + fuzzyHits * 2;
-      const surnameStrong = words.slice(0, 2).filter(word =>
-        normalized.includes(word) ||
-        (word.length >= 5 && textTokens.some(token => token.length >= 5 && editDistanceAtMostOne(word, token)))
-      ).length;
-      const categoryScore = categoryNorm ? categorySimilarity(categoryNorm, worker.categoria || '') : 0;
-      const score = nameScore + surnameStrong * 2 + categoryScore * 2;
-      return { worker, score };
-    })
-    .filter(item => item.score >= 5)
-    .sort((a,b) => b.score - a.score)
-    .map(item => item.worker);
+    const best = candidates.find(item => !usedIdentity.has(item.identity));
+    if (!best) continue;
+    usedIdentity.add(best.identity);
+    matches.push(best.worker);
+  }
+
+  return matches;
 };
 
 const stripRecognizedWorkerLines = (text: string, workers: Person[]) => {
@@ -273,21 +315,20 @@ export async function processAdministrativeMandatoryInbox(options?: {
           options?.onProgress,
         );
         const category = recognition.category;
-        const matched = recognition.matched;
-        if (!matched.length) {
-          warnings.push(`${attachment.filename}: no se pudieron vincular trabajadores tras la lectura reforzada. Revisa el documento o usa Editar para asignarlos manualmente.`);
+        const documentObra = extractWorksiteFromText(recognition.text);
+        const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra);
+        if (!listedWorkers.length) {
+          warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
           skippedAttachments += 1;
           continue;
         }
-
-        // Evita mezclar obras: selecciona la obra mayoritaria entre los trabajadores detectados.
-        const counts = new Map<string, number>();
-        for (const worker of matched) {
-          const work = String(worker.obra || '').trim();
-          if (work) counts.set(work, (counts.get(work) || 0) + 1);
+        const obra = documentObra || String(listedWorkers.find(worker=>worker.obra)?.obra || '').trim();
+        if(!obra){
+          warnings.push(`${attachment.filename}: no se ha podido identificar la obra escrita en el PDF.`);
+          skippedAttachments += 1;
+          continue;
         }
-        const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-        const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
+        const selected = listedWorkers;
         const workDate = extractDate(extracted.text, message.internalDate);
         const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
@@ -300,7 +341,8 @@ export async function processAdministrativeMandatoryInbox(options?: {
         }
         const preparedId=await prepareMandatoryDocumentFromEmail({
           documentType: type,
-          workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
+          workerIds: orderedSelected.filter(worker=>Number(worker.id)>0).map(worker => Number(worker.id)).filter(Number.isFinite),
+          importedWorkers: orderedSelected,
           workDate,
           category,
           periodKey: periodKeyFor(attachment.filename, workDate),
@@ -310,6 +352,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           emailFrom: administrativeEmail,
           emailSubject: message.subject,
           attachmentName: attachment.filename,
+          obraHint: obra,
           sourceText: recognition.text,
           sourcePdfBase64: await fileToBase64(file),
           sourcePdfSha256: await sha256Hex(sourceBytes),
@@ -368,29 +411,19 @@ export async function processManualMandatoryFiles(
         options?.onProgress,
       );
       const category = recognition.category;
-      const matched = recognition.matched;
       const obraHint = String(options?.obraHint || '').trim();
-      if (!matched.length && !obraHint) {
+      const documentObra = extractWorksiteFromText(recognition.text);
+      const obra = obraHint || documentObra;
+      if(!obra){
         skippedFiles += 1;
-        warnings.push(`${file.name}: no se pudieron vincular trabajadores con seguridad. Selecciona primero la obra y vuelve a importar para asignarlos manualmente sin alterar el PDF.`);
+        warnings.push(`${file.name}: no se ha podido identificar la obra escrita en el PDF. Selecciona primero la obra y vuelve a importar.`);
         continue;
       }
-
-      const counts = new Map<string, number>();
-      for (const worker of matched) {
-        const work = String(worker.obra || '').trim();
-        if (work) counts.set(work, (counts.get(work) || 0) + 1);
-      }
-      const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-      // En importación manual, la obra elegida por el supervisor tiene prioridad absoluta.
-      // La detección automática solo se usa cuando no se ha seleccionado una obra.
-      const obra = obraHint || inferredObra;
-      const selected = obra
-        ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase())
-        : matched;
-
-      if (obraHint && matched.length > 0 && selected.length === 0) {
-        warnings.push(`${file.name}: los trabajadores reconocidos no pertenecen a la obra seleccionada (${obraHint}). El PDF se conservará en esa obra y las personas deberán confirmarse manualmente.`);
+      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra);
+      if(!selected.length){
+        skippedFiles += 1;
+        warnings.push(`${file.name}: no se han podido leer nombres de personas en el PDF.`);
+        continue;
       }
       const workDate = extractDate(extracted.text);
       const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
@@ -402,7 +435,8 @@ export async function processManualMandatoryFiles(
 
       const preparedId=await prepareMandatoryDocumentFromEmail({
         documentType: type,
-        workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
+        workerIds: orderedSelected.filter(worker=>Number(worker.id)>0).map(worker => Number(worker.id)).filter(Number.isFinite),
+        importedWorkers: orderedSelected,
         workDate,
         category,
         periodKey: periodKeyFor(file.name, workDate),

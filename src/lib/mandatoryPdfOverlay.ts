@@ -67,10 +67,13 @@ const setupPdfJs = async () => {
   return pdfjs;
 };
 
+const cleanWorkerName = (value: unknown) =>
+  normalize(String(value || '').replace(/\[[^\]]*\]\s*$/g, '').replace(/\([^)]*\)\s*$/g, ''));
+
 const workerNameTokens = (worker: Person) =>
-  normalize(worker.apellidosNombre)
+  cleanWorkerName(worker.apellidosNombre)
     .split(' ')
-    .filter(token => token.length >= 3 && !['DE','DEL','LA','LAS','LOS','Y'].includes(token));
+    .filter(token => token.length >= 2 && !['DE','DEL','LA','LAS','LOS','Y'].includes(token));
 
 const scoreLineForWorker = (worker: Person, lineText: string) => {
   const lineNorm = normalize(lineText);
@@ -78,12 +81,15 @@ const scoreLineForWorker = (worker: Person, lineText: string) => {
   const dni = compact(worker.dni);
   if (dni && dni.length >= 7 && lineCompact.includes(dni)) return 1;
 
+  const fullName = cleanWorkerName(worker.apellidosNombre);
+  if (!fullName) return 0;
+  if (lineNorm === fullName) return 0.99;
+  if (lineNorm.includes(fullName)) return 0.96;
+
   const tokens = workerNameTokens(worker);
-  if (!tokens.length) return 0;
-  const hits = tokens.filter(token => lineNorm.includes(token)).length;
-  if (hits >= Math.max(2, Math.ceil(tokens.length * 0.75))) return 0.92;
-  if (hits >= Math.max(2, Math.ceil(tokens.length * 0.55))) return 0.78;
-  return 0;
+  if (tokens.length < 2) return 0;
+  const lineTokens = new Set(lineNorm.split(' ').filter(Boolean));
+  return tokens.every(token => lineTokens.has(token)) ? 0.9 : 0;
 };
 
 const itemBox = (item: any) => {
@@ -215,15 +221,15 @@ export async function analyzeMandatoryOriginalPdf(
     const dynamicHeaderX = best.signatureHeaderX != null && best.signatureHeaderX > line.maxX + 6
       ? best.signatureHeaderX
       : null;
-    // Solo se confirma automáticamente una zona cuando el propio PDF contiene
-    // una columna/encabezado de FIRMA claramente a la derecha de la fila.
-    // Si no existe esa referencia documental, no se inventan coordenadas.
-    const candidateX = dynamicHeaderX;
+    // Si el original no trae una cabecera "FIRMA", coloca la firma a la derecha
+    // de la línea real del trabajador, sin reconstruir ni modificar el PDF.
     const rightMargin = Math.max(16, best.width * 0.025);
-    const availableWidth = candidateX == null ? 0 : best.width - rightMargin - candidateX;
+    const fallbackX = Math.max(line.maxX + 18, best.width * 0.66);
+    const candidateX = dynamicHeaderX ?? Math.min(fallbackX, best.width - rightMargin - 82);
+    const availableWidth = Math.max(0, best.width - rightMargin - candidateX);
     const signatureWidth = Math.min(Math.max(78, availableWidth), 132);
     const signatureHeight = Math.min(38, Math.max(24, rowHeight * 1.15));
-    const resolved = best.score >= 0.78 && candidateX != null && availableWidth >= 70 && candidateX < best.width - 70;
+    const resolved = best.score >= 0.9 && availableWidth >= 70 && candidateX < best.width - 70;
     const signatureY = Math.max(6, line.y - signatureHeight * 0.38);
 
     anchors.push({

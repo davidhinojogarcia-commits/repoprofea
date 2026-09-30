@@ -269,6 +269,7 @@ export async function signMandatoryForemanDocument(
 export async function prepareMandatoryDocumentFromEmail(input: {
   documentType: 'inicio' | 'control_presencia';
   workerIds: number[];
+  importedWorkers?: Person[];
   workDate: string;
   category?: string;
   periodKey: string;
@@ -327,9 +328,12 @@ export async function prepareMandatoryDocumentFromEmail(input: {
           ...currentDetails,
           sourceText: input.sourceText || '',
           sourceFilename: input.attachmentName || '',
-          importedWorkerIds: Array.isArray(currentDetails.importedWorkerIds)
-            ? currentDetails.importedWorkerIds
+          importedWorkerIds: Array.isArray(input.importedWorkers)
+            ? input.importedWorkers.map(worker=>Number(worker.id)).filter(Number.isFinite)
             : input.workerIds,
+          importedWorkers: Array.isArray(input.importedWorkers)
+            ? input.importedWorkers
+            : (Array.isArray(currentDetails.importedWorkers) ? currentDetails.importedWorkers : []),
         },
         updated_at: new Date().toISOString(),
       },
@@ -362,6 +366,22 @@ export async function getSupervisorMandatoryPdf(
     p_variant: variant,
   }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
 }
+
+export async function repairForemanMandatoryAnchors(
+  token: string,
+  documentId: string,
+  workerAnchors: any[],
+) {
+  return withForemanTimeout(
+    supabase.rpc('repair_foreman_mandatory_anchors', {
+      p_token: token,
+      p_document_id: documentId,
+      p_worker_anchors: workerAnchors || [],
+    }),
+    'No se pudieron preparar las zonas de firma a tiempo.',
+  );
+}
+
 
 export async function getForemanMandatorySignatures(
   token: string,

@@ -14,6 +14,7 @@ import {
   finalizeForemanMandatoryDocument,
   getForemanMandatoryPdf,
   getForemanMandatorySignatures,
+  repairForemanMandatoryAnchors,
   storeForemanMandatorySignedPdf,
   createForemanOperationalDocument,
   resubmitForemanDocument,
@@ -22,6 +23,7 @@ import {
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
 import {
+  analyzeMandatoryOriginalPdf,
   base64ToBytes,
   buildSignedMandatoryPdf,
   bytesToBase64,
@@ -754,6 +756,47 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     </div>}
   </div>;
 
+  const prepareImportedWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
+    const currentAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const current=currentAnchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
+    if(current?.resolved){
+      setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
+      return;
+    }
+
+    setSaving(true);
+    setOperationFeedback('Preparando la zona de firma sobre el PDF original…');
+    try{
+      const importedIds=Array.isArray(doc.details?.importedWorkerIds)
+        ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
+        : [];
+      const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
+      const workerMap=new Map<number,any>([
+        ...(data?.workers||[]).map(item=>[Number(item.id),item] as [number,any]),
+        ...importedSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
+      ]);
+      const candidates=importedIds.map(id=>workerMap.get(id)).filter(Boolean) as any[];
+      if(!candidates.length)throw new Error('No se han podido recuperar las personas reales de este documento.');
+
+      const source=await getForemanMandatoryPdf(token,doc.id,'original');
+      const bytes=base64ToBytes(source.base64);
+      const file=new File([bytes],source.filename||String(doc.details?.sourceFilename||'documento.pdf'),{type:'application/pdf'});
+      const analysis=await analyzeMandatoryOriginalPdf(file,candidates,undefined,String(doc.details?.sourceText||''));
+      await repairForemanMandatoryAnchors(token,doc.id,analysis.anchors);
+      await refresh();
+      const repaired=analysis.anchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
+      if(!repaired?.resolved)throw new Error('No se ha podido localizar la línea exacta de esta persona en el PDF.');
+      setOperationFeedback('');
+      setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
+    }catch(e:any){
+      const message=e?.message||'No se pudo preparar la firma de esta persona.';
+      setError(message);
+      window.alert(message);
+    }finally{
+      setSaving(false);
+    }
+  };
+
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
     const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
@@ -764,10 +807,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const signatureIds=isImportedMandatory && importedIdsForCount
       ? new Set([...allSignatureIds].filter(id=>importedIdsForCount.has(id)))
       : allSignatureIds;
+    const importedWorkerSnapshots=Array.isArray(doc.details?.importedWorkers)
+      ? doc.details.importedWorkers
+      : [];
+    const importedWorkerMap=new Map(importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker]));
     const signedWorkers=isImportedMandatory
       ? [...signatureIds]
-          .map(id=>(data?.workers||[]).find(worker=>Number(worker.id)===id))
-          .filter((worker): worker is NonNullable<typeof worker>=>Boolean(worker))
+          .map(id=>importedWorkerMap.get(id) || (data?.workers||[]).find(worker=>Number(worker.id)===id))
+          .filter(Boolean) as any[]
       : assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
@@ -787,14 +834,17 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
         : [];
     const importedWorkerIds=new Set<number>(importedWorkerOrder);
-    const workerById=new Map((data?.workers||[]).map(worker=>[Number(worker.id),worker]));
+    const workerById=new Map<number,any>([
+      ...(data?.workers||[]).map(worker=>[Number(worker.id),worker] as [number,any]),
+      ...importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
+    ]);
     const importedCandidates=isImportedMandatory
       ? importedWorkerOrder
           .map(id=>workerById.get(id))
           .filter(Boolean)
           .filter((worker:any)=>!signatureIds.has(Number(worker.id)))
       : [];
-    const availableImportedIds=new Set((data?.workers||[]).map(worker=>Number(worker.id)));
+    const availableImportedIds=new Set(workerById.keys());
     const unavailableImportedCount=isImportedMandatory
       ? [...importedWorkerIds].filter(id=>!signatureIds.has(id)&&!availableImportedIds.has(id)).length
       : 0;
@@ -864,8 +914,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=><button
               key={worker.id}
               type="button"
-              disabled={saving||!signatureZonesReady}
-              onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})}
+              disabled={saving}
+              onClick={()=>void prepareImportedWorkerSignature(doc,worker)}
               className="w-full min-h-[66px] rounded-xl border border-blue-200 bg-white px-4 py-3 text-left shadow-sm disabled:opacity-50"
             >
               <span className="block text-base font-black text-slate-900">{worker.apellidosNombre}</span>
