@@ -543,7 +543,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }catch(e:any){
       const message=e?.message||'No se pudo abrir el PDF firmado.';
       setError(message);
-      window.alert(message);
+      await appAlert(message,{title:'No se pudo abrir el PDF firmado',kind:'error'});
     }finally{
       setSaving(false);
     }
@@ -581,7 +581,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       if(e?.name==='AbortError')return;
       const message=e?.message||'No se pudo compartir el PDF firmado.';
       setError(message);
-      window.alert(message);
+      await appAlert(message,{title:'No se pudo compartir el PDF firmado',kind:'error'});
     }finally{
       setSaving(false);
     }
@@ -602,7 +602,57 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       getForemanMandatorySignatures(token,doc.id),
     ]);
     await assertStoredOriginalIntegrity(source);
-    const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+
+    // Recalcular siempre las posiciones desde el PDF original antes de generar la copia
+    // firmada. Así corregimos documentos antiguos y garantizamos que cada firma quede
+    // junto a la línea real del nombre del trabajador.
+    const importedIds=Array.isArray(doc.details?.importedWorkerIds)
+      ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id)&&id!==0)
+      : [];
+    const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
+    const existingAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const existingById=new Map(existingAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
+    const snapshotById=new Map<number,any>([
+      ...(data?.workers||[]).map(worker=>[Number(worker.id),worker] as [number,any]),
+      ...importedSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
+    ]);
+    const candidates=importedIds.map(id=>{
+      const known=snapshotById.get(id);
+      if(known)return known;
+      const anchor=existingById.get(id);
+      return {
+        id,
+        apellidosNombre:String(anchor?.workerName||'').trim(),
+        dni:String(anchor?.dni||'').trim(),
+        categoria:doc.category||'',
+        obra:data?.obra||'',
+      };
+    }).filter((worker:any)=>Number.isFinite(Number(worker.id))&&String(worker.apellidosNombre||'').trim());
+
+    let anchors=existingAnchors;
+    if(candidates.length){
+      try{
+        const originalBytes=base64ToBytes(source.base64);
+        const file=new File(
+          [originalBytes],
+          source.filename||String(doc.details?.sourceFilename||'documento.pdf'),
+          {type:'application/pdf'}
+        );
+        const analysis=await analyzeMandatoryOriginalPdf(
+          file,
+          candidates,
+          undefined,
+          String(doc.details?.sourceText||'')
+        );
+        if(analysis.anchors.length){
+          anchors=analysis.anchors;
+          await repairForemanMandatoryAnchors(token,doc.id,anchors).catch(()=>undefined);
+        }
+      }catch(error){
+        console.warn('No se pudieron recalcular todas las posiciones de firma; se conservarán las existentes.',error);
+      }
+    }
+
     const bytes=await buildSignedMandatoryPdf({
       originalPdfBase64:source.base64,
       anchors,
@@ -611,7 +661,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const fidelity=verify
       ? await verifyMandatoryPdfFidelity(source.base64,bytes,anchors)
       : null;
-    return {source,bytes,fidelity};
+    return {source,bytes,fidelity,anchors};
   };
 
   const previewMandatoryPdf=async(doc:ForemanMandatoryDocument,variant:'original'|'signed')=>{
@@ -631,7 +681,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const message=e?.message||'No se pudo abrir el PDF.';
       setError(message);
       setOperationFeedback(message);
-      window.alert(message);
+      await appAlert(message,{title:'No se pudo abrir el PDF',kind:'error'});
     }finally{
       setSaving(false);
     }
