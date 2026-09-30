@@ -128,6 +128,14 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           .filter(item => item.source_gmail_message_id && item.source_attachment_name)
           .map(item => `${item.source_gmail_message_id}|${item.source_attachment_name}`)
       );
+      const deletedSources=await supabase.query('foreman_mandatory_delete_tombstones',{
+        query:'source_gmail_message_id=not.is.null&select=source_gmail_message_id,source_attachment_name&limit=1000',
+      });
+      (Array.isArray(deletedSources)?deletedSources:[]).forEach((item:any)=>{
+        if(item.source_gmail_message_id&&item.source_attachment_name){
+          keys.add(`${item.source_gmail_message_id}|${item.source_attachment_name}`);
+        }
+      });
       const result = await processAdministrativeMandatoryInbox({
         existingSourceKeys: keys,
         onProgress: message => { if (!silent) setMailMessage(message); },
