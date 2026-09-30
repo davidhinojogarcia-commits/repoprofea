@@ -810,7 +810,18 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const importedWorkerSnapshots=Array.isArray(doc.details?.importedWorkers)
       ? doc.details.importedWorkers
       : [];
-    const importedWorkerMap=new Map(importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker]));
+    const workerAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const anchorWorkerSnapshots=workerAnchors.map(anchor=>({
+      id:Number(anchor.workerId),
+      apellidosNombre:String(anchor.workerName||'').trim(),
+      dni:String(anchor.dni||'').trim(),
+      categoria:'',
+      obra:data?.worksite?.nombre||doc.obra||'',
+    })).filter(worker=>Number.isFinite(worker.id)&&worker.id!==0&&worker.apellidosNombre);
+    const importedWorkerMap=new Map<number,any>([
+      ...anchorWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
+      ...importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
+    ]);
     const signedWorkers=isImportedMandatory
       ? [...signatureIds]
           .map(id=>importedWorkerMap.get(id) || (data?.workers||[]).find(worker=>Number(worker.id)===id))
@@ -836,6 +847,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const importedWorkerIds=new Set<number>(importedWorkerOrder);
     const workerById=new Map<number,any>([
       ...(data?.workers||[]).map(worker=>[Number(worker.id),worker] as [number,any]),
+      ...anchorWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
       ...importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
     ]);
     const importedCandidates=isImportedMandatory
@@ -863,7 +875,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedCandidates.length + unavailableImportedCount
       : operationalCandidates.length;
     const exactOriginalMode=isImportedMandatory&&doc.details?.originalPdfMode==='overlay';
-    const workerAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const importedAnchorMap=new Map(workerAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
