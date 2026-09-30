@@ -42,7 +42,13 @@ begin
     raise exception 'Tipo de documento no válido';
   end if;
 
-  if coalesce(array_length(p_worker_ids,1),0)>0 then
+  -- En importación manual, la obra seleccionada por el supervisor manda.
+  -- Solo inferimos la obra por trabajadores cuando no se ha proporcionado p_obra_hint.
+  if coalesce(trim(p_obra_hint),'')<>'' then
+    v_obra := trim(p_obra_hint);
+  end if;
+
+  if coalesce(trim(v_obra),'')='' and coalesce(array_length(p_worker_ids,1),0)>0 then
     select t.obra
       into v_obra
     from unnest(p_worker_ids) with ordinality ids(id,ord)
@@ -51,15 +57,6 @@ begin
      and t.owner_id=v_owner
     group by t.obra
     order by count(*) desc, min(ids.ord)
-    limit 1;
-  end if;
-
-  if coalesce(trim(v_obra),'')='' and coalesce(trim(p_obra_hint),'')<>'' then
-    select t.obra
-      into v_obra
-    from public.trabajadores t
-    where t.owner_id=v_owner
-      and lower(coalesce(t.obra,''))=lower(trim(p_obra_hint))
     limit 1;
   end if;
 
