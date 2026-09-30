@@ -102,6 +102,7 @@ printed_names as (
   cross join lateral regexp_split_to_table(coalesce(d.details->>'sourceText',''), E'\\n')
     with ordinality as line(raw_line,ord)
   where line.raw_line like '%,%'
+    and trim(line.raw_line)=upper(trim(line.raw_line))
     and public.foreman_normalize_text(line.raw_line) !~ '^(CADIZ|DIPUTACION|CATEGORIA|AREA|GESTION|EXCMA|EMPRESA|PAGINA)\\b'
     and public.foreman_normalize_text(line.raw_line) ~ '^[A-ZÑ]+( [A-ZÑ]+)+$'
 ),
