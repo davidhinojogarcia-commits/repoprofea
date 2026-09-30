@@ -30,6 +30,12 @@ const mandatoryDocumentLabel = (type:string) => ({
   autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
 } as Record<string,string>)[type] || type;
 
+const importedWorkersMissingFromDirectory = (item:DbMandatory): any[] => {
+  if(!['inicio','control_presencia'].includes(String(item.document_type||'')))return [];
+  const imported=Array.isArray(item.details?.importedWorkers)?item.details?.importedWorkers:[];
+  return imported.filter((worker:any)=>Number(worker?.id)<0);
+};
+
 export const ForemanDocumentsDashboard: React.FC = () => {
   const [documents,setDocuments]=useState<DbDocument[]>([]);
   const [attendance,setAttendance]=useState<DbAttendance[]>([]);
@@ -144,7 +150,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         onProgress: message => { if (!silent) setMailMessage(message); },
       });
       if (result.importedDocuments > 0) {
-        setMailMessage(`${result.importedDocuments} documento(s) recibido(s) de la administrativa y preparados para firma.`);
+        const missing=result.missingDirectoryWorkers||[];
+        setMailMessage(
+          `${result.importedDocuments} documento(s) recibido(s) de la administrativa y preparados para firma.`+
+          (missing.length
+            ? ` Atención: ${missing.length} trabajador(es) del PDF no aparecen en el Directorio: ${missing.join(", ")}.`
+            : ' Todos los trabajadores reconocidos están localizados en el Directorio.')
+        );
         await refresh(true);
       } else if (!silent) {
         setMailMessage(result.warnings[0] || 'Gmail revisado. No hay nuevos documentos obligatorios.');
@@ -170,7 +182,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         obraHint:selectedDocsWork,
       });
       if(result.importedDocuments>0){
-        setMailMessage(`${result.importedDocuments} documento(s) importado(s) y preparados para que el encargado recoja las firmas.${result.skippedFiles ? ` ${result.skippedFiles} archivo(s) no se pudieron importar.` : ''}`);
+        const missing=result.missingDirectoryWorkers||[];
+        setMailMessage(
+          `${result.importedDocuments} documento(s) importado(s) y preparados para que el encargado recoja las firmas.${result.skippedFiles ? ` ${result.skippedFiles} archivo(s) no se pudieron importar.` : ''}`+
+          (missing.length
+            ? ` Atención: ${missing.length} trabajador(es) del PDF no aparecen en el Directorio: ${missing.join(", ")}.`
+            : ' Todos los trabajadores reconocidos están localizados en el Directorio.')
+        );
         await refresh(true);
       }else{
         setMailMessage(result.warnings[0] || 'No se ha podido importar ningún documento.');
@@ -186,6 +204,16 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const visibleMandatory = useMemo(
     () => mandatory.filter(item => ['inicio','control_presencia','epis','formacion','maquinaria','autorizacion_uso_maquinaria'].includes(String(item.document_type || ''))),
     [mandatory],
+  );
+  const directoryMismatchDocuments=useMemo(
+    ()=>visibleMandatory
+      .map(item=>({item,missing:importedWorkersMissingFromDirectory(item)}))
+      .filter(entry=>entry.missing.length>0),
+    [visibleMandatory],
+  );
+  const directoryMismatchWorkerCount=useMemo(
+    ()=>new Set(directoryMismatchDocuments.flatMap(entry=>entry.missing.map((worker:any)=>String(worker.apellidosNombre||'').trim()).filter(Boolean))).size,
+    [directoryMismatchDocuments],
   );
 
   const allCards=useMemo(()=>{
@@ -707,6 +735,15 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       {mailMessage&&<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">{mailMessage}</div>}
       {completionNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"><span>{completionNotice}</span><button onClick={()=>setCompletionNotice('')} className="rounded-lg border border-emerald-300 px-2 py-1 text-[10px]">OK</button></div>}
       {activityNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-xs font-black text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><span>{activityNotice}</span><button onClick={()=>{setActivityNotice('');setControlView('activity')}} className="rounded-lg border border-blue-300 px-2 py-1 text-[10px]">Ver actividad</button></div>}
+      {directoryMismatchDocuments.length>0&&<div className="mt-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0"/>
+          <div>
+            <div className="font-black">Control de Directorio: {directoryMismatchWorkerCount} trabajador(es) detectado(s) en documentos importados no aparecen en el Directorio.</div>
+            <div className="mt-1 text-xs font-semibold">Es solo un aviso de comprobación: estos trabajadores siguen disponibles para firmar el PDF original.</div>
+          </div>
+        </div>
+      </div>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
         {([['Inicio / Control',visibleMandatory.length],['Documentos normalizados',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
@@ -784,7 +821,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </label>}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
-        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
+        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{(Array.isArray(card.item.details?.importedWorkerIds)&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))?card.item.details.importedWorkerIds.length:(card.item.workers?.length||0)} firmas recogidas</p>}{card.kind==='mandatory'&&importedWorkersMissingFromDirectory(card.item as DbMandatory).length>0&&<div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          <div className="font-black">No localizado(s) en Directorio</div>
+          <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
+          <div className="mt-1 text-[11px]">El documento no se bloquea: podrán firmar porque aparecen en el PDF importado.</div>
+        </div>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
