@@ -587,6 +587,47 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     document => ['inicio','control_presencia'].includes(String(document.documentType || '')),
   ) || [];
 
+  const periodDisplayLabel=(doc:ForemanMandatoryDocument)=>{
+    const explicit=String(doc.details?.periodoLabel||'').trim();
+    if(explicit)return explicit;
+    const key=String(doc.periodKey||'').trim();
+    const match=key.match(/^(\d{4})-(\d{2})-(1Q|2Q)$/i);
+    if(match){
+      const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const month=monthNames[Math.max(0,Number(match[2])-1)]||match[2];
+      return `${match[3].toUpperCase()==='1Q'?'1ª quincena':'2ª quincena'} · ${month} ${match[1]}`;
+    }
+    const date=String(doc.workDate||'').slice(0,10);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date)){
+      const [year,month,day]=date.split('-');
+      const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      return `${Number(day)<=15?'1ª quincena':'2ª quincena'} · ${monthNames[Math.max(0,Number(month)-1)]||month} ${year}`;
+    }
+    return key||'Sin periodo';
+  };
+
+  const assignedByWorksiteAndPeriod=useMemo(()=>{
+    const byWorksite=new Map<string,Map<string,ForemanMandatoryDocument[]>>();
+    for(const doc of assignedMandatoryDocuments){
+      const worksite=String(data?.obra||'Obra asignada').trim()||'Obra asignada';
+      const period=periodDisplayLabel(doc);
+      if(!byWorksite.has(worksite))byWorksite.set(worksite,new Map());
+      const periods=byWorksite.get(worksite)!;
+      if(!periods.has(period))periods.set(period,[]);
+      periods.get(period)!.push(doc);
+    }
+    return [...byWorksite.entries()].map(([worksite,periodMap])=>({
+      worksite,
+      periods:[...periodMap.entries()]
+        .map(([period,documents])=>({
+          period,
+          documents:[...documents].sort((a,b)=>String(b.workDate||'').localeCompare(String(a.workDate||''))),
+          latestDate:Math.max(...documents.map(doc=>Date.parse(String(doc.workDate||''))||0)),
+        }))
+        .sort((a,b)=>b.latestDate-a.latestDate),
+    }));
+  },[assignedMandatoryDocuments,data?.obra]);
+
   const renderPeriodSelector=()=> <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
     <div className="flex items-center justify-between gap-3">
       <div>
@@ -926,7 +967,22 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Las personas detectadas en el documento importado aparecen primero para firmar. Si falta alguien, selecciona el periodo correspondiente y añádelo desde la relación de trabajadores de la obra. Nadie se incorpora al documento final hasta que firma.</p>
         </div>
         {renderPeriodSelector()}
-        {assignedMandatoryDocuments.map(doc=>renderSigningDocument(doc))}
+        {assignedByWorksiteAndPeriod.map(group=><div key={group.worksite} className="space-y-3">
+          <div className="rounded-2xl border-2 border-[#00548E]/20 bg-white px-4 py-3 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-[.12em] text-[#00548E]">Obra</div>
+            <div className="mt-1 text-lg font-black text-slate-900">{group.worksite}</div>
+          </div>
+          {group.periods.map(periodGroup=><div key={periodGroup.period} className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Periodo</div>
+                <div className="mt-1 text-base font-black text-slate-900">{periodGroup.period}</div>
+              </div>
+              <div className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-[#00548E]">{periodGroup.documents.length} doc.</div>
+            </div>
+            {periodGroup.documents.map(doc=>renderSigningDocument(doc))}
+          </div>)}
+        </div>)}
         {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay Inicio ni Control de presencia pendientes para esta obra.</div>}
       </section>}
 
@@ -1098,6 +1154,31 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>} 
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
-    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));setError('');await refresh();}catch(e:any){setError(e?.message||'No se pudo guardar la firma.');}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>} 
+    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{
+      const current=mandatorySigning;
+      setMandatorySigning(null);
+      setSaving(true);
+      try{
+        await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);
+        const verified=await resolveForemanPortal(token);
+        const verifiedDoc=(verified.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
+        const storedSignature=verifiedDoc?.signatures?.[String(current.workerId)];
+        const storedImage=typeof storedSignature==='string'?storedSignature:storedSignature?.signature;
+        if(!storedImage){
+          throw new Error('La firma no ha quedado guardada en el documento. Vuelve a intentarlo.');
+        }
+        setData(verified);
+        setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
+        setError('');
+        setOperationFeedback('Firma guardada correctamente y vinculada al documento.');
+      }catch(e:any){
+        const message=e?.message||'No se pudo guardar la firma.';
+        setError(message);
+        setOperationFeedback(message);
+        window.alert(message);
+      }finally{
+        setSaving(false);
+      }
+    }} onCancel={()=>setMandatorySigning(null)}/>} 
   </div>;
 };
