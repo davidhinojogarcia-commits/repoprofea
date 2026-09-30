@@ -602,17 +602,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     ]);
     await assertStoredOriginalIntegrity(source);
     const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const unresolvedSigned=anchors.filter(anchor=>{
-      if(anchor.resolved)return false;
-      const raw=realSignatures?.[String(anchor.workerId)];
-      const signature=typeof raw==='string'?raw:raw?.signature;
-      return Boolean(signature);
-    });
-    if(unresolvedSigned.length){
-      throw new Error(unresolvedSigned.length===1
-        ? 'Hay una firma sin zona confirmada. El supervisor debe ajustar su posición antes de previsualizar o enviar.'
-        : `Hay ${unresolvedSigned.length} firmas sin zona confirmada. El supervisor debe ajustar sus posiciones antes de previsualizar o enviar.`);
-    }
     const bytes=await buildSignedMandatoryPdf({
       originalPdfBase64:source.base64,
       anchors,
@@ -757,44 +746,49 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   </div>;
 
   const prepareImportedWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
+    // La firma nunca depende de una validación previa del supervisor.
+    // Si faltan coordenadas, intentamos recalcularlas; si falla, el generador PDF
+    // aplicará una posición automática de respaldo en la columna derecha.
     const currentAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const current=currentAnchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
-    if(current?.resolved){
-      setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
-      return;
+    if(!current?.resolved){
+      setSaving(true);
+      setOperationFeedback('Calculando automáticamente la posición de la firma…');
+      try{
+        const importedIds=Array.isArray(doc.details?.importedWorkerIds)
+          ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
+          : [];
+        const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
+        const anchorSnapshots=currentAnchors.map(anchor=>({
+          id:Number(anchor.workerId),
+          apellidosNombre:String(anchor.workerName||'').trim(),
+          dni:String(anchor.dni||'').trim(),
+          categoria:doc.category||'',
+          obra:data?.obra||'',
+        }));
+        const workerMap=new Map<number,any>([
+          ...(data?.workers||[]).map(item=>[Number(item.id),item] as [number,any]),
+          ...anchorSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
+          ...importedSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
+          [Number(worker.id),worker],
+        ]);
+        const candidates=importedIds.map(id=>workerMap.get(id)).filter(Boolean) as any[];
+        if(candidates.length){
+          const source=await getForemanMandatoryPdf(token,doc.id,'original');
+          const bytes=base64ToBytes(source.base64);
+          const file=new File([bytes],source.filename||String(doc.details?.sourceFilename||'documento.pdf'),{type:'application/pdf'});
+          const analysis=await analyzeMandatoryOriginalPdf(file,candidates,undefined,String(doc.details?.sourceText||''));
+          await repairForemanMandatoryAnchors(token,doc.id,analysis.anchors);
+          await refresh();
+        }
+      }catch(e:any){
+        console.warn('No se pudo recalcular la posición automática; se usará la posición de respaldo.',e);
+      }finally{
+        setSaving(false);
+        setOperationFeedback('');
+      }
     }
-
-    setSaving(true);
-    setOperationFeedback('Preparando la zona de firma sobre el PDF original…');
-    try{
-      const importedIds=Array.isArray(doc.details?.importedWorkerIds)
-        ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
-        : [];
-      const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
-      const workerMap=new Map<number,any>([
-        ...(data?.workers||[]).map(item=>[Number(item.id),item] as [number,any]),
-        ...importedSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
-      ]);
-      const candidates=importedIds.map(id=>workerMap.get(id)).filter(Boolean) as any[];
-      if(!candidates.length)throw new Error('No se han podido recuperar las personas reales de este documento.');
-
-      const source=await getForemanMandatoryPdf(token,doc.id,'original');
-      const bytes=base64ToBytes(source.base64);
-      const file=new File([bytes],source.filename||String(doc.details?.sourceFilename||'documento.pdf'),{type:'application/pdf'});
-      const analysis=await analyzeMandatoryOriginalPdf(file,candidates,undefined,String(doc.details?.sourceText||''));
-      await repairForemanMandatoryAnchors(token,doc.id,analysis.anchors);
-      await refresh();
-      const repaired=analysis.anchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
-      if(!repaired?.resolved)throw new Error('No se ha podido localizar la línea exacta de esta persona en el PDF.');
-      setOperationFeedback('');
-      setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
-    }catch(e:any){
-      const message=e?.message||'No se pudo preparar la firma de esta persona.';
-      setError(message);
-      window.alert(message);
-    }finally{
-      setSaving(false);
-    }
+    setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
   };
 
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
@@ -886,7 +880,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
-    const signatureZonesReady=!isImportedMandatory||unresolvedAnchorCount===0;
     const canFinalize=signedCount>0 && pendingRequired===0 &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
     const expanded=expandedMandatoryDocuments.has(doc.id);
@@ -899,7 +892,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
             <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
             <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
-            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-amber-700">Pendiente de ajustar {unresolvedAnchorCount} zona(s) de firma</div>}
+            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-blue-700">La posición de {unresolvedAnchorCount} firma(s) se calculará automáticamente al firmar</div>}
           </div>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0}</span>
@@ -915,7 +908,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>
         {operationFeedback&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">{operationFeedback}</div>}
         {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
-          Las zonas de firma pendientes se localizarán automáticamente cuando cada persona pulse su tarjeta.
+          No requiere validación del supervisor. La app colocará cada firma automáticamente a la derecha del nombre y ajustará su tamaño.
         </div>}
       </div>}
       {!exactOriginalMode&&sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
