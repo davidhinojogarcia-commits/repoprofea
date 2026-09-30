@@ -855,7 +855,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           .map(id=>{
             const known=workerById.get(id);
             if(known)return known;
-            const anchor=importedAnchorMap.get(id);
+            const anchor=workerAnchors.find(candidate=>Number(candidate.workerId)===id);
             return {
               id,
               apellidosNombre:String(anchor?.workerName||'Persona incluida en el documento').trim(),
