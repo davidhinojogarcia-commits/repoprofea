@@ -259,6 +259,7 @@ export type MandatoryEmailIntakeResult = {
   importedDocuments: number;
   skippedAttachments: number;
   warnings: string[];
+  missingDirectoryWorkers: string[];
 };
 
 export async function processAdministrativeMandatoryInbox(options?: {
@@ -269,12 +270,12 @@ export async function processAdministrativeMandatoryInbox(options?: {
   const settings = await loadAppBusinessSettings();
   const administrativeEmail = String(settings.administrative?.email || '').trim().toLowerCase();
   if (!administrativeEmail) {
-    return { scannedMessages: 0, importedDocuments: 0, skippedAttachments: 0, warnings: ['Configura primero el correo de la administrativa.'] };
+    return { scannedMessages: 0, importedDocuments: 0, skippedAttachments: 0, warnings: ['Configura primero el correo de la administrativa.'], missingDirectoryWorkers: [] };
   }
 
   const gmail = await getGmailConnectionStatus();
   if (!gmail.connected) {
-    return { scannedMessages: 0, importedDocuments: 0, skippedAttachments: 0, warnings: ['Conecta Gmail del supervisor en Configuración.'] };
+    return { scannedMessages: 0, importedDocuments: 0, skippedAttachments: 0, warnings: ['Conecta Gmail del supervisor en Configuración.'], missingDirectoryWorkers: [] };
   }
   if (!gmail.canRead) {
     const error: any = new Error('Gmail necesita una nueva autorización para detectar automáticamente los correos de la administrativa.');
@@ -287,6 +288,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
   const existing = options?.existingSourceKeys || new Set<string>();
   const warnings: string[] = [];
+  const missingDirectoryWorkers = new Set<string>();
   let importedDocuments = 0;
   let skippedAttachments = 0;
 
@@ -329,6 +331,10 @@ export async function processAdministrativeMandatoryInbox(options?: {
           continue;
         }
         const selected = listedWorkers;
+        selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
+          const name=String(worker.apellidosNombre||'').trim();
+          if(name)missingDirectoryWorkers.add(name);
+        });
         const workDate = extractDate(extracted.text, message.internalDate);
         const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
@@ -367,7 +373,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
     }
   }
 
-  return { scannedMessages: messages.length, importedDocuments, skippedAttachments, warnings };
+  return { scannedMessages: messages.length, importedDocuments, skippedAttachments, warnings, missingDirectoryWorkers:[...missingDirectoryWorkers] };
 }
 
 
@@ -375,6 +381,7 @@ export type MandatoryManualImportResult = {
   importedDocuments: number;
   skippedFiles: number;
   warnings: string[];
+  missingDirectoryWorkers: string[];
 };
 
 export async function processManualMandatoryFiles(
@@ -383,6 +390,7 @@ export async function processManualMandatoryFiles(
 ): Promise<MandatoryManualImportResult> {
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
   const warnings: string[] = [];
+  const missingDirectoryWorkers = new Set<string>();
   let importedDocuments = 0;
   let skippedFiles = 0;
 
@@ -420,6 +428,10 @@ export async function processManualMandatoryFiles(
         continue;
       }
       const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra);
+      selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
+        const name=String(worker.apellidosNombre||'').trim();
+        if(name)missingDirectoryWorkers.add(name);
+      });
       if(!selected.length){
         skippedFiles += 1;
         warnings.push(`${file.name}: no se han podido leer nombres de personas en el PDF.`);
@@ -460,5 +472,5 @@ export async function processManualMandatoryFiles(
     }
   }
 
-  return { importedDocuments, skippedFiles, warnings };
+  return { importedDocuments, skippedFiles, warnings, missingDirectoryWorkers:[...missingDirectoryWorkers] };
 }
