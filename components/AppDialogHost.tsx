@@ -33,11 +33,13 @@ export function AppDialogHost() {
     setInputValue(current.defaultValue || '');
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('profea-dialog-open');
     playMessageSound(current.kind === 'error' || current.kind === 'warning' ? 'error' : 'success');
     const id = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => {
       window.clearTimeout(id);
       document.body.style.overflow = previousOverflow;
+      document.body.classList.remove('profea-dialog-open');
     };
   }, [current?.id]);
 
@@ -90,7 +92,7 @@ export function AppDialogHost() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2147483000] isolate flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
+      className="profea-app-dialog-overlay fixed inset-0 z-[2147483000] isolate flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-6"
       role="presentation"
       onKeyDown={onKeyDown}
     >
