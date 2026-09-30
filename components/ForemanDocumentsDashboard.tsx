@@ -12,7 +12,6 @@ import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSup
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 
-const MandatoryPdfAnchorEditor = React.lazy(() => import('./MandatoryPdfAnchorEditor'));
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -66,7 +65,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
   const [activityNotice,setActivityNotice]=useState('');
-  const [anchorEditing,setAnchorEditing]=useState<DbMandatory|null>(null);
   const [bulkDeleteMode,setBulkDeleteMode]=useState(false);
   const [bulkDeleteBusy,setBulkDeleteBusy]=useState(false);
   const [selectedDeleteKeys,setSelectedDeleteKeys]=useState<Set<string>>(new Set());
@@ -459,7 +457,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage(error?.message||'No se pudo abrir el PDF.');
     }
   };
-  const approveAndReturnMandatory = async (item: DbMandatory) => {
+  const sendCompletedMandatory = async (item: DbMandatory) => {
     if (item.status !== 'completed') return;
     const settings=await loadAppBusinessSettings();
     const targetEmail=String(item.source_email_from || settings.administrative?.email || '').trim();
@@ -468,8 +466,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       return;
     }
     if (!(await appConfirm(
-      '¿Aprobar este documento cumplimentado y enviarlo por Gmail a la administrativa?',
-      { title: 'Aprobar y enviar', confirmLabel: 'Aprobar y enviar' },
+      'El documento ya es válido y está firmado por todos los trabajadores. ¿Quieres enviarlo ahora a la administrativa?',
+      { title: 'Enviar documento firmado', confirmLabel: 'Enviar' },
     ))) return;
     setMailBusy(true);
     try {
@@ -501,7 +499,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         references:item.source_rfc_message_id||'',
       });
       await markMandatoryDocumentReturned(item.id,sent.messageId);
-      setMailMessage('Documento aprobado y devuelto por Gmail a la administrativa.');
+      setMailMessage('Documento firmado enviado por Gmail a la administrativa.');
       await refresh(true);
     } catch(error:any) {
       setMailMessage(error?.message||'No se pudo devolver el documento por Gmail.');
@@ -868,7 +866,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>}
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
-            <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Aprobar y devolver por Gmail':'Aprobar y enviar a administrativa'}</button>
+            <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
           )}
           {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))) && (
             <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
@@ -882,38 +880,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
     </>}
-
-    {anchorEditing&&<React.Suspense fallback={null}><MandatoryPdfAnchorEditor
-      documentId={anchorEditing.id}
-      title={`${mandatoryDocumentLabel(anchorEditing.document_type)} · ${anchorEditing.obra}`}
-      obra={anchorEditing.obra}
-      anchors={(Array.isArray(anchorEditing.details?.workerAnchors)?anchorEditing.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
-      signedWorkerIds={Object.keys(anchorEditing.signatures||{}).map(Number).filter(Number.isFinite)}
-      onCancel={()=>setAnchorEditing(null)}
-      onSave={async anchors=>{
-        const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
-        const importedWorkerIds=anchors
-          .map(anchor=>Number(anchor.workerId))
-          .filter((id,index,list)=>Number.isFinite(id)&&id!==0&&list.indexOf(id)===index);
-        await supabase.query('foreman_mandatory_documents',{
-          method:'PATCH',
-          query:'id=eq.'+encodeURIComponent(anchorEditing.id),
-          body:{
-            details:{
-              ...(anchorEditing.details||{}),
-              workerAnchors:anchors,
-              importedWorkerIds,
-              unresolvedAnchorCount:unresolved,
-            },
-            updated_at:new Date().toISOString(),
-          },
-          prefer:'return=minimal',
-        });
-        setAnchorEditing(null);
-        setMailMessage('Posiciones de las firmas ajustadas. El PDF firmado se regenerará con estas posiciones al abrirlo o enviarlo.');
-        await refresh(true);
-      }}
-    /></React.Suspense>}
 
     {editingCard&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
