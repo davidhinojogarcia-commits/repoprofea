@@ -56,6 +56,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [editWorkerIds,setEditWorkerIds]=useState<Set<string>>(new Set());
   const [editWorkDate,setEditWorkDate]=useState('');
   const [editCategory,setEditCategory]=useState('');
+  const [editSearch,setEditSearch]=useState('');
+  const [editWorkerFilter,setEditWorkerFilter]=useState<'all'|'selected'|'unselected'|'document'|'unmatched'>('all');
   const [editBusy,setEditBusy]=useState(false);
   const [editingCard,setEditingCard]=useState<any|null>(null);
   const [genericEditDraft,setGenericEditDraft]=useState<any>({});
@@ -609,7 +611,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     setEditingMandatory(item);
     setEditWorkDate(String(item.work_date || '').slice(0,10));
     setEditCategory(item.document_type === 'control_presencia' ? '' : String(item.category || ''));
-    setEditWorkerIds(new Set((item.workers || []).map((worker:any) => String(worker.id))));
+    setEditSearch('');
+    setEditWorkerFilter('all');
+    const importedIds=Array.isArray(item.details?.importedWorkerIds)?item.details.importedWorkerIds.map((id:any)=>String(id)):[];
+    setEditWorkerIds(new Set(importedIds.length?importedIds:(item.workers || []).map((worker:any) => String(worker.id))));
     setEditBusy(true);
     try {
       const rows = await supabase.query('trabajadores', {
@@ -656,7 +661,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         workers: selectedWorkers,
         signatures: editingMandatory.signatures || {},
         status: editingMandatory.status,
-        details: editingMandatory.details || {},
+        details: {
+          ...(editingMandatory.details || {}),
+          importedWorkerIds: selectedWorkers.map((worker:any)=>Number(worker.id)).filter(Number.isFinite),
+          importedWorkers: selectedWorkers,
+        },
       });
       setMailMessage(`${mandatoryDocumentLabel(editingMandatory.document_type)} actualizado correctamente.`);
       setEditingMandatory(null);
@@ -861,7 +870,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
         const importedWorkerIds=anchors
           .map(anchor=>Number(anchor.workerId))
-          .filter((id,index,list)=>Number.isFinite(id)&&id>0&&list.indexOf(id)===index);
+          .filter((id,index,list)=>Number.isFinite(id)&&id!==0&&list.indexOf(id)===index);
         await supabase.query('foreman_mandatory_documents',{
           method:'PATCH',
           query:'id=eq.'+encodeURIComponent(anchorEditing.id),
@@ -950,7 +959,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           })()}
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
+        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 shadow-[0_-10px_25px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
           <button type="button" disabled={editBusy} onClick={()=>void deleteGenericItem(editingCard)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
           <div className="flex gap-2">
             <button type="button" onClick={()=>{setEditingCard(null);setGenericEditDraft({});}} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button>
@@ -1010,17 +1019,55 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           </div>
           <div className="mt-5">
             <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-black">Trabajadores incluidos</h4><p className="text-xs text-slate-500">Marca o desmarca los trabajadores que deben aparecer en el documento.</p></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-800">{editWorkerIds.size} seleccionados</span></div>
+            <div className="mt-3 space-y-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400"/>
+                <input
+                  value={editSearch}
+                  onChange={e=>setEditSearch(e.target.value)}
+                  placeholder="Buscar por nombre, apellidos, DNI o categoría…"
+                  className="min-h-[46px] w-full rounded-xl border bg-white pl-10 pr-3 text-sm dark:bg-slate-950"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ['all','Todos'],
+                  ['selected','Seleccionados'],
+                  ['unselected','No seleccionados'],
+                  ['document','Del PDF'],
+                  ['unmatched','Sin coincidencia'],
+                ] as const).map(([value,label])=><button key={value} type="button" onClick={()=>setEditWorkerFilter(value)} className={`rounded-full border px-3 py-1.5 text-xs font-black ${editWorkerFilter===value?'border-[#00548E] bg-blue-50 text-[#00548E]':'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{label}</button>)}
+              </div>
+            </div>
             <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border divide-y dark:divide-slate-700">
-              {editBusy&&!editWorkers.length?<div className="p-6 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin"/>Cargando trabajadores…</div>:editWorkers.map((worker:any)=><label key={worker.id} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
+              {editBusy&&!editWorkers.length?<div className="p-6 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin"/>Cargando trabajadores…</div>:editWorkers
+                .filter((worker:any)=>{
+                  const id=String(worker.id);
+                  const selected=editWorkerIds.has(id);
+                  const importedIds=new Set((Array.isArray(editingMandatory.details?.importedWorkerIds)?editingMandatory.details.importedWorkerIds:[]).map((value:any)=>String(value)));
+                  const unmatched=Number(worker.id)<0;
+                  if(editWorkerFilter==='selected'&&!selected)return false;
+                  if(editWorkerFilter==='unselected'&&selected)return false;
+                  if(editWorkerFilter==='document'&&!importedIds.has(id))return false;
+                  if(editWorkerFilter==='unmatched'&&!unmatched)return false;
+                  const term=editSearch.trim().toLocaleLowerCase('es');
+                  if(term&&![
+                    worker.apellidosNombre,
+                    worker.dni,
+                    worker.categoria,
+                  ].some(value=>String(value||'').toLocaleLowerCase('es').includes(term)))return false;
+                  return true;
+                })
+                .map((worker:any)=><label key={worker.id} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                 <input type="checkbox" checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 rounded border-slate-300"/>
-                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span>{Number(worker.id)<0&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">Leído del PDF · no encontrado en Directorio · firma permitida</span>}</span>
                 {editingMandatory.signatures?.[String(worker.id)]&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Firmado</span>}
               </label>)}
             </div>
             <p className="mt-2 text-[11px] text-slate-500">Si eliminas un trabajador del documento, su firma dejará de formar parte de este documento. Las firmas de los trabajadores que permanezcan seleccionados se conservarán.</p>
           </div>
         </div>
-        <div className="flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
+        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 shadow-[0_-10px_25px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
           <button type="button" disabled={editBusy} onClick={()=>void removeMandatoryDocument(editingMandatory)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
           <div className="flex gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
         </div>

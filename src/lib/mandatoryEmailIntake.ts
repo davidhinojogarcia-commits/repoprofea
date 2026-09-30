@@ -124,6 +124,43 @@ const sourceWorkerId = (name: string) => {
   return -(3000000000 + (hash >>> 0));
 };
 
+const flexibleNameTokens = (value: string) =>
+  norm(value)
+    .replace(/[,.;:()\[\]_/\\-]+/g,' ')
+    .split(/\s+/)
+    .map(token=>token.trim())
+    .filter(Boolean);
+
+const tokenMatches = (left: string, right: string) => {
+  if(left===right)return true;
+  if(left.length===1&&right.startsWith(left))return true;
+  if(right.length===1&&left.startsWith(right))return true;
+  return left.length>=4&&right.length>=4&&editDistanceAtMostOne(left,right);
+};
+
+const flexibleNameScore = (printedName: string, directoryName: string) => {
+  const printed=flexibleNameTokens(printedName);
+  const directory=flexibleNameTokens(directoryName);
+  if(!printed.length||!directory.length)return 0;
+  const printedHits=printed.filter(token=>directory.some(other=>tokenMatches(token,other))).length;
+  const directoryHits=directory.filter(token=>printed.some(other=>tokenMatches(token,other))).length;
+  const coveragePrinted=printedHits/printed.length;
+  const coverageDirectory=directoryHits/directory.length;
+  const strongTokens=printed.filter(token=>token.length>=3&&directory.some(other=>tokenMatches(token,other))).length;
+  if(strongTokens<2)return 0;
+  return coveragePrinted*0.62+coverageDirectory*0.38;
+};
+
+const bestDirectoryNameMatch = (printedName: string, workers: Person[]) => {
+  const ranked=workers
+    .map(worker=>({worker,score:flexibleNameScore(printedName,worker.apellidosNombre||'')}))
+    .filter(item=>item.score>=0.72)
+    .sort((a,b)=>b.score-a.score);
+  if(!ranked.length)return null;
+  if(ranked.length>1&&ranked[0].score-ranked[1].score<0.08)return null;
+  return ranked[0].worker;
+};
+
 const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: string, obra: string): Person[] => {
   const canonicalByName = new Map<string,Person>();
   for (const worker of workers) {
@@ -144,7 +181,7 @@ const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: s
     if(seen.has(key))continue;
     seen.add(key);
 
-    const canonical=canonicalByName.get(key);
+    const canonical=canonicalByName.get(key) || bestDirectoryNameMatch(line,workers);
     result.push(canonical || ({
       id:sourceWorkerId(key),
       apellidosNombre:line.replace(/\s+/g,' '),

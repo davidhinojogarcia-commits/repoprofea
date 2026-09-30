@@ -541,6 +541,7 @@ export async function updateForemanMandatoryDocument(input: {
       category: input.category,
       workers: input.workers,
       signatures: filteredSignatures,
+      details: input.details || {},
       status: nextStatus,
       completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
       reviewed_at: null,
@@ -548,6 +549,7 @@ export async function updateForemanMandatoryDocument(input: {
       correction_pending: false,
       correction_reason: null,
       correction_requested_at: null,
+      details: input.details || {},
       updated_at: new Date().toISOString(),
     },
   });

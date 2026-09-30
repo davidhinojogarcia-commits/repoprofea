@@ -850,16 +850,24 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ...anchorWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
       ...importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
     ]);
+    const importedAnchorMap=new Map(workerAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
     const importedCandidates=isImportedMandatory
       ? importedWorkerOrder
-          .map(id=>workerById.get(id))
-          .filter(Boolean)
+          .map(id=>{
+            const known=workerById.get(id);
+            if(known)return known;
+            const anchor=workerAnchors.find(candidate=>Number(candidate.workerId)===id);
+            return {
+              id,
+              apellidosNombre:String(anchor?.workerName||'Persona incluida en el documento').trim(),
+              dni:String(anchor?.dni||'').trim(),
+              categoria:doc.category||'',
+              obra:data?.worksite?.nombre||doc.details?.obra||'',
+              __documentOnly:true,
+            };
+          })
           .filter((worker:any)=>!signatureIds.has(Number(worker.id)))
       : [];
-    const availableImportedIds=new Set(workerById.keys());
-    const unavailableImportedCount=isImportedMandatory
-      ? [...importedWorkerIds].filter(id=>!signatureIds.has(id)&&!availableImportedIds.has(id)).length
-      : 0;
 
     const operationalCandidates=!isImportedMandatory
       ? assignedWorkers.filter(worker=>!signatureIds.has(Number(worker.id)))
@@ -872,10 +880,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedWorkerIds.size
       : assignedWorkers.length;
     const pendingRequired=isImportedMandatory
-      ? importedCandidates.length + unavailableImportedCount
+      ? importedWorkerOrder.filter(id=>!signatureIds.has(id)).length
       : operationalCandidates.length;
     const exactOriginalMode=isImportedMandatory&&doc.details?.originalPdfMode==='overlay';
-    const importedAnchorMap=new Map(workerAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
@@ -933,13 +940,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               <span className="mt-1 block text-sm text-slate-600">{worker.dni} · {worker.categoria}</span>
               <span className="mt-2 block text-sm font-black text-[#00548E]">Firmar esta persona</span>
             </button>)}</div>
-          : unavailableImportedCount===0
-            ? <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>
-            : null}
-      </div>}
-
-      {!closed&&isImportedMandatory&&unavailableImportedCount>0&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-5 text-rose-900">
-        <b>No se puede finalizar todavía.</b> {unavailableImportedCount===1?'Hay 1 persona del documento importado que ya no está disponible en la relación actual de la obra.':`Hay ${unavailableImportedCount} personas del documento importado que ya no están disponibles en la relación actual de la obra.`} El supervisor debe revisar la asignación antes de cerrar el documento.
+          : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
       </div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
