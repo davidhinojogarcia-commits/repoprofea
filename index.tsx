@@ -99,13 +99,42 @@ const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || 
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
 const FOREMAN_DEVICE_TOKEN_KEY = 'pfea_foreman_device_token_v1';
+const FOREMAN_DEVICE_COOKIE_KEY = 'pfea_foreman_device_token_v1';
+
+const readForemanTokenCookie = () => {
+  try {
+    const prefix = FOREMAN_DEVICE_COOKIE_KEY + '=';
+    const item = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith(prefix));
+    return item ? decodeURIComponent(item.slice(prefix.length)).trim() : '';
+  } catch {
+    return '';
+  }
+};
+
+const persistForemanDeviceToken = (token: string) => {
+  const clean = String(token || '').trim();
+  if (!clean) return;
+  try { localStorage.setItem(FOREMAN_DEVICE_TOKEN_KEY, clean); } catch {}
+  try {
+    document.cookie = `${FOREMAN_DEVICE_COOKIE_KEY}=${encodeURIComponent(clean)}; Max-Age=31536000; Path=/; SameSite=Lax; Secure`;
+  } catch {}
+};
+
 const foremanTokenFromUrl = initialSearchParams.get('encargado')?.trim() || '';
-if (foremanTokenFromUrl) {
-  try { localStorage.setItem(FOREMAN_DEVICE_TOKEN_KEY, foremanTokenFromUrl); } catch {}
-}
+if (foremanTokenFromUrl) persistForemanDeviceToken(foremanTokenFromUrl);
+
 const isForemanAppRoute = window.location.pathname === '/encargados' || window.location.pathname === '/encargados/';
 const foremanToken = foremanTokenFromUrl || (isForemanAppRoute ? (() => {
-  try { return localStorage.getItem(FOREMAN_DEVICE_TOKEN_KEY)?.trim() || ''; } catch { return ''; }
+  try {
+    const stored = localStorage.getItem(FOREMAN_DEVICE_TOKEN_KEY)?.trim() || '';
+    if (stored) return stored;
+  } catch {}
+  const cookieToken = readForemanTokenCookie();
+  if (cookieToken) {
+    try { localStorage.setItem(FOREMAN_DEVICE_TOKEN_KEY, cookieToken); } catch {}
+    return cookieToken;
+  }
+  return '';
 })() : '');
 
 const RouteLoadingFallback = () => (
