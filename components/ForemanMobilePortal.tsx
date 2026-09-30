@@ -1167,10 +1167,48 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         if(!storedImage){
           throw new Error('La firma no ha quedado guardada en el documento. Vuelve a intentarlo.');
         }
-        setData(verified);
-        setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
-        setError('');
-        setOperationFeedback('Firma guardada correctamente y vinculada al documento.');
+        const importedIds=Array.isArray(verifiedDoc?.details?.importedWorkerIds)
+          ? verifiedDoc.details.importedWorkerIds.map((id:any)=>String(Number(id))).filter((id:string)=>id!=='NaN'&&id!=='0')
+          : [];
+        const signatureMap=verifiedDoc?.signatures||{};
+        const allImportedSigned=importedIds.length>0 && importedIds.every((id:string)=>Boolean(signatureMap[id]));
+        const anchors=(Array.isArray(verifiedDoc?.details?.workerAnchors)?verifiedDoc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+        const unresolvedAnchors=anchors.filter(anchor=>!anchor.resolved).length;
+        const exactOriginalMode=verifiedDoc?.details?.originalPdfMode==='overlay';
+
+        if(allImportedSigned && unresolvedAnchors===0 && verifiedDoc){
+          if(exactOriginalMode){
+            const prepared=await buildExactSignedPreview(verifiedDoc,true);
+            if(!prepared.fidelity?.ok){
+              throw new Error('La comprobación de fidelidad del PDF no ha sido superada. El documento no se enviará automáticamente.');
+            }
+            await storeForemanMandatorySignedPdf({
+              token,
+              documentId:verifiedDoc.id,
+              pdfBase64:bytesToBase64(prepared.bytes),
+              signedSha256:await sha256Hex(prepared.bytes),
+              fidelity:prepared.fidelity,
+            });
+          }
+          await finalizeForemanMandatoryDocument(token,verifiedDoc.id);
+          const completed=await resolveForemanPortal(token);
+          setData(completed);
+          setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
+          setError('');
+          setOperationFeedback('Última firma guardada. Documento enviado automáticamente al supervisor para revisión.');
+          setTab('completed');
+        }else{
+          setData(verified);
+          setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
+          setError('');
+          if(allImportedSigned && unresolvedAnchors>0){
+            setOperationFeedback(unresolvedAnchors===1
+              ? 'Todas las firmas están guardadas, pero falta confirmar 1 posición de firma antes de enviarlo automáticamente al supervisor.'
+              : `Todas las firmas están guardadas, pero faltan confirmar ${unresolvedAnchors} posiciones de firma antes de enviarlo automáticamente al supervisor.`);
+          }else{
+            setOperationFeedback('Firma guardada correctamente y vinculada al documento.');
+          }
+        }
       }catch(e:any){
         const message=e?.message||'No se pudo guardar la firma.';
         setError(message);
