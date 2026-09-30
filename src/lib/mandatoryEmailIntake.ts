@@ -105,54 +105,46 @@ const categorySimilarity = (a: string, b: string) => {
   return hits / Math.max(1, Math.min(left.length, right.length));
 };
 
-const matchWorkers = (workers: Person[], text: string, category: string) => {
-  const normalized = norm(text);
-  const compactText = compact(text);
-  const textTokens = normalized.split(' ').filter(Boolean);
-  const categoryNorm = norm(category);
+const cleanWorkerName = (value: unknown) =>
+  norm(String(value || '').replace(/\[[^\]]*\]\s*$/g, '').replace(/\([^)]*\)\s*$/g, ''));
 
-  return workers
-    .map(worker => {
-      const dni = compact(worker.dni);
-      if (dni && dni.length >= 7 && compactText.includes(dni)) {
-        return { worker, score: 100 };
-      }
+const matchWorkers = (workers: Person[], text: string) => {
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map(line => ({ raw: line, normalized: norm(line), compacted: compact(line) }))
+    .filter(line => line.normalized);
 
-      const words = nameWords(worker.apellidosNombre || '');
-      if (!words.length) return { worker, score: 0 };
+  const usedIdentity = new Set<string>();
+  const matches: Person[] = [];
 
-      let exactHits = 0;
-      let fuzzyHits = 0;
-      for (const word of words) {
-        if (normalized.includes(word)) {
-          exactHits += 1;
-          continue;
+  for (const line of lines) {
+    const candidates = workers
+      .map(worker => {
+        const dni = compact(worker.dni || '');
+        const name = cleanWorkerName(worker.apellidosNombre || '');
+        if (dni && dni.length >= 7 && line.compacted.includes(dni)) {
+          return { worker, score: 200, identity: 'dni:' + dni };
         }
-        if (
-          word.length >= 5 &&
-          textTokens.some(token =>
-            token.length >= 5 &&
-            (token.startsWith(word.slice(0, 5)) ||
-              word.startsWith(token.slice(0, 5)) ||
-              editDistanceAtMostOne(word, token))
-          )
-        ) {
-          fuzzyHits += 1;
-        }
-      }
+        if (!name) return null;
+        const exactName = line.normalized === name;
+        const nameInsideLine = line.normalized.includes(name);
+        if (!exactName && !nameInsideLine) return null;
+        return {
+          worker,
+          score: exactName ? 120 : 100,
+          identity: 'name:' + name,
+        };
+      })
+      .filter((item): item is {worker:Person;score:number;identity:string} => Boolean(item))
+      .sort((a,b) => b.score - a.score || Number(b.worker.id || 0) - Number(a.worker.id || 0));
 
-      const nameScore = exactHits * 3 + fuzzyHits * 2;
-      const surnameStrong = words.slice(0, 2).filter(word =>
-        normalized.includes(word) ||
-        (word.length >= 5 && textTokens.some(token => token.length >= 5 && editDistanceAtMostOne(word, token)))
-      ).length;
-      const categoryScore = categoryNorm ? categorySimilarity(categoryNorm, worker.categoria || '') : 0;
-      const score = nameScore + surnameStrong * 2 + categoryScore * 2;
-      return { worker, score };
-    })
-    .filter(item => item.score >= 5)
-    .sort((a,b) => b.score - a.score)
-    .map(item => item.worker);
+    const best = candidates.find(item => !usedIdentity.has(item.identity));
+    if (!best) continue;
+    usedIdentity.add(best.identity);
+    matches.push(best.worker);
+  }
+
+  return matches;
 };
 
 const stripRecognizedWorkerLines = (text: string, workers: Person[]) => {
