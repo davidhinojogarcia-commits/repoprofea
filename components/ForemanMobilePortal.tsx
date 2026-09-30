@@ -182,6 +182,8 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; onClose: ()
       <div ref={hostRef} className="mx-auto w-full max-w-[900px]" />
     </div>
   </div>;
+};
+
 export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
