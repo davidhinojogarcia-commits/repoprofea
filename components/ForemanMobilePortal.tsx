@@ -519,24 +519,39 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
+  const anchorsWithVisibleSignatureZones=(doc:ForemanMandatoryDocument,anchors:MandatoryWorkerAnchor[])=>{
+    const pages=(Array.isArray(doc.details?.pageMeta)?doc.details.pageMeta:[]) as Array<{page:number;width:number;height:number}>;
+    return anchors.map(anchor=>{
+      if(anchor.resolved && anchor.signatureX!=null && anchor.signatureY!=null && anchor.signatureWidth && anchor.signatureHeight)return anchor;
+      const page=pages.find(item=>Number(item.page)===Number(anchor.page));
+      const pageWidth=Number(page?.width||0);
+      if(!pageWidth || anchor.nameY==null)return anchor;
+      const left=Math.max(pageWidth*0.68,Number(anchor.nameX||0)+160);
+      const rightMargin=Math.max(16,pageWidth*0.025);
+      const width=Math.min(128,pageWidth-rightMargin-left);
+      if(width<64)return anchor;
+      const rowHeight=Math.max(18,Number(anchor.rowHeight||24));
+      const height=Math.min(38,Math.max(24,rowHeight*1.15));
+      return {
+        ...anchor,
+        signatureX:left,
+        signatureY:Math.max(6,Number(anchor.nameY)-height*0.38),
+        signatureWidth:width,
+        signatureHeight:height,
+        resolved:true,
+        reason:anchor.reason||'Posición provisional calculada sobre la fila reconocida del trabajador.',
+      };
+    });
+  };
+
   const buildExactSignedPreview=async(doc:ForemanMandatoryDocument, verify=false)=>{
     const [source,realSignatures]=await Promise.all([
       getForemanMandatoryPdf(token,doc.id,'original'),
       getForemanMandatorySignatures(token,doc.id),
     ]);
     await assertStoredOriginalIntegrity(source);
-    const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const unresolvedSigned=anchors.filter(anchor=>{
-      if(anchor.resolved)return false;
-      const raw=realSignatures?.[String(anchor.workerId)];
-      const signature=typeof raw==='string'?raw:raw?.signature;
-      return Boolean(signature);
-    });
-    if(unresolvedSigned.length){
-      throw new Error(unresolvedSigned.length===1
-        ? 'Hay una firma cuya posición todavía debe confirmar el supervisor.'
-        : `Hay ${unresolvedSigned.length} firmas cuya posición todavía debe confirmar el supervisor.`);
-    }
+    const rawAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const anchors=anchorsWithVisibleSignatureZones(doc,rawAnchors);
     const bytes=await buildSignedMandatoryPdf({
       originalPdfBase64:source.base64,
       anchors,
@@ -557,20 +572,16 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         await assertStoredOriginalIntegrity(source);
         showPdfPreview(base64ToBytes(source.base64),`${mandatoryLabel(doc.documentType)} · Original`);
       }else{
-        const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-        const unresolved=anchors.filter(anchor=>!anchor.resolved);
-        if(unresolved.length){
-          const source=await getForemanMandatoryPdf(token,doc.id,'original');
-          await assertStoredOriginalIntegrity(source);
-          const message=unresolved.length===1
-            ? 'Hay 1 posición de firma pendiente de confirmar por el supervisor. Se muestra el PDF original; la firma aparecerá superpuesta cuando se confirme su posición.'
-            : `Hay ${unresolved.length} posiciones de firma pendientes de confirmar por el supervisor. Se muestra el PDF original; las firmas aparecerán superpuestas cuando se confirmen sus posiciones.`;
-          showPdfPreview(base64ToBytes(source.base64),`${mandatoryLabel(doc.documentType)} · Vista previa pendiente`,message);
-          setOperationFeedback(message);
-        }else{
-          const prepared=await buildExactSignedPreview(doc,false);
-          showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`);
-        }
+        const rawAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+        const unresolved=rawAnchors.filter(anchor=>!anchor.resolved).length;
+        const prepared=await buildExactSignedPreview(doc,false);
+        const notice=unresolved>0
+          ? (unresolved===1
+              ? 'La firma se muestra en una posición provisional calculada sobre la fila detectada. El supervisor podrá revisar esa posición.'
+              : `Hay ${unresolved} posiciones provisionales calculadas sobre las filas detectadas. El supervisor podrá revisarlas.`)
+          : undefined;
+        showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`,notice);
+        if(notice)setOperationFeedback(notice);
       }
       setError('');
     }catch(e:any){
@@ -583,9 +594,32 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
-  const assignedMandatoryDocuments = data?.mandatoryDocuments.filter(
-    document => ['inicio','control_presencia'].includes(String(document.documentType || '')),
-  ) || [];
+  const workerMatchesSelectedPeriod=(worker:any)=>{
+    if(!selectedPeriodKeys.size)return true;
+    const q=String(worker?.quincena||'').trim();
+    if(q&&selectedPeriodKeys.has('q:'+q))return true;
+    return monthsForWorker(worker).some(month=>selectedPeriodKeys.has('m:'+month));
+  };
+
+  const documentMatchesSelectedPeriod=(doc:ForemanMandatoryDocument)=>{
+    if(!selectedPeriodKeys.size)return true;
+    const importedIds=Array.isArray(doc.details?.importedWorkerIds)
+      ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter(Number.isFinite)
+      : [];
+    const byId=new Map((data?.workers||[]).map(worker=>[Number(worker.id),worker]));
+    if(importedIds.some(id=>workerMatchesSelectedPeriod(byId.get(id))))return true;
+    const workDate=String(doc.workDate||'').slice(0,10);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(workDate)){
+      const monthKey='m:'+workDate.slice(0,7);
+      if(selectedPeriodKeys.has(monthKey))return true;
+    }
+    const key=String(doc.periodKey||'');
+    return [...selectedPeriodKeys].some(selected=>key.toLowerCase().includes(selected.slice(2).toLowerCase()));
+  };
+
+  const assignedMandatoryDocuments = (data?.mandatoryDocuments||[]).filter(
+    document => ['inicio','control_presencia'].includes(String(document.documentType || '')) && documentMatchesSelectedPeriod(document),
+  );
 
   const periodDisplayLabel=(doc:ForemanMandatoryDocument)=>{
     const explicit=String(doc.details?.periodoLabel||'').trim();
@@ -664,7 +698,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
     const signatureIds=new Set(Object.keys(doc.signatures||{}).map(Number));
-    const signedWorkers=assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
+    const signedWorkers=assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id))&&workerMatchesSelectedPeriod(worker));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
     const closed=doc.status==='completed'||doc.status==='reviewed';
@@ -688,7 +722,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedWorkerOrder
           .map(id=>workerById.get(id))
           .filter(Boolean)
-          .filter((worker:any)=>!signatureIds.has(Number(worker.id))&&validForDocument(worker))
+          .filter((worker:any)=>!signatureIds.has(Number(worker.id))&&validForDocument(worker)&&workerMatchesSelectedPeriod(worker))
       : [];
     const availableImportedIds=new Set(importedCandidates.map(worker=>Number(worker.id)));
     const unavailableImportedCount=isImportedMandatory
@@ -724,14 +758,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const workerAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const unresolvedAnchorCount=workerAnchors.filter(anchor=>!anchor.resolved).length;
     const canFinalize=signedCount>0 && pendingRequired===0 &&
-      (!exactOriginalMode||unresolvedAnchorCount===0) &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
 
     return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 rounded-2xl bg-white border p-4 shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
-          <div className="text-xs text-slate-500">{String(doc.workDate).slice(0,10)}{doc.category?' · '+doc.category:''}{doc.details?.periodoLabel?' · '+String(doc.details.periodoLabel):''}</div>
+          <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
+          <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
         </div>
         <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0} firma(s)</span>
       </div>
@@ -847,7 +881,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         }catch(e:any){setError(e?.message||'No se pudo finalizar el documento.');}
         finally{setSaving(false);}
       }} className="mt-4 min-h-[58px] w-full rounded-2xl bg-emerald-600 px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500">
-        {canFinalize?'Finalizar y enviar al supervisor':unresolvedAnchorCount>0?'Falta confirmar la posición de alguna firma':pendingRequired>0?`Faltan ${pendingRequired} firma(s)`:'Debe firmar al menos un trabajador'}
+        {canFinalize?'Enviar al supervisor':pendingRequired>0?`Faltan ${pendingRequired} firma(s)`:'Debe firmar al menos un trabajador'}
       </button>}
 
       {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
@@ -899,7 +933,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}
       >
         <div className="flex w-max min-w-full gap-2">
-          <button onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Asignados</span></button>
+          <button onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control inicios</span></button>
           <button onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
           <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
           <button onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
@@ -963,8 +997,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
-          <h2 className="font-black">Asignados por el supervisor</h2>
-          <p className="mt-1 text-sm text-slate-600">Aquí aparecen Inicio / Incorporación y Control de presencia preparados por el supervisor. Las personas detectadas en el documento importado aparecen primero para firmar. Si falta alguien, selecciona el periodo correspondiente y añádelo desde la relación de trabajadores de la obra. Nadie se incorpora al documento final hasta que firma.</p>
+          <h2 className="font-black">Control inicios</h2>
+          <p className="mt-1 text-sm text-slate-600">Aquí aparecen los documentos importados de Inicio / Incorporación y Control de presencia. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
         {renderPeriodSelector()}
         {assignedByWorksiteAndPeriod.map(group=><div key={group.worksite} className="space-y-3">
@@ -1176,38 +1210,41 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         const unresolvedAnchors=anchors.filter(anchor=>!anchor.resolved).length;
         const exactOriginalMode=verifiedDoc?.details?.originalPdfMode==='overlay';
 
-        if(allImportedSigned && unresolvedAnchors===0 && verifiedDoc){
-          if(exactOriginalMode){
-            const prepared=await buildExactSignedPreview(verifiedDoc,true);
-            if(!prepared.fidelity?.ok){
-              throw new Error('La comprobación de fidelidad del PDF no ha sido superada. El documento no se enviará automáticamente.');
-            }
-            await storeForemanMandatorySignedPdf({
-              token,
-              documentId:verifiedDoc.id,
-              pdfBase64:bytesToBase64(prepared.bytes),
-              signedSha256:await sha256Hex(prepared.bytes),
-              fidelity:prepared.fidelity,
-            });
-          }
-          await finalizeForemanMandatoryDocument(token,verifiedDoc.id);
-          const completed=await resolveForemanPortal(token);
-          setData(completed);
+        if(allImportedSigned && verifiedDoc){
+          setData(verified);
           setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
           setError('');
-          setOperationFeedback('Última firma guardada. Documento enviado automáticamente al supervisor para revisión.');
-          setTab('completed');
+          const sourceName=String(verifiedDoc.details?.sourceFilename||mandatoryLabel(verifiedDoc.documentType));
+          const sendNow=window.confirm(`Todas las firmas de "${sourceName}" están completas. ¿Enviar este documento al supervisor para revisión?`);
+          if(sendNow){
+            if(exactOriginalMode){
+              const prepared=await buildExactSignedPreview(verifiedDoc,true);
+              if(!prepared.fidelity?.ok){
+                throw new Error('La comprobación de fidelidad del PDF no ha sido superada. El documento no se enviará.');
+              }
+              await storeForemanMandatorySignedPdf({
+                token,
+                documentId:verifiedDoc.id,
+                pdfBase64:bytesToBase64(prepared.bytes),
+                signedSha256:await sha256Hex(prepared.bytes),
+                fidelity:prepared.fidelity,
+              });
+            }
+            await finalizeForemanMandatoryDocument(token,verifiedDoc.id);
+            const completed=await resolveForemanPortal(token);
+            setData(completed);
+            setOperationFeedback('Documento enviado al supervisor para revisión.');
+            setTab('completed');
+          }else{
+            setOperationFeedback(unresolvedAnchors>0
+              ? 'Todas las firmas están guardadas y visibles en la previsualización. El documento queda pendiente de envío al supervisor.'
+              : 'Todas las firmas están guardadas. El documento queda pendiente de envío al supervisor.');
+          }
         }else{
           setData(verified);
           setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
           setError('');
-          if(allImportedSigned && unresolvedAnchors>0){
-            setOperationFeedback(unresolvedAnchors===1
-              ? 'Todas las firmas están guardadas, pero falta confirmar 1 posición de firma antes de enviarlo automáticamente al supervisor.'
-              : `Todas las firmas están guardadas, pero faltan confirmar ${unresolvedAnchors} posiciones de firma antes de enviarlo automáticamente al supervisor.`);
-          }else{
-            setOperationFeedback('Firma guardada correctamente y vinculada al documento.');
-          }
+          setOperationFeedback('Firma guardada correctamente y vinculada al documento.');
         }
       }catch(e:any){
         const message=e?.message||'No se pudo guardar la firma.';
