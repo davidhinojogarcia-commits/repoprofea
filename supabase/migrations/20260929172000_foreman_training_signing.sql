@@ -1,3 +1,17 @@
+alter table public.foreman_mandatory_documents
+  drop constraint if exists foreman_mandatory_documents_document_type_check;
+
+alter table public.foreman_mandatory_documents
+  add constraint foreman_mandatory_documents_document_type_check
+  check (document_type in (
+    'inicio',
+    'control_presencia',
+    'epis',
+    'formacion',
+    'maquinaria',
+    'autorizacion_uso_maquinaria'
+  ));
+
 create or replace function public.create_foreman_operational_document(
   p_token text,
   p_document_type text,
