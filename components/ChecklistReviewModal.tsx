@@ -223,7 +223,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
   return createPortal(
     <div
       id="modal-review-checklist-changes"
-      className="fixed !inset-0 z-[9999] m-0 flex h-[100dvh] w-[100vw] max-h-none max-w-none items-stretch justify-stretch overflow-hidden bg-white p-0 dark:bg-slate-950"
+      className="fixed !inset-0 z-[2147482200] m-0 flex h-[100dvh] w-[100vw] max-h-none max-w-none items-stretch justify-stretch overflow-hidden bg-white p-0 dark:bg-slate-950"
       style={{ width: '100vw', height: '100dvh', inset: 0 }}
       role="dialog"
       aria-modal="true"
