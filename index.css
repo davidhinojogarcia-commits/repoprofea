@@ -12,6 +12,31 @@ body.profea-modal-open {
   overflow: hidden;
 }
 
+/* Global dialog stacking guard.
+   When a confirmation/alert is open, hide any pre-existing app modal behind it.
+   This prevents double-window effects such as Editar/Eliminar, Devolver/Confirmar, etc.
+   The active dialog itself is portaled outside #root, so it remains visible. */
+body.profea-dialog-open {
+  overflow: hidden !important;
+}
+
+body.profea-dialog-open #root [class~="fixed"][class~="inset-0"] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.profea-dialog-open .profea-app-dialog-overlay {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Prevent interaction with the application while the global dialog is active. */
+body.profea-dialog-open #root {
+  pointer-events: none;
+  user-select: none;
+}
+
+
 /* Use the available viewport instead of constraining whole sections to desktop presets. */
 #root .max-w-\[1600px\],
 #root .max-w-7xl,
