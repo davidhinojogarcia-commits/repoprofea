@@ -693,7 +693,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? new Set([...allSignatureIds].filter(id=>importedIdsForCount.has(id)))
       : allSignatureIds;
     const signedWorkers=isImportedMandatory
-      ? [...signatureIds].map(id=>(data?.workers||[]).find(worker=>Number(worker.id)===id)).filter(Boolean)
+      ? [...signatureIds]
+          .map(id=>(data?.workers||[]).find(worker=>Number(worker.id)===id))
+          .filter((worker): worker is NonNullable<typeof worker>=>Boolean(worker))
       : assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
@@ -718,7 +720,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedWorkerOrder
           .map(id=>workerById.get(id))
           .filter(Boolean)
-          .filter((worker:any)=>!signatureIds.has(Number(worker.id))&&validForDocument(worker))
+          .filter((worker:any)=>!signatureIds.has(Number(worker.id)))
       : [];
     const availableImportedIds=new Set((data?.workers||[]).map(worker=>Number(worker.id)));
     const unavailableImportedCount=isImportedMandatory
