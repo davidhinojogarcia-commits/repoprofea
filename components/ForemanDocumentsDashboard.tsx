@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { appConfirm, appPrompt } from '../src/lib/appDialog';
+import { appAlert, appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
@@ -343,7 +343,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       clearBulkDelete();
       await refresh(true);
     }catch(error:any){
-      window.alert(error?.message||'No se pudieron eliminar los documentos seleccionados.');
+      void appAlert(error?.message||'No se pudieron eliminar los documentos seleccionados.');
     }finally{
       setBulkDeleteBusy(false);
     }
@@ -374,7 +374,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       clearBulkDelete();
       await refresh(true);
     }catch(error:any){
-      window.alert(error?.message||'No se pudo borrar la documentación completa de la obra.');
+      void appAlert(error?.message||'No se pudo borrar la documentación completa de la obra.');
     }finally{
       setBulkDeleteBusy(false);
     }
@@ -508,7 +508,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const saveGenericEditor = async () => {
     if (!editingCard) return;
     if (!genericEditDraft.work_date) {
-      window.alert('Indica la fecha del documento.');
+      void appAlert('Indica la fecha del documento.');
       return;
     }
     setEditBusy(true);
@@ -555,7 +555,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       await refresh(true);
     } catch (error:any) {
       console.error('No se pudo editar el documento del encargado:', error);
-      window.alert(error?.message || 'No se pudo guardar la edición.');
+      void appAlert(error?.message || 'No se pudo guardar la edición.');
     } finally {
       setEditBusy(false);
     }
@@ -588,7 +588,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       await refresh(true);
     } catch (error:any) {
       console.error('No se pudo eliminar el documento del encargado:', error);
-      window.alert(error?.message || 'No se pudo eliminar el documento.');
+      void appAlert(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
     }
@@ -629,7 +629,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       [...(item.workers || []), ...available].forEach((worker:any) => byId.set(String(worker.id), worker));
       setEditWorkers(Array.from(byId.values()).sort((a:any,b:any) => String(a.apellidosNombre || '').localeCompare(String(b.apellidosNombre || ''), 'es')));
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudieron cargar los trabajadores de la obra.');
+      void appAlert(error?.message || 'No se pudieron cargar los trabajadores de la obra.');
       setEditWorkers(item.workers || []);
     } finally {
       setEditBusy(false);
@@ -640,11 +640,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     if (!editingMandatory) return;
     const selectedWorkers = editWorkers.filter((worker:any) => editWorkerIds.has(String(worker.id)));
     if (!selectedWorkers.length) {
-      window.alert('Selecciona al menos un trabajador para el documento.');
+      void appAlert('Selecciona al menos un trabajador para el documento.');
       return;
     }
     if (!editWorkDate) {
-      window.alert('Indica la fecha del documento.');
+      void appAlert('Indica la fecha del documento.');
       return;
     }
     setEditBusy(true);
@@ -662,7 +662,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setEditingMandatory(null);
       await refresh(true);
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudo actualizar el documento.');
+      void appAlert(error?.message || 'No se pudo actualizar el documento.');
     } finally {
       setEditBusy(false);
     }
@@ -681,7 +681,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage('Documento eliminado correctamente.');
       await refresh(true);
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudo eliminar el documento.');
+      void appAlert(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
     }
