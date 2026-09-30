@@ -205,11 +205,14 @@ export async function analyzeMandatoryOriginalPdf(
     }
 
     if (!best) {
-      const fallbackPage=pages[0]||{page:1,width:595,height:842,rotation:0};
+      const fallbackCapacity=28;
+      const fallbackPageIndex=Math.min(Math.floor(workerIndex/fallbackCapacity),Math.max(0,pages.length-1));
+      const fallbackRowIndex=workerIndex%fallbackCapacity;
+      const fallbackPage=pages[fallbackPageIndex]||pages[0]||{page:1,width:595,height:842,rotation:0};
       const signatureWidth=Math.max(72,Math.min(96,fallbackPage.width*0.16));
       const signatureHeight=18;
       const signatureX=Math.max(12,fallbackPage.width-Math.max(16,fallbackPage.width*0.025)-signatureWidth);
-      const signatureY=Math.max(18,fallbackPage.height-118-(workerIndex*24));
+      const signatureY=Math.max(18,fallbackPage.height-118-(fallbackRowIndex*24));
       anchors.push({
         workerId: Number(worker.id),
         workerName: String(worker.apellidosNombre || ''),
@@ -265,6 +268,40 @@ export async function analyzeMandatoryOriginalPdf(
       resolved: true,
       ...(best.score < 0.9 ? { reason: 'Posición automática basada en coincidencia parcial del nombre.' } : {}),
     });
+  }
+
+  // Garantiza separación vertical entre firmas de una misma página.
+  // Se reduce automáticamente la altura (y proporcionalmente el ancho) cuando
+  // dos filas están muy próximas, manteniendo cada firma alineada a su fila.
+  const anchorsByPage=new Map<number,MandatoryWorkerAnchor[]>();
+  for(const anchor of anchors){
+    const page=Number(anchor.page)||1;
+    if(!anchorsByPage.has(page))anchorsByPage.set(page,[]);
+    anchorsByPage.get(page)!.push(anchor);
+  }
+  for(const pageAnchors of anchorsByPage.values()){
+    const positioned=pageAnchors
+      .filter(anchor=>anchor.signatureY!=null)
+      .sort((a,b)=>Number(b.signatureY||0)-Number(a.signatureY||0));
+    for(let index=0;index<positioned.length;index+=1){
+      const anchor=positioned[index];
+      const currentY=Number(anchor.signatureY||0);
+      const upper=index>0?positioned[index-1]:null;
+      const lower=index<positioned.length-1?positioned[index+1]:null;
+      const distanceUp=upper?Math.max(0,Number(upper.signatureY||0)-currentY):Infinity;
+      const distanceDown=lower?Math.max(0,currentY-Number(lower.signatureY||0)):Infinity;
+      const nearest=Math.min(distanceUp,distanceDown);
+      const currentHeight=Math.max(10,Number(anchor.signatureHeight||18));
+      const maxHeight=Number.isFinite(nearest)?Math.max(9,nearest-4):currentHeight;
+      const nextHeight=Math.min(currentHeight,maxHeight);
+      if(nextHeight<currentHeight){
+        const scale=nextHeight/currentHeight;
+        anchor.signatureHeight=nextHeight;
+        anchor.signatureWidth=Math.max(48,Number(anchor.signatureWidth||84)*scale);
+        // Recentrar ligeramente sobre la misma línea al reducir la caja.
+        anchor.signatureY=currentY+(currentHeight-nextHeight)/2;
+      }
+    }
   }
 
   const orderedResolved = anchors
