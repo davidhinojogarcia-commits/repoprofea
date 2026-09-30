@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import type { Person } from '../../types';
 import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader } from './exportUtils';
 import {
@@ -35,35 +36,166 @@ export function generateForemanCompletedDocumentPdf(record: ForemanCompletedDocu
 }
 
 export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: string, foremanName: string) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-  renderInstitutionalReportHeader(
-    doc,
-    'REGISTRO DIARIO DE JORNADA · ENCARGADO',
-    `${obra} · ${String(day.workDate || '').slice(0, 10)}`,
-    { subtitle: 'CONTROL DE ENTRADA Y SALIDA · PROFEA' },
-  );
-  const rows = day.rows || [];
-  let y = 50;
-  doc.setFont('helvetica','bold'); doc.setFontSize(8);
-  doc.text('TRABAJADOR',14,y); doc.text('DNI/NIE',95,y); doc.text('ENTRADA',135,y); doc.text('FIRMA ENTRADA',160,y); doc.text('SALIDA',215,y); doc.text('FIRMA SALIDA',238,y);
-  y += 4; doc.setDrawColor(180); doc.line(14,y,283,y); y += 5;
-  doc.setFont('helvetica','normal'); doc.setFontSize(7.2);
-  for (const row of rows) {
-    if (y > 185) { doc.addPage('a4','landscape'); y=20; }
-    doc.text(String(row.name||'-'),14,y,{maxWidth:76});
-    doc.text(String(row.dni||'-'),95,y,{maxWidth:35});
-    doc.text(String(row.entryTime||'-'),135,y);
-    if (row.entrySignature) { try { doc.addImage(row.entrySignature,'PNG',160,y-7,42,10,undefined,'FAST'); } catch {} }
-    doc.text(String(row.exitTime||'-'),215,y);
-    if (row.exitSignature) { try { doc.addImage(row.exitSignature,'PNG',238,y-7,42,10,undefined,'FAST'); } catch {} }
-    y += 13; doc.setDrawColor(225); doc.line(14,y-3,283,y-3);
-  }
-  doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
-  doc.text(`Encargado/a: ${foremanName || '-'} · Estado: ${day.status === 'completed' ? 'Jornada finalizada' : 'En cumplimentación'}`,14,198);
-  applyInstitutionalPdfStandard(doc);
-  return { doc, filename: `REGISTRO_DIARIO_${String(day.workDate||'').slice(0,10)}.pdf` };
-}
+  const BLUE: [number,number,number] = [0,84,142];
+  const LIGHT_BLUE: [number,number,number] = [235,244,251];
+  const BORDER: [number,number,number] = [166,193,216];
+  const TEXT: [number,number,number] = [30,41,59];
+  const safe=(value:unknown)=>String(value??'').trim();
+  const formatDate=(value:string)=>{
+    const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m?`${m[3]}/${m[2]}/${m[1]}`:String(value||'');
+  };
+  const rows=day.rows||[];
+  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
 
+  const drawField=(label:string,value:string,x:number,y:number,width:number,labelWidth:number,height=6)=>{
+    doc.setDrawColor(...BORDER);doc.setLineWidth(0.18);
+    doc.setFillColor(...LIGHT_BLUE);doc.rect(x,y,labelWidth,height,'FD');
+    doc.setFillColor(255,255,255);doc.rect(x+labelWidth,y,width-labelWidth,height,'FD');
+    doc.setFont('helvetica','bold');doc.setFontSize(5.8);doc.setTextColor(...BLUE);
+    doc.text(label,x+2,y+4);
+    doc.setFont('helvetica','normal');doc.setFontSize(5.9);doc.setTextColor(...TEXT);
+    const lines=doc.splitTextToSize(value||'-',Math.max(8,width-labelWidth-4));
+    doc.text(lines[0]||'-',x+labelWidth+2,y+4);
+  };
+
+  const drawPage=(row:ForemanAttendanceRow,index:number)=>{
+    if(index>0)doc.addPage('a4','landscape');
+    renderInstitutionalReportHeader(
+      doc,
+      'REGISTRO DIARIO DE JORNADA',
+      `${obra} · ${formatDate(String(day.workDate||''))}`,
+      {subtitle:'COOPERACIÓN · GESTIÓN DE FONDOS PROFEA'},
+    );
+
+    const pageW=doc.internal.pageSize.getWidth();
+    const x=10,gap=3,full=277,half=(full-gap)/2,h=6;
+    let y=42;
+
+    drawField('Obra',safe(obra),x,y,half,22,h);
+    drawField('Código obra',safe((row as any).codigoObra||''),x+half+gap,y,67,24,h);
+    drawField('Municipio',safe((row as any).municipio||''),x+half+gap+70,y,half-70,23,h);
+
+    const periodStart=safe((row as any).periodoInicio);
+    const periodEnd=safe((row as any).periodoFin);
+    const period=periodStart||periodEnd
+      ? `${formatDate(periodStart||periodEnd)} – ${formatDate(periodEnd||periodStart)}`
+      : formatDate(String(day.workDate||''));
+    const periodWidth=137,offerWidth=67,companyWidth=full-periodWidth-offerWidth-gap*2;
+    drawField('Periodo contratado',period,x,y+7,periodWidth,32,h);
+    drawField('Nº oferta',safe((row as any).numOferta||''),x+periodWidth+gap,y+7,offerWidth,24,h);
+    drawField('Empresa',safe((row as any).empresa||'Diputación Provincial de Cádiz'),x+periodWidth+gap+offerWidth+gap,y+7,companyWidth,22,h);
+
+    drawField('Trabajador',safe(row.name),x,y+14,half,22,h);
+    drawField('DNI/NIE',safe(row.dni),x+half+gap,y+14,76,21,h);
+    drawField('Categoría',safe(row.category),x+half+gap+79,y+14,half-79,22,h);
+    drawField('Responsable / Encargado',safe(foremanName),x,y+21,full,43,h);
+
+    y+=29;
+
+    autoTable(doc,{
+      startY:y,
+      head:[['Nº','Fecha','Hora entrada','Firma entrada','Hora salida','Firma salida','Horas efectivas','Incidencias']],
+      body:[[
+        '1',
+        formatDate(String(day.workDate||'')),
+        safe(row.entryTime)||'',
+        '',
+        safe(row.exitTime)||'',
+        '',
+        '',
+        '',
+      ]],
+      margin:{left:10,right:10,bottom:50},
+      tableWidth:277,
+      theme:'grid',
+      styles:{
+        font:'helvetica',fontSize:6.2,textColor:TEXT,lineColor:BORDER,lineWidth:0.16,
+        minCellHeight:22,cellPadding:0.7,valign:'middle',
+      },
+      headStyles:{
+        fillColor:BLUE,textColor:[255,255,255],fontStyle:'bold',fontSize:5.6,
+        halign:'center',valign:'middle',minCellHeight:7,
+      },
+      columnStyles:{
+        0:{cellWidth:9,halign:'center'},
+        1:{cellWidth:25,halign:'center'},
+        2:{cellWidth:27,halign:'center'},
+        3:{cellWidth:43},
+        4:{cellWidth:27,halign:'center'},
+        5:{cellWidth:43},
+        6:{cellWidth:28,halign:'center'},
+        7:{cellWidth:75},
+      },
+      didDrawCell:(data:any)=>{
+        if(data.section!=='body'||data.row.index!==0)return;
+        if(data.column.index===3&&row.entrySignature){
+          try{
+            const pad=2;
+            doc.addImage(row.entrySignature,'PNG',data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4,undefined,'FAST');
+          }catch{}
+        }
+        if(data.column.index===5&&row.exitSignature){
+          try{
+            const pad=2;
+            doc.addImage(row.exitSignature,'PNG',data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4,undefined,'FAST');
+          }catch{}
+        }
+      },
+    });
+
+    const tableEnd=(doc as any).lastAutoTable?.finalY||y+30;
+    const summaryY=Math.min(tableEnd+4,doc.internal.pageSize.getHeight()-47);
+    const leftX=10,leftW=68,centerX=81,centerW=112,rightX=196,rightW=pageW-rightX-10,boxH=24;
+    const box=(bx:number,bw:number,title:string)=>{
+      doc.setDrawColor(...BORDER);doc.setFillColor(255,255,255);doc.rect(bx,summaryY,bw,boxH,'FD');
+      doc.setFillColor(...LIGHT_BLUE);doc.rect(bx,summaryY,bw,6,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(6.2);doc.setTextColor(...BLUE);
+      doc.text(title,bx+2.5,summaryY+4.1);
+    };
+    box(leftX,leftW,'Resumen del periodo');
+    box(centerX,centerW,'Incidencias / observaciones');
+    box(rightX,rightW,'Conforme responsable / encargado');
+
+    doc.setFont('helvetica','normal');doc.setFontSize(5.8);doc.setTextColor(...TEXT);
+    const worked=Boolean(row.entrySignature&&row.exitSignature);
+    const summaryValues=[
+      ['Días trabajados',worked?'1':''],
+      ['Horas ordinarias',''],
+      ['Horas extraordinarias',''],
+      ['Total horas',''],
+    ];
+    summaryValues.forEach(([label,value],i)=>{
+      const ry=summaryY+9+i*4;
+      doc.text(label,leftX+3,ry);
+      if(value)doc.text(value,leftX+leftW-6,ry,{align:'right'});
+      doc.line(leftX+39,ry+0.7,leftX+leftW-3,ry+0.7);
+    });
+    doc.text(`Nombre: ${safe(foremanName)}`,rightX+3,summaryY+10);
+    doc.text('Firma:',rightX+3,summaryY+15);
+    doc.line(rightX+18,summaryY+15.6,rightX+rightW-3,summaryY+15.6);
+    doc.text('Fecha: ____ / ____ / ______',rightX+3,summaryY+21);
+
+    const noticeY=doc.internal.pageSize.getHeight()-18;
+    doc.setFontSize(5.5);doc.setTextColor(75,95,115);
+    doc.text('El trabajador firma diariamente la entrada y la salida de la jornada.',10,noticeY);
+    doc.text('Registro diario individual conforme al art. 34.9 del Estatuto de los Trabajadores. Conservación: 4 años.',pageW-10,noticeY,{align:'right'});
+  };
+
+  if(rows.length){
+    rows.forEach(drawPage);
+  }else{
+    renderInstitutionalReportHeader(doc,'REGISTRO DIARIO DE JORNADA',obra,{subtitle:'COOPERACIÓN · GESTIÓN DE FONDOS PROFEA'});
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...BLUE);
+    doc.text('No hay trabajadores registrados en esta jornada.',20,55);
+  }
+
+  applyInstitutionalPdfStandard(doc);
+  return {
+    doc,
+    filename:`REGISTRO_DIARIO_JORNADA_${String(day.workDate||'').slice(0,10)}.pdf`,
+  };
+}
 
 const renderImportedSourceText = (
   doc: jsPDF,
