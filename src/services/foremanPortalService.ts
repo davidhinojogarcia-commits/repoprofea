@@ -547,3 +547,10 @@ export async function deleteForemanMandatoryDocuments(input: { ids?: string[]; o
 export async function deleteForemanMandatoryDocument(id: string) {
   return deleteForemanMandatoryDocuments({ids:[id]});
 }
+
+export async function restoreForemanMandatoryGmailSource(gmailMessageId: string, attachmentName: string) {
+  return Number(await supabase.rpc('restore_foreman_mandatory_gmail_source', {
+    p_gmail_message_id: gmailMessageId,
+    p_attachment_name: attachmentName,
+  })) || 0;
+}
