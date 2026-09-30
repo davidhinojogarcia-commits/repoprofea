@@ -75,6 +75,13 @@ const workerNameTokens = (worker: Person) =>
     .split(' ')
     .filter(token => token.length >= 2 && !['DE','DEL','LA','LAS','LOS','Y'].includes(token));
 
+const tokenEquivalent = (workerToken: string, lineToken: string) => {
+  if (workerToken === lineToken) return true;
+  const minLength = Math.min(workerToken.length, lineToken.length);
+  if (minLength < 3) return false;
+  return workerToken.startsWith(lineToken) || lineToken.startsWith(workerToken);
+};
+
 const scoreLineForWorker = (worker: Person, lineText: string) => {
   const lineNorm = normalize(lineText);
   const lineCompact = compact(lineText);
@@ -88,8 +95,20 @@ const scoreLineForWorker = (worker: Person, lineText: string) => {
 
   const tokens = workerNameTokens(worker);
   if (tokens.length < 2) return 0;
-  const lineTokens = new Set(lineNorm.split(' ').filter(Boolean));
-  return tokens.every(token => lineTokens.has(token)) ? 0.9 : 0;
+  const lineTokens = lineNorm.split(' ').filter(Boolean);
+  const matched = tokens.filter(token => lineTokens.some(lineToken => tokenEquivalent(token, lineToken)));
+  if (matched.length === tokens.length) return 0.93;
+
+  // En listados reales es frecuente encontrar "APELLIDOS, N.", nombres abreviados
+  // o pequeñas diferencias de escritura. Los dos primeros tokens suelen ser los
+  // apellidos y permiten una coincidencia fuerte aunque el nombre venga abreviado.
+  const surnameTokens = tokens.slice(0, Math.min(2, tokens.length));
+  if (surnameTokens.length === 2 && surnameTokens.every(token => matched.includes(token))) return 0.91;
+
+  const coverage = matched.length / tokens.length;
+  if (matched.length >= 3 && coverage >= 0.75) return 0.89;
+  if (matched.length >= 2 && coverage >= 0.6) return 0.84;
+  return 0;
 };
 
 const itemBox = (item: any) => {
@@ -180,6 +199,7 @@ export async function analyzeMandatoryOriginalPdf(
       lineIndex:number;
       score:number;
     } | null = null;
+    let secondBestScore = 0;
 
     for (const pageInfo of pageLines) {
       for (let lineIndex=0; lineIndex<pageInfo.lines.length; lineIndex+=1) {
@@ -189,7 +209,10 @@ export async function analyzeMandatoryOriginalPdf(
         const key = `${pageInfo.page}:${lineIndex}`;
         if (used.has(key)) continue;
         if (!best || score > best.score) {
+          if (best) secondBestScore = Math.max(secondBestScore, best.score);
           best = { ...pageInfo, line, lineIndex, score };
+        } else {
+          secondBestScore = Math.max(secondBestScore, score);
         }
       }
     }
@@ -227,9 +250,15 @@ export async function analyzeMandatoryOriginalPdf(
     const fallbackX = Math.max(line.maxX + 18, best.width * 0.66);
     const candidateX = dynamicHeaderX ?? Math.min(fallbackX, best.width - rightMargin - 82);
     const availableWidth = Math.max(0, best.width - rightMargin - candidateX);
-    const signatureWidth = Math.min(Math.max(78, availableWidth), 132);
+    const fallbackSignatureWidth = Math.max(58, Math.min(92, best.width * 0.16));
+    const safeCandidateX = availableWidth >= 58
+      ? candidateX
+      : Math.max(line.maxX + 8, best.width - rightMargin - fallbackSignatureWidth);
+    const safeAvailableWidth = Math.max(0, best.width - rightMargin - safeCandidateX);
+    const signatureWidth = Math.min(Math.max(58, safeAvailableWidth), 132);
     const signatureHeight = Math.min(38, Math.max(24, rowHeight * 1.15));
-    const resolved = best.score >= 0.9 && availableWidth >= 70 && candidateX < best.width - 70;
+    const uniqueEnough = best.score >= 0.9 || (best.score >= 0.84 && (best.score - secondBestScore >= 0.08 || secondBestScore === 0));
+    const resolved = uniqueEnough && safeAvailableWidth >= 54 && safeCandidateX < best.width - 50;
     const signatureY = Math.max(6, line.y - signatureHeight * 0.38);
 
     anchors.push({
@@ -241,14 +270,81 @@ export async function analyzeMandatoryOriginalPdf(
       nameX: line.minX,
       nameY: line.y,
       rowHeight,
-      signatureX: resolved ? Number(candidateX) : null,
+      signatureX: resolved ? Number(safeCandidateX) : null,
       signatureY: resolved ? signatureY : null,
       signatureWidth: resolved ? signatureWidth : null,
       signatureHeight: resolved ? signatureHeight : null,
       confidence: best.score,
       resolved,
-      ...(resolved ? {} : { reason: 'La fila se ha reconocido, pero no hay una zona de firma suficientemente segura.' }),
+      ...(resolved ? {} : { reason: 'La coincidencia existe, pero no es suficientemente única para colocar la firma automáticamente.' }),
     });
+  }
+
+  // Si una fila concreta no se pudo leer con suficiente confianza, intentamos
+  // reconstruir su posición a partir del orden real del documento y de las filas
+  // vecinas ya localizadas. Esto evita bloquear la firma por una coma, abreviatura
+  // o texto fragmentado por el PDF sin reconstruir el documento original.
+  const workerIndex = new Map(workers.map((worker,index) => [Number(worker.id), index]));
+  const resolvedByWorkerOrder = anchors
+    .filter(anchor => anchor.resolved && anchor.nameY != null && anchor.signatureY != null)
+    .sort((a,b) => Number(workerIndex.get(a.workerId) ?? Number.MAX_SAFE_INTEGER) - Number(workerIndex.get(b.workerId) ?? Number.MAX_SAFE_INTEGER));
+
+  const rowSteps:number[] = [];
+  for (let index=1; index<resolvedByWorkerOrder.length; index+=1) {
+    const prev=resolvedByWorkerOrder[index-1];
+    const next=resolvedByWorkerOrder[index];
+    const prevIndex=workerIndex.get(prev.workerId);
+    const nextIndex=workerIndex.get(next.workerId);
+    if (prev.page!==next.page || prevIndex==null || nextIndex==null || nextIndex<=prevIndex) continue;
+    const step=(Number(prev.nameY)-Number(next.nameY))/(nextIndex-prevIndex);
+    if (step>=8 && step<=60) rowSteps.push(step);
+  }
+  rowSteps.sort((a,b)=>a-b);
+  const medianRowStep=rowSteps.length ? rowSteps[Math.floor(rowSteps.length/2)] : 0;
+
+  for (const anchor of anchors.filter(item => !item.resolved)) {
+    const index=workerIndex.get(anchor.workerId);
+    if (index==null) continue;
+    const previous=[...resolvedByWorkerOrder].reverse().find(item => Number(workerIndex.get(item.workerId)) < index);
+    const next=resolvedByWorkerOrder.find(item => Number(workerIndex.get(item.workerId)) > index);
+    let template:MandatoryWorkerAnchor|null=null;
+    let inferredNameY:number|null=null;
+
+    if (previous && next && previous.page===next.page) {
+      const previousIndex=Number(workerIndex.get(previous.workerId));
+      const nextIndex=Number(workerIndex.get(next.workerId));
+      const ratio=(index-previousIndex)/Math.max(1,nextIndex-previousIndex);
+      inferredNameY=Number(previous.nameY)+(Number(next.nameY)-Number(previous.nameY))*ratio;
+      template=Math.abs(index-previousIndex)<=Math.abs(nextIndex-index)?previous:next;
+    } else if (medianRowStep && previous) {
+      const previousIndex=Number(workerIndex.get(previous.workerId));
+      if (index-previousIndex<=4) {
+        inferredNameY=Number(previous.nameY)-medianRowStep*(index-previousIndex);
+        template=previous;
+      }
+    } else if (medianRowStep && next) {
+      const nextIndex=Number(workerIndex.get(next.workerId));
+      if (nextIndex-index<=4) {
+        inferredNameY=Number(next.nameY)+medianRowStep*(nextIndex-index);
+        template=next;
+      }
+    }
+
+    if (!template || inferredNameY==null) continue;
+    const pageMeta=pages.find(page=>page.page===template!.page);
+    if (!pageMeta || inferredNameY<8 || inferredNameY>pageMeta.height-8) continue;
+    const signatureHeight=Number(template.signatureHeight||28);
+    anchor.page=template.page;
+    anchor.nameX=template.nameX;
+    anchor.nameY=inferredNameY;
+    anchor.rowHeight=template.rowHeight;
+    anchor.signatureX=template.signatureX;
+    anchor.signatureY=Math.max(6,inferredNameY-signatureHeight*0.38);
+    anchor.signatureWidth=template.signatureWidth;
+    anchor.signatureHeight=template.signatureHeight;
+    anchor.confidence=Math.max(anchor.confidence,0.76);
+    anchor.resolved=true;
+    anchor.reason='Zona de firma inferida automáticamente a partir de las filas vecinas del documento original.';
   }
 
   const orderedResolved = anchors
