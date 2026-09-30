@@ -79,6 +79,22 @@ jobs:
           grep -q "getSupervisorMandatoryPdf" components/ForemanDocumentsDashboard.tsx
           grep -q "get_foreman_mandatory_signatures" "$MIGRATION"
           grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
+      - name: Validate modal stacking and mobile QR
+        run: |
+          set -euo pipefail
+          grep -q -- "--profea-modal-z: 2147482000" notification-modal-layout.css
+          grep -q "z-\[2147483000\]" components/AppDialogHost.tsx
+          grep -q "z-\[2147482200\]" components/ChecklistReviewModal.tsx
+          grep -q "createPortal" components/ForemanAccessButton.tsx
+          grep -q "z-\[2147482500\]" components/ForemanAccessButton.tsx
+          grep -q "w-\[min(92vw,560px)\]" components/ForemanAccessButton.tsx
+          grep -q "h-\[100dvh\]" components/ForemanAccessButton.tsx
+          test "$(grep -o "{qrModal}" components/ForemanAccessButton.tsx | wc -l)" -ge 2
+          if grep -q "window\.alert(" components/ForemanDocumentsDashboard.tsx; then
+            echo 'Foreman documents must use the global top-layer app dialog, not native inline alerts.'
+            exit 1
+          fi
+
       - name: TypeScript validation
         run: |
           set -o pipefail
