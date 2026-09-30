@@ -850,6 +850,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ...anchorWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
       ...importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
     ]);
+    const importedAnchorMap=new Map(workerAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
     const importedCandidates=isImportedMandatory
       ? importedWorkerOrder
           .map(id=>{
@@ -882,7 +883,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedWorkerOrder.filter(id=>!signatureIds.has(id)).length
       : operationalCandidates.length;
     const exactOriginalMode=isImportedMandatory&&doc.details?.originalPdfMode==='overlay';
-    const importedAnchorMap=new Map(workerAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
