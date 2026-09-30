@@ -864,7 +864,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=><button
               key={worker.id}
               type="button"
-              disabled={saving||!signatureZonesReady}
+              disabled={saving}
               onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})}
               className="w-full min-h-[66px] rounded-xl border border-blue-200 bg-white px-4 py-3 text-left shadow-sm disabled:opacity-50"
             >
