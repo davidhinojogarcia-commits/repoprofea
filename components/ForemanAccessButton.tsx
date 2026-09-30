@@ -194,8 +194,17 @@ export const ForemanAccessButton: React.FC<{
 
   const showQr = async () => {
     setError('');
+    setCopied(false);
+    setOpen(true);
     try {
-      await ensureShareableUrl(true);
+      if (url) {
+        if (!qr) setQr(await qrDataUrl(url));
+        return;
+      }
+
+      // En móvil evitamos encadenar un segundo modal de confirmación.
+      // El propio visor del QR es la única ventana visible.
+      await generateAccess(false);
     } catch (caught) {
       console.error('No se pudo mostrar el código QR:', caught);
       setError(errorMessage(caught, 'No se pudo mostrar el código QR. Inténtalo de nuevo.'));
@@ -370,7 +379,7 @@ export const ForemanAccessButton: React.FC<{
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 sm:p-4">
+        <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-slate-950/80 p-0 sm:p-4" role="dialog" aria-modal="true">
           <div className="flex h-full w-full flex-col overflow-y-auto bg-white p-4 shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:max-w-xl sm:rounded-3xl sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -390,6 +399,14 @@ export const ForemanAccessButton: React.FC<{
               Muéstrale este código al encargado para que lo escanee con la cámara de su móvil.
             </p>
 
+            {busy && !qr && (
+              <div className="mx-auto my-6 flex aspect-square w-[min(82vw,360px)] items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50">
+                <div className="text-center">
+                  <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#00548E]" />
+                  <p className="mt-3 text-sm font-black text-slate-700">Generando código QR…</p>
+                </div>
+              </div>
+            )}
             {qr && (
               <img
                 src={qr}
@@ -397,8 +414,13 @@ export const ForemanAccessButton: React.FC<{
                 className="mx-auto my-4 aspect-square w-[min(88vw,440px)] rounded-2xl border-4 border-white bg-white p-2 shadow-lg"
               />
             )}
+            {!busy && !qr && !error && (
+              <div className="mx-auto my-6 w-full max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-bold text-amber-900">
+                Preparando el acceso del encargado…
+              </div>
+            )}
 
-            <div className="rounded-xl bg-slate-50 p-3 text-xs break-all dark:bg-slate-800">{url}</div>
+            {url&&<div className="rounded-xl bg-slate-50 p-3 text-xs break-all dark:bg-slate-800">{url}</div>}
             <div className="grid grid-cols-1 gap-2 mt-4 sm:grid-cols-2">
               <button
                 type="button"
