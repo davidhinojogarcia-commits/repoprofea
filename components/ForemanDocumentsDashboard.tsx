@@ -8,7 +8,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { pdfBlobFromBase64, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 
@@ -59,6 +59,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [completionNotice,setCompletionNotice]=useState('');
   const [activityNotice,setActivityNotice]=useState('');
   const [anchorEditing,setAnchorEditing]=useState<DbMandatory|null>(null);
+  const [bulkDeleteMode,setBulkDeleteMode]=useState(false);
+  const [bulkDeleteBusy,setBulkDeleteBusy]=useState(false);
+  const [selectedDeleteKeys,setSelectedDeleteKeys]=useState<Set<string>>(new Set());
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -255,6 +258,92 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     const group=workDocumentGroups.find(([work])=>work===selectedDocsWork);
     return group?.[1]||{total:0,pending:0};
   },[workDocumentGroups,selectedDocsWork]);
+
+  const deleteKey=(card:any)=>`${card.kind}:${card.id}`;
+
+  const toggleDeleteSelection=(card:any)=>setSelectedDeleteKeys(current=>{
+    const next=new Set(current);
+    const key=deleteKey(card);
+    if(next.has(key))next.delete(key);else next.add(key);
+    return next;
+  });
+
+  const clearBulkDelete=()=>{
+    setSelectedDeleteKeys(new Set());
+    setBulkDeleteMode(false);
+  };
+
+  const deleteCardBatch=async(targets:any[])=>{
+    const mandatoryIds=targets.filter(card=>card.kind==='mandatory').map(card=>String(card.id));
+    const attendanceIds=targets.filter(card=>card.kind==='attendance').map(card=>String(card.id));
+    const documentIds=targets.filter(card=>card.kind==='document').map(card=>String(card.id));
+
+    if(mandatoryIds.length){
+      await deleteForemanMandatoryDocuments({ids:mandatoryIds});
+    }
+    await Promise.all(attendanceIds.map(id=>supabase.query('foreman_attendance_days',{
+      method:'DELETE',query:'id=eq.'+encodeURIComponent(id),prefer:'return=minimal',
+    })));
+    await Promise.all(documentIds.map(id=>supabase.query('foreman_documents',{
+      method:'DELETE',query:'id=eq.'+encodeURIComponent(id),prefer:'return=minimal',
+    })));
+  };
+
+  const deleteSelectedDocuments=async()=>{
+    const targets=allCards.filter(card=>selectedDeleteKeys.has(deleteKey(card)));
+    if(!targets.length)return;
+    const ok=await appConfirm(
+      `¿Eliminar definitivamente ${targets.length} documento(s) seleccionado(s)? Los documentos de Inicio/Control quedarán marcados para que no vuelvan a generarse automáticamente.`,
+      {title:'Borrado masivo',confirmLabel:`Eliminar ${targets.length}`},
+    );
+    if(!ok)return;
+    setBulkDeleteBusy(true);
+    try{
+      await deleteCardBatch(targets);
+      setMailMessage(`${targets.length} documento(s) eliminado(s) definitivamente.`);
+      clearBulkDelete();
+      await refresh(true);
+    }catch(error:any){
+      window.alert(error?.message||'No se pudieron eliminar los documentos seleccionados.');
+    }finally{
+      setBulkDeleteBusy(false);
+    }
+  };
+
+  const deleteSelectedWorkDocuments=async()=>{
+    const obra=String(selectedDocsWork||'').trim();
+    if(!obra)return;
+    const count=allCards.filter(card=>String(card.obra||'').trim()===obra).length;
+    if(!count)return;
+    const ok=await appConfirm(
+      `¿Eliminar TODOS los documentos de la obra ${obra}?\n\nSe eliminarán ${count} documento(s), incluidos Inicio/Control, jornadas y documentos normalizados. Los Inicio/Control quedarán bloqueados para que no reaparezcan por sincronización.`,
+      {title:'Borrar documentos de la obra',confirmLabel:'Borrar toda la obra'},
+    );
+    if(!ok)return;
+    setBulkDeleteBusy(true);
+    try{
+      await deleteForemanMandatoryDocuments({obra});
+      await Promise.all([
+        supabase.query('foreman_attendance_days',{
+          method:'DELETE',query:'obra=eq.'+encodeURIComponent(obra),prefer:'return=minimal',
+        }),
+        supabase.query('foreman_documents',{
+          method:'DELETE',query:'obra=eq.'+encodeURIComponent(obra),prefer:'return=minimal',
+        }),
+      ]);
+      setMailMessage(`Documentación de ${obra} eliminada definitivamente.`);
+      clearBulkDelete();
+      await refresh(true);
+    }catch(error:any){
+      window.alert(error?.message||'No se pudo borrar la documentación completa de la obra.');
+    }finally{
+      setBulkDeleteBusy(false);
+    }
+  };
+
+  useEffect(()=>{
+    setSelectedDeleteKeys(new Set());
+  },[selectedDocsWork,selectedDocsMonth]);
   const markReviewed=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
     await reviewForemanItem(kind,id);
     await refresh(true);
@@ -656,6 +745,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <div className="rounded-2xl border bg-white dark:bg-slate-900 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{selectedWorkStats.total} documento(s) en esta obra · {selectedWorkStats.pending} pendiente(s) de revisión. Organizados por meses.</p></div>
+            {!!selectedDocsWork&&<div className="flex flex-wrap gap-2">
+              <button type="button" disabled={bulkDeleteBusy} onClick={()=>{setBulkDeleteMode(value=>!value);setSelectedDeleteKeys(new Set())}} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{bulkDeleteMode?'Cancelar selección':'Selección múltiple'}</button>
+              <button type="button" disabled={bulkDeleteBusy} onClick={()=>void deleteSelectedWorkDocuments()} className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 disabled:opacity-50"><Trash2 className="mr-1.5 inline h-4 w-4"/>Borrar obra</button>
+            </div>}
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {monthDocumentGroups.map(([month,stats])=><button key={month} type="button" onClick={()=>setSelectedDocsMonth(month)} className={`shrink-0 rounded-xl border px-3 py-2.5 ${selectedDocsMonth===month?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}><div className="flex items-center gap-2 text-xs font-black"><CalendarDays className="w-3.5 h-3.5"/>{month==='Sin fecha'?'Sin fecha':monthLabel(month)}{stats.pending>0&&<span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${selectedDocsMonth===month?'bg-white/20 text-white':'bg-amber-100 text-amber-900'}`}>{stats.pending}</span>}</div><div className={`mt-0.5 text-[10px] ${selectedDocsMonth===month?'text-blue-100':'text-slate-600 dark:text-slate-300'}`}>{stats.total} documento(s)</div></button>)}
@@ -666,7 +759,18 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border pl-9 pr-3 py-2.5 bg-white dark:bg-slate-950"/></div>
       <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio y control de presencia</option><option value="attendance">Registro diario</option><option value="documents">Documentos normalizados</option><option value="pending">Pendientes de revisar ({pending})</option></select>
     </div>
-    {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra y mes con los filtros actuales.</div>:<div className="relative z-0 space-y-4">{visibleCards.map(card=><article key={card.kind+card.id} className="relative isolate z-0 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
+    {bulkDeleteMode&&<div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-auto text-sm font-black text-rose-900">{selectedDeleteKeys.size} seleccionado(s)</span>
+        <button type="button" disabled={bulkDeleteBusy||!visibleCards.length} onClick={()=>setSelectedDeleteKeys(new Set(visibleCards.map(deleteKey)))} className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-800 disabled:opacity-50">Seleccionar visibles</button>
+        <button type="button" disabled={bulkDeleteBusy||selectedDeleteKeys.size===0} onClick={()=>void deleteSelectedDocuments()} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">{bulkDeleteBusy?'Eliminando…':`Borrar seleccionados (${selectedDeleteKeys.size})`}</button>
+      </div>
+    </div>}
+    {loading?<div className="rounded-2xl bg-white border p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra y mes con los filtros actuales.</div>:<div className="relative z-0 space-y-4">{visibleCards.map(card=><article key={card.kind+card.id} className={`relative isolate z-0 rounded-2xl bg-white dark:bg-slate-900 border p-4 shadow-sm ${bulkDeleteMode&&selectedDeleteKeys.has(deleteKey(card))?'border-rose-400 ring-2 ring-rose-100':'border-slate-200 dark:border-slate-800'}`}>
+      {bulkDeleteMode&&<label className="mb-3 flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-black text-rose-900">
+        <input type="checkbox" className="h-5 w-5 accent-rose-600" checked={selectedDeleteKeys.has(deleteKey(card))} onChange={()=>toggleDeleteSelection(card)}/>
+        Seleccionar para borrar
+      </label>}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
         <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{card.item.workers?.length||0} firmas recogidas</p>}{card.item.correction_pending&&<p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs font-bold text-amber-900">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
