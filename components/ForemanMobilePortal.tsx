@@ -25,8 +25,6 @@ import {
   base64ToBytes,
   buildSignedMandatoryPdf,
   bytesToBase64,
-  pdfBlobFromBase64,
-  pdfBlobFromBytes,
   sha256Hex,
   verifyMandatoryPdfFidelity,
   type MandatoryWorkerAnchor,
@@ -118,6 +116,72 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
   </div>;
 };
 
+const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; onClose: () => void }> = ({ bytes, title, onClose }) => {
+  const hostRef=useRef<HTMLDivElement>(null);
+  const [renderError,setRenderError]=useState('');
+  const [rendering,setRendering]=useState(true);
+
+  useEffect(()=>{
+    let cancelled=false;
+    let pdf:any=null;
+    (async()=>{
+      try{
+        setRendering(true);
+        setRenderError('');
+        const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const workerModule=await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
+        if(!pdfjs.GlobalWorkerOptions.workerSrc)pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
+        pdf=await pdfjs.getDocument({data:bytes.slice(),useSystemFonts:true}).promise;
+        const host=hostRef.current;
+        if(!host||cancelled)return;
+        host.innerHTML='';
+        for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber+=1){
+          if(cancelled)return;
+          const page=await pdf.getPage(pageNumber);
+          const base=page.getViewport({scale:1});
+          const available=Math.max(280,Math.min(window.innerWidth-24,900));
+          const scale=Math.min(2,available/base.width);
+          const viewport=page.getViewport({scale});
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.ceil(viewport.width);
+          canvas.height=Math.ceil(viewport.height);
+          canvas.style.width='100%';
+          canvas.style.height='auto';
+          canvas.style.display='block';
+          canvas.style.background='#fff';
+          canvas.style.boxShadow='0 8px 24px rgba(15,23,42,.12)';
+          canvas.style.borderRadius='8px';
+          const wrapper=document.createElement('div');
+          wrapper.style.marginBottom='12px';
+          wrapper.appendChild(canvas);
+          host.appendChild(wrapper);
+          const ctx=canvas.getContext('2d');
+          if(!ctx)throw new Error('No se pudo preparar la vista del PDF.');
+          await page.render({canvas,canvasContext:ctx,viewport}).promise;
+        }
+      }catch(e:any){
+        if(!cancelled)setRenderError(e?.message||'No se pudo mostrar el PDF.');
+      }finally{
+        if(!cancelled)setRendering(false);
+      }
+    })();
+    return()=>{cancelled=true;try{pdf?.destroy?.();}catch{}};
+  },[bytes]);
+
+  return <div className="fixed inset-0 z-[12000] flex flex-col bg-slate-950/90">
+    <div className="flex items-center justify-between gap-3 bg-white px-4 py-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-black text-slate-900">{title}</div>
+        <div className="text-xs text-slate-500">Vista previa del PDF real</div>
+      </div>
+      <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
+    </div>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-200 p-3" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
+      {rendering&&<div className="mx-auto mt-8 max-w-md rounded-2xl bg-white p-5 text-center text-sm font-bold text-slate-600">Cargando PDF…</div>}
+      {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{renderError}</div>}
+      <div ref={hostRef} className="mx-auto w-full max-w-[900px]" />
+    </div>
+  </div>;
 export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
@@ -144,7 +208,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [installPromptAvailable,setInstallPromptAvailable]=useState(Boolean(window.__profeaInstallPrompt));
   const [installHelpVisible,setInstallHelpVisible]=useState(false);
   const [installedStandalone,setInstalledStandalone]=useState(isStandaloneDisplay());
-  const [pdfPreview,setPdfPreview]=useState<{url:string;title:string}|null>(null);
+  const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string}|null>(null);
+  const [operationFeedback,setOperationFeedback]=useState('');
+  const [focusDocumentId,setFocusDocumentId]=useState('');
 
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
@@ -328,8 +394,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       return window.alert('Indica la maquinaria o equipos autorizados para todos los trabajadores seleccionados.');
     }
     setSaving(true);
+    setOperationFeedback('');
     try{
-      await createForemanOperationalDocument({
+      const createdId=String(await createForemanOperationalDocument({
         token,
         documentType:type,
         workDate:date,
@@ -345,11 +412,21 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           duracionFormacion:trainingDuration,
           maquinariaPorTrabajador:machineryByWorker,
         },
-      });
+      })||'').trim();
       await refresh();
       setError('');
+      setOperationFeedback(type==='formacion'
+        ? 'Relación de Formación preparada. Debajo tienes los trabajadores para firmar.'
+        : 'Documento preparado correctamente para recoger firmas.');
+      if(createdId){
+        setFocusDocumentId(createdId);
+        window.setTimeout(()=>document.getElementById('foreman-signing-'+createdId)?.scrollIntoView({behavior:'smooth',block:'start'}),120);
+      }
     }catch(e:any){
-      setError(e?.message||'No se pudo preparar el documento para firmas.');
+      const message=e?.message||'No se pudo preparar el documento para firmas.';
+      setError(message);
+      setOperationFeedback(message);
+      window.alert(message);
     }finally{
       setSaving(false);
     }
@@ -395,20 +472,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
   } as Record<string,string>)[type]||type;
 
-  const showPdfPreview=(blob:Blob,title:string)=>{
-    const url=URL.createObjectURL(blob);
-    setPdfPreview(previous=>{
-      if(previous?.url)URL.revokeObjectURL(previous.url);
-      return {url,title};
-    });
+  const showPdfPreview=(bytes:Uint8Array,title:string)=>{
+    setPdfPreview({bytes,title});
   };
 
-  const closePdfPreview=()=>{
-    setPdfPreview(previous=>{
-      if(previous?.url)URL.revokeObjectURL(previous.url);
-      return null;
-    });
-  };
+  const closePdfPreview=()=>setPdfPreview(null);
 
   const assertStoredOriginalIntegrity=async(source:{base64:string;sha256?:string})=>{
     const expected=String(source.sha256||'').trim().toLowerCase();
@@ -454,10 +522,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       if(variant==='original'){
         const source=await getForemanMandatoryPdf(token,doc.id,'original');
         await assertStoredOriginalIntegrity(source);
-        showPdfPreview(pdfBlobFromBase64(source.base64),`${mandatoryLabel(doc.documentType)} · Original`);
+        showPdfPreview(base64ToBytes(source.base64),`${mandatoryLabel(doc.documentType)} · Original`);
       }else{
         const prepared=await buildExactSignedPreview(doc,false);
-        showPdfPreview(pdfBlobFromBytes(prepared.bytes),`${mandatoryLabel(doc.documentType)} · Previsualización firmada`);
+        showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`);
       }
       setError('');
     }catch(e:any){
@@ -570,7 +638,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       (!exactOriginalMode||unresolvedAnchorCount===0) &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
 
-    return <div key={doc.id} className={`rounded-2xl bg-white border p-4 shadow-sm ${correction?'border-amber-300':''}`}>
+    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 rounded-2xl bg-white border p-4 shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
@@ -850,6 +918,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             </label>
           </div>
           <button type="button" disabled={saving||!documentWorkers.length} onClick={()=>void prepareOperationalDocument('formacion')} className="min-h-[56px] w-full rounded-2xl bg-[#00548E] px-4 py-3.5 text-base font-black text-white disabled:opacity-50">Preparar relación para firmas ({documentWorkers.length})</button>
+          {operationFeedback&&<div className={`rounded-xl border px-4 py-3 text-sm font-bold ${error?'border-rose-200 bg-rose-50 text-rose-800':'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{operationFeedback}</div>}
         </div>
         {operationalDocumentsFor('formacion').map(doc=>renderSigningDocument(doc))}
       </section>}
@@ -977,13 +1046,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.attendance.some(day=>day.status==='completed'||day.status==='reviewed')&&!data.documents.some(d=>!d.correctionPending&&d.status!=='draft')&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
       </section>}
     </main>
-    {pdfPreview&&<div className="fixed inset-0 z-[12000] flex flex-col bg-slate-950/90 p-2 sm:p-4">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 rounded-t-2xl bg-white px-4 py-3">
-        <div className="min-w-0"><div className="truncate text-sm font-black text-slate-900">{pdfPreview.title}</div><div className="text-xs text-slate-500">Previsualización del PDF real</div></div>
-        <button type="button" onClick={closePdfPreview} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
-      </div>
-      <iframe title={pdfPreview.title} src={pdfPreview.url} className="mx-auto h-full w-full max-w-5xl rounded-b-2xl bg-white" />
-    </div>}
+    {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} onClose={closePdfPreview}/>} 
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
     {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{const current=mandatorySigning;setMandatorySigning(null);setSaving(true);try{await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));setError('');await refresh();}catch(e:any){setError(e?.message||'No se pudo guardar la firma.');}finally{setSaving(false);}}} onCancel={()=>setMandatorySigning(null)}/>} 
