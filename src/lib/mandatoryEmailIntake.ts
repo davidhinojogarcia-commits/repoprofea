@@ -378,8 +378,16 @@ export async function processManualMandatoryFiles(
         if (work) counts.set(work, (counts.get(work) || 0) + 1);
       }
       const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-      const obra = inferredObra || obraHint;
-      const selected = obra ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase()) : matched;
+      // En importación manual, la obra elegida por el supervisor tiene prioridad absoluta.
+      // La detección automática solo se usa cuando no se ha seleccionado una obra.
+      const obra = obraHint || inferredObra;
+      const selected = obra
+        ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase())
+        : matched;
+
+      if (obraHint && matched.length > 0 && selected.length === 0) {
+        warnings.push(`${file.name}: los trabajadores reconocidos no pertenecen a la obra seleccionada (${obraHint}). El PDF se conservará en esa obra y las personas deberán confirmarse manualmente.`);
+      }
       const workDate = extractDate(extracted.text);
       const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
       const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
