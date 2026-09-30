@@ -294,7 +294,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           .map(id => selectedById.get(Number(id)))
           .filter((worker): worker is Person => Boolean(worker));
         const sourceBytes = new Uint8Array(await file.arrayBuffer());
-        await prepareMandatoryDocumentFromEmail({
+        const preparedId=await prepareMandatoryDocumentFromEmail({
           documentType: type,
           workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
           workDate,
@@ -312,7 +312,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           pageMeta: analysis.pages,
           workerAnchors: analysis.anchors,
         });
-        importedDocuments += 1;
+        if(preparedId) importedDocuments += 1;
         existing.add(key);
       } catch (error: any) {
         warnings.push(`${attachment.filename}: ${error?.message || 'no se pudo procesar'}`);
@@ -396,7 +396,7 @@ export async function processManualMandatoryFiles(
         .filter((worker): worker is Person => Boolean(worker));
       const sourceBytes = new Uint8Array(await file.arrayBuffer());
 
-      await prepareMandatoryDocumentFromEmail({
+      const preparedId=await prepareMandatoryDocumentFromEmail({
         documentType: type,
         workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
         workDate,
@@ -415,7 +415,7 @@ export async function processManualMandatoryFiles(
         workerAnchors: analysis.anchors,
         obraHint: obra || null,
       });
-      importedDocuments += 1;
+      if(preparedId) importedDocuments += 1;
     } catch (error: any) {
       skippedFiles += 1;
       warnings.push(`${file.name}: ${error?.message || 'no se pudo procesar'}`);

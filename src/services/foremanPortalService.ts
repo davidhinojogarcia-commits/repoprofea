@@ -533,10 +533,17 @@ export async function updateForemanMandatoryDocument(input: {
   });
 }
 
-export async function deleteForemanMandatoryDocument(id: string) {
-  await supabase.query('foreman_mandatory_documents', {
-    method: 'DELETE',
-    prefer: 'return=minimal',
-    query: `id=eq.${encodeURIComponent(id)}`,
+export async function deleteForemanMandatoryDocuments(input: { ids?: string[]; obra?: string }) {
+  const ids=(input.ids||[]).filter(Boolean);
+  const obra=String(input.obra||'').trim();
+  if(!ids.length&&!obra)return 0;
+  const result=await supabase.rpc('delete_foreman_mandatory_documents',{
+    p_ids:ids.length?ids:null,
+    p_obra:obra||null,
   });
+  return Number(result)||0;
+}
+
+export async function deleteForemanMandatoryDocument(id: string) {
+  return deleteForemanMandatoryDocuments({ids:[id]});
 }
