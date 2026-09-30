@@ -869,7 +869,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
     const signatureZonesReady=!isImportedMandatory||unresolvedAnchorCount===0;
-    const canFinalize=signedCount>0 && pendingRequired===0 && signatureZonesReady &&
+    const canFinalize=signedCount>0 && pendingRequired===0 &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
     const expanded=expandedMandatoryDocuments.has(doc.id);
 
@@ -896,8 +896,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <button type="button" disabled={saving||signedCount===0} onClick={()=>void previewMandatoryPdf(doc,'signed')} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:bg-slate-300">Previsualizar con firmas</button>
         </div>
         {operationFeedback&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">{operationFeedback}</div>}
-        {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
-          {unresolvedAnchorCount===1?'Este documento todavía no está listo para firmar: el supervisor debe confirmar 1 zona de firma.':`Este documento todavía no está listo para firmar: el supervisor debe confirmar ${unresolvedAnchorCount} zonas de firma.`}
+        {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
+          Las zonas de firma pendientes se localizarán automáticamente cuando cada persona pulse su tarjeta.
         </div>}
       </div>}
       {!exactOriginalMode&&sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
@@ -908,8 +908,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {correction&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900"><b>Devuelto por el supervisor:</b> {doc.correctionReason||'Revisa y corrige el documento.'}</div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size>0&&<div className="mt-3 rounded-2xl border-2 border-[#00548E]/20 bg-blue-50/50 p-3">
-        <div className="text-base font-black text-[#00548E]">Personas que vienen en el documento importado</div>
-        <p className="mt-1 text-sm leading-5 text-slate-600">Comprueba cada persona y pulsa su botón para recoger la firma. Solo pasará al documento final cuando firme.</p>
+        <div className="text-base font-black text-[#00548E]">Personas listas para firmar</div>
+        <p className="mt-1 text-sm leading-5 text-slate-600">Estas son exactamente las personas leídas del documento importado. Todas quedan habilitadas automáticamente para firmar, sin revisión previa del supervisor.</p>
         {importedCandidates.length>0
           ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=><button
               key={worker.id}
@@ -932,7 +932,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        No se han reconocido trabajadores con seguridad en este PDF. El supervisor debe revisar el documento antes de habilitar firmas.
+        No se han podido leer nombres de personas en este PDF. Vuelve a importar un documento legible para habilitar las firmas automáticamente.
       </div>}
 
       {!closed&&!isImportedMandatory&&operationalCandidates.length>0&&<div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
