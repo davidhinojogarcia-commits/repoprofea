@@ -8,7 +8,7 @@ import {
 } from './gmailConnection';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getDocuments } from '../services/databaseService';
-import { prepareMandatoryDocumentFromEmail } from '../services/foremanPortalService';
+import { prepareMandatoryDocumentFromEmail, restoreForemanMandatoryGmailSource } from '../services/foremanPortalService';
 import { analyzeMandatoryOriginalPdf, fileToBase64, sha256Hex } from './mandatoryPdfOverlay';
 
 const norm = (value: unknown) =>
@@ -222,6 +222,7 @@ export type MandatoryEmailIntakeResult = {
 export async function processAdministrativeMandatoryInbox(options?: {
   existingSourceKeys?: Set<string>;
   onProgress?: (message: string) => void;
+  restoreDeleted?: boolean;
 }): Promise<MandatoryEmailIntakeResult> {
   const settings = await loadAppBusinessSettings();
   const administrativeEmail = String(settings.administrative?.email || '').trim().toLowerCase();
@@ -294,6 +295,9 @@ export async function processAdministrativeMandatoryInbox(options?: {
           .map(id => selectedById.get(Number(id)))
           .filter((worker): worker is Person => Boolean(worker));
         const sourceBytes = new Uint8Array(await file.arrayBuffer());
+        if (options?.restoreDeleted) {
+          await restoreForemanMandatoryGmailSource(message.id, attachment.filename);
+        }
         const preparedId=await prepareMandatoryDocumentFromEmail({
           documentType: type,
           workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
