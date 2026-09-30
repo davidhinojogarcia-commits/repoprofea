@@ -296,6 +296,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       category:w.categoria,
       entryTime:data.defaultWorkStartHour || '08:00',
       exitTime:data.defaultWorkEndHour || '15:00',
+      periodoInicio:w.periodoInicio || '',
+      periodoFin:w.periodoFin || '',
+      numOferta:w.numOferta || '',
+      municipio:data.worksite?.municipio || '',
+      empresa:data.worksite?.empresa || 'Diputación Provincial de Cádiz',
+      codigoObra:data.worksite?.codigo || '',
     })));
   },[data,date]);
 
