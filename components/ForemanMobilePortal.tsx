@@ -785,8 +785,13 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       await repairForemanMandatoryAnchors(token,doc.id,analysis.anchors);
       await refresh();
       const repaired=analysis.anchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
-      if(!repaired?.resolved)throw new Error('No se ha podido localizar la línea exacta de esta persona en el PDF.');
-      setOperationFeedback('');
+      if(!repaired?.resolved){
+        // La localización de la fila sirve únicamente para colocar después la firma
+        // sobre el PDF. Nunca debe impedir que el trabajador firme.
+        setOperationFeedback('Firma habilitada. La aplicación seguirá intentando ajustar automáticamente su posición en el PDF.');
+      }else{
+        setOperationFeedback('');
+      }
       setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
     }catch(e:any){
       const message=e?.message||'No se pudo preparar la firma de esta persona.';
