@@ -9,9 +9,11 @@
 :root {
   --profea-app-header-height: 5.75rem;
   --profea-modal-gap: 1.25rem;
+  --profea-modal-z: 2147482000;
 }
 
-/* Navigation always remains above application modals. */
+/* Navigation remains interactive only when no modal is open. Modal layers themselves
+   must always paint above the application chrome so no window can appear behind them. */
 #root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel,
 #root:has(.profea-modal-overlay) aside.app-navigation-panel,
 body.profea-modal-open aside.app-navigation-panel {
@@ -21,7 +23,7 @@ body.profea-modal-open aside.app-navigation-panel {
 /* Shared geometry for normal and portaled application modals. */
 #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
 .profea-modal-overlay {
-  z-index: 40 !important;
+  z-index: var(--profea-modal-z) !important;
   top: calc(var(--profea-app-header-height) + var(--profea-modal-gap)) !important;
   bottom: var(--profea-modal-gap) !important;
   right: var(--profea-modal-gap) !important;
@@ -120,7 +122,7 @@ body.profea-modal-open aside.app-navigation-panel {
     left: var(--profea-modal-gap) !important;
     top: max(var(--profea-modal-gap), env(safe-area-inset-top)) !important;
     bottom: max(var(--profea-modal-gap), env(safe-area-inset-bottom)) !important;
-    z-index: 1000 !important;
+    z-index: var(--profea-modal-z) !important;
     max-height: calc(100dvh - (2 * var(--profea-modal-gap))) !important;
   }
 
