@@ -770,7 +770,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const importedIds=Array.isArray(doc.details?.importedWorkerIds)
         ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
         : [];
-      const workerMap=new Map((data?.workers||[]).map(item=>[Number(item.id),item]));
+      const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
+      const workerMap=new Map<number,any>([
+        ...(data?.workers||[]).map(item=>[Number(item.id),item] as [number,any]),
+        ...importedSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
+      ]);
       const candidates=importedIds.map(id=>workerMap.get(id)).filter(Boolean) as any[];
       if(!candidates.length)throw new Error('No se han podido recuperar las personas reales de este documento.');
 
@@ -803,10 +807,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const signatureIds=isImportedMandatory && importedIdsForCount
       ? new Set([...allSignatureIds].filter(id=>importedIdsForCount.has(id)))
       : allSignatureIds;
+    const importedWorkerSnapshots=Array.isArray(doc.details?.importedWorkers)
+      ? doc.details.importedWorkers
+      : [];
+    const importedWorkerMap=new Map(importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker]));
     const signedWorkers=isImportedMandatory
       ? [...signatureIds]
-          .map(id=>(data?.workers||[]).find(worker=>Number(worker.id)===id))
-          .filter((worker): worker is NonNullable<typeof worker>=>Boolean(worker))
+          .map(id=>importedWorkerMap.get(id) || (data?.workers||[]).find(worker=>Number(worker.id)===id))
+          .filter(Boolean) as any[]
       : assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
@@ -826,14 +834,17 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
         : [];
     const importedWorkerIds=new Set<number>(importedWorkerOrder);
-    const workerById=new Map((data?.workers||[]).map(worker=>[Number(worker.id),worker]));
+    const workerById=new Map<number,any>([
+      ...(data?.workers||[]).map(worker=>[Number(worker.id),worker] as [number,any]),
+      ...importedWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
+    ]);
     const importedCandidates=isImportedMandatory
       ? importedWorkerOrder
           .map(id=>workerById.get(id))
           .filter(Boolean)
           .filter((worker:any)=>!signatureIds.has(Number(worker.id)))
       : [];
-    const availableImportedIds=new Set((data?.workers||[]).map(worker=>Number(worker.id)));
+    const availableImportedIds=new Set(workerById.keys());
     const unavailableImportedCount=isImportedMandatory
       ? [...importedWorkerIds].filter(id=>!signatureIds.has(id)&&!availableImportedIds.has(id)).length
       : 0;
