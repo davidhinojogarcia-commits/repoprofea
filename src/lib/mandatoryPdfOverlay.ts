@@ -228,7 +228,7 @@ export async function analyzeMandatoryOriginalPdf(
         signatureHeight,
         confidence: 0.1,
         resolved: true,
-        reason: 'Posición automática de respaldo: la firma se coloca en la columna derecha sin bloquear la firma.',
+        reason: 'Posición automática de respaldo usada porque el PDF no expone la línea de texto del trabajador.',
       });
       continue;
     }
@@ -236,20 +236,18 @@ export async function analyzeMandatoryOriginalPdf(
     used.add(`${best.page}:${best.lineIndex}`);
     const line = best.line;
     const rowHeight = Math.max(16, Math.min(32, line.height * 1.9));
-    const dynamicHeaderX = best.signatureHeaderX != null && best.signatureHeaderX > line.maxX + 4
-      ? best.signatureHeaderX
-      : null;
-    // Regla operativa: la firma siempre se coloca automáticamente a la derecha
-    // de la línea del trabajador. Nunca requiere validación previa del supervisor.
+    // La firma se coloca pegada a la derecha del nombre del trabajador, no en una
+    // columna genérica del documento. Esto mantiene inequívoca la relación nombre/firma.
     const rightMargin = Math.max(14, best.width * 0.02);
-    const targetWidth = Math.max(72, Math.min(104, best.width * 0.17));
-    const rightAlignedX = best.width - rightMargin - targetWidth;
-    const preferredX = dynamicHeaderX ?? Math.max(line.maxX + 10, best.width * 0.66);
-    const candidateX = Math.max(line.maxX + 6, Math.min(preferredX, rightAlignedX));
-    const availableWidth = Math.max(56, best.width - rightMargin - candidateX);
-    const signatureWidth = Math.max(56, Math.min(targetWidth, availableWidth));
-    const signatureHeight = Math.max(12, Math.min(20, rowHeight * 0.72));
-    const signatureY = Math.max(6, line.y - signatureHeight * 0.35);
+    const nameGap = Math.max(7, Math.min(12, line.height * 0.8));
+    const desiredWidth = Math.max(62, Math.min(90, best.width * 0.145));
+    const maxRightX = best.width - rightMargin;
+    const availableAfterName = Math.max(36, maxRightX - (line.maxX + nameGap));
+    const signatureWidth = Math.max(36, Math.min(desiredWidth, availableAfterName));
+    const candidateX = Math.min(line.maxX + nameGap, maxRightX - signatureWidth);
+    const signatureHeight = Math.max(11, Math.min(18, rowHeight * 0.66));
+    // PDF usa origen inferior: centramos verticalmente la firma sobre la misma línea.
+    const signatureY = Math.max(6, line.y - signatureHeight * 0.36);
 
     anchors.push({
       workerId: Number(worker.id),
