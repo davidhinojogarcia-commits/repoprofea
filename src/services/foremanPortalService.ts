@@ -269,6 +269,7 @@ export async function signMandatoryForemanDocument(
 export async function prepareMandatoryDocumentFromEmail(input: {
   documentType: 'inicio' | 'control_presencia';
   workerIds: number[];
+  importedWorkers?: Person[];
   workDate: string;
   category?: string;
   periodKey: string;
@@ -327,9 +328,12 @@ export async function prepareMandatoryDocumentFromEmail(input: {
           ...currentDetails,
           sourceText: input.sourceText || '',
           sourceFilename: input.attachmentName || '',
-          importedWorkerIds: Array.isArray(currentDetails.importedWorkerIds)
-            ? currentDetails.importedWorkerIds
+          importedWorkerIds: Array.isArray(input.importedWorkers)
+            ? input.importedWorkers.map(worker=>Number(worker.id)).filter(Number.isFinite)
             : input.workerIds,
+          importedWorkers: Array.isArray(input.importedWorkers)
+            ? input.importedWorkers
+            : (Array.isArray(currentDetails.importedWorkers) ? currentDetails.importedWorkers : []),
         },
         updated_at: new Date().toISOString(),
       },
