@@ -136,6 +136,7 @@ const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: s
   for (const rawLine of String(text||'').split(/\r?\n/)) {
     const line=rawLine.trim();
     if(!line.includes(','))continue;
+    if(/[a-záéíóúüñç]/.test(line))continue;
     const normalized=norm(line);
     if(!/^[A-ZÁÉÍÓÚÜÑÇ ]+\s+[A-ZÁÉÍÓÚÜÑÇ ]+$/.test(normalized))continue;
     if(/^(CADIZ|DIPUTACION|CATEGORIA|AREA|GESTION|EXCMA|EMPRESA)\b/.test(normalized))continue;
