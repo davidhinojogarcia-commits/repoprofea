@@ -1,7 +1,7 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.13.0';
-export const APP_RELEASE_DATE = '28/09/2026';
+export const APP_VERSION = '1.14.0';
+export const APP_RELEASE_DATE = '30/09/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
