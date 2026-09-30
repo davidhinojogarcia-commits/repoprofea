@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Wrench } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   type AdditionalWorksiteDocumentType,
@@ -168,19 +168,19 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
     return()=>{cancelled=true;try{pdf?.destroy?.();}catch{}};
   },[bytes]);
 
-  return <div className="fixed inset-0 z-[12000] flex flex-col bg-slate-950/90">
+  return <div className="fixed inset-0 z-[20000] flex h-[100dvh] w-screen flex-col bg-slate-950">
     <div className="flex items-center justify-between gap-3 bg-white px-4 py-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="min-w-0">
         <div className="truncate text-sm font-black text-slate-900">{title}</div>
-        <div className="text-xs text-slate-500">Vista previa del PDF real</div>
+        <div className="flex items-center gap-1 text-xs text-slate-500"><Maximize2 className="h-3.5 w-3.5"/>Pantalla completa · PDF real</div>
       </div>
       <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
     </div>
-    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-200 p-3" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-900 p-0 sm:p-3" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}>
       {notice&&<div className="mx-auto mb-3 max-w-[900px] rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold leading-5 text-amber-900">{notice}</div>}
       {rendering&&<div className="mx-auto mt-8 max-w-md rounded-2xl bg-white p-5 text-center text-sm font-bold text-slate-600">Cargando PDF…</div>}
       {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{renderError}</div>}
-      <div ref={hostRef} className="mx-auto w-full max-w-[900px]" />
+      <div ref={hostRef} className="mx-auto w-full max-w-none sm:max-w-[900px]" />
     </div>
   </div>;
 };
@@ -214,6 +214,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string;notice?:string}|null>(null);
   const [operationFeedback,setOperationFeedback]=useState('');
   const [focusDocumentId,setFocusDocumentId]=useState('');
+  const [selectedMandatoryPeriodKeys,setSelectedMandatoryPeriodKeys]=useState<Set<string>>(new Set());
+  const [expandedMandatoryDocuments,setExpandedMandatoryDocuments]=useState<Set<string>>(new Set());
 
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
@@ -519,39 +521,24 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
-  const anchorsWithVisibleSignatureZones=(doc:ForemanMandatoryDocument,anchors:MandatoryWorkerAnchor[])=>{
-    const pages=(Array.isArray(doc.details?.pageMeta)?doc.details.pageMeta:[]) as Array<{page:number;width:number;height:number}>;
-    return anchors.map(anchor=>{
-      if(anchor.resolved && anchor.signatureX!=null && anchor.signatureY!=null && anchor.signatureWidth && anchor.signatureHeight)return anchor;
-      const page=pages.find(item=>Number(item.page)===Number(anchor.page));
-      const pageWidth=Number(page?.width||0);
-      if(!pageWidth || anchor.nameY==null)return anchor;
-      const left=Math.max(pageWidth*0.68,Number(anchor.nameX||0)+160);
-      const rightMargin=Math.max(16,pageWidth*0.025);
-      const width=Math.min(128,pageWidth-rightMargin-left);
-      if(width<64)return anchor;
-      const rowHeight=Math.max(18,Number(anchor.rowHeight||24));
-      const height=Math.min(38,Math.max(24,rowHeight*1.15));
-      return {
-        ...anchor,
-        signatureX:left,
-        signatureY:Math.max(6,Number(anchor.nameY)-height*0.38),
-        signatureWidth:width,
-        signatureHeight:height,
-        resolved:true,
-        reason:anchor.reason||'Posición provisional calculada sobre la fila reconocida del trabajador.',
-      };
-    });
-  };
-
   const buildExactSignedPreview=async(doc:ForemanMandatoryDocument, verify=false)=>{
     const [source,realSignatures]=await Promise.all([
       getForemanMandatoryPdf(token,doc.id,'original'),
       getForemanMandatorySignatures(token,doc.id),
     ]);
     await assertStoredOriginalIntegrity(source);
-    const rawAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const anchors=anchorsWithVisibleSignatureZones(doc,rawAnchors);
+    const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const unresolvedSigned=anchors.filter(anchor=>{
+      if(anchor.resolved)return false;
+      const raw=realSignatures?.[String(anchor.workerId)];
+      const signature=typeof raw==='string'?raw:raw?.signature;
+      return Boolean(signature);
+    });
+    if(unresolvedSigned.length){
+      throw new Error(unresolvedSigned.length===1
+        ? 'Hay una firma sin zona confirmada. El supervisor debe ajustar su posición antes de previsualizar o enviar.'
+        : `Hay ${unresolvedSigned.length} firmas sin zona confirmada. El supervisor debe ajustar sus posiciones antes de previsualizar o enviar.`);
+    }
     const bytes=await buildSignedMandatoryPdf({
       originalPdfBase64:source.base64,
       anchors,
@@ -572,16 +559,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         await assertStoredOriginalIntegrity(source);
         showPdfPreview(base64ToBytes(source.base64),`${mandatoryLabel(doc.documentType)} · Original`);
       }else{
-        const rawAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-        const unresolved=rawAnchors.filter(anchor=>!anchor.resolved).length;
         const prepared=await buildExactSignedPreview(doc,false);
-        const notice=unresolved>0
-          ? (unresolved===1
-              ? 'La firma se muestra en una posición provisional calculada sobre la fila detectada. El supervisor podrá revisar esa posición.'
-              : `Hay ${unresolved} posiciones provisionales calculadas sobre las filas detectadas. El supervisor podrá revisarlas.`)
-          : undefined;
-        showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`,notice);
-        if(notice)setOperationFeedback(notice);
+        showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`);
       }
       setError('');
     }catch(e:any){
@@ -593,33 +572,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       setSaving(false);
     }
   };
-
-  const workerMatchesSelectedPeriod=(worker:any)=>{
-    if(!selectedPeriodKeys.size)return true;
-    const q=String(worker?.quincena||'').trim();
-    if(q&&selectedPeriodKeys.has('q:'+q))return true;
-    return monthsForWorker(worker).some(month=>selectedPeriodKeys.has('m:'+month));
-  };
-
-  const documentMatchesSelectedPeriod=(doc:ForemanMandatoryDocument)=>{
-    if(!selectedPeriodKeys.size)return true;
-    const importedIds=Array.isArray(doc.details?.importedWorkerIds)
-      ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter(Number.isFinite)
-      : [];
-    const byId=new Map((data?.workers||[]).map(worker=>[Number(worker.id),worker]));
-    if(importedIds.some(id=>workerMatchesSelectedPeriod(byId.get(id))))return true;
-    const workDate=String(doc.workDate||'').slice(0,10);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(workDate)){
-      const monthKey='m:'+workDate.slice(0,7);
-      if(selectedPeriodKeys.has(monthKey))return true;
-    }
-    const key=String(doc.periodKey||'');
-    return [...selectedPeriodKeys].some(selected=>key.toLowerCase().includes(selected.slice(2).toLowerCase()));
-  };
-
-  const assignedMandatoryDocuments = (data?.mandatoryDocuments||[]).filter(
-    document => ['inicio','control_presencia'].includes(String(document.documentType || '')) && documentMatchesSelectedPeriod(document),
-  );
 
   const periodDisplayLabel=(doc:ForemanMandatoryDocument)=>{
     const explicit=String(doc.details?.periodoLabel||'').trim();
@@ -639,6 +591,42 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }
     return key||'Sin periodo';
   };
+
+  const allAssignedMandatoryDocuments=(data?.mandatoryDocuments||[]).filter(
+    document=>['inicio','control_presencia'].includes(String(document.documentType||'')),
+  );
+
+  const mandatoryPeriodOptions=useMemo(()=>{
+    const byKey=new Map<string,{key:string;label:string;count:number;latest:number}>();
+    for(const doc of allAssignedMandatoryDocuments){
+      const key=String(doc.periodKey||doc.workDate||'sin-periodo');
+      const current=byKey.get(key);
+      const latest=Date.parse(String(doc.workDate||''))||0;
+      if(current){
+        current.count+=1;
+        current.latest=Math.max(current.latest,latest);
+      }else{
+        byKey.set(key,{key,label:periodDisplayLabel(doc),count:1,latest});
+      }
+    }
+    return [...byKey.values()].sort((a,b)=>b.latest-a.latest||a.label.localeCompare(b.label,'es'));
+  },[data?.mandatoryDocuments]);
+
+  const assignedMandatoryDocuments=allAssignedMandatoryDocuments.filter(doc=>
+    !selectedMandatoryPeriodKeys.size || selectedMandatoryPeriodKeys.has(String(doc.periodKey||doc.workDate||'sin-periodo'))
+  );
+
+  const toggleMandatoryPeriod=(key:string)=>setSelectedMandatoryPeriodKeys(current=>{
+    const next=new Set(current);
+    if(next.has(key))next.delete(key);else next.add(key);
+    return next;
+  });
+
+  const toggleMandatoryDocument=(id:string)=>setExpandedMandatoryDocuments(current=>{
+    const next=new Set(current);
+    if(next.has(id))next.delete(id);else next.add(id);
+    return next;
+  });
 
   const assignedByWorksiteAndPeriod=useMemo(()=>{
     const byWorksite=new Map<string,Map<string,ForemanMandatoryDocument[]>>();
@@ -698,7 +686,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
     const signatureIds=new Set(Object.keys(doc.signatures||{}).map(Number));
-    const signedWorkers=assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id))&&workerMatchesSelectedPeriod(worker));
+    const signedWorkers=assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
     const closed=doc.status==='completed'||doc.status==='reviewed';
@@ -722,53 +710,51 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       ? importedWorkerOrder
           .map(id=>workerById.get(id))
           .filter(Boolean)
-          .filter((worker:any)=>!signatureIds.has(Number(worker.id))&&validForDocument(worker)&&workerMatchesSelectedPeriod(worker))
+          .filter((worker:any)=>!signatureIds.has(Number(worker.id))&&validForDocument(worker))
       : [];
-    const availableImportedIds=new Set(importedCandidates.map(worker=>Number(worker.id)));
+    const availableImportedIds=new Set((data?.workers||[]).map(worker=>Number(worker.id)));
     const unavailableImportedCount=isImportedMandatory
       ? [...importedWorkerIds].filter(id=>!signatureIds.has(id)&&!availableImportedIds.has(id)).length
       : 0;
-
-    const additionalCandidates=isImportedMandatory && selectedPeriodKeys.size>0
-      ? documentWorkers.filter(worker=>
-          !importedWorkerIds.has(Number(worker.id)) &&
-          !signatureIds.has(Number(worker.id)) &&
-          validForDocument(worker)
-        )
-      : [];
 
     const operationalCandidates=!isImportedMandatory
       ? assignedWorkers.filter(worker=>!signatureIds.has(Number(worker.id)))
       : [];
 
     const selectedId=mandatoryWorkerChoice[doc.id]||'';
-    const selectedCandidate=(isImportedMandatory?additionalCandidates:operationalCandidates)
-      .find(worker=>String(worker.id)===selectedId);
+    const selectedCandidate=operationalCandidates.find(worker=>String(worker.id)===selectedId);
 
-    const signedAdditionalCount=isImportedMandatory
-      ? signedWorkers.filter(worker=>!importedWorkerIds.has(Number(worker.id))).length
-      : 0;
     const requiredSignatureTotal=isImportedMandatory
-      ? Math.max(importedWorkerIds.size + signedAdditionalCount, signedCount)
+      ? importedWorkerIds.size
       : assignedWorkers.length;
     const pendingRequired=isImportedMandatory
       ? importedCandidates.length + unavailableImportedCount
       : operationalCandidates.length;
     const exactOriginalMode=isImportedMandatory&&doc.details?.originalPdfMode==='overlay';
     const workerAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const unresolvedAnchorCount=workerAnchors.filter(anchor=>!anchor.resolved).length;
-    const canFinalize=signedCount>0 && pendingRequired===0 &&
+    const importedAnchorMap=new Map(workerAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
+    const unresolvedAnchorCount=isImportedMandatory
+      ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
+      : workerAnchors.filter(anchor=>!anchor.resolved).length;
+    const signatureZonesReady=!isImportedMandatory||unresolvedAnchorCount===0;
+    const canFinalize=signedCount>0 && pendingRequired===0 && signatureZonesReady &&
       (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
+    const expanded=expandedMandatoryDocuments.has(doc.id);
 
-    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 rounded-2xl bg-white border p-4 shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
-          <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
-          <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
+    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 overflow-hidden rounded-2xl bg-white border shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
+      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="flex w-full items-start justify-between gap-3 p-4 text-left">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span className="mt-0.5 shrink-0 text-[#00548E]">{expanded?<ChevronDown className="h-5 w-5"/>:<ChevronRight className="h-5 w-5"/>}</span>
+          <div className="min-w-0">
+            <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
+            <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
+            <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
+            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-amber-700">Pendiente de ajustar {unresolvedAnchorCount} zona(s) de firma</div>}
+          </div>
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0} firma(s)</span>
-      </div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0}</span>
+      </button>
+      {expanded&&<div className="border-t p-4">
 
       {exactOriginalMode&&<div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-3">
         <div className="text-sm font-black text-[#00548E]">PDF original conservado</div>
@@ -779,7 +765,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>
         {operationFeedback&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">{operationFeedback}</div>}
         {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
-          {unresolvedAnchorCount===1?'Hay 1 posición de firma pendiente de confirmar por el supervisor.':`Hay ${unresolvedAnchorCount} posiciones de firma pendientes de confirmar por el supervisor.`}
+          {unresolvedAnchorCount===1?'Este documento todavía no está listo para firmar: el supervisor debe confirmar 1 zona de firma.':`Este documento todavía no está listo para firmar: el supervisor debe confirmar ${unresolvedAnchorCount} zonas de firma.`}
         </div>}
       </div>}
       {!exactOriginalMode&&sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
@@ -796,7 +782,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=><button
               key={worker.id}
               type="button"
-              disabled={saving}
+              disabled={saving||!signatureZonesReady}
               onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})}
               className="w-full min-h-[66px] rounded-xl border border-blue-200 bg-white px-4 py-3 text-left shadow-sm disabled:opacity-50"
             >
@@ -814,7 +800,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        No hay personas identificadas automáticamente en este documento importado. Selecciona el periodo correcto y añádelas manualmente desde la obra.
+        No se han reconocido trabajadores con seguridad en este PDF. El supervisor debe revisar el documento antes de habilitar firmas.
       </div>}
 
       {!closed&&!isImportedMandatory&&operationalCandidates.length>0&&<div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
@@ -841,23 +827,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>)}</div>}
       </div>
 
-      {!closed&&isImportedMandatory&&<div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
-        <div className="text-base font-black text-slate-900">¿Falta alguna persona del periodo?</div>
-        <p className="mt-1 text-sm leading-5 text-slate-600">Selecciona primero el periodo. Después podrás añadir un trabajador que no apareciera en el documento importado.</p>
-        {!selectedPeriodKeys.size&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-bold text-amber-900">Selecciona un periodo arriba para poder añadir trabajadores.</div>}
-        {!!selectedPeriodKeys.size&&<>
-          <select value={selectedId} onChange={e=>setMandatoryWorkerChoice(current=>({...current,[doc.id]:e.target.value}))} className="mt-3 min-h-[56px] w-full rounded-xl border bg-white px-3 py-3 text-base font-semibold">
-            <option value="">Seleccionar trabajador adicional…</option>
-            {additionalCandidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
-          </select>
-          <button type="button" disabled={saving||!selectedCandidate} onClick={()=>{
-            if(!selectedCandidate)return;
-            setMandatorySigning({documentId:doc.id,workerId:Number(selectedCandidate.id),name:selectedCandidate.apellidosNombre});
-          }} className="mt-2 min-h-[56px] w-full rounded-xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E] disabled:border-slate-200 disabled:text-slate-400">Añadir trabajador y recoger firma</button>
-        </>}
-      </div>}
-
       {!closed&&<button type="button" disabled={saving||!canFinalize} onClick={async()=>{
+        const filename=String(doc.details?.sourceFilename||mandatoryLabel(doc.documentType));
+        if(!window.confirm(`Todas las firmas de "${filename}" están completas. ¿Enviar este documento al supervisor para revisión?`))return;
         setSaving(true);
         try{
           if(exactOriginalMode){
@@ -885,6 +857,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </button>}
 
       {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
+      </div>}
     </div>;
   };
 
@@ -1000,19 +973,24 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <h2 className="font-black">Control inicios</h2>
           <p className="mt-1 text-sm text-slate-600">Aquí aparecen los documentos importados de Inicio / Incorporación y Control de presencia. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
-        {renderPeriodSelector()}
+        <div className="rounded-2xl border bg-white p-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:'touch'}}>
+            <button type="button" onClick={()=>setSelectedMandatoryPeriodKeys(new Set())} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black ${selectedMandatoryPeriodKeys.size===0?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>Todos</button>
+            {mandatoryPeriodOptions.map(option=><button key={option.key} type="button" onClick={()=>toggleMandatoryPeriod(option.key)} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black whitespace-nowrap ${selectedMandatoryPeriodKeys.has(option.key)?'border-[#00548E] bg-[#00548E] text-white':'bg-slate-50 text-slate-700'}`}>{option.label} · {option.count}</button>)}
+          </div>
+        </div>
         {assignedByWorksiteAndPeriod.map(group=><div key={group.worksite} className="space-y-3">
           <div className="rounded-2xl border-2 border-[#00548E]/20 bg-white px-4 py-3 shadow-sm">
             <div className="text-[11px] font-black uppercase tracking-[.12em] text-[#00548E]">Obra</div>
             <div className="mt-1 text-lg font-black text-slate-900">{group.worksite}</div>
           </div>
-          {group.periods.map(periodGroup=><div key={periodGroup.period} className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+          {group.periods.map(periodGroup=><div key={periodGroup.period} className="space-y-2">
+            <div className="flex items-center justify-between gap-3 px-1 py-1">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Periodo</div>
                 <div className="mt-1 text-base font-black text-slate-900">{periodGroup.period}</div>
               </div>
-              <div className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-[#00548E]">{periodGroup.documents.length} doc.</div>
+              <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#00548E]">{periodGroup.documents.length} doc.</div>
             </div>
             {periodGroup.documents.map(doc=>renderSigningDocument(doc))}
           </div>)}
@@ -1215,6 +1193,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
           setError('');
           const sourceName=String(verifiedDoc.details?.sourceFilename||mandatoryLabel(verifiedDoc.documentType));
+          if(unresolvedAnchors>0){
+            setOperationFeedback(unresolvedAnchors===1
+              ? 'Todas las firmas están guardadas, pero falta ajustar 1 zona de firma antes de poder enviar el documento.'
+              : `Todas las firmas están guardadas, pero faltan ajustar ${unresolvedAnchors} zonas de firma antes de poder enviar el documento.`);
+          }else{
           const sendNow=window.confirm(`Todas las firmas de "${sourceName}" están completas. ¿Enviar este documento al supervisor para revisión?`);
           if(sendNow){
             if(exactOriginalMode){
@@ -1236,9 +1219,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             setOperationFeedback('Documento enviado al supervisor para revisión.');
             setTab('completed');
           }else{
-            setOperationFeedback(unresolvedAnchors>0
-              ? 'Todas las firmas están guardadas y visibles en la previsualización. El documento queda pendiente de envío al supervisor.'
-              : 'Todas las firmas están guardadas. El documento queda pendiente de envío al supervisor.');
+            setOperationFeedback('Todas las firmas están guardadas. El documento queda pendiente de envío al supervisor.');
+          }
           }
         }else{
           setData(verified);
