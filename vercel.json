@@ -7,6 +7,14 @@
     {
       "source": "/login/",
       "destination": "/index.html"
+    },
+    {
+      "source": "/encargados",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/encargados/",
+      "destination": "/index.html"
     }
   ]
 }
