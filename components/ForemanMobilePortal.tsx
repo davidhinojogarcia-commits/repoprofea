@@ -339,7 +339,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const savedRow=savedDay?.rows?.find(row=>Number(row.workerId)===Number(currentSigning.workerId));
       const signatureKey=currentSigning.kind==='entry'?'entrySignature':'exitSignature';
 
-      if(!savedRow || !savedRow[signatureKey]){
+      if(!savedRow || !(savedRow as any)[signatureKey]){
         throw new Error('La firma no ha quedado guardada en la jornada. Vuelve a intentarlo.');
       }
 
