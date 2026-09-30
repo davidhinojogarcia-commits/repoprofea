@@ -512,6 +512,78 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
   const closePdfPreview=()=>setPdfPreview(null);
 
+  const completedPdfFileName=(doc:ForemanMandatoryDocument,sourceName?:string)=>{
+    const fallback=`${mandatoryLabel(doc.documentType)}-${String(doc.workDate||'').slice(0,10)||'documento'}.pdf`;
+    const raw=String(sourceName||doc.details?.sourceFilename||fallback).trim()||fallback;
+    const base=/\.pdf$/i.test(raw)?raw:raw+'.pdf';
+    return base.replace(/[\\/:*?"<>|]+/g,'-');
+  };
+
+  const getCompletedMandatoryPdf=async(doc:ForemanMandatoryDocument)=>{
+    const source=await getForemanMandatoryPdf(token,doc.id,'signed');
+    if(!source?.base64){
+      throw new Error('No se ha encontrado el PDF firmado de este documento.');
+    }
+    return {
+      bytes:base64ToBytes(source.base64),
+      filename:completedPdfFileName(doc,source.filename),
+    };
+  };
+
+  const previewCompletedMandatoryPdf=async(doc:ForemanMandatoryDocument)=>{
+    setSaving(true);
+    setOperationFeedback('');
+    try{
+      const file=await getCompletedMandatoryPdf(doc);
+      showPdfPreview(file.bytes,`${mandatoryLabel(doc.documentType)} · PDF firmado`);
+      setError('');
+    }catch(e:any){
+      const message=e?.message||'No se pudo abrir el PDF firmado.';
+      setError(message);
+      window.alert(message);
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  const shareCompletedMandatoryPdf=async(doc:ForemanMandatoryDocument)=>{
+    setSaving(true);
+    setOperationFeedback('');
+    try{
+      const fileData=await getCompletedMandatoryPdf(doc);
+      const blob=new Blob([fileData.bytes],{type:'application/pdf'});
+      const file=new File([blob],fileData.filename,{type:'application/pdf'});
+      const nav=navigator as Navigator & {canShare?:(data:ShareData)=>boolean};
+
+      if(typeof navigator.share==='function' && (!nav.canShare || nav.canShare({files:[file]}))){
+        await navigator.share({
+          title:mandatoryLabel(doc.documentType),
+          text:`Documento firmado · ${data?.obra||''}`,
+          files:[file],
+        });
+        setOperationFeedback('PDF compartido correctamente.');
+        return;
+      }
+
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=fileData.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1500);
+      setOperationFeedback('Este dispositivo no permite compartir archivos directamente. Se ha descargado el PDF firmado.');
+    }catch(e:any){
+      if(e?.name==='AbortError')return;
+      const message=e?.message||'No se pudo compartir el PDF firmado.';
+      setError(message);
+      window.alert(message);
+    }finally{
+      setSaving(false);
+    }
+  };
+
   const assertStoredOriginalIntegrity=async(source:{base64:string;sha256?:string})=>{
     const expected=String(source.sha256||'').trim().toLowerCase();
     if(!expected)return;
@@ -1167,7 +1239,16 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='completed'&&<section className="space-y-3">
         <button onClick={()=>void refresh()} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-black touch-manipulation"><RefreshCw className="w-4 h-4"/>Actualizar</button>
-        {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={'m-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{mandatoryLabel(d.documentType)}</div><div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}{d.details?.periodoLabel?' · '+String(d.details.periodoLabel):''}</div><span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
+        {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={'m-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm">
+          <div className="text-base font-black">{mandatoryLabel(d.documentType)}</div>
+          <div className="mt-1 truncate text-sm font-bold text-[#00548E]" title={String(d.details?.sourceFilename||'')}>{String(d.details?.sourceFilename||'Documento firmado')}</div>
+          <div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}{d.details?.periodoLabel?' · '+String(d.details.periodoLabel):''}</div>
+          <span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button type="button" disabled={saving} onClick={()=>void previewCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-black text-[#00548E] disabled:opacity-50"><FileDown className="mr-2 inline h-4 w-4"/>Ver PDF</button>
+            <button type="button" disabled={saving} onClick={()=>void shareCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl bg-[#00548E] px-3 py-3 text-sm font-black text-white disabled:opacity-50"><Share2 className="mr-2 inline h-4 w-4"/>Compartir</button>
+          </div>
+        </div>)}
         {data.attendance.filter(day=>day.status==='completed'||day.status==='reviewed').map(day=><div key={'a-'+day.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">Control horario</div><div className="mt-1 text-sm text-slate-500">{String(day.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{day.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
         {data.documents.filter(d=>!d.correctionPending&&d.status!=='draft').map(d=><div key={'d-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="mt-1 text-sm text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-800">Enviado al supervisor</span></div>)}
         {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.attendance.some(day=>day.status==='completed'||day.status==='reviewed')&&!data.documents.some(d=>!d.correctionPending&&d.status!=='draft')&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
