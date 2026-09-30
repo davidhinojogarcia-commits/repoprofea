@@ -685,8 +685,16 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
     const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
-    const signatureIds=new Set(Object.keys(doc.signatures||{}).map(Number));
-    const signedWorkers=assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
+    const allSignatureIds=new Set(Object.keys(doc.signatures||{}).map(Number));
+    const importedIdsForCount=isImportedMandatory && Array.isArray(doc.details?.importedWorkerIds)
+      ? new Set(doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id)))
+      : null;
+    const signatureIds=isImportedMandatory && importedIdsForCount
+      ? new Set([...allSignatureIds].filter(id=>importedIdsForCount.has(id)))
+      : allSignatureIds;
+    const signedWorkers=isImportedMandatory
+      ? [...signatureIds].map(id=>(data?.workers||[]).find(worker=>Number(worker.id)===id)).filter(Boolean)
+      : assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
     const closed=doc.status==='completed'||doc.status==='reviewed';
