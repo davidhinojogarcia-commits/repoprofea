@@ -549,6 +549,7 @@ export async function updateForemanMandatoryDocument(input: {
       correction_pending: false,
       correction_reason: null,
       correction_requested_at: null,
+      details: input.details || {},
       updated_at: new Date().toISOString(),
     },
   });
