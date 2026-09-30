@@ -870,7 +870,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
         const importedWorkerIds=anchors
           .map(anchor=>Number(anchor.workerId))
-          .filter((id,index,list)=>Number.isFinite(id)&&id>0&&list.indexOf(id)===index);
+          .filter((id,index,list)=>Number.isFinite(id)&&id!==0&&list.indexOf(id)===index);
         await supabase.query('foreman_mandatory_documents',{
           method:'PATCH',
           query:'id=eq.'+encodeURIComponent(anchorEditing.id),
