@@ -26,6 +26,12 @@ const compactAttendanceRows = (rows: ForemanAttendanceRow[]) =>
       category: row.category,
       entryTime: row.entryTime || '',
       exitTime: row.exitTime || '',
+      periodoInicio: row.periodoInicio || '',
+      periodoFin: row.periodoFin || '',
+      numOferta: row.numOferta || '',
+      municipio: row.municipio || '',
+      empresa: row.empresa || '',
+      codigoObra: row.codigoObra || '',
     };
     if (row.entrySignature === '') next.entrySignature = '';
     if (row.exitSignature === '') next.exitSignature = '';
@@ -41,6 +47,12 @@ export type ForemanAttendanceRow = {
   entrySignature?: string;
   exitTime?: string;
   exitSignature?: string;
+  periodoInicio?: string;
+  periodoFin?: string;
+  numOferta?: string;
+  municipio?: string;
+  empresa?: string;
+  codigoObra?: string;
 };
 
 export type ForemanAttendanceDay = {
