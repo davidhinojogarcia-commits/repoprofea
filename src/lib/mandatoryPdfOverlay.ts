@@ -493,17 +493,29 @@ export async function verifyMandatoryPdfFidelity(
           const boxHeight=Number(anchor.signatureHeight||18);
           const boxX=anchor.signatureX==null?Math.max(12,av.width-Math.max(14,av.width*0.02)-boxWidth):Number(anchor.signatureX);
           const boxY=anchor.signatureY==null?Math.max(18,av.height-118-((Number.isFinite(Number(anchor.order))?Number(anchor.order):index)*24)):Number(anchor.signatureY);
-          const rect = originalRender.viewport.convertToViewportRectangle([
-            boxX,
-            boxY,
-            boxX+boxWidth,
-            boxY+boxHeight,
-          ]);
+          const transform=Array.isArray(originalRender.viewport?.transform)
+            ? originalRender.viewport.transform
+            : [1,0,0,1,0,0];
+          const mapPoint=(x:number,y:number)=>{
+            const [a,b,c,d,e,f]=transform;
+            return {
+              x:(a*x)+(c*y)+e,
+              y:(b*x)+(d*y)+f,
+            };
+          };
+          const corners=[
+            mapPoint(boxX,boxY),
+            mapPoint(boxX+boxWidth,boxY),
+            mapPoint(boxX,boxY+boxHeight),
+            mapPoint(boxX+boxWidth,boxY+boxHeight),
+          ];
+          const xs=corners.map(point=>point.x);
+          const ys=corners.map(point=>point.y);
           return {
-            left: Math.floor(Math.min(rect[0],rect[2]))-3,
-            right: Math.ceil(Math.max(rect[0],rect[2]))+3,
-            top: Math.floor(Math.min(rect[1],rect[3]))-3,
-            bottom: Math.ceil(Math.max(rect[1],rect[3]))+3,
+            left: Math.floor(Math.min(...xs))-3,
+            right: Math.ceil(Math.max(...xs))+3,
+            top: Math.floor(Math.min(...ys))-3,
+            bottom: Math.ceil(Math.max(...ys))+3,
           };
         });
 
