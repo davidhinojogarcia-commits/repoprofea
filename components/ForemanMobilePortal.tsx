@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { appAlert, appConfirm } from '../src/lib/appDialog';
 import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
@@ -82,7 +83,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
       }
     }
     if(maxX<0||maxY<0){
-      window.alert('Realiza la firma antes de guardarla.');
+      void appAlert('Realiza la firma antes de guardarla.', { title:'Firma pendiente', kind:'warning' });
       return;
     }
     const pad=14;
@@ -892,7 +893,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
             <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
             <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
-            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-blue-700">La posición de {unresolvedAnchorCount} firma(s) se calculará automáticamente al firmar</div>}
+            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-blue-700">La posición de {unresolvedAnchorCount} firma(s) se calculará automáticamente a la derecha del nombre</div>}
           </div>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0}</span>
@@ -908,7 +909,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>
         {operationFeedback&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">{operationFeedback}</div>}
         {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
-          No requiere validación del supervisor. La app colocará cada firma automáticamente a la derecha del nombre y ajustará su tamaño.
+          No requiere validación del supervisor. Cada firma se coloca automáticamente a la derecha del nombre y apellidos del trabajador, ajustando su tamaño para no invadir otras filas.
         </div>}
       </div>}
       {!exactOriginalMode&&sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
@@ -958,21 +959,35 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         {!signedWorkers.length&&<div className="mt-2 text-sm font-semibold text-slate-500">Todavía no hay firmas guardadas.</div>}
         {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=><div key={worker.id} className="flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
           <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
-          {correction&&!closed
-            ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
-            : <span className="text-xs font-black text-emerald-700">Firmado ✓</span>}
+          {(()=>{
+            const raw=doc.signatures?.[String(worker.id)];
+            const signature=typeof raw==='string'?raw:raw?.signature;
+            if(isImportedMandatory&&signature){
+              return <div className="ml-auto flex min-w-[112px] max-w-[150px] flex-col items-end">
+                <img src={signature} alt={'Firma de '+worker.apellidosNombre} className="h-11 max-w-[145px] object-contain object-right"/>
+                <span className="mt-1 text-[10px] font-black text-emerald-700">Firmado ✓</span>
+              </div>;
+            }
+            return correction&&!closed
+              ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
+              : <span className="text-xs font-black text-emerald-700">Firmado ✓</span>;
+          })()}
         </div>)}</div>}
       </div>
 
       {!closed&&<button type="button" disabled={saving||!canFinalize} onClick={async()=>{
         const filename=String(doc.details?.sourceFilename||mandatoryLabel(doc.documentType));
-        if(!window.confirm(`Todas las firmas de "${filename}" están completas. ¿Enviar este documento al supervisor para revisión?`))return;
+        const confirmed=await appConfirm(
+          `El documento "${filename}" tiene todas las firmas. Se enviará al supervisor como documento válido, conservando exactamente el PDF original y añadiendo únicamente las firmas junto a cada trabajador.`,
+          {title:'Enviar documento firmado',confirmLabel:'Enviar al supervisor',cancelLabel:'Cancelar'}
+        );
+        if(!confirmed)return;
         setSaving(true);
         try{
           if(exactOriginalMode){
             const prepared=await buildExactSignedPreview(doc,true);
             if(!prepared.fidelity?.ok){
-              throw new Error('La comprobación de fidelidad ha detectado una diferencia fuera de las zonas de firma. El documento no se finalizará.');
+              throw new Error('La comprobación de fidelidad ha detectado una diferencia fuera de las zonas de firma. El documento no se enviará.');
             }
             await storeForemanMandatorySignedPdf({
               token,
@@ -986,11 +1001,17 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           await refresh();
           setError('');
           setMandatoryWorkerChoice(current=>({...current,[doc.id]:''}));
+          setOperationFeedback('Documento firmado enviado correctamente al supervisor.');
+          await appAlert('El documento firmado se ha enviado correctamente al supervisor.',{title:'Envío completado',kind:'success'});
           setTab('completed');
-        }catch(e:any){setError(e?.message||'No se pudo finalizar el documento.');}
-        finally{setSaving(false);}
+        }catch(e:any){
+          const message=e?.message||'No se pudo enviar el documento.';
+          setError(message);
+          setOperationFeedback(message);
+          await appAlert(message,{title:'No se pudo enviar',kind:'error'});
+        }finally{setSaving(false);}
       }} className="mt-4 min-h-[58px] w-full rounded-2xl bg-emerald-600 px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500">
-        {canFinalize?'Enviar al supervisor':pendingRequired>0?`Faltan ${pendingRequired} firma(s)`:'Debe firmar al menos un trabajador'}
+        {canFinalize?'Enviar documento firmado al supervisor':pendingRequired>0?`Faltan ${pendingRequired} firma(s)`:'Debe firmar al menos un trabajador'}
       </button>}
 
       {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
@@ -1330,44 +1351,15 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           : [];
         const signatureMap=verifiedDoc?.signatures||{};
         const allImportedSigned=importedIds.length>0 && importedIds.every((id:string)=>Boolean(signatureMap[id]));
-        const anchors=(Array.isArray(verifiedDoc?.details?.workerAnchors)?verifiedDoc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-        const unresolvedAnchors=anchors.filter(anchor=>!anchor.resolved).length;
-        const exactOriginalMode=verifiedDoc?.details?.originalPdfMode==='overlay';
-
         if(allImportedSigned && verifiedDoc){
           setData(verified);
           setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
           setError('');
-          const sourceName=String(verifiedDoc.details?.sourceFilename||mandatoryLabel(verifiedDoc.documentType));
-          if(unresolvedAnchors>0){
-            setOperationFeedback(unresolvedAnchors===1
-              ? 'Todas las firmas están guardadas, pero falta ajustar 1 zona de firma antes de poder enviar el documento.'
-              : `Todas las firmas están guardadas, pero faltan ajustar ${unresolvedAnchors} zonas de firma antes de poder enviar el documento.`);
-          }else{
-          const sendNow=window.confirm(`Todas las firmas de "${sourceName}" están completas. ¿Enviar este documento al supervisor para revisión?`);
-          if(sendNow){
-            if(exactOriginalMode){
-              const prepared=await buildExactSignedPreview(verifiedDoc,true);
-              if(!prepared.fidelity?.ok){
-                throw new Error('La comprobación de fidelidad del PDF no ha sido superada. El documento no se enviará.');
-              }
-              await storeForemanMandatorySignedPdf({
-                token,
-                documentId:verifiedDoc.id,
-                pdfBase64:bytesToBase64(prepared.bytes),
-                signedSha256:await sha256Hex(prepared.bytes),
-                fidelity:prepared.fidelity,
-              });
-            }
-            await finalizeForemanMandatoryDocument(token,verifiedDoc.id);
-            const completed=await resolveForemanPortal(token);
-            setData(completed);
-            setOperationFeedback('Documento enviado al supervisor para revisión.');
-            setTab('completed');
-          }else{
-            setOperationFeedback('Todas las firmas están guardadas. El documento queda pendiente de envío al supervisor.');
-          }
-          }
+          setOperationFeedback('Todas las personas del documento han firmado. Ya puedes enviarlo al supervisor con el botón “Enviar documento firmado al supervisor”.');
+          await appAlert(
+            'Todas las firmas están completas. El documento está listo para enviarse al supervisor.',
+            {title:'Documento listo',kind:'success',confirmLabel:'Aceptar'}
+          );
         }else{
           setData(verified);
           setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
@@ -1378,7 +1370,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         const message=e?.message||'No se pudo guardar la firma.';
         setError(message);
         setOperationFeedback(message);
-        window.alert(message);
+        await appAlert(message,{title:'No se pudo guardar la firma',kind:'error'});
       }finally{
         setSaving(false);
       }

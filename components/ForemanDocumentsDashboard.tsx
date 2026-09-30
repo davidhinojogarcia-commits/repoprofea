@@ -12,7 +12,6 @@ import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSup
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 
-const MandatoryPdfAnchorEditor = React.lazy(() => import('./MandatoryPdfAnchorEditor'));
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -66,7 +65,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
   const [activityNotice,setActivityNotice]=useState('');
-  const [anchorEditing,setAnchorEditing]=useState<DbMandatory|null>(null);
   const [bulkDeleteMode,setBulkDeleteMode]=useState(false);
   const [bulkDeleteBusy,setBulkDeleteBusy]=useState(false);
   const [selectedDeleteKeys,setSelectedDeleteKeys]=useState<Set<string>>(new Set());
@@ -459,7 +457,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage(error?.message||'No se pudo abrir el PDF.');
     }
   };
-  const approveAndReturnMandatory = async (item: DbMandatory) => {
+  const sendCompletedMandatory = async (item: DbMandatory) => {
     if (item.status !== 'completed') return;
     const settings=await loadAppBusinessSettings();
     const targetEmail=String(item.source_email_from || settings.administrative?.email || '').trim();
@@ -468,8 +466,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       return;
     }
     if (!(await appConfirm(
-      '¿Aprobar este documento cumplimentado y enviarlo por Gmail a la administrativa?',
-      { title: 'Aprobar y enviar', confirmLabel: 'Aprobar y enviar' },
+      'El documento ya es válido y está firmado por todos los trabajadores. ¿Quieres enviarlo ahora a la administrativa?',
+      { title: 'Enviar documento firmado', confirmLabel: 'Enviar' },
     ))) return;
     setMailBusy(true);
     try {
@@ -494,14 +492,14 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const sent=await sendPdfWithConnectedGmail({
         to:targetEmail,
         subject,
-        body:`Se devuelve la documentación de ${item.obra} firmada y revisada por el supervisor.\n\nDocumento: ${mandatoryDocumentLabel(item.document_type)}\nFecha: ${item.work_date}.`,
+        body:`Se remite la documentación de ${item.obra} firmada por los trabajadores. El PDF original se conserva y únicamente se han añadido las firmas.\n\nDocumento: ${mandatoryDocumentLabel(item.document_type)}\nFecha: ${item.work_date}.`,
         file,
         threadId:item.source_gmail_thread_id||'',
         inReplyTo:item.source_rfc_message_id||'',
         references:item.source_rfc_message_id||'',
       });
       await markMandatoryDocumentReturned(item.id,sent.messageId);
-      setMailMessage('Documento aprobado y devuelto por Gmail a la administrativa.');
+      setMailMessage('Documento firmado enviado por Gmail a la administrativa.');
       await refresh(true);
     } catch(error:any) {
       setMailMessage(error?.message||'No se pudo devolver el documento por Gmail.');
@@ -854,7 +852,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </label>}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3"><div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
-        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{(Array.isArray(card.item.details?.importedWorkerIds)&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))?card.item.details.importedWorkerIds.length:(card.item.workers?.length||0)} firmas recogidas</p>}{card.kind==='mandatory'&&importedWorkersMissingFromDirectory(card.item as DbMandatory).length>0&&<div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+        <h3 className="mt-2 font-black text-slate-900 dark:text-white">{card.title}</h3><p className="text-xs text-slate-500">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500">{Object.keys(card.item.signatures||{}).length}/{(Array.isArray(card.item.details?.importedWorkerIds)&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))?card.item.details.importedWorkerIds.length:(card.item.workers?.length||0)} firmas recogidas</p>}{card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&card.status==='completed'&&<div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-800">Documento recibido válido · PDF original + firmas</div>}{card.kind==='mandatory'&&importedWorkersMissingFromDirectory(card.item as DbMandatory).length>0&&<div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
           <div className="font-black">No localizado(s) en Directorio</div>
           <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
           <div className="mt-1 text-[11px]">El documento no se bloquea: podrán firmar porque aparecen en el PDF importado.</div>
@@ -863,17 +861,17 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
             <button onClick={()=>void downloadStoredMandatoryPdf(card.item as DbMandatory,'original')} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700"><FileSignature className="w-4 h-4"/>Original</button>
-            {(card.status==='completed'||card.status==='reviewed')&&Object.keys(card.item.signatures||{}).length>0&&<button onClick={()=>setAnchorEditing(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><Pencil className="w-4 h-4"/>Ajustar firmas</button>}
           </>}
-          <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>
+          {!(card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))&&
+            <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>}
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
-            <button disabled={mailBusy} onClick={()=>void approveAndReturnMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Aprobar y devolver por Gmail':'Aprobar y enviar a administrativa'}</button>
+            <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
           )}
-          {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && (
+          {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))) && (
             <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
           )}
-          {(card.status==='completed'||card.status==='reviewed')&&(
+          {(card.status==='completed'||card.status==='reviewed')&&!(card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))&&(
             <button onClick={()=>void returnForCorrection(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-xs font-black"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>
           )}
         </div>
@@ -882,38 +880,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
     </>}
-
-    {anchorEditing&&<React.Suspense fallback={null}><MandatoryPdfAnchorEditor
-      documentId={anchorEditing.id}
-      title={`${mandatoryDocumentLabel(anchorEditing.document_type)} · ${anchorEditing.obra}`}
-      obra={anchorEditing.obra}
-      anchors={(Array.isArray(anchorEditing.details?.workerAnchors)?anchorEditing.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
-      signedWorkerIds={Object.keys(anchorEditing.signatures||{}).map(Number).filter(Number.isFinite)}
-      onCancel={()=>setAnchorEditing(null)}
-      onSave={async anchors=>{
-        const unresolved=anchors.filter(anchor=>!anchor.resolved).length;
-        const importedWorkerIds=anchors
-          .map(anchor=>Number(anchor.workerId))
-          .filter((id,index,list)=>Number.isFinite(id)&&id!==0&&list.indexOf(id)===index);
-        await supabase.query('foreman_mandatory_documents',{
-          method:'PATCH',
-          query:'id=eq.'+encodeURIComponent(anchorEditing.id),
-          body:{
-            details:{
-              ...(anchorEditing.details||{}),
-              workerAnchors:anchors,
-              importedWorkerIds,
-              unresolvedAnchorCount:unresolved,
-            },
-            updated_at:new Date().toISOString(),
-          },
-          prefer:'return=minimal',
-        });
-        setAnchorEditing(null);
-        setMailMessage('Posiciones de las firmas ajustadas. El PDF firmado se regenerará con estas posiciones al abrirlo o enviarlo.');
-        await refresh(true);
-      }}
-    /></React.Suspense>}
 
     {editingCard&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
