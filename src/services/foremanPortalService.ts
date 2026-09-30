@@ -34,7 +34,9 @@ const compactAttendanceRows = (rows: ForemanAttendanceRow[]) =>
       codigoObra: row.codigoObra || '',
     };
     if (row.entrySignature === '') next.entrySignature = '';
+    else if (row.entrySignature) next.entrySignature = 'signed';
     if (row.exitSignature === '') next.exitSignature = '';
+    else if (row.exitSignature) next.exitSignature = 'signed';
     return next;
   });
 

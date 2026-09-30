@@ -321,12 +321,34 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const applySignature=async(image:string)=>{
     if(!signing)return;
     const currentSigning=signing;
-    const next=rows.map(r=>r.workerId===currentSigning.workerId?{...r,...(currentSigning.kind==='entry'?{entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}:{exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})}:r);
+    const next=rows.map(r=>r.workerId===currentSigning.workerId?{
+      ...r,
+      ...(currentSigning.kind==='entry'
+        ? {entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}
+        : {exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})
+    }:r);
     setSigning(null);
     setSaving(true);
     try{
       await signForemanAttendance(token,date,next,currentSigning.workerId,currentSigning.kind,image);
-      setRows(next);
+
+      const verified=await resolveForemanPortal(token);
+      if(!verified.valid)throw new Error('No se pudo verificar la firma guardada.');
+
+      const savedDay=(verified.attendance||[]).find(item=>String(item.workDate||'').slice(0,10)===date);
+      const savedRow=savedDay?.rows?.find(row=>Number(row.workerId)===Number(currentSigning.workerId));
+      const signatureKey=currentSigning.kind==='entry'?'entrySignature':'exitSignature';
+
+      if(!savedRow || !(savedRow as any)[signatureKey]){
+        throw new Error('La firma no ha quedado guardada en la jornada. Vuelve a intentarlo.');
+      }
+
+      setData(verified);
+      setRows(savedDay?.rows?.map(row=>({
+        ...row,
+        entryTime:row.entryTime||verified.defaultWorkStartHour||'08:00',
+        exitTime:row.exitTime||verified.defaultWorkEndHour||'15:00',
+      }))||next);
       setError('');
     }catch(e:any){
       setError(e?.message||'No se pudo guardar la firma.');
