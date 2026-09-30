@@ -114,6 +114,49 @@ const categorySimilarity = (a: string, b: string) => {
 const cleanWorkerName = (value: unknown) =>
   norm(String(value || '').replace(/\[[^\]]*\]\s*$/g, '').replace(/\([^)]*\)\s*$/g, ''));
 
+const sourceWorkerId = (name: string) => {
+  const value = norm(name);
+  let hash = 2166136261;
+  for (let i=0;i<value.length;i+=1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash,16777619);
+  }
+  return -(3000000000 + (hash >>> 0));
+};
+
+const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: string, obra: string): Person[] => {
+  const canonicalByName = new Map<string,Person>();
+  for (const worker of workers) {
+    const key=cleanWorkerName(worker.apellidosNombre || '');
+    if(key && !canonicalByName.has(key))canonicalByName.set(key,worker);
+  }
+
+  const seen=new Set<string>();
+  const result:Person[]=[];
+  for (const rawLine of String(text||'').split(/\r?\n/)) {
+    const line=rawLine.trim();
+    if(!line.includes(','))continue;
+    const normalized=norm(line);
+    if(!/^[A-ZÁÉÍÓÚÜÑÇ ]+\s+[A-ZÁÉÍÓÚÜÑÇ ]+$/.test(normalized))continue;
+    if(/^(CADIZ|DIPUTACION|CATEGORIA|AREA|GESTION|EXCMA|EMPRESA)\b/.test(normalized))continue;
+    const key=normalized;
+    if(seen.has(key))continue;
+    seen.add(key);
+
+    const canonical=canonicalByName.get(key);
+    result.push(canonical || ({
+      id:sourceWorkerId(key),
+      apellidosNombre:line.replace(/\s+/g,' '),
+      dni:'',
+      categoria:category || '',
+      obra:obra || '',
+    } as Person));
+  }
+  return result;
+};
+
+
+
 const matchWorkers = (workers: Person[], text: string) => {
   const lines = String(text || '')
     .split(/\r?\n/)
@@ -271,23 +314,20 @@ export async function processAdministrativeMandatoryInbox(options?: {
           options?.onProgress,
         );
         const category = recognition.category;
-        const matched = recognition.matched;
-        if (!matched.length) {
-          warnings.push(`${attachment.filename}: no se pudieron vincular trabajadores tras la lectura reforzada. Revisa el documento o usa Editar para asignarlos manualmente.`);
+        const documentObra = extractWorksiteFromText(recognition.text);
+        const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra);
+        if (!listedWorkers.length) {
+          warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
           skippedAttachments += 1;
           continue;
         }
-
-        // Evita mezclar obras: selecciona la obra mayoritaria entre los trabajadores detectados.
-        const counts = new Map<string, number>();
-        for (const worker of matched) {
-          const work = String(worker.obra || '').trim();
-          if (work) counts.set(work, (counts.get(work) || 0) + 1);
+        const obra = documentObra || String(listedWorkers.find(worker=>worker.obra)?.obra || '').trim();
+        if(!obra){
+          warnings.push(`${attachment.filename}: no se ha podido identificar la obra escrita en el PDF.`);
+          skippedAttachments += 1;
+          continue;
         }
-        const documentObra = extractWorksiteFromText(recognition.text);
-        const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-        const obra = documentObra || inferredObra;
-        const selected = obra ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase()) : matched;
+        const selected = listedWorkers;
         const workDate = extractDate(extracted.text, message.internalDate);
         const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
@@ -300,7 +340,8 @@ export async function processAdministrativeMandatoryInbox(options?: {
         }
         const preparedId=await prepareMandatoryDocumentFromEmail({
           documentType: type,
-          workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
+          workerIds: orderedSelected.filter(worker=>Number(worker.id)>0).map(worker => Number(worker.id)).filter(Number.isFinite),
+          importedWorkers: orderedSelected,
           workDate,
           category,
           periodKey: periodKeyFor(attachment.filename, workDate),
@@ -310,6 +351,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           emailFrom: administrativeEmail,
           emailSubject: message.subject,
           attachmentName: attachment.filename,
+          obraHint: obra,
           sourceText: recognition.text,
           sourcePdfBase64: await fileToBase64(file),
           sourcePdfSha256: await sha256Hex(sourceBytes),
@@ -368,30 +410,19 @@ export async function processManualMandatoryFiles(
         options?.onProgress,
       );
       const category = recognition.category;
-      const matched = recognition.matched;
       const obraHint = String(options?.obraHint || '').trim();
-      if (!matched.length && !obraHint) {
+      const documentObra = extractWorksiteFromText(recognition.text);
+      const obra = obraHint || documentObra;
+      if(!obra){
         skippedFiles += 1;
-        warnings.push(`${file.name}: no se pudieron vincular trabajadores con seguridad. Selecciona primero la obra y vuelve a importar para asignarlos manualmente sin alterar el PDF.`);
+        warnings.push(`${file.name}: no se ha podido identificar la obra escrita en el PDF. Selecciona primero la obra y vuelve a importar.`);
         continue;
       }
-
-      const counts = new Map<string, number>();
-      for (const worker of matched) {
-        const work = String(worker.obra || '').trim();
-        if (work) counts.set(work, (counts.get(work) || 0) + 1);
-      }
-      const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-      const documentObra = extractWorksiteFromText(recognition.text);
-      // En importación manual, la obra elegida por el supervisor tiene prioridad absoluta.
-      // Si no hay selección manual, manda la referencia que figure literalmente en el PDF.
-      const obra = obraHint || documentObra || inferredObra;
-      const selected = obra
-        ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase())
-        : matched;
-
-      if (obraHint && matched.length > 0 && selected.length === 0) {
-        warnings.push(`${file.name}: los trabajadores reconocidos no pertenecen a la obra seleccionada (${obraHint}). El PDF se conservará en esa obra y las personas deberán confirmarse manualmente.`);
+      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra);
+      if(!selected.length){
+        skippedFiles += 1;
+        warnings.push(`${file.name}: no se han podido leer nombres de personas en el PDF.`);
+        continue;
       }
       const workDate = extractDate(extracted.text);
       const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
@@ -403,7 +434,8 @@ export async function processManualMandatoryFiles(
 
       const preparedId=await prepareMandatoryDocumentFromEmail({
         documentType: type,
-        workerIds: orderedSelected.map(worker => Number(worker.id)).filter(Number.isFinite),
+        workerIds: orderedSelected.filter(worker=>Number(worker.id)>0).map(worker => Number(worker.id)).filter(Number.isFinite),
+        importedWorkers: orderedSelected,
         workDate,
         category,
         periodKey: periodKeyFor(file.name, workDate),
