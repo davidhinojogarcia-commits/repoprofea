@@ -19,11 +19,7 @@ type AccessState = {
 const storageKeyFor = (obra: string) =>
   `profea:foreman-access-url:${String(obra || '').trim().toLocaleLowerCase('es')}`;
 
-const canonicalPortalOrigin = () => {
-  const host = String(window.location.hostname || '').toLowerCase();
-  if (host === 'localhost' || host === '127.0.0.1') return window.location.origin;
-  return 'https://gestionprofea.vercel.app';
-};
+const canonicalPortalOrigin = () => window.location.origin;
 
 const portalUrlForToken = (token: string) =>
   `${canonicalPortalOrigin()}/?encargado=${encodeURIComponent(token)}`;
