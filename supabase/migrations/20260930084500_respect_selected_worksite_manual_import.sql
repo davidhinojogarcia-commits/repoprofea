@@ -1,4 +1,4 @@
-do $$
+do $body$
 declare
   v_sql text;
 begin
@@ -8,7 +8,7 @@ begin
 
   v_sql := replace(
     v_sql,
-    $$if coalesce(array_length(p_worker_ids,1),0)>0 then
+    $old$if coalesce(array_length(p_worker_ids,1),0)>0 then
     select t.obra
       into v_obra
     from unnest(p_worker_ids) with ordinality ids(id,ord)
@@ -27,8 +27,8 @@ begin
     where t.owner_id=v_owner
       and lower(coalesce(t.obra,''))=lower(trim(p_obra_hint))
     limit 1;
-  end if;$$,
-    $$if coalesce(trim(p_obra_hint),'')<>'' then
+  end if;$old$,
+    $new$if coalesce(trim(p_obra_hint),'')<>'' then
     v_obra := trim(p_obra_hint);
   end if;
 
@@ -42,14 +42,14 @@ begin
     group by t.obra
     order by count(*) desc, min(ids.ord)
     limit 1;
-  end if;$$
+  end if;$new$
   );
 
   execute v_sql;
 end;
-$$;
+$body$;
 
-do $$
+do $verify$
 declare
   v_src text;
 begin
@@ -66,4 +66,4 @@ begin
     raise exception 'La función no prioriza la obra seleccionada';
   end if;
 end;
-$$;
+$verify$;
