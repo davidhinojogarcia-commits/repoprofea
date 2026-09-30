@@ -46,6 +46,12 @@ const documentType = (filename: string, text: string): 'inicio' | 'control_prese
   return null;
 };
 
+const extractWorksiteFromText = (text: string) => {
+  const normalized = norm(text);
+  const match = normalized.match(/\b(\d{5})\s+(EE|GR)\b/) || normalized.match(/\b(\d{5})\s*-?\s*(EE|GR)\b/);
+  return match ? `${match[1]} ${match[2]}` : '';
+};
+
 const extractCategory = (text: string) => {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   for (const line of lines) {
@@ -278,8 +284,10 @@ export async function processAdministrativeMandatoryInbox(options?: {
           const work = String(worker.obra || '').trim();
           if (work) counts.set(work, (counts.get(work) || 0) + 1);
         }
-        const obra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-        const selected = obra ? matched.filter(worker => String(worker.obra || '').trim() === obra) : matched;
+        const documentObra = extractWorksiteFromText(recognition.text);
+        const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
+        const obra = documentObra || inferredObra;
+        const selected = obra ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase()) : matched;
         const workDate = extractDate(extracted.text, message.internalDate);
         const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
@@ -374,9 +382,10 @@ export async function processManualMandatoryFiles(
         if (work) counts.set(work, (counts.get(work) || 0) + 1);
       }
       const inferredObra = [...counts.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || '';
+      const documentObra = extractWorksiteFromText(recognition.text);
       // En importación manual, la obra elegida por el supervisor tiene prioridad absoluta.
-      // La detección automática solo se usa cuando no se ha seleccionado una obra.
-      const obra = obraHint || inferredObra;
+      // Si no hay selección manual, manda la referencia que figure literalmente en el PDF.
+      const obra = obraHint || documentObra || inferredObra;
       const selected = obra
         ? matched.filter(worker => String(worker.obra || '').trim().toLowerCase() === obra.toLowerCase())
         : matched;
