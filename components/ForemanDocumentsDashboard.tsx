@@ -1067,7 +1067,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             <p className="mt-2 text-[11px] text-slate-500">Si eliminas un trabajador del documento, su firma dejará de formar parte de este documento. Las firmas de los trabajadores que permanezcan seleccionados se conservarán.</p>
           </div>
         </div>
-        <div className="flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
+        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 shadow-[0_-10px_25px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
           <button type="button" disabled={editBusy} onClick={()=>void removeMandatoryDocument(editingMandatory)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
           <div className="flex gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
         </div>
