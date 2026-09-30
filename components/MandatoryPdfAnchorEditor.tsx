@@ -22,11 +22,32 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
+  const [zoom,setZoom]=useState(1);
+  const [fitWidth,setFitWidth]=useState(true);
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const viewportRef=useRef<any>(null);
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
   const currentIdentityLocked=Boolean(current&&current.workerId>0&&signedIds.has(Number(current.workerId)));
+
+  const viewportPoint=(viewport:any,pdfX:number,pdfY:number)=>{
+    const t=Array.isArray(viewport?.transform)?viewport.transform:[1,0,0,1,0,0];
+    return [
+      t[0]*pdfX+t[2]*pdfY+t[4],
+      t[1]*pdfX+t[3]*pdfY+t[5],
+    ] as [number,number];
+  };
+
+  const pdfPointFromViewport=(viewport:any,viewX:number,viewY:number)=>{
+    const t=Array.isArray(viewport?.transform)?viewport.transform:[1,0,0,1,0,0];
+    const det=t[0]*t[3]-t[1]*t[2];
+    if(!det)return [viewX,viewY] as [number,number];
+    const dx=viewX-t[4],dy=viewY-t[5];
+    return [
+      ( t[3]*dx-t[2]*dy)/det,
+      (-t[1]*dx+t[0]*dy)/det,
+    ] as [number,number];
+  };
 
   useEffect(()=>{
     let cancelled=false;
@@ -71,8 +92,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     (async()=>{
       const page=await pdf.getPage(Math.min(currentPage,pdf.numPages));
       const base=page.getViewport({scale:1});
-      const maxWidth=Math.min(900,Math.max(300,window.innerWidth-40));
-      const scale=Math.min(1.45,maxWidth/base.width);
+      const availableWidth=Math.max(280,Math.min(1100,(window.innerWidth>=1024?window.innerWidth-380:window.innerWidth-24)));
+      const baseFit=Math.max(0.35,Math.min(1.8,availableWidth/base.width));
+      const scale=fitWidth?baseFit:Math.max(0.35,Math.min(2.5,zoom));
       const viewport=page.getViewport({scale});
       viewportRef.current=viewport;
       const canvas=canvasRef.current!;
@@ -84,34 +106,28 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       if(cancelled)return;
 
       if(current.resolved&&current.signatureX!=null&&current.signatureY!=null){
-        const rect=viewport.convertToViewportRectangle([
-          Number(current.signatureX),
-          Number(current.signatureY),
+        const p1=viewportPoint(viewport,Number(current.signatureX),Number(current.signatureY));
+        const p2=viewportPoint(
+          viewport,
           Number(current.signatureX)+Number(current.signatureWidth||110),
           Number(current.signatureY)+Number(current.signatureHeight||32),
-        ]);
+        );
+        const left=Math.min(p1[0],p2[0]);
+        const top=Math.min(p1[1],p2[1]);
+        const width=Math.abs(p2[0]-p1[0]);
+        const height=Math.abs(p2[1]-p1[1]);
         ctx.save();
         ctx.strokeStyle='#00548E';
         ctx.lineWidth=3;
         ctx.setLineDash([8,5]);
-        ctx.strokeRect(
-          Math.min(rect[0],rect[2]),
-          Math.min(rect[1],rect[3]),
-          Math.abs(rect[2]-rect[0]),
-          Math.abs(rect[3]-rect[1]),
-        );
+        ctx.strokeRect(left,top,width,height);
         ctx.fillStyle='rgba(0,84,142,0.10)';
-        ctx.fillRect(
-          Math.min(rect[0],rect[2]),
-          Math.min(rect[1],rect[3]),
-          Math.abs(rect[2]-rect[0]),
-          Math.abs(rect[3]-rect[1]),
-        );
+        ctx.fillRect(left,top,width,height);
         ctx.restore();
       }
     })().catch(e=>setError(e?.message||'No se pudo representar la página.'));
     return()=>{cancelled=true;};
-  },[pdf,current,currentPage]);
+  },[pdf,current,currentPage,zoom,fitWidth]);
 
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved||Number(anchor.workerId)<=0).length,[draft]);
 
@@ -180,11 +196,12 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     const rect=canvas.getBoundingClientRect();
     const x=(event.clientX-rect.left)*(canvas.width/rect.width);
     const y=(event.clientY-rect.top)*(canvas.height/rect.height);
-    const [pdfX,pdfY]=viewportRef.current.convertToPdfPoint(x,y);
+    const [pdfX,pdfY]=pdfPointFromViewport(viewportRef.current,x,y);
     const boxWidth=Number(current.signatureWidth||110);
     const boxHeight=Number(current.signatureHeight||32);
-    const pageWidth=Number(viewportRef.current.viewBox?.[2]||595);
-    const pageHeight=Number(viewportRef.current.viewBox?.[3]||842);
+    const viewBox=viewportRef.current.viewBox||[0,0,595,842];
+    const pageWidth=Math.abs(Number(viewBox[2]||595)-Number(viewBox[0]||0));
+    const pageHeight=Math.abs(Number(viewBox[3]||842)-Number(viewBox[1]||0));
     const signatureX=Math.max(4,Math.min(pageWidth-boxWidth-4,pdfX-boxWidth/2));
     const signatureY=Math.max(4,Math.min(pageHeight-boxHeight-4,pdfY-boxHeight/2));
     setDraft(list=>list.map((anchor,i)=>i===index?{
@@ -200,8 +217,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }:anchor));
   };
 
-  return <div className="fixed inset-0 z-[13000] flex flex-col bg-slate-950/90 p-2 sm:p-4">
-    <div className="mx-auto flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+  return <div className="fixed inset-0 z-[13000] flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white shadow-2xl sm:rounded-3xl">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
         <div>
           <div className="text-xs font-black uppercase tracking-wide text-[#00548E]">Ajustar zonas de firma</div>
@@ -211,8 +228,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         <button type="button" onClick={onCancel} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
       </div>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="border-b p-4 lg:border-b-0 lg:border-r">
+      <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="max-h-[42dvh] overflow-y-auto border-b p-4 lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="rounded-xl bg-slate-100 p-3">
             <div className="text-xs font-black uppercase text-slate-500">Trabajador {index+1} de {draft.length}</div>
             <div className="mt-1 text-base font-black">{current?.workerName||'Sin identificar'}</div>
@@ -253,12 +270,37 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           {error&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</div>}
         </aside>
 
-        <div className="min-h-0 overflow-auto bg-slate-200 p-2 sm:p-4">
-          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:<canvas ref={canvasRef} onClick={handleCanvasClick} className="mx-auto cursor-crosshair bg-white shadow-xl" />}
+        <div className="flex min-h-0 flex-col bg-slate-200">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-300 bg-white px-3 py-2">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={()=>selectPage(currentPage-1)} disabled={currentPage<=1} className="min-h-[42px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">← Página anterior</button>
+              <div className="min-w-[78px] rounded-xl bg-slate-100 px-3 py-2 text-center text-sm font-black">{currentPage} / {pageCount}</div>
+              <button type="button" onClick={()=>selectPage(currentPage+1)} disabled={currentPage>=pageCount} className="min-h-[42px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Página siguiente →</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={()=>{setFitWidth(false);setZoom(value=>Math.max(.35,Number((value-.15).toFixed(2))))}} className="h-10 min-w-10 rounded-xl border px-3 font-black">−</button>
+              <button type="button" onClick={()=>{setFitWidth(true);setZoom(1)}} className={`h-10 rounded-xl border px-3 text-xs font-black ${fitWidth?'border-[#00548E] bg-blue-50 text-[#00548E]':''}`}>Ajustar</button>
+              <button type="button" onClick={()=>{setFitWidth(false);setZoom(value=>Math.min(2.5,Number((value+.15).toFixed(2))))}} className="h-10 min-w-10 rounded-xl border px-3 font-black">+</button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-4">
+            {loading
+              ? <div className="p-10 text-center font-bold">Abriendo PDF original…</div>
+              : <div className="mx-auto w-max max-w-none pb-16">
+                  <canvas
+                    ref={canvasRef}
+                    onClick={handleCanvasClick}
+                    className="block max-w-none cursor-crosshair bg-white shadow-xl"
+                  />
+                  <div className="mt-3 rounded-xl bg-white/90 px-3 py-2 text-center text-xs font-bold text-slate-600">
+                    Desplázate por la página y toca exactamente donde debe quedar la firma.
+                  </div>
+                </div>}
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 border-t bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="shrink-0 flex flex-col gap-2 border-t bg-white p-3 sm:p-4 sm:flex-row sm:items-center sm:justify-between" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
         <div className={`text-sm font-black ${unresolved?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : 'Todas las posiciones están confirmadas'}</div>
         <button type="button" disabled={saving||unresolved>0} onClick={async()=>{
           setSaving(true);setError('');
