@@ -84,12 +84,22 @@ const scoreLineForWorker = (worker: Person, lineText: string) => {
   const fullName = cleanWorkerName(worker.apellidosNombre);
   if (!fullName) return 0;
   if (lineNorm === fullName) return 0.99;
-  if (lineNorm.includes(fullName)) return 0.96;
+  if (lineNorm.includes(fullName) || fullName.includes(lineNorm)) return 0.96;
 
   const tokens = workerNameTokens(worker);
   if (tokens.length < 2) return 0;
-  const lineTokens = new Set(lineNorm.split(' ').filter(Boolean));
-  return tokens.every(token => lineTokens.has(token)) ? 0.9 : 0;
+  const lineTokens = lineNorm.split(' ').filter(Boolean);
+  const tokenMatch = (token:string,other:string) =>
+    token===other ||
+    (token.length===1 && other.startsWith(token)) ||
+    (other.length===1 && token.startsWith(other)) ||
+    (token.length>=4 && other.length>=4 && (
+      token.startsWith(other) || other.startsWith(token)
+    ));
+  const hits=tokens.filter(token=>lineTokens.some(other=>tokenMatch(token,other))).length;
+  const coverage=hits/Math.max(1,tokens.length);
+  if(hits>=2 && coverage>=0.6)return 0.88;
+  return 0;
 };
 
 const itemBox = (item: any) => {
@@ -170,7 +180,7 @@ export async function analyzeMandatoryOriginalPdf(
   const used = new Set<string>();
   const anchors: MandatoryWorkerAnchor[] = [];
 
-  for (const worker of workers) {
+  for (const [workerIndex,worker] of workers.entries()) {
     let best: {
       page:number;
       width:number;
@@ -195,42 +205,51 @@ export async function analyzeMandatoryOriginalPdf(
     }
 
     if (!best) {
+      const fallbackCapacity=28;
+      const fallbackPageIndex=Math.min(Math.floor(workerIndex/fallbackCapacity),Math.max(0,pages.length-1));
+      const fallbackRowIndex=workerIndex%fallbackCapacity;
+      const fallbackPage=pages[fallbackPageIndex]||pages[0]||{page:1,width:595,height:842,rotation:0};
+      const signatureWidth=Math.max(72,Math.min(96,fallbackPage.width*0.16));
+      const signatureHeight=18;
+      const signatureX=Math.max(12,fallbackPage.width-Math.max(16,fallbackPage.width*0.025)-signatureWidth);
+      const signatureY=Math.max(18,fallbackPage.height-118-(fallbackRowIndex*24));
       anchors.push({
         workerId: Number(worker.id),
         workerName: String(worker.apellidosNombre || ''),
         dni: String(worker.dni || ''),
-        page: 1,
-        order: Number.MAX_SAFE_INTEGER,
+        page: fallbackPage.page,
+        order: workerIndex,
         nameX: null,
-        nameY: null,
-        rowHeight: null,
-        signatureX: null,
-        signatureY: null,
-        signatureWidth: null,
-        signatureHeight: null,
-        confidence: 0,
-        resolved: false,
-        reason: 'No se pudo localizar con seguridad la fila del trabajador en el PDF original.',
+        nameY: signatureY + signatureHeight * 0.35,
+        rowHeight: 24,
+        signatureX,
+        signatureY,
+        signatureWidth,
+        signatureHeight,
+        confidence: 0.1,
+        resolved: true,
+        reason: 'Posición automática de respaldo: la firma se coloca en la columna derecha sin bloquear la firma.',
       });
       continue;
     }
 
     used.add(`${best.page}:${best.lineIndex}`);
     const line = best.line;
-    const rowHeight = Math.max(18, Math.min(42, line.height * 2.2));
-    const dynamicHeaderX = best.signatureHeaderX != null && best.signatureHeaderX > line.maxX + 6
+    const rowHeight = Math.max(16, Math.min(32, line.height * 1.9));
+    const dynamicHeaderX = best.signatureHeaderX != null && best.signatureHeaderX > line.maxX + 4
       ? best.signatureHeaderX
       : null;
-    // Si el original no trae una cabecera "FIRMA", coloca la firma a la derecha
-    // de la línea real del trabajador, sin reconstruir ni modificar el PDF.
-    const rightMargin = Math.max(16, best.width * 0.025);
-    const fallbackX = Math.max(line.maxX + 18, best.width * 0.66);
-    const candidateX = dynamicHeaderX ?? Math.min(fallbackX, best.width - rightMargin - 82);
-    const availableWidth = Math.max(0, best.width - rightMargin - candidateX);
-    const signatureWidth = Math.min(Math.max(78, availableWidth), 132);
-    const signatureHeight = Math.min(38, Math.max(24, rowHeight * 1.15));
-    const resolved = best.score >= 0.9 && availableWidth >= 70 && candidateX < best.width - 70;
-    const signatureY = Math.max(6, line.y - signatureHeight * 0.38);
+    // Regla operativa: la firma siempre se coloca automáticamente a la derecha
+    // de la línea del trabajador. Nunca requiere validación previa del supervisor.
+    const rightMargin = Math.max(14, best.width * 0.02);
+    const targetWidth = Math.max(72, Math.min(104, best.width * 0.17));
+    const rightAlignedX = best.width - rightMargin - targetWidth;
+    const preferredX = dynamicHeaderX ?? Math.max(line.maxX + 10, best.width * 0.66);
+    const candidateX = Math.max(line.maxX + 6, Math.min(preferredX, rightAlignedX));
+    const availableWidth = Math.max(56, best.width - rightMargin - candidateX);
+    const signatureWidth = Math.max(56, Math.min(targetWidth, availableWidth));
+    const signatureHeight = Math.max(12, Math.min(20, rowHeight * 0.72));
+    const signatureY = Math.max(6, line.y - signatureHeight * 0.35);
 
     anchors.push({
       workerId: Number(worker.id),
@@ -241,14 +260,48 @@ export async function analyzeMandatoryOriginalPdf(
       nameX: line.minX,
       nameY: line.y,
       rowHeight,
-      signatureX: resolved ? Number(candidateX) : null,
-      signatureY: resolved ? signatureY : null,
-      signatureWidth: resolved ? signatureWidth : null,
-      signatureHeight: resolved ? signatureHeight : null,
+      signatureX: Number(candidateX),
+      signatureY,
+      signatureWidth,
+      signatureHeight,
       confidence: best.score,
-      resolved,
-      ...(resolved ? {} : { reason: 'La fila se ha reconocido, pero no hay una zona de firma suficientemente segura.' }),
+      resolved: true,
+      ...(best.score < 0.9 ? { reason: 'Posición automática basada en coincidencia parcial del nombre.' } : {}),
     });
+  }
+
+  // Garantiza separación vertical entre firmas de una misma página.
+  // Se reduce automáticamente la altura (y proporcionalmente el ancho) cuando
+  // dos filas están muy próximas, manteniendo cada firma alineada a su fila.
+  const anchorsByPage=new Map<number,MandatoryWorkerAnchor[]>();
+  for(const anchor of anchors){
+    const page=Number(anchor.page)||1;
+    if(!anchorsByPage.has(page))anchorsByPage.set(page,[]);
+    anchorsByPage.get(page)!.push(anchor);
+  }
+  for(const pageAnchors of anchorsByPage.values()){
+    const positioned=pageAnchors
+      .filter(anchor=>anchor.signatureY!=null)
+      .sort((a,b)=>Number(b.signatureY||0)-Number(a.signatureY||0));
+    for(let index=0;index<positioned.length;index+=1){
+      const anchor=positioned[index];
+      const currentY=Number(anchor.signatureY||0);
+      const upper=index>0?positioned[index-1]:null;
+      const lower=index<positioned.length-1?positioned[index+1]:null;
+      const distanceUp=upper?Math.max(0,Number(upper.signatureY||0)-currentY):Infinity;
+      const distanceDown=lower?Math.max(0,currentY-Number(lower.signatureY||0)):Infinity;
+      const nearest=Math.min(distanceUp,distanceDown);
+      const currentHeight=Math.max(10,Number(anchor.signatureHeight||18));
+      const maxHeight=Number.isFinite(nearest)?Math.max(9,nearest-4):currentHeight;
+      const nextHeight=Math.min(currentHeight,maxHeight);
+      if(nextHeight<currentHeight){
+        const scale=nextHeight/currentHeight;
+        anchor.signatureHeight=nextHeight;
+        anchor.signatureWidth=Math.max(48,Number(anchor.signatureWidth||84)*scale);
+        // Recentrar ligeramente sobre la misma línea al reducir la caja.
+        anchor.signatureY=currentY+(currentHeight-nextHeight)/2;
+      }
+    }
   }
 
   const orderedResolved = anchors
@@ -350,8 +403,7 @@ export async function buildSignedMandatoryPdf(input: {
   const pdfDoc = await PDFLib.PDFDocument.load(originalBytes, { updateMetadata: false });
   const pages = pdfDoc.getPages();
 
-  for (const anchor of input.anchors) {
-    if (!anchor.resolved) continue;
+  for (const [anchorIndex,anchor] of input.anchors.entries()) {
     const raw = input.signatures[String(anchor.workerId)];
     const signature = typeof raw === 'string' ? raw : raw?.signature;
     if (!signature) continue;
@@ -361,11 +413,13 @@ export async function buildSignedMandatoryPdf(input: {
     const image = decoded.type === 'png'
       ? await pdfDoc.embedPng(decoded.bytes)
       : await pdfDoc.embedJpg(decoded.bytes);
-    const boxWidth = Number(anchor.signatureWidth || 0);
-    const boxHeight = Number(anchor.signatureHeight || 0);
-    if (!boxWidth || !boxHeight || anchor.signatureX == null || anchor.signatureY == null) {
-      throw new Error(`La posición de firma de ${anchor.workerName} no está confirmada.`);
-    }
+    const size=page.getSize();
+    const boxWidth = Number(anchor.signatureWidth || Math.max(72,Math.min(96,size.width*0.16)));
+    const boxHeight = Number(anchor.signatureHeight || 18);
+    const fallbackX=Math.max(12,size.width-Math.max(14,size.width*0.02)-boxWidth);
+    const fallbackY=Math.max(18,size.height-118-((Number.isFinite(Number(anchor.order))?Number(anchor.order):anchorIndex)*24));
+    const boxX=anchor.signatureX==null?fallbackX:Number(anchor.signatureX);
+    const boxY=anchor.signatureY==null?fallbackY:Number(anchor.signatureY);
     const ratio = image.width / Math.max(1, image.height);
     let width = boxWidth;
     let height = width / ratio;
@@ -374,8 +428,8 @@ export async function buildSignedMandatoryPdf(input: {
       width = height * ratio;
     }
     page.drawImage(image, {
-      x: Number(anchor.signatureX) + Math.max(0, (boxWidth - width) / 2),
-      y: Number(anchor.signatureY) + Math.max(0, (boxHeight - height) / 2),
+      x: boxX + Math.max(0, (boxWidth - width) / 2),
+      y: boxY + Math.max(0, (boxHeight - height) / 2),
       width,
       height,
     });
@@ -433,13 +487,17 @@ export async function verifyMandatoryPdfFidelity(
       const width = Math.min(originalRender.image.width, signedRender.image.width);
       const height = Math.min(originalRender.image.height, signedRender.image.height);
       const masked = anchors
-        .filter(anchor => anchor.resolved && anchor.page===pageNumber && anchor.signatureX!=null && anchor.signatureY!=null)
-        .map(anchor => {
+        .filter(anchor => anchor.page===pageNumber)
+        .map((anchor,index) => {
+          const boxWidth=Number(anchor.signatureWidth||Math.max(72,Math.min(96,av.width*0.16)));
+          const boxHeight=Number(anchor.signatureHeight||18);
+          const boxX=anchor.signatureX==null?Math.max(12,av.width-Math.max(14,av.width*0.02)-boxWidth):Number(anchor.signatureX);
+          const boxY=anchor.signatureY==null?Math.max(18,av.height-118-((Number.isFinite(Number(anchor.order))?Number(anchor.order):index)*24)):Number(anchor.signatureY);
           const rect = originalRender.viewport.convertToViewportRectangle([
-            Number(anchor.signatureX),
-            Number(anchor.signatureY),
-            Number(anchor.signatureX)+Number(anchor.signatureWidth||0),
-            Number(anchor.signatureY)+Number(anchor.signatureHeight||0),
+            boxX,
+            boxY,
+            boxX+boxWidth,
+            boxY+boxHeight,
           ]);
           return {
             left: Math.floor(Math.min(rect[0],rect[2]))-3,
