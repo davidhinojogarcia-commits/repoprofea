@@ -1381,61 +1381,77 @@ function App() {
   const handleExportPRLExcel = async (dataToExport: Person[]) => {
     const filteredData = dataToExport.filter(p => p.formacion === 'No');
     if (filteredData.length === 0) return alert('No hay trabajadores sin formación para exportar');
-    
-    const { preparePRLExcelData, downloadExcel } = await loadExportUtils();
-    const { buffer, filename } = await preparePRLExcelData(filteredData);
-    downloadExcel(buffer, filename);
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    uploadToGoogleDrive(blob, filename);
+
+    const { preparePRLExcelData, downloadExcel, splitRelationWorkersByWork } = await loadExportUtils();
+    for (const group of splitRelationWorkersByWork(filteredData)) {
+      const { buffer, filename } = await preparePRLExcelData(group.workers);
+      downloadExcel(buffer, filename);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      uploadToGoogleDrive(blob, filename);
+    }
   };
 
   const handleExportPRLPDF = async (dataToExport: Person[]) => {
     const filteredData = dataToExport.filter(p => p.formacion === 'No');
     if (filteredData.length === 0) return alert('No hay trabajadores sin formación para exportar');
 
-    const { preparePRLPDFData, downloadPDF } = await loadExportUtils();
-    const { doc, filename } = preparePRLPDFData(filteredData);
-    downloadPDF(doc, filename);
-    const blob = doc.output('blob');
-    uploadToGoogleDrive(blob, filename);
+    const { preparePRLPDFData, downloadPDF, splitRelationWorkersByWork } = await loadExportUtils();
+    for (const group of splitRelationWorkersByWork(filteredData)) {
+      const { doc, filename } = preparePRLPDFData(group.workers);
+      downloadPDF(doc, filename);
+      const blob = doc.output('blob');
+      uploadToGoogleDrive(blob, filename);
+    }
   };
 
   const handleExportRRMMExcel = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
-    const { prepareRRMMExcelData, downloadExcel } = await loadExportUtils();
-    const { buffer, filename } = await prepareRRMMExcelData(dataToExport);
-    downloadExcel(buffer, filename);
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    uploadToGoogleDrive(blob, filename);
+    const { prepareRRMMExcelData, downloadExcel, splitRelationWorkersByWork } = await loadExportUtils();
+    for (const group of splitRelationWorkersByWork(dataToExport)) {
+      const { buffer, filename } = await prepareRRMMExcelData(group.workers);
+      downloadExcel(buffer, filename);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      uploadToGoogleDrive(blob, filename);
+    }
   };
 
   const handleExportRRMMPDF = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
-    const { prepareRRMMPDFData, downloadPDF } = await loadExportUtils();
-    const { doc, filename } = prepareRRMMPDFData(dataToExport);
-    downloadPDF(doc, filename);
-    const blob = doc.output('blob');
-    uploadToGoogleDrive(blob, filename);
+    const { prepareRRMMPDFData, downloadPDF, splitRelationWorkersByWork } = await loadExportUtils();
+    for (const group of splitRelationWorkersByWork(dataToExport)) {
+      const { doc, filename } = prepareRRMMPDFData(group.workers);
+      downloadPDF(doc, filename);
+      const blob = doc.output('blob');
+      uploadToGoogleDrive(blob, filename);
+    }
   };
 
   const handleExportExcel = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
-    const { prepareExcelData, downloadExcel } = await loadExportUtils();
-    const { buffer, filename } = await prepareExcelData(dataToExport, people);
-    downloadExcel(buffer, filename);
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    uploadToGoogleDrive(blob, filename);
-    return filename;
+    const { prepareExcelData, downloadExcel, splitRelationWorkersByWork } = await loadExportUtils();
+    let lastFilename = '';
+    for (const group of splitRelationWorkersByWork(dataToExport)) {
+      const { buffer, filename } = await prepareExcelData(group.workers, people);
+      downloadExcel(buffer, filename);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      uploadToGoogleDrive(blob, filename);
+      lastFilename = filename;
+    }
+    return lastFilename;
   };
 
   const handleExportPDF = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
-    const { preparePDFData, downloadPDF } = await loadExportUtils();
-    const { doc, filename } = preparePDFData(dataToExport, people);
-    downloadPDF(doc, filename);
-    const blob = doc.output('blob');
-    uploadToGoogleDrive(blob, filename);
-    return filename;
+    const { preparePDFData, downloadPDF, splitRelationWorkersByWork } = await loadExportUtils();
+    let lastFilename = '';
+    for (const group of splitRelationWorkersByWork(dataToExport)) {
+      const { doc, filename } = preparePDFData(group.workers, people);
+      downloadPDF(doc, filename);
+      const blob = doc.output('blob');
+      uploadToGoogleDrive(blob, filename);
+      lastFilename = filename;
+    }
+    return lastFilename;
   };
 
   const handleEmailFilesWrapped = async (dataToExport: Person[]) => {
@@ -1631,20 +1647,24 @@ function App() {
 
   const handleExportCalzadoExcel = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
-    const { prepareCalzadoExcelData, downloadExcel } = await loadExportUtils();
-    const { buffer, filename } = await prepareCalzadoExcelData(dataToExport);
-    downloadExcel(buffer, filename);
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    uploadToGoogleDrive(blob, filename);
+    const { prepareCalzadoExcelData, downloadExcel, splitRelationWorkersByWork } = await loadExportUtils();
+    for (const group of splitRelationWorkersByWork(dataToExport)) {
+      const { buffer, filename } = await prepareCalzadoExcelData(group.workers);
+      downloadExcel(buffer, filename);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      uploadToGoogleDrive(blob, filename);
+    }
   };
 
   const handleExportCalzadoPDF = async (dataToExport: Person[]) => {
     if (dataToExport.length === 0) return alert('No hay datos para exportar');
-    const { prepareCalzadoPDFData, downloadPDF } = await loadExportUtils();
-    const { doc, filename } = prepareCalzadoPDFData(dataToExport);
-    downloadPDF(doc, filename);
-    const blob = doc.output('blob');
-    uploadToGoogleDrive(blob, filename);
+    const { prepareCalzadoPDFData, downloadPDF, splitRelationWorkersByWork } = await loadExportUtils();
+    for (const group of splitRelationWorkersByWork(dataToExport)) {
+      const { doc, filename } = prepareCalzadoPDFData(group.workers);
+      downloadPDF(doc, filename);
+      const blob = doc.output('blob');
+      uploadToGoogleDrive(blob, filename);
+    }
   };
 
   const handleImportExcel = async (file: File) => {
