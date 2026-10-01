@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
 import { AlertCircle, Ban, CheckCircle2, Copy, Loader2, QrCode, RefreshCw, X } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -375,7 +376,7 @@ export const ForemanAccessButton: React.FC<{
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-slate-950/80 p-0 sm:p-4" role="dialog" aria-modal="true">
+        <ModalPortal label="Código QR del encargado"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/80 p-0 sm:p-4" role="dialog" aria-modal="true">
           <div className="flex h-full w-full flex-col overflow-y-auto bg-white p-4 shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:max-w-xl sm:rounded-3xl sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -445,7 +446,7 @@ export const ForemanAccessButton: React.FC<{
               Al desautorizar, este enlace y este código QR dejan de funcionar inmediatamente. Si generas otro acceso, se creará un código nuevo.
             </p>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </>
   );
