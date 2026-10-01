@@ -48,6 +48,6 @@ assert.match(modalPortal,/createPortal\(/,'ModalPortal debe usar createPortal');
 assert.match(modalPortal,/document\.body/,'ModalPortal debe renderizar en document.body');
 assert.match(modalPortal,/z-\[2147482000\]/,'ModalPortal debe conservar una capa global superior');
 assert.match(modalPortal,/document\.body\.style\.overflow = 'hidden'/,'ModalPortal debe bloquear el scroll del fondo');
-assert.match(appDialog,/z-\[2147483000\]/,'Los diálogos globales deben quedar por encima de cualquier modal');
+assert.match(appDialog,/z-\[2147483600\]/,'Los diálogos globales deben quedar por encima de cualquier modal');
 
 console.log('Global full-screen overlay layering audit passed.');
