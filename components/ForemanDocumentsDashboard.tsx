@@ -699,7 +699,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       return;
     }
     if (!editWorkDate) {
-      window.alert('Indica la fecha del documento.');
+      setMailMessage('Indica la fecha del documento.');
       return;
     }
     setEditBusy(true);
@@ -772,7 +772,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage('Documento eliminado correctamente.');
       await refresh(true);
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudo eliminar el documento.');
+      setMailMessage(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
     }
