@@ -883,7 +883,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       apellidosNombre:String(anchor.workerName||'').trim(),
       dni:String(anchor.dni||'').trim(),
       categoria:'',
-      obra:data?.worksite?.nombre||doc.obra||'',
+      obra:data?.worksite?.nombre||data?.obra||'',
     })).filter(worker=>Number.isFinite(worker.id)&&worker.id!==0&&worker.apellidosNombre);
     const importedWorkerMap=new Map<number,any>([
       ...anchorWorkerSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
