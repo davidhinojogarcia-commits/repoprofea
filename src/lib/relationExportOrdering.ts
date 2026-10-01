@@ -10,9 +10,17 @@ const normalize = (value: unknown) =>
 
 export const relationPeriodRank = (person: Person) => {
   const value = normalize(person.quincena);
-  if (/^(1|1A|1ª|PRIMERA)\b/.test(value) || /PRIMERA\s+QUINCENA/.test(value)) return 0;
-  if (/^(2|2A|2ª|SEGUNDA)\b/.test(value) || /SEGUNDA\s+QUINCENA/.test(value)) return 1;
-  if (/\bMES\b|MENSUAL|MES COMPLETO/.test(value)) return 2;
+  if (
+    value.startsWith('1') ||
+    value.startsWith('PRIMERA') ||
+    value.includes('PRIMERA QUINCENA')
+  ) return 0;
+  if (
+    value.startsWith('2') ||
+    value.startsWith('SEGUNDA') ||
+    value.includes('SEGUNDA QUINCENA')
+  ) return 1;
+  if (value.includes('MES') || value.includes('MENSUAL')) return 2;
   return 3;
 };
 
