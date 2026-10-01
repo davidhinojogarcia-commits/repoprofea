@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { Calendar, Check, CheckCircle2, ExternalLink, Loader2, LogOut, Mail, X } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import {
@@ -162,7 +163,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <ModalPortal label="GoogleCalendarModal"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-2xl w-full shadow-2xl space-y-5 relative overflow-hidden">
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
@@ -318,6 +319,6 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };
