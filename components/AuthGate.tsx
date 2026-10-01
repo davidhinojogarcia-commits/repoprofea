@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import type { AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase, type SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, KeyRound, Loader2, LogIn } from 'lucide-react';
@@ -284,7 +285,7 @@ export function AuthGate({ children }: AuthGateProps) {
       <AuthShellContext.Provider value={{ user, role, profile, supervisorName, supervisorSettings, technicianSettings, signingOut, signOut: handleSignOut }}>
         <div className="min-h-screen">{children}</div>
         {warningOpen && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-title">
+          <ModalPortal label="AuthGate"><div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-title">
             <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl dark:border-amber-900 dark:bg-slate-900">
               <h2 id="idle-title" className="text-xl font-bold text-slate-900 dark:text-white">Tu sesión está a punto de cerrarse por inactividad.</h2>
               <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Tu sesión se cerrará en 2 minutos por inactividad.</p>
@@ -294,7 +295,7 @@ export function AuthGate({ children }: AuthGateProps) {
                 <button type="button" onClick={continueSession} className="rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-secondary">Continuar sesión</button>
               </div>
             </div>
-          </div>
+          </div></ModalPortal>
         )}
       </AuthShellContext.Provider>
     );
