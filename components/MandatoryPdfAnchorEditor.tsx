@@ -28,7 +28,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const viewportRef=useRef<any>(null);
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
-  const currentIdentityLocked=Boolean(current&&current.workerId>0&&signedIds.has(Number(current.workerId)));
+  const currentIdentityLocked=Boolean(current&&signedIds.has(Number(current.workerId)));
 
   const viewportPoint=(viewport:any,pdfX:number,pdfY:number)=>{
     const t=Array.isArray(viewport?.transform)?viewport.transform:[1,0,0,1,0,0];
@@ -129,7 +129,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     return()=>{cancelled=true;};
   },[pdf,current,currentPage,zoom,fitWidth]);
 
-  const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved||Number(anchor.workerId)<=0).length,[draft]);
+  const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
 
   const selectPage=(value:number)=>{
     if(!current)return;
@@ -211,8 +211,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       signatureY,
       signatureWidth:boxWidth,
       signatureHeight:boxHeight,
-      resolved:Number(current.workerId)>0,
-      confidence:Number(current.workerId)>0?1:0,
+      resolved:Number(current.workerId)!==0,
+      confidence:Number(current.workerId)!==0?1:0,
       reason:'Posición confirmada manualmente por el supervisor.',
     }:anchor));
   };
@@ -221,9 +221,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white shadow-2xl sm:rounded-3xl">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
         <div>
-          <div className="text-xs font-black uppercase tracking-wide text-[#00548E]">Ajustar zonas de firma</div>
+          <div className="text-xs font-black uppercase tracking-wide text-[#00548E]">Ajustar firmas manualmente</div>
           <h2 className="text-lg font-black">{title}</h2>
-          <p className="text-sm text-slate-600">Toca en el PDF el centro de la zona donde debe aparecer la firma del trabajador seleccionado.</p>
+          <p className="text-sm text-slate-600">Selecciona un trabajador y toca justo a la derecha de su nombre y apellidos. Esa será la posición exacta de su firma.</p>
         </div>
         <button type="button" onClick={onCancel} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
       </div>
@@ -265,7 +265,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E]">Añadir trabajador no detectado</button>
 
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700">
-            El recuadro azul marca la única zona donde se superpondrá la firma. El PDF original no se mueve ni se rediseña.
+            El recuadro azul marca dónde se colocará la firma. Colócalo en la misma línea del trabajador, inmediatamente a la derecha de su nombre. El PDF original no se mueve ni se rediseña.
           </div>
           {error&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</div>}
         </aside>
