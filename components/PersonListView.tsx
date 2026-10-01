@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
+import ModalPortal from './ModalPortal';
 import { Person } from '../types';
 import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, Undo2, Redo2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
@@ -525,7 +526,7 @@ export const PersonList: React.FC<PersonListProps> = ({
 
         <AnimatePresence>
           {showImportModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm text-left">
+            <ModalPortal label="PersonListView"><div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm text-left">
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -599,7 +600,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   </button>
                 </div>
               </motion.div>
-            </div>
+            </div></ModalPortal>
           )}
         </AnimatePresence>
       </div>
@@ -1022,7 +1023,7 @@ export const PersonList: React.FC<PersonListProps> = ({
 
       <AnimatePresence>
         {showImportModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <ModalPortal label="PersonListView"><div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1096,15 +1097,15 @@ export const PersonList: React.FC<PersonListProps> = ({
                 </button>
               </div>
             </motion.div>
-          </div>
+          </div></ModalPortal>
         )}
       </AnimatePresence>
 
       {isDriveLoading && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm text-white">
+        <ModalPortal label="PersonListView"><div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm text-white">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
           <p className="mt-4 text-sm font-semibold">Procesando archivo de Google Drive...</p>
-        </div>
+        </div></ModalPortal>
       )}
 
       <GoogleCalendarModal
