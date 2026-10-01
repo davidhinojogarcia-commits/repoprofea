@@ -16,6 +16,7 @@ export function AppDialogHost() {
   const [queue, setQueue] = useState<AppDialogRequest[]>([]);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const current = queue[0] || null;
 
   useEffect(() => {
@@ -74,7 +75,27 @@ export function AppDialogHost() {
       event.preventDefault();
       if (isConfirm) onCancel();
       else finish(true);
-    } else if (event.key === 'Enter' && !event.shiftKey) {
+      return;
+    }
+    if (event.key === 'Tab') {
+      const selector = 'button:not([disabled]),[href],input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+      const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(selector) || []);
+      if (!nodes.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
       if (isPrompt && event.target instanceof HTMLTextAreaElement) return;
       event.preventDefault();
       onConfirm();
@@ -97,6 +118,7 @@ export function AppDialogHost() {
       onKeyDown={onKeyDown}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="profea-dialog-title"
