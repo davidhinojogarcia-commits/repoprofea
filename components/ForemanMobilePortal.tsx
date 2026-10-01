@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { appAlert, appConfirm } from '../src/lib/appDialog';
+import { appAlert } from '../src/lib/appDialog';
 import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
@@ -13,6 +13,7 @@ import {
   submitForemanDocument,
   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
+  correctForemanMandatoryWorkerName,
   getForemanMandatoryPdf,
   getForemanMandatorySignatures,
   repairForemanMandatoryAnchors,
@@ -220,6 +221,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [selectedMandatoryPeriodKeys,setSelectedMandatoryPeriodKeys]=useState<Set<string>>(new Set());
   const [expandedMandatoryDocuments,setExpandedMandatoryDocuments]=useState<Set<string>>(new Set());
   const [mandatorySignatureImages,setMandatorySignatureImages]=useState<Record<string,Record<string,string>>>({});
+  const [nameCorrection,setNameCorrection]=useState<{documentId:string;workerId:number;value:string}|null>(null);
 
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
@@ -993,17 +995,47 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <div className="text-base font-black text-[#00548E]">Personas listas para firmar</div>
         <p className="mt-1 text-sm leading-5 text-slate-600">Estas son exactamente las personas leídas del documento importado. Todas quedan habilitadas automáticamente para firmar, sin revisión previa del supervisor.</p>
         {importedCandidates.length>0
-          ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=><button
-              key={worker.id}
-              type="button"
-              disabled={saving}
-              onClick={()=>void prepareImportedWorkerSignature(doc,worker)}
-              className="w-full min-h-[66px] rounded-xl border border-blue-200 bg-white px-4 py-3 text-left shadow-sm disabled:opacity-50"
-            >
-              <span className="block text-base font-black text-slate-900">{worker.apellidosNombre}</span>
-              <span className="mt-1 block text-sm text-slate-600">{worker.dni} · {worker.categoria}</span>
-              <span className="mt-2 block text-sm font-black text-[#00548E]">Firmar esta persona</span>
-            </button>)}</div>
+          ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=>{
+              const editing=nameCorrection?.documentId===doc.id&&Number(nameCorrection.workerId)===Number(worker.id);
+              return <div key={worker.id} className="w-full rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                {editing
+                  ? <div className="space-y-2">
+                      <label className="block text-xs font-black uppercase tracking-wide text-slate-500">Nombre que aparecerá en este documento</label>
+                      <input
+                        autoFocus
+                        value={nameCorrection?.value||''}
+                        onChange={e=>setNameCorrection(current=>current?{...current,value:e.target.value}:current)}
+                        className="min-h-[50px] w-full rounded-xl border border-blue-200 px-3 py-2 text-base font-bold text-slate-900"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" disabled={saving} onClick={()=>setNameCorrection(null)} className="min-h-[46px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-700">Cancelar</button>
+                        <button type="button" disabled={saving||String(nameCorrection?.value||'').trim().length<3} onClick={async()=>{
+                          if(!nameCorrection)return;
+                          setSaving(true);
+                          try{
+                            await correctForemanMandatoryWorkerName(token,doc.id,Number(worker.id),nameCorrection.value);
+                            setNameCorrection(null);
+                            await refresh();
+                            setError('');
+                            setOperationFeedback('Nombre corregido para este documento.');
+                          }catch(e:any){
+                            const message=e?.message||'No se pudo corregir el nombre.';
+                            setError(message);
+                            await appAlert(message,{title:'No se pudo corregir el nombre',kind:'error'});
+                          }finally{setSaving(false);}
+                        }} className="min-h-[46px] rounded-xl bg-[#00548E] px-3 py-2 text-sm font-black text-white disabled:bg-slate-300">Guardar nombre</button>
+                      </div>
+                    </div>
+                  : <>
+                      <div className="text-base font-black text-slate-900">{worker.apellidosNombre}</div>
+                      <div className="mt-1 text-sm text-slate-600">{worker.dni?worker.dni+' · ':''}{worker.categoria}</div>
+                      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                        <button type="button" disabled={saving} onClick={()=>void prepareImportedWorkerSignature(doc,worker)} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2 text-sm font-black text-white disabled:opacity-50">Firmar esta persona</button>
+                        <button type="button" disabled={saving} onClick={()=>setNameCorrection({documentId:doc.id,workerId:Number(worker.id),value:String(worker.apellidosNombre||'')})} className="min-h-[50px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-700">Corregir nombre</button>
+                      </div>
+                    </>}
+              </div>;
+            })}</div>
           : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
       </div>}
 
@@ -1047,13 +1079,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         </div>)}</div>}
       </div>
 
-      {!closed&&<button type="button" disabled={saving||!canFinalize} onClick={async()=>{
-        const filename=String(doc.details?.sourceFilename||mandatoryLabel(doc.documentType));
-        const confirmed=await appConfirm(
-          `El documento "${filename}" tiene todas las firmas. Se enviará al supervisor como documento válido, conservando exactamente el PDF original y añadiendo únicamente las firmas junto a cada trabajador.`,
-          {title:'Enviar documento firmado',confirmLabel:'Enviar al supervisor',cancelLabel:'Cancelar'}
-        );
-        if(!confirmed)return;
+      {!closed&&<button id={'foreman-signing-'+doc.id} type="button" disabled={saving||!canFinalize} onClick={async()=>{
         setSaving(true);
         setError('');
         try{
@@ -1094,7 +1120,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           setMandatoryWorkerChoice(current=>({...current,[doc.id]:''}));
           setOperationFeedback('Documento firmado enviado correctamente al supervisor.');
           setTab('completed');
-          await appAlert('El documento firmado se ha enviado correctamente al supervisor.',{title:'Envío completado',kind:'success'});
         }catch(e:any){
           const message=e?.message||'No se pudo enviar el documento.';
           setError(message);
