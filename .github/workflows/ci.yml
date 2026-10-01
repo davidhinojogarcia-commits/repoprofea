@@ -87,6 +87,8 @@ jobs:
         run: npm run test:mandatory-worker-detection
       - name: Global modal layering regression
         run: npm run test:modal-layering
+      - name: Light/dark contrast regression
+        run: npm run test:theme-contrast
       - name: TypeScript validation
         run: |
           set -o pipefail
