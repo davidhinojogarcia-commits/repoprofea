@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.18.2",
+  "version": "1.18.3",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -11,7 +11,8 @@
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
     "test:relation-ordering": "tsx scripts/testRelationExportOrdering.ts",
     "test:mandatory-worker-detection": "tsx scripts/testMandatoryWorkerDetection.ts",
-    "test:modal-layering": "tsx scripts/testModalLayering.ts"
+    "test:modal-layering": "tsx scripts/testModalLayering.ts",
+    "test:theme-contrast": "tsx scripts/testThemeContrast.ts"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
