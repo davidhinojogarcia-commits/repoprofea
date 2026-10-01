@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Trash2 } from 'lucide-react';
+import ModalPortal from './ModalPortal';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { getSupervisorMandatoryPdf } from '../src/services/foremanPortalService';
 import { supabase } from '../src/lib/supabase';
@@ -12,14 +14,16 @@ type Props = {
   signedWorkerIds?: number[];
   onCancel: () => void;
   onSave: (anchors: MandatoryWorkerAnchor[]) => Promise<void> | void;
+  onRemoveWorker?: (workerId: number) => Promise<void> | void;
 };
 
-export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, anchors, signedWorkerIds = [], onCancel, onSave }) => {
+export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, anchors, signedWorkerIds = [], onCancel, onSave, onRemoveWorker }) => {
   const [draft,setDraft]=useState<MandatoryWorkerAnchor[]>(()=>anchors.map(anchor=>({...anchor})));
   const [index,setIndex]=useState(0);
   const [pdf,setPdf]=useState<any>(null);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
+  const [removing,setRemoving]=useState(false);
   const [error,setError]=useState('');
   const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
   const [zoom,setZoom]=useState(1);
@@ -190,6 +194,26 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     setError('');
   };
 
+  const removeCurrentWorker=async()=>{
+    if(!current||!onRemoveWorker||removing)return;
+    setRemoving(true);
+    setError('');
+    try{
+      const workerId=Number(current.workerId);
+      await onRemoveWorker(workerId);
+      const nextDraft=draft.filter((_,i)=>i!==index).map((anchor,i)=>({...anchor,order:i}));
+      setDraft(nextDraft);
+      setIndex(nextDraft.length?Math.min(index,nextDraft.length-1):0);
+      setError(nextDraft.length
+        ? `${current.workerName||'Trabajador'} eliminado del documento. Ya no cuenta como firma pendiente.`
+        : 'El documento se ha quedado sin trabajadores válidos.');
+    }catch(e:any){
+      setError(e?.message||'No se pudo eliminar el trabajador del documento.');
+    }finally{
+      setRemoving(false);
+    }
+  };
+
   const handleCanvasClick=(event:React.MouseEvent<HTMLCanvasElement>)=>{
     if(!current||!viewportRef.current||!canvasRef.current)return;
     const canvas=canvasRef.current;
@@ -217,7 +241,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }:anchor));
   };
 
-  return <div className="fixed inset-0 z-[13000] flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
+  return <ModalPortal label="Ajustar firmas"><div className="fixed inset-0 flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white shadow-2xl sm:rounded-3xl">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
         <div>
@@ -263,6 +287,14 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <button type="button" disabled={index>=draft.length-1} onClick={()=>setIndex(i=>Math.min(draft.length-1,i+1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Siguiente</button>
           </div>
           <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E]">Añadir trabajador no detectado</button>
+          <button
+            type="button"
+            disabled={!current||!onRemoveWorker||removing}
+            onClick={()=>void removeCurrentWorker()}
+            className="mt-2 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-black text-rose-700 disabled:opacity-40"
+          >
+            <Trash2 className="h-4 w-4"/>{removing?'Eliminando…':'Eliminar trabajador del documento'}
+          </button>
 
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700">
             El recuadro azul marca dónde se colocará la firma. Colócalo en la misma línea del trabajador, inmediatamente a la derecha de su nombre. El PDF original no se mueve ni se rediseña.
@@ -309,7 +341,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar posiciones'}</button>
       </div>
     </div>
-  </div>;
+  </div></ModalPortal>;
 };
 
 export default MandatoryPdfAnchorEditor;
