@@ -79,6 +79,8 @@ jobs:
           grep -q "getSupervisorMandatoryPdf" components/ForemanDocumentsDashboard.tsx
           grep -q "get_foreman_mandatory_signatures" "$MIGRATION"
           grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
+      - name: Mandatory signature anchoring regression
+        run: npm run test:mandatory-signatures
       - name: TypeScript validation
         run: |
           set -o pipefail
