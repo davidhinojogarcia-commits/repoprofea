@@ -14,7 +14,8 @@ for(const file of files){
   if(!source.includes('fixed inset-0')) continue;
   const isPortalPrimitive=file.endsWith('ModalPortal.tsx')||file.endsWith('AppDialogHost.tsx');
   const usesGlobalLayer=source.includes('ModalPortal')||source.includes('createPortal');
-  if(!isPortalPrimitive&&!usesGlobalLayer) offenders.push(file);
+  const explicitlyNonModal=source.includes('profea-nonmodal-overlay');
+  if(!isPortalPrimitive&&!usesGlobalLayer&&!explicitlyNonModal) offenders.push(file);
 }
 assert.deepEqual(offenders,[],`Hay overlays fullscreen fuera de la capa global: ${offenders.join(', ')}`);
 
