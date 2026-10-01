@@ -12,6 +12,7 @@ import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSup
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
+import ModalPortal from './ModalPortal';
 
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -345,7 +346,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       clearBulkDelete();
       await refresh(true);
     }catch(error:any){
-      window.alert(error?.message||'No se pudieron eliminar los documentos seleccionados.');
+      setMailMessage(error?.message||'No se pudieron eliminar los documentos seleccionados.');
     }finally{
       setBulkDeleteBusy(false);
     }
@@ -376,7 +377,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       clearBulkDelete();
       await refresh(true);
     }catch(error:any){
-      window.alert(error?.message||'No se pudo borrar la documentación completa de la obra.');
+      setMailMessage(error?.message||'No se pudo borrar la documentación completa de la obra.');
     }finally{
       setBulkDeleteBusy(false);
     }
@@ -558,7 +559,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const saveGenericEditor = async () => {
     if (!editingCard) return;
     if (!genericEditDraft.work_date) {
-      window.alert('Indica la fecha del documento.');
+      setMailMessage('Indica la fecha del documento.');
       return;
     }
     setEditBusy(true);
@@ -605,7 +606,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       await refresh(true);
     } catch (error:any) {
       console.error('No se pudo editar el documento del encargado:', error);
-      window.alert(error?.message || 'No se pudo guardar la edición.');
+      setMailMessage(error?.message || 'No se pudo guardar la edición.');
     } finally {
       setEditBusy(false);
     }
@@ -638,7 +639,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       await refresh(true);
     } catch (error:any) {
       console.error('No se pudo eliminar el documento del encargado:', error);
-      window.alert(error?.message || 'No se pudo eliminar el documento.');
+      setMailMessage(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
     }
@@ -683,7 +684,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       [...importedSnapshots, ...(item.workers || []), ...available].forEach((worker:any) => byId.set(String(worker.id), worker));
       setEditWorkers(Array.from(byId.values()).sort((a:any,b:any) => String(a.apellidosNombre || '').localeCompare(String(b.apellidosNombre || ''), 'es')));
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudieron cargar los trabajadores de la obra.');
+      setMailMessage(error?.message || 'No se pudieron cargar los trabajadores de la obra.');
       setEditWorkers(item.workers || []);
     } finally {
       setEditBusy(false);
@@ -694,11 +695,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     if (!editingMandatory) return;
     const selectedWorkers = editWorkers.filter((worker:any) => editWorkerIds.has(String(worker.id)));
     if (!selectedWorkers.length) {
-      window.alert('Selecciona al menos un trabajador para el documento.');
+      setMailMessage('Selecciona al menos un trabajador para el documento.');
       return;
     }
     if (!editWorkDate) {
-      window.alert('Indica la fecha del documento.');
+      setMailMessage('Indica la fecha del documento.');
       return;
     }
     setEditBusy(true);
@@ -722,7 +723,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setEditingMandatory(null);
       await refresh(true);
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudo actualizar el documento.');
+      setMailMessage(error?.message || 'No se pudo actualizar el documento.');
     } finally {
       setEditBusy(false);
     }
@@ -771,7 +772,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage('Documento eliminado correctamente.');
       await refresh(true);
     } catch (error:any) {
-      window.alert(error?.message || 'No se pudo eliminar el documento.');
+      setMailMessage(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
     }
@@ -953,6 +954,23 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       anchors={(Array.isArray(positioningMandatory.details?.workerAnchors)?positioningMandatory.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
       signedWorkerIds={Object.keys(positioningMandatory.signatures||{}).map(Number).filter(Number.isFinite)}
       onCancel={()=>setPositioningMandatory(null)}
+      onRemoveWorker={async(workerId)=>{
+        await removeSupervisorMandatoryWorker(positioningMandatory.id,workerId);
+        setPositioningMandatory(current=>current&&current.id===positioningMandatory.id
+          ? {
+              ...current,
+              signatures:Object.fromEntries(Object.entries(current.signatures||{}).filter(([id])=>Number(id)!==Number(workerId))),
+              details:{
+                ...(current.details||{}),
+                importedWorkerIds:(Array.isArray(current.details?.importedWorkerIds)?current.details.importedWorkerIds:[]).filter((id:any)=>Number(id)!==Number(workerId)),
+                importedWorkers:(Array.isArray(current.details?.importedWorkers)?current.details.importedWorkers:[]).filter((worker:any)=>Number(worker.id)!==Number(workerId)),
+                workerAnchors:(Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[]).filter((anchor:any)=>Number(anchor.workerId)!==Number(workerId)),
+              },
+            }
+          : current);
+        setMailMessage('Trabajador eliminado del documento. Ya no cuenta como firma pendiente.');
+        await refresh(true);
+      }}
       onSave={async(anchors)=>{
         await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
         setMailMessage('Posiciones de firma actualizadas. El PDF firmado se regenerará con estas posiciones.');
@@ -961,7 +979,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       }}
     />}
 
-    {editingCard&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+    {editingCard&&<ModalPortal label="Edición del supervisor"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white">
           <div>
@@ -1037,7 +1055,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>}
+    </div></ModalPortal>}
 
     {controlView==='activity'&&<div className="space-y-2">
       {!activity.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay movimientos registrados.</div>}
@@ -1072,7 +1090,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>)}
     </div>}
 
-    {editingMandatory&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+    {editingMandatory&&<ModalPortal label="Editar documento obligatorio"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-2xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white">
           <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-blue-100">GestionProfea</div><h3 className="text-lg font-black">Editar {mandatoryDocumentLabel(editingMandatory.document_type)}</h3><p className="text-xs text-blue-100">{editingMandatory.obra}</p></div>
@@ -1145,6 +1163,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <div className="flex gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
         </div>
       </div>
-    </div>}
+    </div></ModalPortal>}
   </div>;
 };

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { appAlert, appConfirm } from '../src/lib/appDialog';
 import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Trash2, Wrench } from 'lucide-react';
 import {
@@ -111,7 +112,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     outCtx.putImageData(exported,0,0);
     onSave(out.toDataURL('image/png'));
   };
-  return <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{paddingTop:'env(safe-area-inset-top)'}}>
+  return <ModalPortal label={title}><div className="fixed inset-0 bg-slate-950/70 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{paddingTop:'env(safe-area-inset-top)'}}>
     <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-2xl" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
       <h3 className="text-lg font-black text-slate-900">{title}</h3>
       <p className="mt-1 text-sm text-slate-600">Firma con el dedo dentro del recuadro.</p>
@@ -127,7 +128,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
         <button onClick={exportSignature} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Guardar</button>
       </div>
     </div>
-  </div>;
+  </div></ModalPortal>;
 };
 
 const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: string; onClose: () => void }> = ({ bytes, title, notice, onClose }) => {
@@ -182,7 +183,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
     return()=>{cancelled=true;try{pdf?.destroy?.();}catch{}};
   },[bytes]);
 
-  return <div className="fixed inset-0 z-[20000] flex h-[100dvh] w-screen flex-col bg-slate-950">
+  return <ModalPortal label={title}><div className="fixed inset-0 flex h-[100dvh] w-screen flex-col bg-slate-950">
     <div className="flex items-center justify-between gap-3 bg-white px-4 py-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="min-w-0">
         <div className="truncate text-sm font-black text-slate-900">{title}</div>
@@ -196,7 +197,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
       {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{renderError}</div>}
       <div ref={hostRef} className="mx-auto w-full max-w-none sm:max-w-[900px]" />
     </div>
-  </div>;
+  </div></ModalPortal>;
 };
 
 export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
@@ -270,8 +271,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     setInstallHelpVisible(true);
   };
 
-  const unlinkForemanDevice=()=>{
-    if(!window.confirm('¿Desvincular este dispositivo del portal de encargados?'))return;
+  const unlinkForemanDevice=async()=>{
+    const ok=await appConfirm('¿Desvincular este dispositivo del portal de encargados?', {
+      title:'Desvincular dispositivo',
+      confirmLabel:'Desvincular',
+    });
+    if(!ok)return;
     try{localStorage.removeItem(FOREMAN_DEVICE_TOKEN_KEY);}catch{}
     try{document.cookie=`${FOREMAN_DEVICE_TOKEN_KEY}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;}catch{}
     window.location.href='/';
@@ -439,9 +444,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     maquinariaPorTrabajador: machineryByWorker,
   };
   const prepareOperationalDocument=async(type:'epis'|'formacion'|'autorizacion_uso_maquinaria')=>{
-    if(!documentWorkers.length)return window.alert('Selecciona al menos un periodo con trabajadores.');
+    if(!documentWorkers.length){setError('Selecciona al menos un periodo con trabajadores.');return;}
     if(type==='autorizacion_uso_maquinaria' && documentWorkers.some(worker=>!String(machineryByWorker[String(worker.id)]||'').trim())){
-      return window.alert('Indica la maquinaria o equipos autorizados para todos los trabajadores seleccionados.');
+      setError('Indica la maquinaria o equipos autorizados para todos los trabajadores seleccionados.');return;
     }
     setSaving(true);
     setOperationFeedback('');
@@ -476,7 +481,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const message=e?.message||'No se pudo preparar el documento para firmas.';
       setError(message);
       setOperationFeedback(message);
-      window.alert(message);
+
     }finally{
       setSaving(false);
     }
@@ -486,7 +491,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     return (data?.mandatoryDocuments||[]).filter(doc=>accepted.includes(String(doc.documentType)));
   };
   const generateAdditionalPdf = async () => {
-    if (!selectedWorker) return window.alert('Selecciona un trabajador.');
+    if (!selectedWorker) {setError('Selecciona un trabajador.');return;}
     setSaving(true);
     try {
       const { generateAdditionalWorksiteDocument } = await import('../src/lib/worksiteAdditionalDocumentsPdf');
