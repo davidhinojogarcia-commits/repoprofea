@@ -330,7 +330,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
           sourceFilename: input.attachmentName || '',
           importedWorkerIds: Array.isArray(input.importedWorkers)
             ? input.importedWorkers.map(worker=>Number(worker.id)).filter(Number.isFinite)
-            : input.workerIds,
+            : (Array.isArray(currentDetails.importedWorkerIds) ? currentDetails.importedWorkerIds : input.workerIds),
           importedWorkers: Array.isArray(input.importedWorkers)
             ? input.importedWorkers
             : (Array.isArray(currentDetails.importedWorkers) ? currentDetails.importedWorkers : []),
@@ -430,6 +430,25 @@ export async function finalizeForemanMandatoryDocument(token: string, documentId
       p_document_id: documentId,
     }),
     'No se pudo finalizar el documento a tiempo. Comprueba la conexión y vuelve a intentarlo.',
+  );
+}
+
+export async function correctForemanMandatoryWorkerName(
+  token: string,
+  documentId: string,
+  workerId: number,
+  workerName: string,
+) {
+  const name=String(workerName||'').replace(/\s+/g,' ').trim();
+  if(name.length<3)throw new Error('Indica un nombre válido.');
+  return withForemanTimeout(
+    supabase.rpc('correct_foreman_mandatory_worker_name', {
+      p_token: token,
+      p_document_id: documentId,
+      p_worker_id: workerId,
+      p_worker_name: name,
+    }),
+    'No se pudo guardar la corrección del nombre a tiempo.',
   );
 }
 
@@ -541,7 +560,6 @@ export async function updateForemanMandatoryDocument(input: {
       category: input.category,
       workers: input.workers,
       signatures: filteredSignatures,
-      details: input.details || {},
       status: nextStatus,
       completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
       reviewed_at: null,

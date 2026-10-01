@@ -161,7 +161,37 @@ const bestDirectoryNameMatch = (printedName: string, workers: Person[]) => {
   return ranked[0].worker;
 };
 
-const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: string, obra: string): Person[] => {
+const PRINTED_NAME_EXCLUSIONS = /^(CADIZ|DIPUTACION|CATEGORIA|AREA|GESTION|FONDOS|PROFEA|PFEA|EXCMA|EMPRESA|CONTROL|PRESENCIA|INICIO|INCORPORACION|FECHA|OBRA|LOCALIDAD|MUNICIPIO|CONTRATO|CONVENIO|EXPRESANDO|TENIENDO|ESTANDO|TRABAJADORES?|RELACION|FIRMA|FIRMAS)\b/;
+
+const looksLikePrintedWorkerName = (rawLine: string) => {
+  const line=String(rawLine||'')
+    .replace(/[|•·]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  if(!line||line.length<5||line.length>90)return false;
+  if(/\d/.test(line))return false;
+  const normalized=norm(line);
+  if(!normalized||PRINTED_NAME_EXCLUSIONS.test(normalized))return false;
+  const tokens=normalized.split(' ').filter(Boolean);
+  if(tokens.length<2||tokens.length>7)return false;
+  if(tokens.some(token=>token.length===1&&!/^[A-ZÑ]$/.test(token)))return false;
+
+  const letters=(line.match(/[A-Za-zÁÉÍÓÚÜÑÇáéíóúüñç]/g)||[]);
+  if(!letters.length)return false;
+  const upper=(line.match(/[A-ZÁÉÍÓÚÜÑÇ]/g)||[]).length;
+  const uppercaseRatio=upper/letters.length;
+
+  // Los listados oficiales suelen venir en mayúsculas; la coma ayuda pero no es obligatoria.
+  return line.includes(',') || uppercaseRatio>=0.72;
+};
+
+const extractWorkersPrintedInPdf = (
+  text: string,
+  workers: Person[],
+  category: string,
+  obra: string,
+  type: 'inicio'|'control_presencia',
+): Person[] => {
   const canonicalByName = new Map<string,Person>();
   for (const worker of workers) {
     const key=cleanWorkerName(worker.apellidosNombre || '');
@@ -170,29 +200,36 @@ const extractWorkersPrintedInPdf = (text: string, workers: Person[], category: s
 
   const seen=new Set<string>();
   const result:Person[]=[];
-  for (const rawLine of String(text||'').split(/\r?\n/)) {
-    const line=rawLine.trim();
-    if(!line.includes(','))continue;
-    if(/[a-záéíóúüñç]/.test(line))continue;
-    const normalized=norm(line);
-    if(!/^[A-ZÁÉÍÓÚÜÑÇ ]+\s+[A-ZÁÉÍÓÚÜÑÇ ]+$/.test(normalized))continue;
-    if(/^(CADIZ|DIPUTACION|CATEGORIA|AREA|GESTION|EXCMA|EMPRESA)\b/.test(normalized))continue;
-    const key=normalized;
-    if(seen.has(key))continue;
+  const rawLines=String(text||'').split(/\r?\n/);
+
+  for (const rawLine of rawLines) {
+    const line=rawLine.replace(/[|•·]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!looksLikePrintedWorkerName(line))continue;
+
+    const key=cleanWorkerName(line);
+    if(!key||seen.has(key))continue;
     seen.add(key);
 
+    // En Inicio el PDF manda: no se exige DNI ni que exista en Directorio.
+    // Si hay una coincidencia inequívoca, reutilizamos su identidad interna; si no,
+    // conservamos literalmente el nombre impreso y creamos identidad solo para este PDF.
     const canonical=canonicalByName.get(key) || bestDirectoryNameMatch(line,workers);
-    result.push(canonical || ({
-      id:sourceWorkerId(key),
-      apellidosNombre:line.replace(/\s+/g,' '),
-      dni:'',
-      categoria:category || '',
-      obra:obra || '',
-    } as Person));
+    const printedName=line;
+    result.push(canonical
+      ? ({...canonical,apellidosNombre:printedName,categoria:category||canonical.categoria||'',obra:obra||canonical.obra||''} as Person)
+      : ({
+          id:sourceWorkerId(key),
+          apellidosNombre:printedName,
+          dni:'',
+          categoria:category || '',
+          obra:obra || '',
+        } as Person));
   }
+
+  // Para Inicio nunca retrocedemos a una búsqueda por DNI: si no se leyó un nombre,
+  // se fuerza OCR en la fase anterior y se informa para corrección manual.
   return result;
 };
-
 
 
 const matchWorkers = (workers: Person[], text: string) => {
@@ -278,14 +315,14 @@ const matchMandatoryWorkersWithOcrRetry = async (
 ) => {
   let text = firstText;
   let category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
-  let matched = matchWorkers(workers, text, category);
+  let matched = matchWorkers(workers, text);
 
   if (!matched.length) {
     onProgress?.(`No se localizaron trabajadores en ${file.name}. Reforzando lectura…`);
     const reinforced = await extractClientDocumentText(file, onProgress, { forceOcr: true, ocrScale: 2.4 });
     text = reinforced.text || text;
     category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
-    matched = matchWorkers(workers, text, category);
+    matched = matchWorkers(workers, text);
   }
 
   return { text, category, matched };
@@ -355,7 +392,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
         );
         const category = recognition.category;
         const documentObra = extractWorksiteFromText(recognition.text);
-        const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra);
+        const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra, type);
         if (!listedWorkers.length) {
           warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
           skippedAttachments += 1;
@@ -464,7 +501,7 @@ export async function processManualMandatoryFiles(
         warnings.push(`${file.name}: no se ha podido identificar la obra escrita en el PDF. Selecciona primero la obra y vuelve a importar.`);
         continue;
       }
-      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra);
+      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra, type);
       selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
         const name=String(worker.apellidosNombre||'').trim();
         if(name)missingDirectoryWorkers.add(name);

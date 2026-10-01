@@ -6,7 +6,7 @@ import {
   generateAdditionalWorksiteDocument,
   type AdditionalWorksiteDocumentType,
 } from './worksiteAdditionalDocumentsPdf';
-import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../services/foremanPortalService';
+import type { ForemanAttendanceDay, ForemanAttendanceRow, ForemanCompletedDocument, ForemanMandatoryDocument } from '../services/foremanPortalService';
 import {
   generateEpiDeliveryPdf,
   generateTrainingInformationPdf,

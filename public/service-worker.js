@@ -1,8 +1,8 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-static-v11';
-const RUNTIME_CACHE = 'profea-runtime-v11';
+const CACHE_NAME = 'profea-static-v12';
+const RUNTIME_CACHE = 'profea-runtime-v12';
 const PDF_LIB_CDN = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
 const STATIC_ASSETS = ['/','/manifest.webmanifest','/manifest-encargados.webmanifest','/icons/profea-icon-v4-32.png','/icons/profea-icon-v4-180.png','/icons/profea-icon-v4-192.png','/icons/profea-icon-v4-512.png','/icons/profea-icon-v4-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
 
