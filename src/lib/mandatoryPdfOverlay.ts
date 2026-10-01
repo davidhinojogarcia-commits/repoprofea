@@ -186,11 +186,11 @@ const bestNameSpanOnLine=(worker:Person,line:any,lineIndex:number):WorkerNameSpa
   return best;
 };
 
-const bestNameSpanForWorker=(worker:Person,lines:any[]):WorkerNameSpan|null=>{
-  let best:WorkerNameSpan|null=null;
+const candidateNameSpansForWorker=(worker:Person,lines:any[]):WorkerNameSpan[]=>{
+  const candidates:WorkerNameSpan[]=[];
   for(let i=0;i<lines.length;i+=1){
     const single=bestNameSpanOnLine(worker,lines[i],i);
-    if(single&&(!best||single.score>best.score))best=single;
+    if(single)candidates.push(single);
 
     if(i+1<lines.length){
       const first=lines[i],second=lines[i+1];
@@ -211,23 +211,20 @@ const bestNameSpanForWorker=(worker:Person,lines:any[]):WorkerNameSpan|null=>{
             const right=Math.max(...boxes.map(box=>box.x+box.width));
             const low=Math.min(...boxes.map(box=>box.y));
             const high=Math.max(...boxes.map(box=>box.y+box.height));
-            const multi:WorkerNameSpan={
+            candidates.push({
               text:combinedText,x,y:low,right,width:right-x,height:high-low,
               centerY:(low+high)/2,
               score:combinedScore,
               lineIndexes:[i,i+1],
               itemKeys:new Set(relevantItems.map(itemKey)),
-            };
-            if(!best||multi.score>best.score+0.001)best=multi;
+            });
           }
         }
       }
     }
   }
-  return best;
+  return candidates.sort((a,b)=>b.score-a.score||a.width-b.width||b.y-a.y);
 };
-
-
 export async function analyzeMandatoryOriginalPdf(
   file: File,
   workers: Person[],
@@ -277,18 +274,21 @@ export async function analyzeMandatoryOriginalPdf(
     } | null = null;
 
     for (const pageInfo of pageLines) {
-      const span=bestNameSpanForWorker(worker,pageInfo.lines);
-      if(!span)continue;
-      const blockKey=`${pageInfo.page}:${span.lineIndexes.join('-')}:${Math.round(span.x)}:${Math.round(span.right)}`;
-      if(usedVisualBlocks.has(blockKey))continue;
+      const spans=candidateNameSpansForWorker(worker,pageInfo.lines);
+      for(const span of spans){
+        const blockKey=`${pageInfo.page}:${span.lineIndexes.join('-')}:${Math.round(span.x)}:${Math.round(span.right)}`;
+        if(usedVisualBlocks.has(blockKey))continue;
 
-      // DNI solo desambigua; nunca sustituye la localización real del nombre.
-      const relatedText=span.lineIndexes.map(index=>pageInfo.lines[index]?.text||'').join(' ');
-      const dni=compact(worker.dni);
-      const dniBonus=dni&&dni.length>=7&&compact(relatedText).includes(dni)?0.03:0;
-      const score=Math.min(1,span.score+dniBonus);
-      if(!best||score>best.score+0.001){
-        best={pageInfo,span,score};
+        // DNI solo desambigua; nunca sustituye la localización real del nombre.
+        const relatedText=span.lineIndexes.map(index=>pageInfo.lines[index]?.text||'').join(' ');
+        const dni=compact(worker.dni);
+        const dniBonus=dni&&dni.length>=7&&compact(relatedText).includes(dni)?0.03:0;
+        const score=Math.min(1,span.score+dniBonus);
+        if(!best||score>best.score+0.001){
+          best={pageInfo,span,score};
+        }
+        // Los candidatos están ordenados: el primero libre de esta página es el mejor.
+        if(best?.pageInfo.page===pageInfo.page&&best.span===span)break;
       }
     }
 
