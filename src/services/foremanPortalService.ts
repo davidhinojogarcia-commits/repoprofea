@@ -330,7 +330,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
           sourceFilename: input.attachmentName || '',
           importedWorkerIds: Array.isArray(input.importedWorkers)
             ? input.importedWorkers.map(worker=>Number(worker.id)).filter(Number.isFinite)
-            : input.workerIds,
+            : (Array.isArray(currentDetails.importedWorkerIds) ? currentDetails.importedWorkerIds : input.workerIds),
           importedWorkers: Array.isArray(input.importedWorkers)
             ? input.importedWorkers
             : (Array.isArray(currentDetails.importedWorkers) ? currentDetails.importedWorkers : []),
