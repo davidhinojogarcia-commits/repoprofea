@@ -21,8 +21,9 @@ assert.match(dashboard, /ModalPortal/, 'Documentación de encargados debe usar l
 assert.match(anchor, /ModalPortal/, 'Ajustar firmas debe renderizarse en la capa global');
 assert.match(anchor, /Eliminar trabajador del documento/, 'Ajustar firmas debe permitir borrar falsos positivos');
 assert.match(host, /createPortal/, 'AppDialogHost debe usar createPortal');
-assert.match(host, /z-\[2147483000\]/, 'AppDialogHost debe estar sobre la capa modal general');
-assert.match(layer, /z-\[2147482000\]/, 'ModalPortal debe usar la capa modal global');
+assert.match(host, /z-\[2147483600\]/, 'AppDialogHost debe estar sobre cualquier modal general');
+assert.match(layer, /MODAL_LAYER_BASE/, 'ModalPortal debe usar la capa modal global centralizada');
+assert.match(layer, /modalLayerSequence/, 'Los modales deben apilarse de forma creciente para que el último quede delante');
 assert.match(layer, /document\.body/, 'ModalPortal debe renderizar sobre document.body');
 assert.match(layer, /document\.body\.style\.overflow = 'hidden'/, 'ModalPortal debe bloquear el scroll del fondo');
 
