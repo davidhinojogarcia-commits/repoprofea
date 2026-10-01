@@ -1,5 +1,13 @@
 import { readPdfTextContent } from './clientDocumentText';
 import type { Person } from '../../types';
+import {
+  computeSignatureBoxFromDetectedName,
+  fitSignatureInsideBox,
+  mandatoryNameTokenMatch,
+  scoreMandatoryWorkerNameText,
+  validateMandatorySignaturePlacement,
+  type MandatorySignaturePlacementIssue,
+} from './mandatorySignatureGeometry';
 
 declare global {
   interface Window {
@@ -15,6 +23,10 @@ export type MandatoryWorkerAnchor = {
   order: number;
   nameX: number | null;
   nameY: number | null;
+  nameWidth?: number | null;
+  nameHeight?: number | null;
+  nameRightX?: number | null;
+  nameCenterY?: number | null;
   rowHeight: number | null;
   signatureX: number | null;
   signatureY: number | null;
@@ -76,32 +88,13 @@ const workerNameTokens = (worker: Person) =>
     .filter(token => token.length >= 2 && !['DE','DEL','LA','LAS','LOS','Y'].includes(token));
 
 const scoreLineForWorker = (worker: Person, lineText: string) => {
-  const lineNorm = normalize(lineText);
-  const lineCompact = compact(lineText);
+  const nameScore=scoreMandatoryWorkerNameText(worker,lineText);
+  if(nameScore<=0)return 0;
   const dni = compact(worker.dni);
-  if (dni && dni.length >= 7 && lineCompact.includes(dni)) return 1;
-
-  const fullName = cleanWorkerName(worker.apellidosNombre);
-  if (!fullName) return 0;
-  if (lineNorm === fullName) return 0.99;
-  if (lineNorm.includes(fullName) || fullName.includes(lineNorm)) return 0.96;
-
-  const tokens = workerNameTokens(worker);
-  if (tokens.length < 2) return 0;
-  const lineTokens = lineNorm.split(' ').filter(Boolean);
-  const tokenMatch = (token:string,other:string) =>
-    token===other ||
-    (token.length===1 && other.startsWith(token)) ||
-    (other.length===1 && token.startsWith(other)) ||
-    (token.length>=4 && other.length>=4 && (
-      token.startsWith(other) || other.startsWith(token)
-    ));
-  const hits=tokens.filter(token=>lineTokens.some(other=>tokenMatch(token,other))).length;
-  const coverage=hits/Math.max(1,tokens.length);
-  if(hits>=2 && coverage>=0.6)return 0.88;
-  return 0;
+  const lineCompact = compact(lineText);
+  if (dni && dni.length >= 7 && lineCompact.includes(dni)) return Math.min(1,nameScore+0.04);
+  return nameScore;
 };
-
 const itemBox = (item: any) => {
   const transform = Array.isArray(item?.transform) ? item.transform : [1,0,0,1,0,0];
   const x = Number(transform[4] || 0);
@@ -148,6 +141,91 @@ const signatureHeaderXForPage = (items: any[]) => {
   return signatureItems.length ? signatureItems[signatureItems.length - 1].x : null;
 };
 
+type WorkerNameSpan = {
+  text:string;
+  x:number;
+  y:number;
+  right:number;
+  width:number;
+  height:number;
+  centerY:number;
+  score:number;
+  lineIndexes:number[];
+  itemKeys:Set<string>;
+};
+
+const itemKey=(item:any)=>{
+  const box=itemBox(item);
+  return [Number(box.x).toFixed(3),Number(box.y).toFixed(3),Number(box.width).toFixed(3),normalize(item?.str||'')].join(':');
+};
+
+const bestNameSpanOnLine=(worker:Person,line:any,lineIndex:number):WorkerNameSpan|null=>{
+  const items=(line.items||[]).filter((item:any)=>String(item?.str||'').trim());
+  let best:WorkerNameSpan|null=null;
+  const maxWindow=Math.min(7,items.length);
+  for(let start=0;start<items.length;start+=1){
+    for(let len=1;len<=maxWindow&&start+len<=items.length;len+=1){
+      const subset=items.slice(start,start+len);
+      const text=subset.map((item:any)=>String(item?.str||'').trim()).join(' ');
+      const score=scoreMandatoryWorkerNameText(worker,text);
+      if(score<0.78)continue;
+      const boxes=subset.map(itemBox);
+      const x=Math.min(...boxes.map(box=>box.x));
+      const right=Math.max(...boxes.map(box=>box.x+box.width));
+      const height=Math.max(...boxes.map(box=>box.height));
+      const span:WorkerNameSpan={
+        text,x,y:line.y,right,width:right-x,height,
+        centerY:line.y+(height/2),
+        score,lineIndexes:[lineIndex],
+        itemKeys:new Set(subset.map(itemKey)),
+      };
+      if(!best||span.score>best.score+0.001||(Math.abs(span.score-best.score)<=0.001&&span.width<best.width)){
+        best=span;
+      }
+    }
+  }
+  return best;
+};
+
+const candidateNameSpansForWorker=(worker:Person,lines:any[]):WorkerNameSpan[]=>{
+  const candidates:WorkerNameSpan[]=[];
+  for(let i=0;i<lines.length;i+=1){
+    const single=bestNameSpanOnLine(worker,lines[i],i);
+    if(single)candidates.push(single);
+
+    if(i+1<lines.length){
+      const first=lines[i],second=lines[i+1];
+      const verticalGap=Math.abs(Number(first.y)-Number(second.y));
+      const maxHeight=Math.max(Number(first.height||8),Number(second.height||8));
+      if(verticalGap<=Math.max(18,maxHeight*2.25)){
+        const combinedText=`${first.text} ${second.text}`;
+        const combinedScore=scoreMandatoryWorkerNameText(worker,combinedText);
+        if(combinedScore>=0.82){
+          const wanted=workerNameTokens(worker);
+          const relevantItems=[...(first.items||[]),...(second.items||[])].filter((item:any)=>{
+            const tokens=normalize(item?.str||'').split(' ').filter(Boolean);
+            return tokens.some(token=>wanted.some(expected=>mandatoryNameTokenMatch(expected,token)));
+          });
+          if(relevantItems.length){
+            const boxes=relevantItems.map(itemBox);
+            const x=Math.min(...boxes.map(box=>box.x));
+            const right=Math.max(...boxes.map(box=>box.x+box.width));
+            const low=Math.min(...boxes.map(box=>box.y));
+            const high=Math.max(...boxes.map(box=>box.y+box.height));
+            candidates.push({
+              text:combinedText,x,y:low,right,width:right-x,height:high-low,
+              centerY:(low+high)/2,
+              score:combinedScore,
+              lineIndexes:[i,i+1],
+              itemKeys:new Set(relevantItems.map(itemKey)),
+            });
+          }
+        }
+      }
+    }
+  }
+  return candidates.sort((a,b)=>b.score-a.score||a.width-b.width||b.y-a.y);
+};
 export async function analyzeMandatoryOriginalPdf(
   file: File,
   workers: Person[],
@@ -158,10 +236,17 @@ export async function analyzeMandatoryOriginalPdf(
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
   const pages: MandatoryPdfPageMeta[] = [];
-  const pageLines: { page:number; width:number; height:number; signatureHeaderX:number|null; lines:ReturnType<typeof groupLines> }[] = [];
+  const pageLines: {
+    page:number;
+    width:number;
+    height:number;
+    signatureHeaderX:number|null;
+    lines:ReturnType<typeof groupLines>;
+    allItems:any[];
+  }[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    onProgress?.(`Localizando trabajadores en el PDF original · página ${pageNumber}/${pdf.numPages}…`);
+    onProgress?.(`Localizando nombres reales en el PDF original · página ${pageNumber}/${pdf.numPages}…`);
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 1 });
     const content = await readPdfTextContent(page);
@@ -174,164 +259,194 @@ export async function analyzeMandatoryOriginalPdf(
       height,
       signatureHeaderX: signatureHeaderXForPage(content.items),
       lines: groupLines(content.items),
+      allItems: content.items,
     });
   }
 
-  const used = new Set<string>();
-  const anchors: MandatoryWorkerAnchor[] = [];
+  const usedVisualBlocks = new Set<string>();
+  const preliminary: MandatoryWorkerAnchor[] = [];
+  const spanByWorker=new Map<number,WorkerNameSpan>();
 
   for (const [workerIndex,worker] of workers.entries()) {
     let best: {
-      page:number;
-      width:number;
-      height:number;
-      signatureHeaderX:number|null;
-      line:any;
-      lineIndex:number;
+      pageInfo:(typeof pageLines)[number];
+      span:WorkerNameSpan;
       score:number;
     } | null = null;
 
     for (const pageInfo of pageLines) {
-      for (let lineIndex=0; lineIndex<pageInfo.lines.length; lineIndex+=1) {
-        const line=pageInfo.lines[lineIndex];
-        const score = scoreLineForWorker(worker, line.text);
-        if (score <= 0) continue;
-        const key = `${pageInfo.page}:${lineIndex}`;
-        if (used.has(key)) continue;
-        if (!best || score > best.score) {
-          best = { ...pageInfo, line, lineIndex, score };
+      const spans=candidateNameSpansForWorker(worker,pageInfo.lines);
+      for(const span of spans){
+        const blockKey=`${pageInfo.page}:${span.lineIndexes.join('-')}:${Math.round(span.x)}:${Math.round(span.right)}`;
+        if(usedVisualBlocks.has(blockKey))continue;
+
+        // DNI solo desambigua; nunca sustituye la localización real del nombre.
+        const relatedText=span.lineIndexes.map(index=>pageInfo.lines[index]?.text||'').join(' ');
+        const dni=compact(worker.dni);
+        const dniBonus=dni&&dni.length>=7&&compact(relatedText).includes(dni)?0.03:0;
+        const score=Math.min(1,span.score+dniBonus);
+        if(!best||score>best.score+0.001){
+          best={pageInfo,span,score};
         }
+        // Los candidatos están ordenados: el primero libre de esta página es el mejor.
+        if(best?.pageInfo.page===pageInfo.page&&best.span===span)break;
       }
     }
 
-    if (!best) {
-      const fallbackCapacity=28;
-      const fallbackPageIndex=Math.min(Math.floor(workerIndex/fallbackCapacity),Math.max(0,pages.length-1));
-      const fallbackRowIndex=workerIndex%fallbackCapacity;
-      const fallbackPage=pages[fallbackPageIndex]||pages[0]||{page:1,width:595,height:842,rotation:0};
-      const signatureWidth=Math.max(72,Math.min(96,fallbackPage.width*0.16));
-      const signatureHeight=18;
-      const signatureX=Math.max(12,fallbackPage.width-Math.max(16,fallbackPage.width*0.025)-signatureWidth);
-      const signatureY=Math.max(18,fallbackPage.height-118-(fallbackRowIndex*24));
-      anchors.push({
+    if (!best || best.score < 0.82) {
+      preliminary.push({
         workerId: Number(worker.id),
         workerName: String(worker.apellidosNombre || ''),
         dni: String(worker.dni || ''),
-        page: fallbackPage.page,
+        page: 1,
         order: workerIndex,
         nameX: null,
-        nameY: signatureY + signatureHeight * 0.35,
-        rowHeight: 24,
-        signatureX,
-        signatureY,
-        signatureWidth,
-        signatureHeight,
-        confidence: 0.1,
-        resolved: true,
-        reason: 'Posición automática de respaldo usada porque el PDF no expone la línea de texto del trabajador.',
+        nameY: null,
+        nameWidth:null,
+        nameHeight:null,
+        nameRightX:null,
+        nameCenterY:null,
+        rowHeight: null,
+        signatureX: null,
+        signatureY: null,
+        signatureWidth: null,
+        signatureHeight: null,
+        confidence: best?.score||0,
+        resolved: false,
+        reason: 'No se ha localizado con suficiente seguridad el nombre completo dentro del PDF original.',
       });
       continue;
     }
 
-    used.add(`${best.page}:${best.lineIndex}`);
-    const line = best.line;
-    const rowHeight = Math.max(16, Math.min(32, line.height * 1.9));
-    // La firma se coloca pegada a la derecha del nombre del trabajador, no en una
-    // columna genérica del documento. Esto mantiene inequívoca la relación nombre/firma.
-    const rightMargin = Math.max(14, best.width * 0.02);
-    const nameGap = Math.max(7, Math.min(12, line.height * 0.8));
-    const desiredWidth = Math.max(62, Math.min(90, best.width * 0.145));
-    const maxRightX = best.width - rightMargin;
-    const availableAfterName = Math.max(36, maxRightX - (line.maxX + nameGap));
-    const signatureWidth = Math.max(36, Math.min(desiredWidth, availableAfterName));
-    const candidateX = Math.min(line.maxX + nameGap, maxRightX - signatureWidth);
-    const signatureHeight = Math.max(11, Math.min(18, rowHeight * 0.66));
-    // PDF usa origen inferior: centramos verticalmente la firma sobre la misma línea.
-    const signatureY = Math.max(6, line.y - signatureHeight * 0.36);
-
-    anchors.push({
-      workerId: Number(worker.id),
-      workerName: String(worker.apellidosNombre || ''),
-      dni: String(worker.dni || ''),
-      page: best.page,
-      order: 0,
-      nameX: line.minX,
-      nameY: line.y,
-      rowHeight,
-      signatureX: Number(candidateX),
-      signatureY,
-      signatureWidth,
-      signatureHeight,
-      confidence: best.score,
-      resolved: true,
-      ...(best.score < 0.9 ? { reason: 'Posición automática basada en coincidencia parcial del nombre.' } : {}),
+    const {pageInfo,span}=best;
+    const blockKey=`${pageInfo.page}:${span.lineIndexes.join('-')}:${Math.round(span.x)}:${Math.round(span.right)}`;
+    usedVisualBlocks.add(blockKey);
+    spanByWorker.set(Number(worker.id),span);
+    preliminary.push({
+      workerId:Number(worker.id),
+      workerName:String(worker.apellidosNombre||''),
+      dni:String(worker.dni||''),
+      page:pageInfo.page,
+      order:workerIndex,
+      nameX:span.x,
+      nameY:span.y,
+      nameWidth:span.width,
+      nameHeight:span.height,
+      nameRightX:span.right,
+      nameCenterY:span.centerY,
+      rowHeight:Math.max(12,span.height*1.55),
+      signatureX:null,
+      signatureY:null,
+      signatureWidth:null,
+      signatureHeight:null,
+      confidence:best.score,
+      resolved:true,
+      ...(best.score<0.9?{reason:'Nombre localizado mediante coincidencia parcial; posición calculada sobre su caja real.'}:{})
     });
   }
 
-  // Garantiza separación vertical entre firmas de una misma página.
-  // Se reduce automáticamente la altura (y proporcionalmente el ancho) cuando
-  // dos filas están muy próximas, manteniendo cada firma alineada a su fila.
-  const anchorsByPage=new Map<number,MandatoryWorkerAnchor[]>();
-  for(const anchor of anchors){
-    const page=Number(anchor.page)||1;
-    if(!anchorsByPage.has(page))anchorsByPage.set(page,[]);
-    anchorsByPage.get(page)!.push(anchor);
+  // Calcula cada firma únicamente desde la caja real del nombre detectado.
+  for(const anchor of preliminary){
+    if(!anchor.resolved||anchor.nameX==null||anchor.nameY==null||anchor.nameRightX==null||anchor.nameHeight==null)continue;
+    const pageInfo=pageLines.find(page=>page.page===anchor.page);
+    if(!pageInfo){
+      anchor.resolved=false;
+      anchor.reason='No se ha podido recuperar la página donde aparece el trabajador.';
+      continue;
+    }
+    const span=spanByWorker.get(Number(anchor.workerId));
+    const ownCenter=Number(anchor.nameCenterY??(anchor.nameY+anchor.nameHeight/2));
+    const peers=preliminary.filter(other=>other.resolved&&other.page===anchor.page&&other.workerId!==anchor.workerId&&other.nameCenterY!=null);
+    const upper=peers.map(peer=>Number(peer.nameCenterY)).filter(y=>y>ownCenter).sort((a,b)=>a-b)[0]??null;
+    const lower=peers.map(peer=>Number(peer.nameCenterY)).filter(y=>y<ownCenter).sort((a,b)=>b-a)[0]??null;
+
+    const overlappingText=pageInfo.allItems
+      .map(item=>({item,box:itemBox(item)}))
+      .filter(entry=>{
+        if(span?.itemKeys.has(itemKey(entry.item)))return false;
+        const box=entry.box;
+        const itemCenterY=box.y+(box.height/2);
+        return Math.abs(itemCenterY-ownCenter)<=Math.max(anchor.nameHeight||8,box.height)*0.7
+          && box.x>=Number(anchor.nameRightX)-1;
+      })
+      .sort((a,b)=>a.box.x-b.box.x);
+    const nextTextX=overlappingText.find(entry=>entry.box.x>Number(anchor.nameRightX)+2)?.box.x??null;
+
+    const box=computeSignatureBoxFromDetectedName({
+      pageWidth:pageInfo.width,
+      pageHeight:pageInfo.height,
+      nameX:Number(anchor.nameX),
+      nameY:Number(anchor.nameY),
+      nameRightX:Number(anchor.nameRightX),
+      nameHeight:Number(anchor.nameHeight),
+      nextTextX,
+      upperWorkerCenterY:upper,
+      lowerWorkerCenterY:lower,
+    });
+    if(!box){
+      anchor.resolved=false;
+      anchor.signatureX=null;
+      anchor.signatureY=null;
+      anchor.signatureWidth=null;
+      anchor.signatureHeight=null;
+      anchor.reason='No existe espacio seguro inmediatamente a la derecha del nombre sin invadir texto u otra fila.';
+      continue;
+    }
+    anchor.signatureX=box.x;
+    anchor.signatureY=box.y;
+    anchor.signatureWidth=box.width;
+    anchor.signatureHeight=box.height;
   }
-  for(const pageAnchors of anchorsByPage.values()){
-    const positioned=pageAnchors
-      .filter(anchor=>anchor.signatureY!=null)
-      .sort((a,b)=>Number(b.signatureY||0)-Number(a.signatureY||0));
-    for(let index=0;index<positioned.length;index+=1){
-      const anchor=positioned[index];
-      const currentY=Number(anchor.signatureY||0);
-      const upper=index>0?positioned[index-1]:null;
-      const lower=index<positioned.length-1?positioned[index+1]:null;
-      const distanceUp=upper?Math.max(0,Number(upper.signatureY||0)-currentY):Infinity;
-      const distanceDown=lower?Math.max(0,currentY-Number(lower.signatureY||0)):Infinity;
-      const nearest=Math.min(distanceUp,distanceDown);
-      const currentHeight=Math.max(10,Number(anchor.signatureHeight||18));
-      const maxHeight=Number.isFinite(nearest)?Math.max(9,nearest-4):currentHeight;
-      const nextHeight=Math.min(currentHeight,maxHeight);
-      if(nextHeight<currentHeight){
-        const scale=nextHeight/currentHeight;
-        anchor.signatureHeight=nextHeight;
-        anchor.signatureWidth=Math.max(48,Number(anchor.signatureWidth||84)*scale);
-        // Recentrar ligeramente sobre la misma línea al reducir la caja.
-        anchor.signatureY=currentY+(currentHeight-nextHeight)/2;
-      }
+
+  const placement=validateMandatorySignaturePlacement(preliminary,pages);
+  if(!placement.ok){
+    const byWorker=new Map<number,MandatorySignaturePlacementIssue[]>();
+    for(const issue of placement.issues){
+      if(!byWorker.has(issue.workerId))byWorker.set(issue.workerId,[]);
+      byWorker.get(issue.workerId)!.push(issue);
+    }
+    for(const anchor of preliminary){
+      const issues=byWorker.get(anchor.workerId);
+      if(!issues?.length)continue;
+      anchor.resolved=false;
+      anchor.signatureX=null;
+      anchor.signatureY=null;
+      anchor.signatureWidth=null;
+      anchor.signatureHeight=null;
+      anchor.reason=issues.map(issue=>issue.message).join(' ');
     }
   }
 
-  const orderedResolved = anchors
+  const orderedResolved = preliminary
     .filter(anchor => anchor.resolved)
-    .sort((a,b) => a.page - b.page || Number(b.nameY || 0) - Number(a.nameY || 0));
+    .sort((a,b) => a.page - b.page || Number(b.nameCenterY || b.nameY || 0) - Number(a.nameCenterY || a.nameY || 0));
+  orderedResolved.forEach((anchor,index)=>{anchor.order=index;});
 
-  orderedResolved.forEach((anchor,index) => { anchor.order = index; });
-  let nextOrder = orderedResolved.length;
-  const normalizedFallback = normalize(fallbackText);
-  const compactFallback = compact(fallbackText);
-  anchors
-    .filter(anchor => !anchor.resolved)
-    .sort((a,b) => {
-      const indexFor = (anchor:MandatoryWorkerAnchor) => {
+  let nextOrder=orderedResolved.length;
+  const normalizedFallback=normalize(fallbackText);
+  const compactFallback=compact(fallbackText);
+  preliminary
+    .filter(anchor=>!anchor.resolved)
+    .sort((a,b)=>{
+      const indexFor=(anchor:MandatoryWorkerAnchor)=>{
         const dni=compact(anchor.dni);
         if(dni&&compactFallback.includes(dni))return compactFallback.indexOf(dni);
         const tokens=normalize(anchor.workerName).split(' ').filter(token=>token.length>=3);
         const probe=tokens.slice(0,Math.min(3,tokens.length)).join(' ');
-        return probe ? normalizedFallback.indexOf(probe) : Number.MAX_SAFE_INTEGER;
+        return probe?normalizedFallback.indexOf(probe):Number.MAX_SAFE_INTEGER;
       };
-      const ai=indexFor(a), bi=indexFor(b);
+      const ai=indexFor(a),bi=indexFor(b);
       return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);
     })
-    .forEach(anchor => { anchor.order = nextOrder++; });
+    .forEach(anchor=>{anchor.order=nextOrder++;});
 
-  const ordered = [...anchors].sort((a,b) => a.order - b.order);
+  const ordered=[...preliminary].sort((a,b)=>a.order-b.order);
   return {
-    pageCount: pdf.numPages,
+    pageCount:pdf.numPages,
     pages,
-    anchors: ordered,
-    orderedWorkerIds: ordered.map(anchor => anchor.workerId),
-    unresolvedWorkerIds: ordered.filter(anchor => !anchor.resolved).map(anchor => anchor.workerId),
+    anchors:ordered,
+    orderedWorkerIds:ordered.map(anchor=>anchor.workerId),
+    unresolvedWorkerIds:ordered.filter(anchor=>!anchor.resolved).map(anchor=>anchor.workerId),
   };
 }
 
@@ -400,11 +515,29 @@ export async function buildSignedMandatoryPdf(input: {
   const originalBytes = base64ToBytes(input.originalPdfBase64);
   const pdfDoc = await PDFLib.PDFDocument.load(originalBytes, { updateMetadata: false });
   const pages = pdfDoc.getPages();
+  const signedAnchors=input.anchors.filter(anchor=>{
+    const raw=input.signatures[String(anchor.workerId)];
+    return Boolean(typeof raw==='string'?raw:raw?.signature);
+  });
+  const placement=validateMandatorySignaturePlacement(
+    signedAnchors,
+    pages.map((page:any,index:number)=>{
+      const size=page.getSize();
+      return {page:index+1,width:Number(size.width),height:Number(size.height),rotation:0};
+    }),
+  );
+  if(!placement.ok){
+    const first=placement.issues[0];
+    throw new Error(first?.message||'La colocación de una firma no supera la validación geométrica.');
+  }
 
   for (const [anchorIndex,anchor] of input.anchors.entries()) {
     const raw = input.signatures[String(anchor.workerId)];
     const signature = typeof raw === 'string' ? raw : raw?.signature;
     if (!signature) continue;
+    if(!anchor.resolved||anchor.signatureX==null||anchor.signatureY==null||anchor.signatureWidth==null||anchor.signatureHeight==null){
+      throw new Error(`No se puede colocar la firma de ${anchor.workerName}: el nombre no está localizado con seguridad en el PDF original.`);
+    }
     const page = pages[anchor.page - 1];
     if (!page) throw new Error(`No existe la página ${anchor.page} para una de las firmas.`);
     const decoded = signatureDataToBytes(signature);
@@ -412,19 +545,19 @@ export async function buildSignedMandatoryPdf(input: {
       ? await pdfDoc.embedPng(decoded.bytes)
       : await pdfDoc.embedJpg(decoded.bytes);
     const size=page.getSize();
-    const boxWidth = Number(anchor.signatureWidth || Math.max(72,Math.min(96,size.width*0.16)));
-    const boxHeight = Number(anchor.signatureHeight || 18);
-    const fallbackX=Math.max(12,size.width-Math.max(14,size.width*0.02)-boxWidth);
-    const fallbackY=Math.max(18,size.height-118-((Number.isFinite(Number(anchor.order))?Number(anchor.order):anchorIndex)*24));
-    const boxX=anchor.signatureX==null?fallbackX:Number(anchor.signatureX);
-    const boxY=anchor.signatureY==null?fallbackY:Number(anchor.signatureY);
-    const ratio = image.width / Math.max(1, image.height);
-    let width = boxWidth;
-    let height = width / ratio;
-    if (height > boxHeight) {
-      height = boxHeight;
-      width = height * ratio;
+    const boxWidth = Number(anchor.signatureWidth);
+    const boxHeight = Number(anchor.signatureHeight);
+    const boxX=Number(anchor.signatureX);
+    const boxY=Number(anchor.signatureY);
+    if(boxX<0||boxY<0||boxX+boxWidth>size.width||boxY+boxHeight>size.height){
+      throw new Error(`La firma de ${anchor.workerName} quedaría fuera de la página y no se ha generado el documento.`);
     }
+    const {width,height}=fitSignatureInsideBox({
+      imageWidth:image.width,
+      imageHeight:image.height,
+      boxWidth,
+      boxHeight,
+    });
     page.drawImage(image, {
       x: boxX + Math.max(0, (boxWidth - width) / 2),
       y: boxY + Math.max(0, (boxHeight - height) / 2),
@@ -485,7 +618,14 @@ export async function verifyMandatoryPdfFidelity(
       const width = Math.min(originalRender.image.width, signedRender.image.width);
       const height = Math.min(originalRender.image.height, signedRender.image.height);
       const masked = anchors
-        .filter(anchor => anchor.page===pageNumber)
+        .filter(anchor =>
+          anchor.page===pageNumber &&
+          anchor.resolved &&
+          anchor.signatureX!=null &&
+          anchor.signatureY!=null &&
+          anchor.signatureWidth!=null &&
+          anchor.signatureHeight!=null
+        )
         .map((anchor,index) => {
           const boxWidth=Number(anchor.signatureWidth||Math.max(72,Math.min(96,av.width*0.16)));
           const boxHeight=Number(anchor.signatureHeight||18);
@@ -560,3 +700,4 @@ export function pdfBlobFromBytes(value:Uint8Array) {
   copy.set(value);
   return new Blob([copy.buffer], { type:'application/pdf' });
 }
+
