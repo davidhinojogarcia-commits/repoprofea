@@ -655,6 +655,21 @@ export async function buildSignedMandatoryPdf(input: {
   const originalBytes = base64ToBytes(input.originalPdfBase64);
   const pdfDoc = await PDFLib.PDFDocument.load(originalBytes, { updateMetadata: false });
   const pages = pdfDoc.getPages();
+  const signedAnchors=input.anchors.filter(anchor=>{
+    const raw=input.signatures[String(anchor.workerId)];
+    return Boolean(typeof raw==='string'?raw:raw?.signature);
+  });
+  const placement=validateMandatorySignaturePlacement(
+    signedAnchors,
+    pages.map((page:any,index:number)=>{
+      const size=page.getSize();
+      return {page:index+1,width:Number(size.width),height:Number(size.height),rotation:0};
+    }),
+  );
+  if(!placement.ok){
+    const first=placement.issues[0];
+    throw new Error(first?.message||'La colocación de una firma no supera la validación geométrica.');
+  }
 
   for (const [anchorIndex,anchor] of input.anchors.entries()) {
     const raw = input.signatures[String(anchor.workerId)];
@@ -744,7 +759,14 @@ export async function verifyMandatoryPdfFidelity(
       const width = Math.min(originalRender.image.width, signedRender.image.width);
       const height = Math.min(originalRender.image.height, signedRender.image.height);
       const masked = anchors
-        .filter(anchor => anchor.page===pageNumber)
+        .filter(anchor =>
+          anchor.page===pageNumber &&
+          anchor.resolved &&
+          anchor.signatureX!=null &&
+          anchor.signatureY!=null &&
+          anchor.signatureWidth!=null &&
+          anchor.signatureHeight!=null
+        )
         .map((anchor,index) => {
           const boxWidth=Number(anchor.signatureWidth||Math.max(72,Math.min(96,av.width*0.16)));
           const boxHeight=Number(anchor.signatureHeight||18);
@@ -819,3 +841,10 @@ export function pdfBlobFromBytes(value:Uint8Array) {
   copy.set(value);
   return new Blob([copy.buffer], { type:'application/pdf' });
 }
+
+
+export const __mandatorySignatureAnchoringTest = {
+  scoreNameTextForWorker,
+  computeSignatureBoxFromDetectedName,
+  validateMandatorySignaturePlacement,
+};
