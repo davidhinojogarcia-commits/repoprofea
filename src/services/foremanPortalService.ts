@@ -492,6 +492,32 @@ export async function correctForemanMandatoryWorkerName(
 }
 
 
+export async function removeForemanMandatoryWorker(
+  token: string,
+  documentId: string,
+  workerId: number,
+) {
+  return withForemanTimeout(
+    supabase.rpc('remove_foreman_mandatory_worker', {
+      p_token: token,
+      p_document_id: documentId,
+      p_worker_id: workerId,
+    }),
+    'No se pudo quitar la persona del documento a tiempo.',
+  );
+}
+
+export async function removeSupervisorMandatoryWorker(
+  documentId: string,
+  workerId: number,
+) {
+  return supabase.rpc('remove_supervisor_mandatory_worker', {
+    p_document_id: documentId,
+    p_worker_id: workerId,
+  });
+}
+
+
 export async function createForemanOperationalDocument(input: {
   token: string;
   documentType: 'epis' | 'formacion' | 'maquinaria' | 'autorizacion_uso_maquinaria';
