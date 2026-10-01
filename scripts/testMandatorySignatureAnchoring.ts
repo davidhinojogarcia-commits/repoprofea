@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
+import type { MandatoryWorkerAnchor, MandatoryPdfPageMeta } from '../src/lib/mandatoryPdfOverlay';
 import {
-  __mandatorySignatureAnchoringTest,
-  type MandatoryWorkerAnchor,
-  type MandatoryPdfPageMeta,
-} from '../src/lib/mandatoryPdfOverlay';
-
-const { scoreNameTextForWorker, computeSignatureBoxFromDetectedName, validateMandatorySignaturePlacement } =
-  __mandatorySignatureAnchoringTest;
+  computeSignatureBoxFromDetectedName,
+  scoreMandatoryWorkerNameText,
+  validateMandatorySignaturePlacement,
+} from '../src/lib/mandatorySignatureGeometry';
 
 const worker=(id:number,name:string,dni='')=>({id,apellidosNombre:name,dni} as any);
 
@@ -40,9 +38,9 @@ const pages:MandatoryPdfPageMeta[]=[
 ];
 
 // Nombres exactos, compuestos, con coma y variaciones de espacios.
-assert(scoreNameTextForWorker(worker(1,'PÉREZ GARCÍA, JUAN'),'PÉREZ GARCÍA, JUAN')>=0.97);
-assert(scoreNameTextForWorker(worker(2,'DE LA TORRE MARTÍN, ANA MARÍA'),'DE LA TORRE MARTÍN ANA MARÍA')>=0.9);
-assert(scoreNameTextForWorker(worker(3,'SÁNCHEZ-RUIZ, PEDRO'),'SANCHEZ RUIZ PEDRO')>=0.9);
+assert(scoreMandatoryWorkerNameText(worker(1,'PÉREZ GARCÍA, JUAN'),'PÉREZ GARCÍA, JUAN')>=0.97);
+assert(scoreMandatoryWorkerNameText(worker(2,'DE LA TORRE MARTÍN, ANA MARÍA'),'DE LA TORRE MARTÍN ANA MARÍA')>=0.9);
+assert(scoreMandatoryWorkerNameText(worker(3,'SÁNCHEZ-RUIZ, PEDRO'),'SANCHEZ RUIZ PEDRO')>=0.9);
 
 // 1 trabajador: misma línea y justo a la derecha.
 {
