@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.18.2';
+export const APP_VERSION = '1.18.3';
 export const APP_RELEASE_DATE = '01/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Revisión de contraste diurno/nocturno en Documentación de encargados, portal móvil y Ajustar firmas.',
+  'Avisos, estados, buscadores, tarjetas y botones secundarios reciben variantes oscuras legibles.',
   'Modales y editores de Documentación de encargados pasan a una capa global sobre document.body.',
   'Ajustar firmas permite eliminar directamente trabajadores falsamente detectados, sin confirmación.',
   'Se refuerza la detección para descartar calles, obras, localidades y textos institucionales como si fueran trabajadores.',
