@@ -198,3 +198,24 @@ export const computeSignatureBoxFromDetectedName=(input:{
   if(y<4||y+height>input.pageHeight-4)return null;
   return {x:startX,y,width,height};
 };
+
+
+export const fitSignatureInsideBox=(input:{
+  imageWidth:number;
+  imageHeight:number;
+  boxWidth:number;
+  boxHeight:number;
+})=>{
+  const safeImageWidth=Math.max(1,Number(input.imageWidth)||1);
+  const safeImageHeight=Math.max(1,Number(input.imageHeight)||1);
+  const safeBoxWidth=Math.max(1,Number(input.boxWidth)||1);
+  const safeBoxHeight=Math.max(1,Number(input.boxHeight)||1);
+  const ratio=safeImageWidth/safeImageHeight;
+  let width=safeBoxWidth;
+  let height=width/ratio;
+  if(height>safeBoxHeight){
+    height=safeBoxHeight;
+    width=height*ratio;
+  }
+  return {width,height};
+};
