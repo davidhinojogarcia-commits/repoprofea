@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { AlertTriangle, FileUp, Save, Trash2, X } from 'lucide-react';
 import { parseAnnualHiringPeriodsPdf, type ParsedAnnualHiringMonth } from '../src/lib/annualHiringPeriodsParser';
 import { deleteAnnualHiringPeriods, listAnnualHiringPeriods, saveAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
@@ -171,7 +172,7 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
         event.currentTarget.value = '';
       }}
     />
-    {open && <div className="fixed inset-0 z-[140] bg-slate-950/65 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center">
+    {open && <ModalPortal label="AnnualHiringPeriodsPanel"><div className="fixed inset-0 z-[140] bg-slate-950/65 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center">
       <div className="w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border dark:border-slate-800 shadow-2xl">
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b dark:border-slate-800 px-5 py-4 flex items-center justify-between">
           <div><h2 className="font-black text-xl">{entryMode === 'import' ? 'Importar periodos anuales' : 'Añadir periodos manualmente'}</h2><p className="text-xs text-slate-500 mt-1">Una sola anualidad para todas las obras. Cada mes puede tener Periodo 1 y Periodo 2.</p></div>
@@ -218,6 +219,6 @@ export const AnnualHiringPeriodsPanel: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>}
+    </div></ModalPortal>}
   </>;
 };
