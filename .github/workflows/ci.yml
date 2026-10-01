@@ -83,6 +83,10 @@ jobs:
         run: npm run test:mandatory-signatures
       - name: Worker relation ordering regression
         run: npm run test:relation-ordering
+      - name: Mandatory worker detection regression
+        run: npm run test:mandatory-worker-detection
+      - name: Global modal layering regression
+        run: npm run test:modal-layering
       - name: TypeScript validation
         run: |
           set -o pipefail
