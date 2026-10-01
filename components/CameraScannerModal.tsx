@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
 import ModalPortal from './ModalPortal';
 import { 
   Camera, 
@@ -555,10 +556,12 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     setPages(newPages);
   };
 
-  const clearAll = () => {
-    if (window.confirm('¿Está seguro de que desea borrar todas las páginas capturadas?')) {
-      setPages([]);
-    }
+  const clearAll = async () => {
+    const ok = await appConfirm('¿Está seguro de que desea borrar todas las páginas capturadas?', {
+      title: 'Borrar páginas capturadas',
+      confirmLabel: 'Borrar todo',
+    });
+    if (ok) setPages([]);
   };
 
   // Convert bytes to readable size
@@ -943,7 +946,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     }
   };
 
-  const handleImportToSystem = () => {
+  const handleImportToSystem = async () => {
     if (recognizedWorkers.length === 0) {
       onToast("No hay ningún trabajador en el listado para importar.", "error");
       return;
@@ -954,7 +957,11 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       return;
     }
 
-    if (window.confirm(`¿Desea importar los ${recognizedWorkers.length} trabajadores de la relación directamente al listado general del sistema?`)) {
+    const ok = await appConfirm(`¿Desea importar los ${recognizedWorkers.length} trabajadores de la relación directamente al listado general del sistema?`, {
+      title: 'Importar trabajadores',
+      confirmLabel: 'Importar',
+    });
+    if (ok) {
       const formatted = recognizedWorkers.map(w => {
         return {
           supervisorResponsable: "",
