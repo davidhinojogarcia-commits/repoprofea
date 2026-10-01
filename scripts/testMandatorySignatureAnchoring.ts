@@ -185,3 +185,54 @@ console.log('mandatory signature anchoring regression tests: OK');
 }
 
 console.log('mandatory signature anchoring extended tests: OK');
+
+
+// Posición manual confirmada por el supervisor: es válida aunque el PDF escaneado
+// no permita recuperar las coordenadas del nombre. Se siguen validando límites y colisiones.
+{
+  const manual:MandatoryWorkerAnchor={
+    workerId:501,
+    workerName:'NOMBRE AJUSTADO MANUALMENTE',
+    dni:'',
+    page:1,
+    order:0,
+    nameX:null,
+    nameY:null,
+    rowHeight:null,
+    signatureX:320,
+    signatureY:410,
+    signatureWidth:90,
+    signatureHeight:20,
+    confidence:1,
+    resolved:true,
+    reason:'Posición confirmada manualmente por el supervisor.',
+  };
+  const result=validateMandatorySignaturePlacement([manual],pages);
+  assert.equal(result.ok,true,JSON.stringify(result.issues));
+}
+
+// Sin localización automática ni confirmación manual debe seguir bloqueándose.
+{
+  const unresolved:MandatoryWorkerAnchor={
+    workerId:502,
+    workerName:'NOMBRE SIN LOCALIZAR',
+    dni:'',
+    page:1,
+    order:0,
+    nameX:null,
+    nameY:null,
+    rowHeight:null,
+    signatureX:null,
+    signatureY:null,
+    signatureWidth:90,
+    signatureHeight:20,
+    confidence:0,
+    resolved:false,
+    reason:'Pendiente de localizar.',
+  };
+  const result=validateMandatorySignaturePlacement([unresolved],pages);
+  assert.equal(result.ok,false);
+  assert(result.issues.some(issue=>issue.workerId===502&&issue.code==='UNRESOLVED'));
+}
+
+console.log('mandatory manual supervisor anchor regression tests: OK');

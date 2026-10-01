@@ -16,6 +16,8 @@ export type SignatureAnchorGeometry = {
   signatureY:number|null;
   signatureWidth:number|null;
   signatureHeight:number|null;
+  confidence?:number;
+  reason?:string;
 };
 
 export type SignaturePageGeometry={
@@ -88,7 +90,12 @@ export const validateMandatorySignaturePlacement=(anchors:SignatureAnchorGeometr
 
   for(const anchor of anchors){
     const page=pageMap.get(anchor.page);
-    if(!anchor.resolved||anchor.signatureX==null||anchor.signatureY==null||anchor.signatureWidth==null||anchor.signatureHeight==null||anchor.nameX==null||anchor.nameY==null){
+    const hasSignatureBox=anchor.signatureX!=null&&anchor.signatureY!=null&&anchor.signatureWidth!=null&&anchor.signatureHeight!=null;
+    const manualSupervisorPlacement=anchor.resolved&&hasSignatureBox&&(
+      Number(anchor.confidence||0)>=0.999 ||
+      /confirmada manualmente por el supervisor|identidad confirmada por el supervisor/i.test(String(anchor.reason||''))
+    );
+    if(!anchor.resolved||!hasSignatureBox){
       issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'UNRESOLVED',message:'No se ha localizado con seguridad el nombre del trabajador en el PDF original.'});
       continue;
     }
@@ -98,12 +105,17 @@ export const validateMandatorySignaturePlacement=(anchors:SignatureAnchorGeometr
       issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'OUT_OF_PAGE',message:'La firma quedaría fuera de los límites de la página.'});
     }
 
-    const ownName={
+    const hasOwnName=anchor.nameX!=null&&anchor.nameY!=null;
+    const ownName=hasOwnName ? {
       x:Number(anchor.nameX),
       y:Number(anchor.nameY),
       width:Number(anchor.nameWidth||Math.max(1,Number(anchor.nameRightX||anchor.nameX)-Number(anchor.nameX))),
       height:Number(anchor.nameHeight||anchor.rowHeight||10),
-    };
+    } : null;
+    if(!hasOwnName&&!manualSupervisorPlacement){
+      issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'UNRESOLVED',message:'No se ha localizado con seguridad el nombre del trabajador en el PDF original.'});
+      continue;
+    }
     for(const other of resolved){
       if(other.workerId===anchor.workerId||other.page!==anchor.page||other.nameX==null||other.nameY==null)continue;
       const otherName={
@@ -123,8 +135,8 @@ export const validateMandatorySignaturePlacement=(anchors:SignatureAnchorGeometr
       const dy=Math.max(b.y-(a.y+a.height),a.y-(b.y+b.height),0);
       return Math.hypot(dx,dy);
     };
-    const ownDistance=distanceBetweenBoxes(sig,ownName);
-    for(const other of resolved){
+    const ownDistance=ownName?distanceBetweenBoxes(sig,ownName):0;
+    if(ownName)for(const other of resolved){
       if(other.workerId===anchor.workerId||other.page!==anchor.page||other.nameX==null||other.nameY==null)continue;
       const otherName={
         x:Number(other.nameX),

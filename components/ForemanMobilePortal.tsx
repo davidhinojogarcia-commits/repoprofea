@@ -28,6 +28,7 @@ import {
 } from '../src/services/foremanPortalService';
 import {
   analyzeMandatoryOriginalPdf,
+  resolveMandatoryAnchorsWithOcrRows,
   base64ToBytes,
   buildSignedMandatoryPdf,
   bytesToBase64,
@@ -656,14 +657,35 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           source.filename||String(doc.details?.sourceFilename||'documento.pdf'),
           {type:'application/pdf'}
         );
-        const analysis=await analyzeMandatoryOriginalPdf(
+        let analysis=await analyzeMandatoryOriginalPdf(
           file,
           candidates,
           undefined,
           String(doc.details?.sourceText||'')
         );
+        if(analysis.unresolvedWorkerIds.length){
+          analysis=await resolveMandatoryAnchorsWithOcrRows(file,candidates,analysis);
+        }
         if(analysis.anchors.length){
-          anchors=analysis.anchors;
+          const detectedById=new Map(analysis.anchors.map(anchor=>[Number(anchor.workerId),anchor]));
+          const merged=existingAnchors.map(existing=>{
+            const detected=detectedById.get(Number(existing.workerId));
+            const existingHasConfirmedBox=Boolean(
+              existing.resolved &&
+              existing.signatureX!=null &&
+              existing.signatureY!=null &&
+              existing.signatureWidth!=null &&
+              existing.signatureHeight!=null
+            );
+            if(existingHasConfirmedBox)return existing;
+            if(detected?.resolved)return detected;
+            return detected||existing;
+          });
+          const existingIds=new Set(merged.map(anchor=>Number(anchor.workerId)));
+          for(const detected of analysis.anchors){
+            if(!existingIds.has(Number(detected.workerId)))merged.push(detected);
+          }
+          anchors=merged;
           await repairForemanMandatoryAnchors(token,doc.id,anchors).catch(()=>undefined);
         }
       }catch(error){
@@ -699,7 +721,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const message=e?.message||'No se pudo abrir el PDF.';
       setError(message);
       setOperationFeedback(message);
-      await appAlert(message,{title:'No se pudo abrir el PDF',kind:'error'});
     }finally{
       setSaving(false);
     }
@@ -1175,7 +1196,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           const message=e?.message||'No se pudo enviar el documento.';
           setError(message);
           setOperationFeedback(message);
-          await appAlert(message,{title:'No se pudo enviar',kind:'error'});
         }finally{setSaving(false);}
       }} className={`mt-4 min-h-[58px] w-full rounded-2xl px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500 ${partialSubmission?'bg-amber-600':'bg-emerald-600'}`}>
         {partialSubmission?`Enviar incompleto al supervisor · faltan ${pendingRequired}`:'Enviar documento firmado al supervisor'}
