@@ -81,6 +81,8 @@ jobs:
           grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
+      - name: Worker relation ordering regression
+        run: npm run test:relation-ordering
       - name: TypeScript validation
         run: |
           set -o pipefail
