@@ -315,14 +315,14 @@ const matchMandatoryWorkersWithOcrRetry = async (
 ) => {
   let text = firstText;
   let category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
-  let matched = matchWorkers(workers, text, category);
+  let matched = matchWorkers(workers, text);
 
   if (!matched.length) {
     onProgress?.(`No se localizaron trabajadores en ${file.name}. Reforzando lectura…`);
     const reinforced = await extractClientDocumentText(file, onProgress, { forceOcr: true, ocrScale: 2.4 });
     text = reinforced.text || text;
     category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
-    matched = matchWorkers(workers, text, category);
+    matched = matchWorkers(workers, text);
   }
 
   return { text, category, matched };
@@ -392,7 +392,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
         );
         const category = recognition.category;
         const documentObra = extractWorksiteFromText(recognition.text);
-        const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra);
+        const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra, type);
         if (!listedWorkers.length) {
           warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
           skippedAttachments += 1;
@@ -501,7 +501,7 @@ export async function processManualMandatoryFiles(
         warnings.push(`${file.name}: no se ha podido identificar la obra escrita en el PDF. Selecciona primero la obra y vuelve a importar.`);
         continue;
       }
-      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra);
+      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra, type);
       selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
         const name=String(worker.apellidosNombre||'').trim();
         if(name)missingDirectoryWorkers.add(name);
