@@ -21,15 +21,13 @@ function buildMime(input: {
   to: string;
   subject: string;
   body: string;
-  filename: string;
-  pdfBase64: string;
+  attachments: Array<{ filename: string; mimeType?: string; dataBase64: string }>;
   inReplyTo?: string;
   references?: string;
 }) {
   const boundary = `profea_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const filename = cleanHeader(input.filename || 'documento.pdf').replace(/"/g, '');
   const subject = encodeHeader(cleanHeader(input.subject));
-  return [
+  const parts = [
     `To: ${cleanHeader(input.to)}`,
     `Subject: ${subject}`,
     ...(input.inReplyTo ? [`In-Reply-To: ${cleanHeader(input.inReplyTo)}`] : []),
@@ -42,15 +40,23 @@ function buildMime(input: {
     'Content-Transfer-Encoding: base64',
     '',
     wrapBase64(Buffer.from(String(input.body || ''), 'utf8').toString('base64')),
-    `--${boundary}`,
-    `Content-Type: application/pdf; name="${filename}"`,
-    'Content-Transfer-Encoding: base64',
-    `Content-Disposition: attachment; filename="${filename}"`,
-    '',
-    wrapBase64(input.pdfBase64),
-    `--${boundary}--`,
-    '',
-  ].join('\r\n');
+  ];
+
+  for (const attachment of input.attachments) {
+    const filename = cleanHeader(attachment.filename || 'documento.pdf').replace(/"/g, '');
+    const mimeType = cleanHeader(attachment.mimeType || 'application/pdf') || 'application/pdf';
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${mimeType}; name="${filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${filename}"`,
+      '',
+      wrapBase64(attachment.dataBase64),
+    );
+  }
+
+  parts.push(`--${boundary}--`, '');
+  return parts.join('\r\n');
 }
 
 export default async function handler(req: any, res: any) {
@@ -224,8 +230,16 @@ export default async function handler(req: any, res: any) {
       const to = String(body.to || '').trim();
       const subject = String(body.subject || '').trim();
       const messageBody = String(body.body || '');
-      const filename = String(body.filename || 'documento.pdf').trim();
-      const pdfBase64 = String(body.pdfBase64 || '').replace(/^data:application\/pdf;base64,/, '').trim();
+      const legacyFilename = String(body.filename || 'documento.pdf').trim();
+      const legacyPdfBase64 = String(body.pdfBase64 || '').replace(/^data:application\/pdf;base64,/, '').trim();
+      const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+      const attachments = rawAttachments.length
+        ? rawAttachments.map((item: any) => ({
+            filename: String(item?.filename || 'documento.pdf').trim(),
+            mimeType: String(item?.mimeType || 'application/pdf').trim() || 'application/pdf',
+            dataBase64: String(item?.dataBase64 || '').replace(/^data:[^;]+;base64,/, '').trim(),
+          }))
+        : (legacyPdfBase64 ? [{ filename: legacyFilename, mimeType: 'application/pdf', dataBase64: legacyPdfBase64 }] : []);
       const threadId = String(body.threadId || '').trim();
       const inReplyTo = String(body.inReplyTo || '').trim();
       const references = String(body.references || inReplyTo || '').trim();
@@ -234,9 +248,15 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ ok: false, message: 'El destinatario no es válido.' });
       }
       if (!subject) return res.status(400).json({ ok: false, message: 'El asunto está vacío.' });
-      if (!pdfBase64) return res.status(400).json({ ok: false, message: 'No se ha recibido el PDF adjunto.' });
-      if (pdfBase64.length > 14 * 1024 * 1024) {
-        return res.status(413).json({ ok: false, message: 'El PDF es demasiado grande para enviarlo desde GestionProfea.' });
+      if (!attachments.length || attachments.some((item: any) => !item.dataBase64)) {
+        return res.status(400).json({ ok: false, message: 'No se han recibido los PDF adjuntos.' });
+      }
+      if (attachments.length > 20) {
+        return res.status(413).json({ ok: false, message: 'Hay demasiados archivos adjuntos para un solo correo.' });
+      }
+      const totalAttachmentBase64 = attachments.reduce((sum: number, item: any) => sum + item.dataBase64.length, 0);
+      if (totalAttachmentBase64 > 20 * 1024 * 1024) {
+        return res.status(413).json({ ok: false, message: 'El conjunto de PDF adjuntos es demasiado grande para enviarlo desde GestionProfea.' });
       }
 
       const connection = await getConnection(user.id);
@@ -250,7 +270,7 @@ export default async function handler(req: any, res: any) {
 
       const refreshToken = decryptToken(connection.refresh_token_encrypted);
       const accessToken = await refreshGoogleAccessToken(refreshToken);
-      const mime = buildMime({ to, subject, body: messageBody, filename, pdfBase64, inReplyTo, references });
+      const mime = buildMime({ to, subject, body: messageBody, attachments, inReplyTo, references });
       const raw = Buffer.from(mime, 'utf8').toString('base64url');
 
       const sendResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
