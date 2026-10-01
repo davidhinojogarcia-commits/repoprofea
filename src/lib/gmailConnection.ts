@@ -67,6 +67,35 @@ const fileToBase64 = async (file: File) => {
   return btoa(binary);
 };
 
+export async function sendPdfsWithConnectedGmail(input: {
+  to: string;
+  subject: string;
+  body: string;
+  files: File[];
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
+}) {
+  if (!input.files.length) throw new Error('No hay archivos PDF para adjuntar.');
+  const attachments = await Promise.all(input.files.map(async file => ({
+    filename: file.name,
+    mimeType: file.type || 'application/pdf',
+    dataBase64: await fileToBase64(file),
+  })));
+  return api<{ ok: true; messageId: string; threadId?: string | null; from: string }>('/api/gmail?action=send', {
+    method: 'POST',
+    body: JSON.stringify({
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+      attachments,
+      threadId: input.threadId || '',
+      inReplyTo: input.inReplyTo || '',
+      references: input.references || '',
+    }),
+  });
+}
+
 export async function sendPdfWithConnectedGmail(input: {
   to: string;
   subject: string;
@@ -76,19 +105,9 @@ export async function sendPdfWithConnectedGmail(input: {
   inReplyTo?: string;
   references?: string;
 }) {
-  const pdfBase64 = await fileToBase64(input.file);
-  return api<{ ok: true; messageId: string; threadId?: string | null; from: string }>('/api/gmail?action=send', {
-    method: 'POST',
-    body: JSON.stringify({
-      to: input.to,
-      subject: input.subject,
-      body: input.body,
-      filename: input.file.name,
-      pdfBase64,
-      threadId: input.threadId || '',
-      inReplyTo: input.inReplyTo || '',
-      references: input.references || '',
-    }),
+  return sendPdfsWithConnectedGmail({
+    ...input,
+    files: [input.file],
   });
 }
 

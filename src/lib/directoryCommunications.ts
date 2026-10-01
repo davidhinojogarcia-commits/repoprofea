@@ -8,7 +8,7 @@ import {
 import { prepareAdministrativeRelationPDF } from './administrativeRelationExport';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getStoredObrasRecursosPreventivos } from './subcontratasDefaults';
-import { getGmailConnectionStatus, sendPdfWithConnectedGmail } from './gmailConnection';
+import { getGmailConnectionStatus, sendPdfWithConnectedGmail, sendPdfsWithConnectedGmail } from './gmailConnection';
 import { appAlert, appConfirm } from './appDialog';
 import { sortRelationWorkers, splitRelationWorkersByWork } from './relationExportOrdering';
 
@@ -213,13 +213,15 @@ const prepareCommunication = async (
   };
 };
 
-const canShareFile = (file: File) => {
+const canShareFiles = (files: File[]) => {
   try {
-    return Boolean(navigator.share && navigator.canShare?.({ files: [file] }));
+    return Boolean(files.length && navigator.share && navigator.canShare?.({ files }));
   } catch {
     return false;
   }
 };
+
+const canShareFile = (file: File) => canShareFiles([file]);
 
 export const sendDirectoryCommunication = async (
   kind: DirectoryCommunicationKind,
@@ -227,13 +229,111 @@ export const sendDirectoryCommunication = async (
   allPeople?: Person[],
 ): Promise<'sent' | 'shared' | 'opened' | 'cancelled'> => {
   const groups = splitRelationWorkersByWork(data);
-  if (groups.length > 1) {
+
+  // Los encargados pueden tener destinatarios distintos por obra, por eso
+  // mantienen un envío separado. El resto de destinatarios reciben UN solo
+  // correo con un PDF independiente por cada obra seleccionada.
+  if (groups.length > 1 && kind === 'encargados') {
     let lastResult: 'sent' | 'shared' | 'opened' | 'cancelled' = 'cancelled';
     for (const group of groups) {
       lastResult = await sendDirectoryCommunication(kind, group.workers, allPeople);
       if (lastResult === 'cancelled') break;
     }
     return lastResult;
+  }
+
+  if (groups.length > 1) {
+    const preparedGroups = await Promise.all(
+      groups.map(group => prepareCommunication(kind, group.workers, allPeople)),
+    );
+    const first = preparedGroups[0];
+    const files = preparedGroups.map(item => item.file);
+    const orderedData = sortRelationWorkers(data);
+    const context = buildContext(orderedData);
+    const subjectBase = String(first.subject || '').split(' · ')[0];
+    const subject = `${subjectBase} · ${groups.length} obras`;
+    const body = [
+      `Buenos días, ${first.recipientName}:`,
+      '',
+      'Se remite en un único correo la documentación correspondiente a las obras seleccionadas en GestionProfea.',
+      '',
+      'DATOS GENERALES DEL ENVÍO',
+      '-------------------------',
+      `• Obras: ${groups.map(group => group.obra).join(', ')}`,
+      `• Periodos: ${context.periodos || 'No consta'}`,
+      `• Nº total de trabajadores relacionados: ${orderedData.length}`,
+      `• Supervisor responsable: ${context.supervisor}`,
+      '',
+      'DOCUMENTACIÓN ADJUNTA',
+      '---------------------',
+      ...groups.map((group, index) => `• ${group.obra}: ${files[index].name} (${group.workers.length} trabajador(es))`),
+      '',
+      'Cada obra se mantiene en un PDF independiente; no se mezclan trabajadores de obras distintas.',
+      '',
+      'Si detecta cualquier incidencia, omisión o dato que deba ser corregido, le ruego que lo comunique para proceder a su revisión.',
+      '',
+      'Un saludo.',
+      '',
+      context.supervisor,
+      'GestionProfea · Programa de Fomento de Empleo Agrario',
+    ].join('\n');
+
+    try {
+      const gmail = await getGmailConnectionStatus();
+      if (gmail.connected) {
+        const confirmed = await appConfirm(
+          `Se enviará un único correo desde ${gmail.email} a ${first.recipientEmail}, con ${files.length} PDF adjuntos (uno por obra). ¿Deseas continuar?`,
+          {
+            title: 'Enviar correo',
+            confirmLabel: 'Enviar correo',
+            cancelLabel: 'Cancelar',
+          },
+        );
+        if (!confirmed) return 'cancelled';
+        await sendPdfsWithConnectedGmail({
+          to: first.recipientEmail || '',
+          subject,
+          body,
+          files,
+        });
+        await appAlert(
+          `Correo enviado correctamente a ${first.recipientEmail} con ${files.length} PDF adjuntos, uno por obra.`,
+          { kind: 'success', title: 'Correo enviado' },
+        );
+        return 'sent';
+      }
+    } catch (error: any) {
+      console.warn('[directory-communications] No se pudo usar el envío Gmail directo:', error);
+      if (error?.code !== 'GMAIL_NOT_CONNECTED') {
+        await appAlert(error?.message || 'No se pudo enviar mediante Gmail. Se usará el método alternativo.', {
+          kind: 'warning',
+          title: 'Envío alternativo',
+        });
+      }
+    }
+
+    if (canShareFiles(files)) {
+      try {
+        await navigator.share({ title: subject, text: body, files });
+        return 'shared';
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return 'cancelled';
+        console.warn('[directory-communications] Compartir nativo múltiple falló:', error);
+      }
+    }
+
+    files.forEach(downloadFile);
+    const gmailUrl =
+      `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(first.recipientEmail || '')}` +
+      `&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(
+        `${body}\n\nAdjunta los PDF descargados: ${files.map(file => file.name).join(', ')}`,
+      )}`;
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    await appAlert(
+      `Se han descargado ${files.length} PDF, uno por obra, y se ha preparado un único correo para ${first.recipientName} (${first.recipientEmail}). Adjunta todos los PDF descargados antes de enviar.`,
+      { kind: 'info', title: 'Correo preparado' },
+    );
+    return 'opened';
   }
 
   const orderedData = sortRelationWorkers(data);
@@ -267,8 +367,6 @@ export const sendDirectoryCommunication = async (
     return 'opened';
   }
 
-  // Si el supervisor ha autorizado Gmail, el botón Mail envía directamente
-  // desde su cuenta institucional con el PDF adjunto.
   try {
     const gmail = await getGmailConnectionStatus();
     if (gmail.connected) {
@@ -303,7 +401,6 @@ export const sendDirectoryCommunication = async (
     }
   }
 
-  // Compatibilidad: si Gmail aún no está conectado, conserva el flujo anterior.
   if (canShareFile(prepared.file)) {
     try {
       await navigator.share({
@@ -331,3 +428,4 @@ export const sendDirectoryCommunication = async (
   );
   return 'opened';
 };
+
