@@ -730,16 +730,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   const removeDetectedWorkerAsSupervisor = async (item:DbMandatory,worker:any) => {
     const workerId=Number(worker?.id);
-    if(!Number.isFinite(workerId))return;
-    const signed=Boolean(item.signatures?.[String(workerId)]);
-    const ok=await appConfirm(
-      signed
-        ? `¿Quitar a ${worker.apellidosNombre} de este documento? Su firma guardada para este documento también se eliminará.`
-        : `¿Quitar a ${worker.apellidosNombre} del documento importado? Dejará de contar como firma pendiente.`,
-      {title:'Quitar detección errónea',confirmLabel:'Quitar del documento'},
-    );
-    if(!ok)return;
+    if(!Number.isFinite(workerId)||editBusy)return;
     setEditBusy(true);
+    setMailMessage(`Quitando a ${worker.apellidosNombre} del documento importado…`);
     try{
       await removeSupervisorMandatoryWorker(item.id,workerId);
       setEditWorkers(current=>current.filter((candidate:any)=>Number(candidate.id)!==workerId));
@@ -759,7 +752,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage(`${worker.apellidosNombre} se ha quitado del documento importado.`);
       await refresh(true);
     }catch(error:any){
-      window.alert(error?.message||'No se pudo quitar la persona del documento.');
+      setMailMessage(error?.message||'No se pudo quitar la persona del documento.');
     }finally{
       setEditBusy(false);
     }
@@ -935,8 +928,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                 <Pencil className="w-4 h-4"/>Ajustar firmas
               </button>}
           </>}
-          {!(card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))&&
-            <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>}
+          <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>{card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))?'Trabajadores':'Editar'}</button>
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
             <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
