@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import ModalPortal from './ModalPortal';
 import { 
   Calendar as CalendarIcon, CalendarDays, ChevronLeft, ChevronRight, Filter, 
   Search, RotateCcw, Clock, MapPin, User, Briefcase, FileText, Printer, 
@@ -950,7 +951,7 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
         const dateFormatted = `${parts[2]}/${parts[1]}/${parts[0]}`;
 
         return (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <ModalPortal label="CalendarioIntegrado"><div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-2xl w-full p-6 space-y-6 shadow-2xl max-h-[90vh] flex flex-col">
               
               {/* Modal Header */}
@@ -1124,7 +1125,7 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
               </div>
 
             </div>
-          </div>
+          </div></ModalPortal>
         );
       })()}
 

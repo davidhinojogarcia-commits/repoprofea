@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import ModalPortal from './ModalPortal';
 import {
   Trash2,
   Plus,
@@ -1998,7 +1999,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
                 {/* Custom Modal for Restore Confirmation and Options */}
                 {loadedBackup && (
-                  <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                  <ModalPortal label="Restaurar copia de seguridad"><div className="fixed inset-0 bg-slate-950/70 flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
                       {/* Modal Header */}
                       <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/20">
@@ -2125,7 +2126,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </div></ModalPortal>
                 )}
               </div>
             </div>
@@ -2592,7 +2593,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
               {/* Modal para Editar Obra y Recurso Preventivo */}
               {editingObraRecurso && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                <ModalPortal label="Editar obra"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
                   <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in zoom-in duration-200">
                     <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                       <div className="flex items-center gap-2.5">
@@ -2756,7 +2757,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                       </div>
                     </form>
                   </div>
-                </div>
+                </div></ModalPortal>
               )}
             </div>
           ) : (

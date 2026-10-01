@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import ModalPortal from './ModalPortal';
 import { PlusCircle, FileText, User, Calendar, Briefcase, Phone, Ruler, Award, MapPin, AlertCircle, Upload, ArrowRight, CheckCircle2, HardHat, UserCheck, History, X } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1090,7 +1091,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       </form>
 
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <ModalPortal label="RegistrationForm"><div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-300">
             {/* Header banner */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-800 p-6 text-white relative">
@@ -1199,7 +1200,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );

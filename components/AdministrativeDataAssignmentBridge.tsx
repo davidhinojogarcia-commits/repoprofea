@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { CheckCircle2, Search, ShieldCheck, X } from 'lucide-react';
 import type { Person } from '../types';
 import { getDocuments, updateDocument } from '../src/services/databaseService';
@@ -82,7 +83,7 @@ export const AdministrativeDataAssignmentBridge: React.FC = () => {
   };
 
   if (!detail) return null;
-  return <div className="fixed inset-0 z-[320] bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center">
+  return <ModalPortal label="AdministrativeDataAssignmentBridge"><div className="fixed inset-0 z-[320] bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center">
     <div className="w-full max-w-3xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border dark:border-slate-800 shadow-2xl">
       <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-950/95 backdrop-blur border-b dark:border-slate-800 p-5 flex items-start justify-between gap-3">
         <div><h2 className="font-black text-xl">Asignar datos administrativos</h2><p className="text-sm text-slate-500 mt-1">Selecciona el trabajador al que pertenece el documento escaneado.</p></div>
@@ -112,5 +113,5 @@ export const AdministrativeDataAssignmentBridge: React.FC = () => {
         <div className="flex justify-end gap-2"><button type="button" onClick={() => setDetail(null)} className="px-4 py-3 rounded-xl border font-bold">Cancelar</button><button type="button" disabled={!selected || busy} onClick={() => void assign()} className="px-5 py-3 rounded-xl bg-[#00548E] text-white font-black disabled:opacity-40">{busy ? 'Guardando…' : 'Asignar y guardar'}</button></div>
       </div>
     </div>
-  </div>;
+  </div></ModalPortal>;
 };

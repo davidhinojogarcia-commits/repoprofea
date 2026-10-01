@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import ModalPortal from './ModalPortal';
 import {
   AlertCircle,
   AlertTriangle,
@@ -220,8 +220,7 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
         ? 'Trabajadores'
         : 'Maquinaria y equipos';
 
-  return createPortal(
-    <div
+  return <ModalPortal label="Revisión documental CAE"><div
       id="modal-review-checklist-changes"
       className="fixed !inset-0 z-[9999] m-0 flex h-[100dvh] w-[100vw] max-h-none max-w-none items-stretch justify-stretch overflow-hidden bg-white p-0 dark:bg-slate-950"
       style={{ width: '100vw', height: '100dvh', inset: 0 }}
@@ -574,7 +573,5 @@ export const ChecklistReviewModal: React.FC<ChecklistReviewModalProps> = ({
           </div>
         </div>
       </div>
-    </div>,
-    document.body,
-  );
+    </div></ModalPortal>;
 };

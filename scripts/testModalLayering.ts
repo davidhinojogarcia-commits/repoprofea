@@ -8,6 +8,20 @@ const dashboard = read('components/ForemanDocumentsDashboard.tsx');
 const anchor = read('components/MandatoryPdfAnchorEditor.tsx');
 const host = read('components/AppDialogHost.tsx');
 const layer = read('components/ModalPortal.tsx');
+const foremanAccess = read('components/ForemanAccessButton.tsx');
+const modalFiles = [
+  'components/BulkEditModal.tsx',
+  'components/CameraScannerModal.tsx',
+  'components/ChecklistConfigModal.tsx',
+  'components/ChecklistReviewModal.tsx',
+  'components/EditPersonModal.tsx',
+  'components/GoogleCalendarModal.tsx',
+  'components/ImportDuplicateModal.tsx',
+  'components/MedicalSpecialAttentionReportModal.tsx',
+  'components/PdfViewerModal.tsx',
+  'components/PeriodicReportModal.tsx',
+  'components/PushNotificationManagerModal.tsx',
+];
 
 for (const [name, source] of [
   ['ForemanMobilePortal', portal],
@@ -21,9 +35,21 @@ assert.match(dashboard, /ModalPortal/, 'Documentación de encargados debe usar l
 assert.match(anchor, /ModalPortal/, 'Ajustar firmas debe renderizarse en la capa global');
 assert.match(anchor, /Eliminar trabajador del documento/, 'Ajustar firmas debe permitir borrar falsos positivos');
 assert.match(host, /createPortal/, 'AppDialogHost debe usar createPortal');
-assert.match(host, /z-\[2147483000\]/, 'AppDialogHost debe estar sobre la capa modal general');
-assert.match(layer, /z-\[2147482000\]/, 'ModalPortal debe usar la capa modal global');
+assert.match(host, /z-\[2147483600\]/, 'AppDialogHost debe estar sobre cualquier modal general');
+assert.match(layer, /MODAL_LAYER_BASE/, 'ModalPortal debe usar la capa modal global centralizada');
+assert.match(layer, /modalLayerSequence/, 'Los modales deben apilarse de forma creciente para que el último quede delante');
 assert.match(layer, /document\.body/, 'ModalPortal debe renderizar sobre document.body');
 assert.match(layer, /document\.body\.style\.overflow = 'hidden'/, 'ModalPortal debe bloquear el scroll del fondo');
+
+for (const path of modalFiles) {
+  const source = read(path);
+  assert.match(source, /ModalPortal/, `${path} debe renderizar su ventana en la capa global`);
+  assert.equal(/window\.(alert|confirm|prompt)\s*\(/.test(source), false, `${path} no debe abrir diálogos nativos por detrás del modal`);
+}
+
+assert.match(foremanAccess, /ModalPortal/, 'El QR del encargado debe usar la capa global');
+assert.match(foremanAccess, /h-\[100dvh\]/, 'El visor QR móvil debe ocupar el viewport real');
+assert.match(foremanAccess, /flex min-h-0 flex-1 flex-col items-center justify-center/, 'El QR debe quedar centrado vertical y horizontalmente en móvil');
+assert.match(foremanAccess, /w-\[min\(78vw,340px\)\]/, 'El QR móvil debe mantener un tamaño legible sin pegarse a los bordes');
 
 console.log('Global modal layering regression passed.');

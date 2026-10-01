@@ -1,4 +1,6 @@
 import React, { useState, useRef } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
+import ModalPortal from './ModalPortal';
 import { 
   Camera, 
   Trash2, 
@@ -554,10 +556,12 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     setPages(newPages);
   };
 
-  const clearAll = () => {
-    if (window.confirm('¿Está seguro de que desea borrar todas las páginas capturadas?')) {
-      setPages([]);
-    }
+  const clearAll = async () => {
+    const ok = await appConfirm('¿Está seguro de que desea borrar todas las páginas capturadas?', {
+      title: 'Borrar páginas capturadas',
+      confirmLabel: 'Borrar todo',
+    });
+    if (ok) setPages([]);
   };
 
   // Convert bytes to readable size
@@ -942,7 +946,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
     }
   };
 
-  const handleImportToSystem = () => {
+  const handleImportToSystem = async () => {
     if (recognizedWorkers.length === 0) {
       onToast("No hay ningún trabajador en el listado para importar.", "error");
       return;
@@ -953,7 +957,11 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       return;
     }
 
-    if (window.confirm(`¿Desea importar los ${recognizedWorkers.length} trabajadores de la relación directamente al listado general del sistema?`)) {
+    const ok = await appConfirm(`¿Desea importar los ${recognizedWorkers.length} trabajadores de la relación directamente al listado general del sistema?`, {
+      title: 'Importar trabajadores',
+      confirmLabel: 'Importar',
+    });
+    if (ok) {
       const formatted = recognizedWorkers.map(w => {
         return {
           supervisorResponsable: "",
@@ -1082,7 +1090,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print">
+    <ModalPortal label="CameraScannerModal"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print">
       
       {/* Hidden file inputs */}
       <input 
@@ -1833,6 +1841,6 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         </div>
       )}
 
-    </div>
+    </div></ModalPortal>
   );
 };

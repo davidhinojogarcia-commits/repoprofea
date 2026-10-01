@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
+import ModalPortal from './ModalPortal';
 import { 
   SlidersHorizontal, X, Plus, Trash2, Edit3, Save, RotateCcw, 
   Search, ArrowUp, ArrowDown, Briefcase, Users, Truck, 
@@ -212,8 +214,12 @@ export const ChecklistConfigModal: React.FC<ChecklistConfigModalProps> = ({
   };
 
   // Reset to default
-  const handleResetDefaults = () => {
-    if (window.confirm('¿Está seguro de que desea restablecer los documentos por defecto según la Ley 32/2006 y RD 1627/97? Se restaurarán los 16 requisitos originales.')) {
+  const handleResetDefaults = async () => {
+    const ok = await appConfirm('¿Está seguro de que desea restablecer los documentos por defecto según la Ley 32/2006 y RD 1627/97? Se restaurarán los 16 requisitos originales.', {
+      title: 'Restablecer checklist',
+      confirmLabel: 'Restablecer',
+    });
+    if (ok) {
       setItems(DEFAULT_SUBCONTRATA_CHECKLIST.map(i => ({ ...i })));
       setEditingItemId(null);
       onToast('Checklist restablecido a los requisitos legales por defecto.', 'success');
@@ -264,9 +270,9 @@ export const ChecklistConfigModal: React.FC<ChecklistConfigModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <ModalPortal label="ChecklistConfigModal"><div 
       id="modal-checklist-config"
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
     >
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-4xl w-full my-6 flex flex-col max-h-[92vh] overflow-hidden border border-slate-200 dark:border-slate-800">
         {/* Header */}
@@ -775,6 +781,6 @@ export const ChecklistConfigModal: React.FC<ChecklistConfigModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };

@@ -1,4 +1,5 @@
 import React from 'react';
+import ModalPortal from './ModalPortal';
 import { AlertTriangle, Filter, Users, X, Check, ArrowRight, FileCheck2, Trash2 } from 'lucide-react';
 import { DuplicateMatch } from '../src/lib/duplicateFilter';
 
@@ -24,7 +25,7 @@ export const ImportDuplicateModal: React.FC<ImportDuplicateModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-200">
+    <ModalPortal label="ImportDuplicateModal"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-amber-200 dark:border-amber-900/60 p-6 md:p-8 max-w-2xl w-full shadow-2xl space-y-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
         
         {/* Top Decorative Amber Accent Line */}
@@ -145,6 +146,6 @@ export const ImportDuplicateModal: React.FC<ImportDuplicateModalProps> = ({
         </div>
 
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };

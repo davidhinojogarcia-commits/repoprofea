@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 
 let bodyLockCount = 0;
 let originalBodyOverflow = '';
+let modalLayerSequence = 0;
+const MODAL_LAYER_BASE = 2_000_000_000;
+const MODAL_LAYER_STEP = 10;
 
 const focusableSelector = [
   'button:not([disabled])',
@@ -15,6 +18,11 @@ const focusableSelector = [
 
 export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string }> = ({ children, label }) => {
   const rootRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<number>(0);
+  if (!layerRef.current) {
+    modalLayerSequence += 1;
+    layerRef.current = MODAL_LAYER_BASE + (modalLayerSequence * MODAL_LAYER_STEP);
+  }
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -66,7 +74,8 @@ export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string }
   return createPortal(
     <div
       ref={rootRef}
-      className="fixed inset-0 z-[2147482000] isolate"
+      className="profea-modal-overlay fixed inset-0 isolate pointer-events-auto"
+      style={{ zIndex: layerRef.current }}
       role="presentation"
       aria-label={label}
       onKeyDown={onKeyDown}

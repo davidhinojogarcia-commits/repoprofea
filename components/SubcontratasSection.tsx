@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   HardHat, FileCheck, AlertTriangle, CheckCircle2, XCircle, Clock,
@@ -2042,7 +2043,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       </div>
 
       {editingCaeWorker && (
-        <div className="fixed inset-0 z-[145] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+        <ModalPortal label="SubcontratasSection"><div className="fixed inset-0 z-[145] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
           <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200 dark:border-slate-800">
               <div>
@@ -2306,12 +2307,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {/* Modal: Nueva Subcontrata */}
       {isNewModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <ModalPortal label="SubcontratasSection"><div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-xl w-full p-6 space-y-5 my-8 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
@@ -2476,12 +2477,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {/* Modal: Requerimiento Formal Automático */}
       {isRequerimientoModalOpen && activeSubcontrata && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <ModalPortal label="SubcontratasSection"><div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-2xl w-full p-6 space-y-5 my-8 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
@@ -2539,7 +2540,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {/* Modal: Configuración del Checklist Legal de Subcontratas */}
@@ -2555,7 +2556,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
 
       {/* Modal: Gestión del Catálogo de Obras */}
       {isManageObrasModalOpen && (
-        <div 
+        <ModalPortal label="SubcontratasSection"><div 
           id="modal-gestionar-obras"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
         >
@@ -2766,12 +2767,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {/* Modal: Editar Nombre de Obra y Recurso Preventivo */}
       {editingObraState && (
-        <div 
+        <ModalPortal label="SubcontratasSection"><div 
           id="modal-editar-obra"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
         >
@@ -2873,12 +2874,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {/* Modal: Confirmación de Eliminación de Obra */}
       {deletingObraState && (
-        <div 
+        <ModalPortal label="SubcontratasSection"><div 
           id="modal-eliminar-obra"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
         >
@@ -2982,12 +2983,12 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {/* Modal: Firmas y Datos Predeterminados del Reporte Técnico PDF */}
       {isFirmasModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+        <ModalPortal label="SubcontratasSection"><div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 my-auto">
             {/* Header */}
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-between shrink-0">
@@ -3172,7 +3173,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );

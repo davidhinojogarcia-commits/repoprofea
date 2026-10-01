@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import ModalPortal from './ModalPortal';
 import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert, MessageCircle, Share2, Download } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -502,7 +503,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const isDniValid = formData.dni.replace(/[\s-]/g, '').length >= 9 && isValidDNI(formData.dni);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
+    <ModalPortal label="EditPersonModal"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col border border-slate-200 dark:border-slate-800">
         <div className="flex justify-between items-center p-6 md:p-8 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white/90 dark:bg-slate-900/95 backdrop-blur-md z-10">
           <div className="flex items-center gap-3">
@@ -666,6 +667,6 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
           </form>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };

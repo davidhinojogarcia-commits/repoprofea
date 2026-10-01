@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   AlertTriangle,
@@ -2091,7 +2092,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         </span>
       </div>
       {previewReport && (
-        <div
+        <ModalPortal label="SaeSection"><div
           className="fixed inset-0 z-[180] bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) closePreview();
@@ -2164,7 +2165,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
               )}
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );

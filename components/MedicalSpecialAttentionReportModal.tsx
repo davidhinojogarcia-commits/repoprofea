@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { FileText, Download, X } from 'lucide-react';
 import { Person, getAptitudMedicaInfo } from '../types';
 import { generateMedicalSpecialAttentionPdf, SpecialAttentionColumns } from '../src/lib/medicalSpecialAttentionPdf';
@@ -81,7 +82,7 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
     }
   };
 
-  return <div className="fixed inset-0 z-[120] bg-slate-950/60 p-3 sm:p-6 flex items-center justify-center" role="dialog" aria-modal="true">
+  return <ModalPortal label="MedicalSpecialAttentionReportModal"><div className="fixed inset-0 bg-slate-950/60 p-3 sm:p-6 flex items-center justify-center" role="dialog" aria-modal="true">
     <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 sm:p-5 flex items-center justify-between gap-3">
         <div>
@@ -115,5 +116,5 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
         </div>
       </div>
     </div>
-  </div>;
+  </div></ModalPortal>;
 };

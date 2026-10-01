@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ModalPortal from './ModalPortal';
 import { DeletedPerson } from '../types';
 import { Trash2, RotateCcw, Search, AlertTriangle, Calendar, User, MapPin, HardHat, Info, ShieldAlert } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
@@ -296,7 +297,7 @@ export const Papelera: React.FC<PapeleraProps> = ({
 
       {/* Confirmation Modal for Empty Trash */}
       {confirmEmptyOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <ModalPortal label="Papelera"><div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-xl animate-in fade-in zoom-in duration-200">
             <div className="flex gap-4 items-start">
               <div className="p-3 bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-2xl shrink-0">
@@ -329,7 +330,7 @@ export const Papelera: React.FC<PapeleraProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );
