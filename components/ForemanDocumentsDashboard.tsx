@@ -399,6 +399,20 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     await refresh(true);
   };
   const buildSupervisorSignedPdf=async(item:DbMandatory)=>{
+    try{
+      const stored=await getSupervisorMandatoryPdf(item.id,'signed');
+      if(stored?.base64){
+        return {
+          bytes:undefined as Uint8Array|undefined,
+          base64:stored.base64,
+          filename:stored.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf',
+          source:'stored' as const,
+        };
+      }
+    }catch{
+      // Si no existe un PDF firmado persistido, se reconstruye sobre el original.
+    }
+
     const original=await getSupervisorMandatoryPdf(item.id,'original');
     const anchors=(Array.isArray(item.details?.workerAnchors)?item.details?.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const bytes=await buildSignedMandatoryPdf({
@@ -406,22 +420,30 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       anchors,
       signatures:item.signatures||{},
     });
-    return {bytes,filename:original.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf'};
+    return {
+      bytes,
+      base64:undefined as string|undefined,
+      filename:original.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf',
+      source:'rebuilt' as const,
+    };
   };
 
   const downloadStoredMandatoryPdf=async(item:DbMandatory,variant:'original'|'signed')=>{
     if(variant==='signed'){
       const built=await buildSupervisorSignedPdf(item);
-      const blob=pdfBlobFromBytes(built.bytes);
+      const blob=built.base64
+        ? pdfBlobFromBase64(built.base64)
+        : pdfBlobFromBytes(built.bytes as Uint8Array);
       const base=String(built.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
       const url=URL.createObjectURL(blob);
       const link=document.createElement('a');
       link.href=url;
       link.download=`${base}_FIRMADO.pdf`;
+      link.rel='noopener';
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+      window.setTimeout(()=>URL.revokeObjectURL(url),4000);
       return;
     }
     const stored=await getSupervisorMandatoryPdf(item.id,'original');
@@ -476,7 +498,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       let file:File;
       if(item.details?.originalPdfMode==='overlay'){
         const built=await buildSupervisorSignedPdf(item);
-        const blob=pdfBlobFromBytes(built.bytes);
+        const blob=built.base64
+          ? pdfBlobFromBase64(built.base64)
+          : pdfBlobFromBytes(built.bytes as Uint8Array);
         const base=String(built.filename||mandatoryDocumentLabel(item.document_type)||'documento').replace(/\.pdf$/i,'');
         file=new File([blob],`${base}_FIRMADO.pdf`,{type:'application/pdf'});
       }else{
