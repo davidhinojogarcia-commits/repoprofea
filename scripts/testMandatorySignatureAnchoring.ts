@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { MandatoryWorkerAnchor, MandatoryPdfPageMeta } from '../src/lib/mandatoryPdfOverlay';
 import {
   computeSignatureBoxFromDetectedName,
+  fitSignatureInsideBox,
   scoreMandatoryWorkerNameText,
   validateMandatorySignaturePlacement,
 } from '../src/lib/mandatorySignatureGeometry';
@@ -138,3 +139,49 @@ assert(scoreMandatoryWorkerNameText(worker(3,'SÁNCHEZ-RUIZ, PEDRO'),'SANCHEZ RU
 }
 
 console.log('mandatory signature anchoring regression tests: OK');
+
+
+// Texto inmediatamente a la derecha: la caja se limita antes de invadirlo.
+{
+  const box=computeSignatureBoxFromDetectedName({
+    pageWidth:595,pageHeight:842,nameX:60,nameY:560,nameRightX:210,nameHeight:10,nextTextX:282,
+  });
+  assert(box);
+  assert(box.x+box.width<=278);
+}
+
+// Trabajador cerca del final inferior de página: nunca sale de la página.
+{
+  const box=computeSignatureBoxFromDetectedName({
+    pageWidth:595,pageHeight:842,nameX:60,nameY:5,nameRightX:200,nameHeight:8,
+  });
+  assert(box);
+  assert(box.y>=4);
+  assert(box.y+box.height<=838);
+}
+
+// Firmas grandes y pequeñas conservan proporción; nunca se deforman.
+{
+  const large=fitSignatureInsideBox({imageWidth:1200,imageHeight:400,boxWidth:80,boxHeight:16});
+  assert(Math.abs((large.width/large.height)-3)<0.0001);
+  assert(large.width<=80&&large.height<=16);
+
+  const tall=fitSignatureInsideBox({imageWidth:240,imageHeight:480,boxWidth:80,boxHeight:16});
+  assert(Math.abs((tall.width/tall.height)-0.5)<0.0001);
+  assert(tall.width<=80&&tall.height<=16);
+}
+
+// Variación ligera de formato: al moverse el nombre, la firma se mueve con él.
+{
+  const first=computeSignatureBoxFromDetectedName({
+    pageWidth:595,pageHeight:842,nameX:60,nameY:520,nameRightX:210,nameHeight:10,
+  });
+  const shifted=computeSignatureBoxFromDetectedName({
+    pageWidth:595,pageHeight:842,nameX:67,nameY:514,nameRightX:217,nameHeight:10,
+  });
+  assert(first&&shifted);
+  assert.equal(Math.round(shifted.x-first.x),7);
+  assert.equal(Math.round((shifted.y+shifted.height/2)-(first.y+first.height/2)),-6);
+}
+
+console.log('mandatory signature anchoring extended tests: OK');
