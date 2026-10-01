@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ModalPortal from './ModalPortal';
 import { 
   Bell, 
   BellOff, 
@@ -157,7 +158,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
   };
 
   return (
-    <div className="profea-notifications-overlay fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print" role="dialog" aria-modal="true" aria-labelledby="profea-notifications-title">
+    <ModalPortal label="PushNotificationManagerModal"><div className="profea-notifications-overlay fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print" role="dialog" aria-modal="true" aria-labelledby="profea-notifications-title">
       <div className="profea-notifications-dialog relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col my-8 max-h-[90vh]">
         
         {/* Header Modal */}
@@ -698,6 +699,6 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
 
 
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };
