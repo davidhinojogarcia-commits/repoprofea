@@ -433,6 +433,25 @@ export async function finalizeForemanMandatoryDocument(token: string, documentId
   );
 }
 
+export async function correctForemanMandatoryWorkerName(
+  token: string,
+  documentId: string,
+  workerId: number,
+  workerName: string,
+) {
+  const name=String(workerName||'').replace(/\s+/g,' ').trim();
+  if(name.length<3)throw new Error('Indica un nombre válido.');
+  return withForemanTimeout(
+    supabase.rpc('correct_foreman_mandatory_worker_name', {
+      p_token: token,
+      p_document_id: documentId,
+      p_worker_id: workerId,
+      p_worker_name: name,
+    }),
+    'No se pudo guardar la corrección del nombre a tiempo.',
+  );
+}
+
 
 export async function createForemanOperationalDocument(input: {
   token: string;
