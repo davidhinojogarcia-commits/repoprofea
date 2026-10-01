@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { looksLikePrintedWorkerName } from '../src/lib/mandatoryEmailIntake';
+import { looksLikePrintedWorkerName } from '../src/lib/mandatoryWorkerDetection';
 
 const valid = [
   'JAEN ALCONCHEL, MARIA JESUS',
