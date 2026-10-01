@@ -113,7 +113,7 @@ export function AppDialogHost() {
 
   return createPortal(
     <div
-      className="profea-app-dialog-overlay fixed inset-0 z-[2147483000] isolate flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-6"
+      className="profea-app-dialog-overlay fixed inset-0 z-[2147483600] isolate flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-6"
       role="presentation"
       onKeyDown={onKeyDown}
     >
