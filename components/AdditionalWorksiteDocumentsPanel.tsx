@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import {
   CheckCircle2,
   ExternalLink,
@@ -691,7 +692,7 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
       </section>
 
       {previewOpen && (
-        <div className="fixed inset-0 z-[135] bg-slate-950/75 p-0 sm:p-5 flex items-center justify-center">
+        <ModalPortal label="AdditionalWorksiteDocumentsPanel"><div className="fixed inset-0 z-[135] bg-slate-950/75 p-0 sm:p-5 flex items-center justify-center">
           <div className="w-full h-full sm:h-[94vh] sm:max-w-6xl bg-white dark:bg-slate-950 sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col">
             <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-3 bg-white dark:bg-slate-950">
               <div className="min-w-0">
@@ -748,7 +749,7 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
               )}
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </>
   );
