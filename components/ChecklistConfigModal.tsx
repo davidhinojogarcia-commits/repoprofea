@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { appConfirm } from '../src/lib/appDialog';
 import ModalPortal from './ModalPortal';
 import { 
   SlidersHorizontal, X, Plus, Trash2, Edit3, Save, RotateCcw, 
@@ -213,8 +214,12 @@ export const ChecklistConfigModal: React.FC<ChecklistConfigModalProps> = ({
   };
 
   // Reset to default
-  const handleResetDefaults = () => {
-    if (window.confirm('¿Está seguro de que desea restablecer los documentos por defecto según la Ley 32/2006 y RD 1627/97? Se restaurarán los 16 requisitos originales.')) {
+  const handleResetDefaults = async () => {
+    const ok = await appConfirm('¿Está seguro de que desea restablecer los documentos por defecto según la Ley 32/2006 y RD 1627/97? Se restaurarán los 16 requisitos originales.', {
+      title: 'Restablecer checklist',
+      confirmLabel: 'Restablecer',
+    });
+    if (ok) {
       setItems(DEFAULT_SUBCONTRATA_CHECKLIST.map(i => ({ ...i })));
       setEditingItemId(null);
       onToast('Checklist restablecido a los requisitos legales por defecto.', 'success');
