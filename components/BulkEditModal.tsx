@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import ModalPortal from './ModalPortal';
 import { Save, X, Briefcase, MapPin, AlertCircle, FileText, Award, HardHat, CheckCircle2, Pencil, Users } from 'lucide-react';
 import { Person } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -272,7 +273,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
   const selectedFieldsCount = Object.values(fieldsToUpdate).filter(Boolean).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
+    <ModalPortal label="BulkEditModal"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col border border-slate-200 dark:border-slate-800">
         
         {/* Header */}
@@ -788,6 +789,6 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
           </form>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };
