@@ -7,6 +7,9 @@ export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Se refuerza globalmente la jerarquía de ventanas: cada modal nuevo queda siempre por encima del anterior, tanto en la app como en el portal de encargados.',
+  'Todos los overlays a pantalla completa quedan auditados para salir del stacking context local mediante la capa global de modales.',
+  'Los diálogos de la aplicación mantienen una capa superior reservada y el fondo queda bloqueado mientras haya una ventana abierta.',
   'Auditoría global de modales y overlays en toda la app y en el portal de encargados.',
   'Los modales de edición, PDF, QR, escáner, informes, configuración, SAE, CAE, papelera e inventario se renderizan en una capa global sobre document.body.',
   'Se añade una regresión automática que impide introducir nuevos overlays de pantalla completa fuera del sistema global de modales.',
