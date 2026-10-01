@@ -8,7 +8,8 @@ import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 import { loadPdfPreferences, savePdfPreferences } from '../services/pdfPreferencesService';
 import { ensureWorkerQrShare } from '../services/workerQrShareService';
 import { getCachedSupervisorSettings, getCachedTechnicianSettings, loadAppBusinessSettings } from '../services/appSettingsService';
-export { OFFICIAL_LOGO_BASE64 };
+import { sortRelationWorkers, splitRelationWorkersByWork } from './relationExportOrdering';
+export { OFFICIAL_LOGO_BASE64, sortRelationWorkers, splitRelationWorkersByWork };
 export const LOGO_URL = OFFICIAL_LOGO_BASE64;
 
 export const DEFAULT_PDF_CONFIG: Required<PdfCustomConfig> = {
@@ -499,6 +500,7 @@ const generateExportFilename = (baseName: string, data: Person[], extension: str
 };
 
 export const preparePRLExcelData = async (dataToExport: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Formación PRL 20h', {
     pageSetup: { 
@@ -598,6 +600,7 @@ export const preparePRLExcelData = async (dataToExport: Person[]) => {
 };
 
 export const preparePRLPDFData = (dataToExport: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
@@ -673,6 +676,7 @@ const getMedicalAppointmentConfirmationExcelMark = (person: Person): string => {
 };
 
 export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Reconocimientos Médicos', {
     pageSetup: { 
@@ -812,6 +816,7 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
 };
 
 export const prepareRRMMPDFData = (dataToExport: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
@@ -1055,6 +1060,7 @@ export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
 };
 
 export const prepareExcelData = async (dataToExport: Person[], allPeople?: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Relación PROFEA', {
     pageSetup: { 
@@ -1207,6 +1213,7 @@ export const prepareExcelData = async (dataToExport: Person[], allPeople?: Perso
 };
 
 export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
   const grouped: { [key: string]: Person[] } = {};
@@ -1320,6 +1327,7 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
 };
 
 export const prepareCalzadoExcelData = async (dataToExport: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Resumen Calzado', {
     pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1 }
@@ -1424,6 +1432,7 @@ export const prepareCalzadoExcelData = async (dataToExport: Person[]) => {
 };
 
 export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
+  dataToExport = sortRelationWorkers(dataToExport);
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const config = getStoredPdfConfig();
 

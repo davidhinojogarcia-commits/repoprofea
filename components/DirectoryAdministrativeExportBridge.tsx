@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
 import { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } from '../src/lib/administrativeRelationExport';
+import { splitRelationWorkersByWork } from '../src/lib/relationExportOrdering';
 import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
 
 const workerIdFromNode = (node: Element | null): number | null => {
@@ -85,12 +86,16 @@ export const DirectoryAdministrativeExportBridge: React.FC = () => {
       try {
         const data = await getScopedData();
         if (!data.length) return window.alert('No hay trabajadores dentro de los filtros actuales para exportar.');
-        if (format === 'pdf') {
-          const { doc, filename } = prepareAdministrativeRelationPDF(data);
-          downloadBlob(doc.output('blob'), filename);
-        } else {
-          const { buffer, filename } = await prepareAdministrativeRelationExcel(data);
-          downloadBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename);
+
+        const groups = splitRelationWorkersByWork(data);
+        for (const group of groups) {
+          if (format === 'pdf') {
+            const { doc, filename } = prepareAdministrativeRelationPDF(group.workers);
+            downloadBlob(doc.output('blob'), filename);
+          } else {
+            const { buffer, filename } = await prepareAdministrativeRelationExcel(group.workers);
+            downloadBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename);
+          }
         }
       } catch (e: any) {
         window.alert(e?.message || 'No se pudo generar la relación administrativa.');

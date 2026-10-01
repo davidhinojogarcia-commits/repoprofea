@@ -5,6 +5,7 @@ import type { Person } from '../../types';
 import { getAptitudMedicaInfo } from '../../types';
 import { applyInstitutionalPdfStandard, getBase64Image, renderInstitutionalReportHeader } from './exportUtils';
 import { formatIban, formatSpanishSocialSecurityNumber } from './personalDataValidators';
+import { sortRelationWorkers } from './relationExportOrdering';
 
 const BLUE: [number, number, number] = [0, 84, 142];
 const LIGHT_BLUE: [number, number, number] = [240, 247, 255];
@@ -26,9 +27,15 @@ const aptitudLabel = (p: Person) => {
   return 'PENDIENTE';
 };
 
-const filename = (ext: 'pdf' | 'xlsx') => `PROFEA_RELACION_ADMINISTRATIVA_${MONTH}.${ext}`;
+const filename = (ext: 'pdf' | 'xlsx', people: Person[]) => {
+  const obra = String(people[0]?.obra || 'SIN_OBRA')
+    .trim()
+    .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]/g, '_');
+  return `PROFEA_RELACION_ADMINISTRATIVA_${obra}_${MONTH}.${ext}`;
+};
 
 export const prepareAdministrativeRelationPDF = (people: Person[]) => {
+  people = sortRelationWorkers(people);
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const supervisor = people.find(person => person.supervisorResponsable?.trim())?.supervisorResponsable?.trim() || '';
   renderInstitutionalReportHeader(
@@ -98,10 +105,11 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
   });
 
   applyInstitutionalPdfStandard(doc);
-  return { doc, filename: filename('pdf') };
+  return { doc, filename: filename('pdf', people) };
 };
 
 export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
+  people = sortRelationWorkers(people);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Diputación Provincial de Cádiz';
   workbook.company = 'Diputación Provincial de Cádiz';
@@ -175,5 +183,5 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
     oddFooter: '&LDiputación Provincial de Cádiz · Gestión de Fondos PROFEA&R Página &P de &N',
   };
   const buffer = await workbook.xlsx.writeBuffer();
-  return { buffer, filename: filename('xlsx') };
+  return { buffer, filename: filename('xlsx', people) };
 };

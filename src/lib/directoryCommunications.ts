@@ -10,6 +10,7 @@ import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getStoredObrasRecursosPreventivos } from './subcontratasDefaults';
 import { getGmailConnectionStatus, sendPdfWithConnectedGmail } from './gmailConnection';
 import { appAlert, appConfirm } from './appDialog';
+import { sortRelationWorkers, splitRelationWorkersByWork } from './relationExportOrdering';
 
 export type DirectoryCommunicationKind =
   | 'encargados'
@@ -225,7 +226,18 @@ export const sendDirectoryCommunication = async (
   data: Person[],
   allPeople?: Person[],
 ): Promise<'sent' | 'shared' | 'opened' | 'cancelled'> => {
-  const prepared = await prepareCommunication(kind, data, allPeople);
+  const groups = splitRelationWorkersByWork(data);
+  if (groups.length > 1) {
+    let lastResult: 'sent' | 'shared' | 'opened' | 'cancelled' = 'cancelled';
+    for (const group of groups) {
+      lastResult = await sendDirectoryCommunication(kind, group.workers, allPeople);
+      if (lastResult === 'cancelled') break;
+    }
+    return lastResult;
+  }
+
+  const orderedData = sortRelationWorkers(data);
+  const prepared = await prepareCommunication(kind, orderedData, allPeople);
 
   if (kind === 'encargados') {
     if (canShareFile(prepared.file)) {
