@@ -883,26 +883,18 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
   const removeImportedWorkerFromDocument=async(doc:ForemanMandatoryDocument,worker:any)=>{
     const workerId=Number(worker?.id);
-    if(!Number.isFinite(workerId))return;
-    const alreadySigned=Boolean(doc.signatures?.[String(workerId)]);
-    const ok=await appConfirm(
-      alreadySigned
-        ? `¿Quitar a ${worker.apellidosNombre} de este documento? También se eliminará su firma guardada para este documento.`
-        : `¿Quitar a ${worker.apellidosNombre} de este documento? Se considera una detección errónea de la importación y dejará de contar como firma pendiente.`,
-      {title:'Quitar persona detectada',confirmLabel:'Quitar del documento'},
-    );
-    if(!ok)return;
+    if(!Number.isFinite(workerId)||saving)return;
     setSaving(true);
-    setOperationFeedback('');
+    setOperationFeedback(`Quitando a ${worker.apellidosNombre} del documento…`);
     try{
       await removeForemanMandatoryWorker(token,doc.id,workerId);
       await refresh();
       setError('');
-      setOperationFeedback(`${worker.apellidosNombre} se ha quitado del documento.`);
+      setOperationFeedback(`${worker.apellidosNombre} se ha quitado del documento. Ya no cuenta como firma pendiente.`);
     }catch(e:any){
       const message=e?.message||'No se pudo quitar la persona del documento.';
       setError(message);
-      await appAlert(message,{title:'No se pudo quitar',kind:'error'});
+      setOperationFeedback(message);
     }finally{
       setSaving(false);
     }
@@ -1065,7 +1057,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                           }catch(e:any){
                             const message=e?.message||'No se pudo corregir el nombre.';
                             setError(message);
-                            await appAlert(message,{title:'No se pudo corregir el nombre',kind:'error'});
+                            setOperationFeedback(message);
                           }finally{setSaving(false);}
                         }} className="min-h-[46px] rounded-xl bg-[#00548E] px-3 py-2 text-sm font-black text-white disabled:bg-slate-300">Guardar nombre</button>
                       </div>
