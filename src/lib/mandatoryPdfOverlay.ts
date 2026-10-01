@@ -219,20 +219,23 @@ const bestNameSpanForWorker=(worker:Person,lines:any[]):WorkerNameSpan|null=>{
         const combinedText=`${first.text} ${second.text}`;
         const combinedScore=scoreNameTextForWorker(worker,combinedText);
         if(combinedScore>=0.82){
-          const firstSpan=bestNameSpanOnLine(worker,first,i);
-          const secondSpan=bestNameSpanOnLine(worker,second,i+1);
-          const spans=[firstSpan,secondSpan].filter(Boolean) as WorkerNameSpan[];
-          if(spans.length){
-            const x=Math.min(...spans.map(span=>span.x));
-            const right=Math.max(...spans.map(span=>span.right));
-            const low=Math.min(...spans.map(span=>span.y));
-            const high=Math.max(...spans.map(span=>span.y+span.height));
+          const wanted=workerNameTokens(worker);
+          const relevantItems=[...(first.items||[]),...(second.items||[])].filter((item:any)=>{
+            const tokens=normalize(item?.str||'').split(' ').filter(Boolean);
+            return tokens.some(token=>wanted.some(expected=>tokenMatch(expected,token)));
+          });
+          if(relevantItems.length){
+            const boxes=relevantItems.map(itemBox);
+            const x=Math.min(...boxes.map(box=>box.x));
+            const right=Math.max(...boxes.map(box=>box.x+box.width));
+            const low=Math.min(...boxes.map(box=>box.y));
+            const high=Math.max(...boxes.map(box=>box.y+box.height));
             const multi:WorkerNameSpan={
               text:combinedText,x,y:low,right,width:right-x,height:high-low,
               centerY:(low+high)/2,
-              score:Math.max(combinedScore,...spans.map(span=>span.score)),
+              score:combinedScore,
               lineIndexes:[i,i+1],
-              itemKeys:new Set(spans.flatMap(span=>[...span.itemKeys])),
+              itemKeys:new Set(relevantItems.map(itemKey)),
             };
             if(!best||multi.score>best.score+0.001)best=multi;
           }
