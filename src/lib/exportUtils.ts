@@ -1278,6 +1278,8 @@ export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => 
       // Nunca partir un trabajador entre dos páginas. Si la fila no cabe completa,
       // autoTable la mueve íntegra al inicio de la página siguiente.
       rowPageBreak: 'avoid',
+      pageBreak: 'auto',
+      showHead: 'everyPage',
       theme: 'grid',
       styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
       headStyles: { fillColor: BLUE_COLOR_RGB, textColor: 255, fontSize: 7.5, fontStyle: 'bold', halign: 'center' as const },
