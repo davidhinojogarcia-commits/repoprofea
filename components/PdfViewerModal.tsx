@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ModalPortal from './ModalPortal';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -190,7 +191,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   if (!isOpen || !pdfUrl) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] bg-slate-950/90 backdrop-blur-md flex flex-col h-screen w-screen overflow-hidden font-sans select-none">
+    <ModalPortal label="PdfViewerModal"><div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col h-screen w-screen overflow-hidden font-sans select-none">
       {/* Top Viewer Header / Toolbar (hidden on print) */}
       <div className="bg-slate-900 border-b border-slate-800 text-slate-100 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg z-20 no-print">
         {/* Title / Document Info */}
@@ -400,6 +401,6 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           className="w-full h-screen border-none bg-white"
         />
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };
