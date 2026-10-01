@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import ModalPortal from './ModalPortal';
 import { 
   Camera, 
   Trash2, 
@@ -1082,7 +1083,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print">
+    <ModalPortal label="CameraScannerModal"><div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print">
       
       {/* Hidden file inputs */}
       <input 
@@ -1833,6 +1834,6 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         </div>
       )}
 
-    </div>
+    </div></ModalPortal>
   );
 };
