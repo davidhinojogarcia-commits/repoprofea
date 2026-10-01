@@ -121,7 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <>
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm"
+          className="profea-nonmodal-overlay fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
