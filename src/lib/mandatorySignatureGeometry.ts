@@ -188,6 +188,15 @@ export const computeSignatureBoxFromDetectedName=(input:{
   const verticalLimits:number[]=[];
   if(input.upperWorkerCenterY!=null)verticalLimits.push(Math.abs(Number(input.upperWorkerCenterY)-ownCenterY)-4);
   if(input.lowerWorkerCenterY!=null)verticalLimits.push(Math.abs(ownCenterY-Number(input.lowerWorkerCenterY))-4);
+
+  // También adaptamos la altura al espacio real disponible hasta los bordes
+  // superior/inferior de la página, manteniendo siempre el centro en la línea.
+  const edgeHalfSpace=Math.min(
+    Math.max(0,ownCenterY-4),
+    Math.max(0,(input.pageHeight-4)-ownCenterY),
+  );
+  verticalLimits.push(edgeHalfSpace*2);
+
   const maxHeight=verticalLimits.length?Math.min(...verticalLimits):desiredHeight;
   if(maxHeight<8)return null;
 
@@ -195,7 +204,7 @@ export const computeSignatureBoxFromDetectedName=(input:{
   const width=Math.min(desiredWidth,available,Math.max(minWidth,desiredWidth*(height/desiredHeight)));
   if(width<minWidth)return null;
   const y=ownCenterY-(height/2);
-  if(y<4||y+height>input.pageHeight-4)return null;
+  if(y<4-0.001||y+height>input.pageHeight-4+0.001)return null;
   return {x:startX,y,width,height};
 };
 
