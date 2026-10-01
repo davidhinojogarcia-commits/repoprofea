@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import ModalPortal from './ModalPortal';
 import { 
   SlidersHorizontal, X, Plus, Trash2, Edit3, Save, RotateCcw, 
   Search, ArrowUp, ArrowDown, Briefcase, Users, Truck, 
@@ -264,9 +265,9 @@ export const ChecklistConfigModal: React.FC<ChecklistConfigModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <ModalPortal label="ChecklistConfigModal"><div 
       id="modal-checklist-config"
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
     >
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-4xl w-full my-6 flex flex-col max-h-[92vh] overflow-hidden border border-slate-200 dark:border-slate-800">
         {/* Header */}
@@ -775,6 +776,6 @@ export const ChecklistConfigModal: React.FC<ChecklistConfigModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 };
