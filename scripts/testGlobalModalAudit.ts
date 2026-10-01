@@ -46,7 +46,8 @@ const appDialog=fs.readFileSync(path.join(componentsDir,'AppDialogHost.tsx'),'ut
 
 assert.match(modalPortal,/createPortal\(/,'ModalPortal debe usar createPortal');
 assert.match(modalPortal,/document\.body/,'ModalPortal debe renderizar en document.body');
-assert.match(modalPortal,/z-\[2147482000\]/,'ModalPortal debe conservar una capa global superior');
+assert.match(modalPortal,/MODAL_LAYER_BASE/,'ModalPortal debe conservar una capa global superior centralizada');
+assert.match(modalPortal,/modalLayerSequence/,'ModalPortal debe elevar cada modal nuevo sobre los anteriores');
 assert.match(modalPortal,/document\.body\.style\.overflow = 'hidden'/,'ModalPortal debe bloquear el scroll del fondo');
 assert.match(appDialog,/z-\[2147483600\]/,'Los diálogos globales deben quedar por encima de cualquier modal');
 
