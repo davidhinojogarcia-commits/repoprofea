@@ -113,9 +113,9 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     onSave(out.toDataURL('image/png'));
   };
   return <ModalPortal label={title}><div className="fixed inset-0 bg-slate-950/70 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{paddingTop:'env(safe-area-inset-top)'}}>
-    <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-2xl" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
-      <h3 className="text-lg font-black text-slate-900">{title}</h3>
-      <p className="mt-1 text-sm text-slate-600">Firma con el dedo dentro del recuadro.</p>
+    <div className="w-full max-w-lg rounded-t-3xl bg-white p-4 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-50 sm:rounded-3xl sm:p-6" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
+      <h3 className="text-lg font-black text-slate-900 dark:text-slate-50">{title}</h3>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Firma con el dedo dentro del recuadro.</p>
       <canvas ref={ref} className="mt-4 w-full h-[240px] sm:h-[280px] touch-none rounded-2xl border-2 border-slate-300 bg-white"
         onPointerDown={e=>{e.preventDefault();drawing.current=true;last.current=point(e);e.currentTarget.setPointerCapture?.(e.pointerId)}}
         onPointerMove={e=>{if(!drawing.current||!last.current)return;e.preventDefault();const ctx=e.currentTarget.getContext('2d');if(!ctx)return;const n=point(e);ctx.beginPath();ctx.moveTo(last.current.x,last.current.y);ctx.lineTo(n.x,n.y);ctx.stroke();last.current=n}}
@@ -123,8 +123,8 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
         onPointerCancel={()=>{drawing.current=false;last.current=null}}
         onLostPointerCapture={()=>{drawing.current=false;last.current=null}}/>
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
-        <button onClick={onCancel} className="min-h-[52px] rounded-xl border px-4 py-3 text-base font-bold">Cancelar</button>
+        <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
+        <button onClick={onCancel} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50">Cancelar</button>
         <button onClick={exportSignature} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Guardar</button>
       </div>
     </div>
@@ -184,17 +184,17 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
   },[bytes]);
 
   return <ModalPortal label={title}><div className="fixed inset-0 flex h-[100dvh] w-screen flex-col bg-slate-950">
-    <div className="flex items-center justify-between gap-3 bg-white px-4 py-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
+    <div className="flex items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-slate-900" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="min-w-0">
-        <div className="truncate text-sm font-black text-slate-900">{title}</div>
-        <div className="flex items-center gap-1 text-xs text-slate-500"><Maximize2 className="h-3.5 w-3.5"/>Pantalla completa · PDF real</div>
+        <div className="truncate text-sm font-black text-slate-900 dark:text-slate-50">{title}</div>
+        <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-300"><Maximize2 className="h-3.5 w-3.5"/>Pantalla completa · PDF real</div>
       </div>
-      <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
+      <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50">Cerrar</button>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto bg-slate-900 p-0 sm:p-3" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}>
-      {notice&&<div className="mx-auto mb-3 max-w-[900px] rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold leading-5 text-amber-900">{notice}</div>}
-      {rendering&&<div className="mx-auto mt-8 max-w-md rounded-2xl bg-white p-5 text-center text-sm font-bold text-slate-600">Cargando PDF…</div>}
-      {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{renderError}</div>}
+      {notice&&<div className="mx-auto mb-3 max-w-[900px] rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold leading-5 text-amber-900 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">{notice}</div>}
+      {rendering&&<div className="mx-auto mt-8 max-w-md rounded-2xl bg-white p-5 text-center text-sm font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-200">Cargando PDF…</div>}
+      {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800 dark:border-rose-700 dark:bg-rose-950/80 dark:text-rose-100">{renderError}</div>}
       <div ref={hostRef} className="mx-auto w-full max-w-none sm:max-w-[900px]" />
     </div>
   </div></ModalPortal>;
@@ -1069,7 +1069,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                     </div>
                   : <>
                       <div className="text-base font-black text-slate-900">{worker.apellidosNombre}</div>
-                      <div className="mt-1 text-sm text-slate-600">{worker.dni?worker.dni+' · ':''}{worker.categoria}</div>
+                      <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">{worker.dni?worker.dni+' · ':''}{worker.categoria}</div>
                       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                         <button type="button" disabled={saving} onClick={()=>void prepareImportedWorkerSignature(doc,worker)} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2 text-sm font-black text-white disabled:opacity-50">Firmar esta persona</button>
                         <button type="button" disabled={saving} onClick={()=>setNameCorrection({documentId:doc.id,workerId:Number(worker.id),value:String(worker.apellidosNombre||'')})} className="min-h-[50px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-700">Corregir nombre</button>
@@ -1087,7 +1087,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {!closed&&!isImportedMandatory&&operationalCandidates.length>0&&<div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
         <div className="text-base font-black text-[#00548E]">Trabajadores pendientes de firma</div>
-        <p className="mt-1 text-sm text-slate-600">Selecciona cada trabajador y recoge su firma. El documento no podrá finalizarse hasta completar todas.</p>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona cada trabajador y recoge su firma. El documento no podrá finalizarse hasta completar todas.</p>
         <select value={selectedId} onChange={e=>setMandatoryWorkerChoice(current=>({...current,[doc.id]:e.target.value}))} className="mt-3 min-h-[56px] w-full rounded-xl border bg-white px-3 py-3 text-base font-semibold">
           <option value="">Seleccionar trabajador…</option>
           {operationalCandidates.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidosNombre} · {worker.dni}</option>)}
@@ -1203,7 +1203,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#00548E] text-white"><Smartphone className="h-6 w-6"/></div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-black text-slate-900">Instalar PFEA Encargados</h2>
+            <h2 className="text-lg font-black text-slate-900 dark:text-slate-50">Instalar PFEA Encargados</h2>
             <p className="mt-1 text-sm leading-5 text-slate-600">Instálala en este móvil para abrir directamente el portal desde un icono, como una aplicación.</p>
           </div>
         </div>
@@ -1296,7 +1296,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
           <h2 className="font-black">Control inicios</h2>
-          <p className="mt-1 text-sm text-slate-600">Aquí aparecen los documentos importados de Inicio / Incorporación y Control de presencia. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen los documentos importados de Inicio / Incorporación y Control de presencia. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
         <div className="rounded-2xl border bg-white p-2">
           <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:'touch'}}>
@@ -1325,7 +1325,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='epis'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4 space-y-4">
-          <div><h2 className="text-lg font-black">Entrega de EPIs</h2><p className="mt-1 text-sm text-slate-600">Selecciona quincenas, meses o ambos, revisa los trabajadores y prepara el documento para que firmen uno a uno.</p></div>
+          <div><h2 className="text-lg font-black">Entrega de EPIs</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona quincenas, meses o ambos, revisa los trabajadores y prepara el documento para que firmen uno a uno.</p></div>
           {renderPeriodSelector()}
           <label className="block text-sm font-black">Fecha
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
@@ -1346,7 +1346,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='formacion'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4 space-y-4">
-          <div><h2 className="text-lg font-black">Formación e información</h2><p className="mt-1 text-sm text-slate-600">Selecciona quincenas, meses o ambos. Los trabajadores seleccionados quedarán listos para firmar la misma relación de Formación e información de Documentación de obra.</p></div>
+          <div><h2 className="text-lg font-black">Formación e información</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona quincenas, meses o ambos. Los trabajadores seleccionados quedarán listos para firmar la misma relación de Formación e información de Documentación de obra.</p></div>
           {renderPeriodSelector()}
           <label className="block text-sm font-black">Fecha
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
@@ -1367,7 +1367,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='maquinaria'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4 space-y-4">
-          <div><h2 className="text-lg font-black">Autorización al uso de maquinaria</h2><p className="mt-1 text-sm text-slate-600">Mantiene el detalle por trabajador: selecciona periodos, indica la maquinaria/equipos y después recoge las firmas.</p></div>
+          <div><h2 className="text-lg font-black">Autorización al uso de maquinaria</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Mantiene el detalle por trabajador: selecciona periodos, indica la maquinaria/equipos y después recoge las firmas.</p></div>
           {renderPeriodSelector()}
           <label className="block text-sm font-black">Fecha
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
@@ -1390,7 +1390,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
           <h2 className="text-lg font-black">Otros documentos</h2>
-          <p className="mt-1 text-sm text-slate-600">Aquí quedan únicamente los documentos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario tienen ahora su propio botón en la cinta superior.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí quedan únicamente los documentos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario tienen ahora su propio botón en la cinta superior.</p>
         </div>
 
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -1419,7 +1419,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
         <div className="border-t pt-4">
           <div className="text-base font-black">Otros documentos de obra</div>
-          <p className="mt-1 text-sm text-slate-600">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Selecciona primero el periodo para trabajar únicamente con el personal correspondiente.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Selecciona primero el periodo para trabajar únicamente con el personal correspondiente.</p>
         </div>
         {renderPeriodSelector()}
         <label className="block text-sm font-black">Documento

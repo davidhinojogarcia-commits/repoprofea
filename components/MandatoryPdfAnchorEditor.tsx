@@ -242,22 +242,22 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   return <ModalPortal label="Ajustar firmas"><div className="fixed inset-0 flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white shadow-2xl sm:rounded-3xl">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-50 sm:rounded-3xl">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
         <div>
           <div className="text-xs font-black uppercase tracking-wide text-[#00548E]">Ajustar firmas manualmente</div>
           <h2 className="text-lg font-black">{title}</h2>
-          <p className="text-sm text-slate-600">Selecciona un trabajador y toca justo a la derecha de su nombre y apellidos. Esa será la posición exacta de su firma.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Selecciona un trabajador y toca justo a la derecha de su nombre y apellidos. Esa será la posición exacta de su firma.</p>
         </div>
         <button type="button" onClick={onCancel} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
       </div>
 
       <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="max-h-[42dvh] overflow-y-auto border-b p-4 lg:max-h-none lg:border-b-0 lg:border-r">
-          <div className="rounded-xl bg-slate-100 p-3">
-            <div className="text-xs font-black uppercase text-slate-500">Trabajador {index+1} de {draft.length}</div>
+          <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-800">
+            <div className="text-xs font-black uppercase text-slate-500 dark:text-slate-300">Trabajador {index+1} de {draft.length}</div>
             <div className="mt-1 text-base font-black">{current?.workerName||'Sin identificar'}</div>
-            <div className="text-sm text-slate-600">{current?.dni||''}</div>
+            <div className="text-sm text-slate-600 dark:text-slate-300">{current?.dni||''}</div>
             <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700':'text-amber-700'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
           </div>
 
@@ -266,13 +266,13 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
               value={current&&current.workerId>0?String(current.workerId):''}
               onChange={event=>assignCurrentWorker(Number(event.target.value))}
               disabled={currentIdentityLocked}
-              className="mt-2 min-h-[48px] w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+              className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
             >
               <option value="">Seleccionar trabajador…</option>
               {availableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
             </select>
           </label>
-          {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
+          {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
 
           <label className="mt-4 block text-sm font-black">Página
             <div className="mt-2 flex items-center gap-2">
@@ -286,27 +286,27 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <button type="button" disabled={index<=0} onClick={()=>setIndex(i=>Math.max(0,i-1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Anterior</button>
             <button type="button" disabled={index>=draft.length-1} onClick={()=>setIndex(i=>Math.min(draft.length-1,i+1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Siguiente</button>
           </div>
-          <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E]">Añadir trabajador no detectado</button>
+          <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador no detectado</button>
           <button
             type="button"
             disabled={!current||!onRemoveWorker||removing}
             onClick={()=>void removeCurrentWorker()}
-            className="mt-2 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-black text-rose-700 disabled:opacity-40"
+            className="mt-2 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-black text-rose-700 dark:border-rose-700 dark:bg-rose-950/70 dark:text-rose-100 disabled:opacity-40"
           >
             <Trash2 className="h-4 w-4"/>{removing?'Eliminando…':'Eliminar trabajador del documento'}
           </button>
 
-          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700">
+          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100">
             El recuadro azul marca dónde se colocará la firma. Colócalo en la misma línea del trabajador, inmediatamente a la derecha de su nombre. El PDF original no se mueve ni se rediseña.
           </div>
-          {error&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</div>}
+          {error&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/70 dark:text-rose-100">{error}</div>}
         </aside>
 
-        <div className="flex min-h-0 flex-col bg-slate-200">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-300 bg-white px-3 py-2">
+        <div className="flex min-h-0 flex-col bg-slate-200 dark:bg-slate-950">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-2">
               <button type="button" onClick={()=>selectPage(currentPage-1)} disabled={currentPage<=1} className="min-h-[42px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">← Página anterior</button>
-              <div className="min-w-[78px] rounded-xl bg-slate-100 px-3 py-2 text-center text-sm font-black">{currentPage} / {pageCount}</div>
+              <div className="min-w-[78px] rounded-xl bg-slate-100 px-3 py-2 text-center text-sm font-black dark:bg-slate-800 dark:text-slate-50">{currentPage} / {pageCount}</div>
               <button type="button" onClick={()=>selectPage(currentPage+1)} disabled={currentPage>=pageCount} className="min-h-[42px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Página siguiente →</button>
             </div>
             <div className="flex items-center gap-2">
@@ -332,7 +332,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         </div>
       </div>
 
-      <div className="shrink-0 flex flex-col gap-2 border-t bg-white p-3 sm:p-4 sm:flex-row sm:items-center sm:justify-between" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
+      <div className="shrink-0 flex flex-col gap-2 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4 sm:flex-row sm:items-center sm:justify-between" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
         <div className={`text-sm font-black ${unresolved?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : 'Todas las posiciones están confirmadas'}</div>
         <button type="button" disabled={saving||unresolved>0} onClick={async()=>{
           setSaving(true);setError('');
