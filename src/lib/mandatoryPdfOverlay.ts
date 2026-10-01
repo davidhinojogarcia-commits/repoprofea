@@ -2,6 +2,7 @@ import { readPdfTextContent } from './clientDocumentText';
 import type { Person } from '../../types';
 import {
   computeSignatureBoxFromDetectedName,
+  fitSignatureInsideBox,
   mandatoryNameTokenMatch,
   scoreMandatoryWorkerNameText,
   validateMandatorySignaturePlacement,
@@ -551,13 +552,12 @@ export async function buildSignedMandatoryPdf(input: {
     if(boxX<0||boxY<0||boxX+boxWidth>size.width||boxY+boxHeight>size.height){
       throw new Error(`La firma de ${anchor.workerName} quedaría fuera de la página y no se ha generado el documento.`);
     }
-    const ratio = image.width / Math.max(1, image.height);
-    let width = boxWidth;
-    let height = width / ratio;
-    if (height > boxHeight) {
-      height = boxHeight;
-      width = height * ratio;
-    }
+    const {width,height}=fitSignatureInsideBox({
+      imageWidth:image.width,
+      imageHeight:image.height,
+      boxWidth,
+      boxHeight,
+    });
     page.drawImage(image, {
       x: boxX + Math.max(0, (boxWidth - width) / 2),
       y: boxY + Math.max(0, (boxHeight - height) / 2),
