@@ -377,74 +377,80 @@ export const ForemanAccessButton: React.FC<{
 
       {open && (
         <ModalPortal label="Código QR del encargado"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/80 p-0 sm:p-4" role="dialog" aria-modal="true">
-          <div className="flex h-full w-full flex-col overflow-y-auto bg-white p-4 shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:max-w-xl sm:rounded-3xl sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-black sm:text-lg">Código QR del encargado</h3>
-                <p className="mt-1 text-sm text-slate-500 sm:text-xs">{obra} · {foremanName}</p>
-              </div>
-              <button type="button" onClick={() => setOpen(false)} className="p-3 rounded-xl border" aria-label="Cerrar código QR">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="mt-4 inline-flex self-start items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
-              <CheckCircle2 className="w-4 h-4" /> Acceso activo hasta que lo desautorices
-            </div>
-
-            <p className="mx-auto mt-4 max-w-md text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Muéstrale este código al encargado para que lo escanee con la cámara de su móvil.
-            </p>
-
-            {busy && !qr && (
-              <div className="mx-auto my-6 flex aspect-square w-[min(82vw,360px)] items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50">
-                <div className="text-center">
-                  <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#00548E]" />
-                  <p className="mt-3 text-sm font-black text-slate-700">Generando código QR…</p>
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:max-w-xl sm:rounded-3xl">
+            <div className="shrink-0 p-4 pb-2 sm:p-6 sm:pb-2" style={{paddingTop:'max(16px, env(safe-area-inset-top))'}}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black sm:text-lg">Código QR del encargado</h3>
+                  <p className="mt-1 text-sm text-slate-500 sm:text-xs">{obra} · {foremanName}</p>
                 </div>
+                <button type="button" onClick={() => setOpen(false)} className="p-3 rounded-xl border" aria-label="Cerrar código QR">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
-            {qr && (
-              <img
-                src={qr}
-                alt={`Código QR de acceso a la obra ${obra}`}
-                className="mx-auto my-4 aspect-square w-[min(88vw,440px)] rounded-2xl border-4 border-white bg-white p-2 shadow-lg"
-              />
-            )}
-            {!busy && !qr && !error && (
-              <div className="mx-auto my-6 w-full max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-bold text-amber-900">
-                Preparando el acceso del encargado…
-              </div>
-            )}
 
-            {url&&<div className="rounded-xl bg-slate-50 p-3 text-xs break-all dark:bg-slate-800">{url}</div>}
-            <div className="grid grid-cols-1 gap-2 mt-4 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => void copyAccessLink()}
-                className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black"
-              >
-                {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Enlace copiado' : 'Copiar enlace'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void revokeAccess()}
-                disabled={busy}
-                className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-xl border-2 border-rose-300 px-3 py-3 text-sm font-black text-rose-700 disabled:opacity-60"
-              >
-                <Ban className="w-4 h-4" /> Desautorizar acceso
-              </button>
-            </div>
-            {error && (
-              <div role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-800">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{error}</span>
+              <div className="mt-3 inline-flex self-start items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
+                <CheckCircle2 className="w-4 h-4" /> Acceso activo hasta que lo desautorices
               </div>
-            )}
-            <p className="mt-4 text-[11px] text-slate-500">
-              Al desautorizar, este enlace y este código QR dejan de funcionar inmediatamente. Si generas otro acceso, se creará un código nuevo.
-            </p>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-3 sm:block sm:px-6">
+              <p className="mx-auto mb-3 max-w-md text-center text-sm font-semibold text-slate-700 dark:text-slate-200 sm:mt-2">
+                Muéstrale este código al encargado para que lo escanee con la cámara de su móvil.
+              </p>
+
+              {busy && !qr && (
+                <div className="mx-auto flex aspect-square w-[min(78vw,340px)] items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 sm:my-6 sm:w-[min(82vw,360px)]">
+                  <div className="text-center">
+                    <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#00548E]" />
+                    <p className="mt-3 text-sm font-black text-slate-700">Generando código QR…</p>
+                  </div>
+                </div>
+              )}
+              {qr && (
+                <img
+                  src={qr}
+                  alt={`Código QR de acceso a la obra ${obra}`}
+                  className="mx-auto aspect-square w-[min(78vw,340px)] shrink-0 rounded-2xl border-4 border-white bg-white p-2 shadow-lg sm:my-4 sm:w-[min(88vw,440px)]"
+                />
+              )}
+              {!busy && !qr && !error && (
+                <div className="mx-auto w-full max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-bold text-amber-900 sm:my-6">
+                  Preparando el acceso del encargado…
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:border-t-0 sm:px-6 sm:pb-6" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
+              {url&&<div className="max-h-16 overflow-y-auto rounded-xl bg-slate-50 p-3 text-xs break-all dark:bg-slate-800">{url}</div>}
+              <div className="grid grid-cols-1 gap-2 mt-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => void copyAccessLink()}
+                  className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black"
+                >
+                  {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Enlace copiado' : 'Copiar enlace'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void revokeAccess()}
+                  disabled={busy}
+                  className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-xl border-2 border-rose-300 px-3 py-3 text-sm font-black text-rose-700 disabled:opacity-60"
+                >
+                  <Ban className="w-4 h-4" /> Desautorizar acceso
+                </button>
+              </div>
+              {error && (
+                <div role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-800">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+              <p className="mt-3 text-[11px] text-slate-500">
+                Al desautorizar, este enlace y este código QR dejan de funcionar inmediatamente. Si generas otro acceso, se creará un código nuevo.
+              </p>
+            </div>
           </div>
         </div></ModalPortal>
       )}
