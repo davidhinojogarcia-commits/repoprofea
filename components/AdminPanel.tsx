@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   Filter,
@@ -836,7 +837,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         </div>
       </div>
       {(createOpen || editUid) && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4">
+        <ModalPortal label="AdminPanel"><div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4">
           <form
             onSubmit={editUid ? saveEdit : createUser}
             className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4"
@@ -926,7 +927,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               {editUid ? "Guardar cambios" : "Crear usuario"}
             </button>
           </form>
-        </div>
+        </div></ModalPortal>
       )}
     </section>
   );
