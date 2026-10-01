@@ -46,7 +46,7 @@ export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Tab') return;
-    const nodes = Array.from(rootRef.current?.querySelectorAll<HTMLElement>(focusableSelector) || [])
+    const nodes = Array.from((rootRef.current?.querySelectorAll(focusableSelector) ?? []) as NodeListOf<HTMLElement>)
       .filter(node => !node.hasAttribute('disabled') && node.tabIndex !== -1);
     if (!nodes.length) {
       event.preventDefault();
