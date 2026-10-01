@@ -27,7 +27,12 @@ const aptitudLabel = (p: Person) => {
   return 'PENDIENTE';
 };
 
-const filename = (ext: 'pdf' | 'xlsx') => `PROFEA_RELACION_ADMINISTRATIVA_${MONTH}.${ext}`;
+const filename = (ext: 'pdf' | 'xlsx', people: Person[]) => {
+  const obra = String(people[0]?.obra || 'SIN_OBRA')
+    .trim()
+    .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]/g, '_');
+  return `PROFEA_RELACION_ADMINISTRATIVA_${obra}_${MONTH}.${ext}`;
+};
 
 export const prepareAdministrativeRelationPDF = (people: Person[]) => {
   people = sortRelationWorkers(people);
@@ -100,7 +105,7 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
   });
 
   applyInstitutionalPdfStandard(doc);
-  return { doc, filename: filename('pdf') };
+  return { doc, filename: filename('pdf', people) };
 };
 
 export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
@@ -178,5 +183,5 @@ export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
     oddFooter: '&LDiputación Provincial de Cádiz · Gestión de Fondos PROFEA&R Página &P de &N',
   };
   const buffer = await workbook.xlsx.writeBuffer();
-  return { buffer, filename: filename('xlsx') };
+  return { buffer, filename: filename('xlsx', people) };
 };
