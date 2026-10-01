@@ -819,17 +819,16 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   </div>;
 
   const prepareImportedWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
-    // La firma nunca depende de una validación previa del supervisor.
-    // Si faltan coordenadas, intentamos recalcularlas; si falla, el generador PDF
-    // aplicará una posición automática de respaldo en la columna derecha.
+    // Regla estricta: nunca recogemos una firma si el nombre real no está localizado
+    // con seguridad en el PDF original. No existe posición aproximada de respaldo.
     const currentAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const current=currentAnchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
+    let current=currentAnchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
     if(!current?.resolved){
       setSaving(true);
-      setOperationFeedback('Calculando automáticamente la posición de la firma…');
+      setOperationFeedback('Localizando el nombre exacto en el PDF original…');
       try{
         const importedIds=Array.isArray(doc.details?.importedWorkerIds)
-          ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id))
+          ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id)&&id!==0)
           : [];
         const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
         const anchorSnapshots=currentAnchors.map(anchor=>({
@@ -852,14 +851,22 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           const file=new File([bytes],source.filename||String(doc.details?.sourceFilename||'documento.pdf'),{type:'application/pdf'});
           const analysis=await analyzeMandatoryOriginalPdf(file,candidates,undefined,String(doc.details?.sourceText||''));
           await repairForemanMandatoryAnchors(token,doc.id,analysis.anchors);
+          current=analysis.anchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
           await refresh();
         }
       }catch(e:any){
-        console.warn('No se pudo recalcular la posición automática; se usará la posición de respaldo.',e);
+        console.warn('No se pudo localizar con seguridad el nombre del trabajador.',e);
       }finally{
         setSaving(false);
         setOperationFeedback('');
       }
+    }
+    if(!current?.resolved||current.signatureX==null||current.signatureY==null){
+      const message='No se ha podido localizar con suficiente seguridad este nombre dentro del PDF original. Corrige el nombre y vuelve a intentarlo; la firma no se colocará de forma aproximada.';
+      setError(message);
+      setOperationFeedback(message);
+      await appAlert(message,{title:'Nombre pendiente de localizar',kind:'warning'});
+      return;
     }
     setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
   };
@@ -965,7 +972,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
             <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
             <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
-            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-blue-700">La posición de {unresolvedAnchorCount} firma(s) se calculará automáticamente a la derecha del nombre</div>}
+            {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-amber-700">{unresolvedAnchorCount} trabajador(es) pendientes de localizar con seguridad en el PDF</div>}
           </div>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0}</span>
@@ -980,8 +987,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <button type="button" disabled={saving||signedCount===0} onClick={()=>void previewMandatoryPdf(doc,'signed')} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:bg-slate-300">Previsualizar con firmas</button>
         </div>
         {operationFeedback&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">{operationFeedback}</div>}
-        {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
-          No requiere validación del supervisor. Cada firma se coloca automáticamente a la derecha del nombre y apellidos del trabajador, ajustando su tamaño para no invadir otras filas.
+        {unresolvedAnchorCount>0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+          No se colocará ninguna firma de forma aproximada. Corrige el nombre de la persona pendiente y vuelve a localizarla antes de firmar.
         </div>}
       </div>}
       {!exactOriginalMode&&sourceText&&<details className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3" open>
