@@ -219,6 +219,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [focusDocumentId,setFocusDocumentId]=useState('');
   const [selectedMandatoryPeriodKeys,setSelectedMandatoryPeriodKeys]=useState<Set<string>>(new Set());
   const [expandedMandatoryDocuments,setExpandedMandatoryDocuments]=useState<Set<string>>(new Set());
+  const [mandatorySignatureImages,setMandatorySignatureImages]=useState<Record<string,Record<string,string>>>({});
 
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
@@ -736,9 +737,28 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     return next;
   });
 
+  const loadMandatorySignatureImages=useCallback(async(documentId:string)=>{
+    try{
+      const real=await getForemanMandatorySignatures(token,documentId);
+      const images:Record<string,string>={};
+      Object.entries(real||{}).forEach(([workerId,raw])=>{
+        const value=typeof raw==='string'?raw:raw?.signature;
+        if(typeof value==='string'&&value.startsWith('data:image/'))images[String(workerId)]=value;
+      });
+      setMandatorySignatureImages(current=>({...current,[documentId]:images}));
+    }catch(error){
+      console.warn('No se pudieron cargar las miniaturas de firmas.',error);
+    }
+  },[token]);
+
   const toggleMandatoryDocument=(id:string)=>setExpandedMandatoryDocuments(current=>{
     const next=new Set(current);
-    if(next.has(id))next.delete(id);else next.add(id);
+    if(next.has(id)){
+      next.delete(id);
+    }else{
+      next.add(id);
+      if(!mandatorySignatureImages[id])void loadMandatorySignatureImages(id);
+    }
     return next;
   });
 
@@ -1011,7 +1031,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
           {(()=>{
             const raw=doc.signatures?.[String(worker.id)];
-            const signature=typeof raw==='string'?raw:raw?.signature;
+            const rawValue=typeof raw==='string'?raw:raw?.signature;
+            const signature=mandatorySignatureImages[doc.id]?.[String(worker.id)]
+              || (typeof rawValue==='string'&&rawValue.startsWith('data:image/')?rawValue:'');
             if(isImportedMandatory&&signature){
               return <div className="ml-auto flex min-w-[112px] max-w-[150px] flex-col items-end">
                 <img src={signature} alt={'Firma de '+worker.apellidosNombre} className="h-11 max-w-[145px] object-contain object-right"/>
@@ -1020,7 +1042,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             }
             return correction&&!closed
               ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
-              : <span className="text-xs font-black text-emerald-700">Firmado ✓</span>;
+              : <span className="ml-auto inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-700">Firma guardada ✓</span>;
           })()}
         </div>)}</div>}
       </div>
@@ -1033,27 +1055,46 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         );
         if(!confirmed)return;
         setSaving(true);
+        setError('');
         try{
           if(exactOriginalMode){
+            setOperationFeedback('1/3 · Preparando el PDF original con las firmas…');
             const prepared=await buildExactSignedPreview(doc,true);
             if(!prepared.fidelity?.ok){
               throw new Error('La comprobación de fidelidad ha detectado una diferencia fuera de las zonas de firma. El documento no se enviará.');
             }
-            await storeForemanMandatorySignedPdf({
-              token,
-              documentId:doc.id,
-              pdfBase64:bytesToBase64(prepared.bytes),
-              signedSha256:await sha256Hex(prepared.bytes),
-              fidelity:prepared.fidelity,
-            });
+            setOperationFeedback('2/3 · Guardando el PDF firmado…');
+            try{
+              await storeForemanMandatorySignedPdf({
+                token,
+                documentId:doc.id,
+                pdfBase64:bytesToBase64(prepared.bytes),
+                signedSha256:await sha256Hex(prepared.bytes),
+                fidelity:prepared.fidelity,
+              });
+            }catch(firstError:any){
+              // Compatibilidad con documentos creados antes del posicionamiento automático.
+              if(Array.isArray((prepared as any).anchors)&&(prepared as any).anchors.length){
+                await repairForemanMandatoryAnchors(token,doc.id,(prepared as any).anchors);
+                await storeForemanMandatorySignedPdf({
+                  token,
+                  documentId:doc.id,
+                  pdfBase64:bytesToBase64(prepared.bytes),
+                  signedSha256:await sha256Hex(prepared.bytes),
+                  fidelity:prepared.fidelity,
+                });
+              }else{
+                throw firstError;
+              }
+            }
           }
+          setOperationFeedback('3/3 · Enviando el documento al supervisor…');
           await finalizeForemanMandatoryDocument(token,doc.id);
           await refresh();
-          setError('');
           setMandatoryWorkerChoice(current=>({...current,[doc.id]:''}));
           setOperationFeedback('Documento firmado enviado correctamente al supervisor.');
-          await appAlert('El documento firmado se ha enviado correctamente al supervisor.',{title:'Envío completado',kind:'success'});
           setTab('completed');
+          await appAlert('El documento firmado se ha enviado correctamente al supervisor.',{title:'Envío completado',kind:'success'});
         }catch(e:any){
           const message=e?.message||'No se pudo enviar el documento.';
           setError(message);
@@ -1105,7 +1146,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </section>}
 
       {error&&<div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <div className="font-black">Conexión inestable</div>
+        <div className="font-black">No se pudo completar la operación</div>
         <div className="mt-1">{error}</div>
         <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
       </div>}
@@ -1389,32 +1430,38 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       setSaving(true);
       try{
         await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);
-        const verified=await resolveForemanPortal(token);
+        const [verified,realSignatures]=await Promise.all([
+          resolveForemanPortal(token),
+          getForemanMandatorySignatures(token,current.documentId),
+        ]);
         const verifiedDoc=(verified.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
-        const storedSignature=verifiedDoc?.signatures?.[String(current.workerId)];
+        const storedSignature=realSignatures?.[String(current.workerId)];
         const storedImage=typeof storedSignature==='string'?storedSignature:storedSignature?.signature;
-        if(!storedImage){
-          throw new Error('La firma no ha quedado guardada en el documento. Vuelve a intentarlo.');
+        if(typeof storedImage!=='string'||!storedImage.startsWith('data:image/')){
+          throw new Error('La firma no ha quedado guardada correctamente. Vuelve a intentarlo.');
         }
+        setMandatorySignatureImages(previous=>({
+          ...previous,
+          [current.documentId]:{
+            ...(previous[current.documentId]||{}),
+            [String(current.workerId)]:storedImage,
+          },
+        }));
         const importedIds=Array.isArray(verifiedDoc?.details?.importedWorkerIds)
           ? verifiedDoc.details.importedWorkerIds.map((id:any)=>String(Number(id))).filter((id:string)=>id!=='NaN'&&id!=='0')
           : [];
         const signatureMap=verifiedDoc?.signatures||{};
         const allImportedSigned=importedIds.length>0 && importedIds.every((id:string)=>Boolean(signatureMap[id]));
-        if(allImportedSigned && verifiedDoc){
-          setData(verified);
-          setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
-          setError('');
-          setOperationFeedback('Todas las personas del documento han firmado. Ya puedes enviarlo al supervisor con el botón “Enviar documento firmado al supervisor”.');
-          await appAlert(
-            'Todas las firmas están completas. El documento está listo para enviarse al supervisor.',
-            {title:'Documento listo',kind:'success',confirmLabel:'Aceptar'}
-          );
-        }else{
-          setData(verified);
-          setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
-          setError('');
-          setOperationFeedback('Firma guardada correctamente y vinculada al documento.');
+        setData(verified);
+        setMandatoryWorkerChoice(currentChoices=>({...currentChoices,[current.documentId]:''}));
+        setError('');
+        setOperationFeedback(allImportedSigned
+          ? 'Todas las firmas están completas. Pulsa “Enviar documento firmado al supervisor”.'
+          : 'Firma guardada correctamente.');
+        if(allImportedSigned){
+          window.setTimeout(()=>{
+            document.getElementById('foreman-signing-'+current.documentId)?.scrollIntoView({behavior:'smooth',block:'center'});
+          },120);
         }
       }catch(e:any){
         const message=e?.message||'No se pudo guardar la firma.';
