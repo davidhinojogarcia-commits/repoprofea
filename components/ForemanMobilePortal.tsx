@@ -721,7 +721,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const message=e?.message||'No se pudo abrir el PDF.';
       setError(message);
       setOperationFeedback(message);
-      await appAlert(message,{title:'No se pudo abrir el PDF',kind:'error'});
     }finally{
       setSaving(false);
     }
