@@ -89,6 +89,8 @@ jobs:
         run: npm run test:modal-layering
       - name: Light/dark contrast regression
         run: npm run test:theme-contrast
+      - name: Global full-screen modal audit
+        run: npm run test:global-modal-audit
       - name: TypeScript validation
         run: |
           set -o pipefail
