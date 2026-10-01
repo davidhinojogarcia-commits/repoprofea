@@ -64,7 +64,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     const canvas=ref.current; if(!canvas) return;
     const rect=canvas.getBoundingClientRect(); const ratio=Math.min(1.5,Math.max(1,window.devicePixelRatio||1));
     canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
-    const ctx=canvas.getContext('2d'); if(!ctx) return;
+    const ctx=canvas.getContext('2d',{alpha:true}); if(!ctx) return;
     ctx.setTransform(ratio,0,0,ratio,0,0); ctx.clearRect(0,0,rect.width,rect.height);
     ctx.strokeStyle='#111827'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
   },[]);
@@ -95,10 +95,19 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     const out=document.createElement('canvas');
     out.width=Math.max(1,Math.round(sourceW*scale));
     out.height=Math.max(1,Math.round(sourceH*scale));
-    const outCtx=out.getContext('2d');
+    const outCtx=out.getContext('2d',{alpha:true});
     if(!outCtx)return;
     outCtx.clearRect(0,0,out.width,out.height);
     outCtx.drawImage(canvas,minX,minY,sourceW,sourceH,0,0,out.width,out.height);
+
+    // Garantía adicional: la firma se exporta sin fondo. La superficie blanca
+    // del recuadro es solo visual y cualquier píxel claro residual se hace transparente.
+    const exported=outCtx.getImageData(0,0,out.width,out.height);
+    for(let i=0;i<exported.data.length;i+=4){
+      const r=exported.data[i],g=exported.data[i+1],b=exported.data[i+2],a=exported.data[i+3];
+      if(a>0&&r>=245&&g>=245&&b>=245)exported.data[i+3]=0;
+    }
+    outCtx.putImageData(exported,0,0);
     onSave(out.toDataURL('image/png'));
   };
   return <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{paddingTop:'env(safe-area-inset-top)'}}>
