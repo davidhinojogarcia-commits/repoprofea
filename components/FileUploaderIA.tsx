@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import ModalPortal from './ModalPortal';
 import {
   CheckCircle2,
   Eye,
@@ -586,8 +587,8 @@ export const FileUploaderIA: React.FC<Props> = ({
       )}
 
       {previewFile && (
-        <div
-          className="fixed inset-0 z-[135] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+        <ModalPortal label="Previsualización de archivo"><div
+          className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label={`Previsualización de ${previewFile.name}`}
@@ -646,7 +647,7 @@ export const FileUploaderIA: React.FC<Props> = ({
               )}
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       <ChecklistReviewModal
