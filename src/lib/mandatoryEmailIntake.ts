@@ -9,7 +9,7 @@ import {
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getDocuments } from '../services/databaseService';
 import { prepareMandatoryDocumentFromEmail, restoreForemanMandatoryGmailSource } from '../services/foremanPortalService';
-import { analyzeMandatoryOriginalPdf, fileToBase64, sha256Hex } from './mandatoryPdfOverlay';
+import { analyzeMandatoryOriginalPdf, fileToBase64, resolveMandatoryAnchorsWithOcrRows, sha256Hex } from './mandatoryPdfOverlay';
 
 const norm = (value: unknown) =>
   String(value || '')
@@ -410,7 +410,10 @@ export async function processAdministrativeMandatoryInbox(options?: {
           if(name)missingDirectoryWorkers.add(name);
         });
         const workDate = extractDate(extracted.text, message.internalDate);
-        const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
+        let analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
+        if (analysis.unresolvedWorkerIds.length) {
+          analysis = await resolveMandatoryAnchorsWithOcrRows(file, selected, analysis, options?.onProgress);
+        }
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
         const orderedSelected = analysis.orderedWorkerIds
           .map(id => selectedById.get(Number(id)))
@@ -512,7 +515,10 @@ export async function processManualMandatoryFiles(
         continue;
       }
       const workDate = extractDate(extracted.text);
-      const analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
+      let analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
+        if (analysis.unresolvedWorkerIds.length) {
+          analysis = await resolveMandatoryAnchorsWithOcrRows(file, selected, analysis, options?.onProgress);
+        }
       const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
       const orderedSelected = analysis.orderedWorkerIds
         .map(id => selectedById.get(Number(id)))

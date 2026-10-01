@@ -367,6 +367,45 @@ export async function getSupervisorMandatoryPdf(
   }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
 }
 
+export async function updateSupervisorMandatoryAnchors(
+  documentId: string,
+  workerAnchors: any[],
+) {
+  const rows=await supabase.query('foreman_mandatory_documents',{
+    query:`id=eq.${encodeURIComponent(documentId)}&select=id,details&limit=1`,
+  });
+  const current=Array.isArray(rows)?rows[0]:null;
+  if(!current)throw new Error('Documento no encontrado.');
+
+  await supabase.query('foreman_mandatory_documents',{
+    method:'PATCH',
+    prefer:'return=minimal',
+    query:`id=eq.${encodeURIComponent(documentId)}`,
+    body:{
+      details:{
+        ...(current.details||{}),
+        workerAnchors:workerAnchors||[],
+        supervisorAdjustedAnchorsAt:new Date().toISOString(),
+      },
+      updated_at:new Date().toISOString(),
+    },
+  });
+
+  // La próxima apertura/envío reconstruye el firmado sobre el original
+  // usando las posiciones ajustadas por el supervisor.
+  await supabase.query('foreman_mandatory_pdf_files',{
+    method:'PATCH',
+    prefer:'return=minimal',
+    query:`document_id=eq.${encodeURIComponent(documentId)}`,
+    body:{
+      signed_pdf:null,
+      signed_sha256:null,
+      fidelity:null,
+      updated_at:new Date().toISOString(),
+    },
+  });
+}
+
 export async function repairForemanMandatoryAnchors(
   token: string,
   documentId: string,

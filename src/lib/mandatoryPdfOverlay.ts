@@ -1,4 +1,5 @@
 import { readPdfTextContent } from './clientDocumentText';
+import { createWorker } from 'tesseract.js';
 import type { Person } from '../../types';
 import {
   computeSignatureBoxFromDetectedName,
@@ -444,6 +445,279 @@ export async function analyzeMandatoryOriginalPdf(
   return {
     pageCount:pdf.numPages,
     pages,
+    anchors:ordered,
+    orderedWorkerIds:ordered.map(anchor=>anchor.workerId),
+    unresolvedWorkerIds:ordered.filter(anchor=>!anchor.resolved).map(anchor=>anchor.workerId),
+  };
+}
+
+
+type OcrWorkerRow = {
+  page:number;
+  text:string;
+  x:number;
+  y:number;
+  right:number;
+  width:number;
+  height:number;
+  centerY:number;
+  confidence:number;
+  key:string;
+};
+
+const collectTesseractLines=(data:any,scale:number,pageHeight:number,pageNumber:number):OcrWorkerRow[]=>{
+  const rows:OcrWorkerRow[]=[];
+  const add=(text:string,bbox:any,confidence=0)=>{
+    const value=String(text||'').replace(/\s+/g,' ').trim();
+    if(!value||!bbox)return;
+    const x0=Number(bbox.x0??bbox.left??0);
+    const y0=Number(bbox.y0??bbox.top??0);
+    const x1=Number(bbox.x1??(x0+Number(bbox.width||0)));
+    const y1=Number(bbox.y1??(y0+Number(bbox.height||0)));
+    if(!(x1>x0)||!(y1>y0))return;
+    const x=x0/scale;
+    const width=(x1-x0)/scale;
+    const height=(y1-y0)/scale;
+    const y=pageHeight-(y1/scale);
+    rows.push({
+      page:pageNumber,
+      text:value,
+      x,
+      y,
+      right:x+width,
+      width,
+      height,
+      centerY:y+(height/2),
+      confidence:Number(confidence||0),
+      key:`${pageNumber}:${Math.round(x0)}:${Math.round(y0)}:${Math.round(x1)}:${Math.round(y1)}`,
+    });
+  };
+
+  const blocks=Array.isArray(data?.blocks)?data.blocks:[];
+  for(const block of blocks){
+    for(const paragraph of Array.isArray(block?.paragraphs)?block.paragraphs:[]){
+      for(const line of Array.isArray(paragraph?.lines)?paragraph.lines:[]){
+        add(line?.text,line?.bbox,line?.confidence??line?.conf??0);
+      }
+    }
+  }
+
+  if(rows.length)return rows;
+
+  const tsv=String(data?.tsv||'').trim();
+  if(!tsv)return rows;
+  const lines=tsv.split(/\r?\n/);
+  const header=lines.shift()?.split('\t')||[];
+  const index=(name:string)=>header.indexOf(name);
+  const groups=new Map<string,{words:string[];left:number;top:number;right:number;bottom:number;conf:number[]}>();
+  for(const line of lines){
+    const cols=line.split('\t');
+    if(cols.length<header.length)continue;
+    const level=Number(cols[index('level')]);
+    if(level!==5)continue;
+    const text=String(cols[index('text')]||'').trim();
+    if(!text)continue;
+    const left=Number(cols[index('left')]||0);
+    const top=Number(cols[index('top')]||0);
+    const width=Number(cols[index('width')]||0);
+    const height=Number(cols[index('height')]||0);
+    const key=[cols[index('block_num')],cols[index('par_num')],cols[index('line_num')]].join(':');
+    const current=groups.get(key)||{words:[],left,right:left+width,top,bottom:top+height,conf:[]};
+    current.words.push(text);
+    current.left=Math.min(current.left,left);
+    current.top=Math.min(current.top,top);
+    current.right=Math.max(current.right,left+width);
+    current.bottom=Math.max(current.bottom,top+height);
+    current.conf.push(Number(cols[index('conf')]||0));
+    groups.set(key,current);
+  }
+  for(const group of groups.values()){
+    add(
+      group.words.join(' '),
+      {x0:group.left,y0:group.top,x1:group.right,y1:group.bottom},
+      group.conf.length?group.conf.reduce((sum,value)=>sum+value,0)/group.conf.length:0,
+    );
+  }
+  return rows;
+};
+
+const candidateOcrRowsForWorker=(worker:Person,rows:OcrWorkerRow[])=>{
+  const candidates:{row:OcrWorkerRow;score:number}[]=[];
+  for(let i=0;i<rows.length;i+=1){
+    const row=rows[i];
+    const score=scoreMandatoryWorkerNameText(worker,row.text);
+    if(score>=0.82)candidates.push({row,score});
+
+    const next=rows[i+1];
+    if(next&&next.page===row.page&&Math.abs(next.centerY-row.centerY)<=Math.max(22,row.height*2.8,next.height*2.8)){
+      const combined=`${row.text} ${next.text}`;
+      const combinedScore=scoreMandatoryWorkerNameText(worker,combined);
+      if(combinedScore>=0.84){
+        const x=Math.min(row.x,next.x);
+        const right=Math.max(row.right,next.right);
+        const y=Math.min(row.y,next.y);
+        const top=Math.max(row.y+row.height,next.y+next.height);
+        candidates.push({
+          row:{
+            page:row.page,
+            text:combined,
+            x,
+            y,
+            right,
+            width:right-x,
+            height:top-y,
+            centerY:(y+top)/2,
+            confidence:Math.min(row.confidence,next.confidence),
+            key:`${row.key}+${next.key}`,
+          },
+          score:combinedScore,
+        });
+      }
+    }
+  }
+  return candidates.sort((a,b)=>b.score-a.score||b.row.confidence-a.row.confidence||b.row.centerY-a.row.centerY);
+};
+
+/**
+ * Respaldo simple para PDFs escaneados:
+ * OCR solo las líneas visuales y usa la franja horizontal de cada nombre.
+ * No reconstruye el documento ni intenta interpretar el resto de la página.
+ */
+export async function resolveMandatoryAnchorsWithOcrRows(
+  file:File,
+  workers:Person[],
+  analysis:MandatoryPdfAnalysis,
+  onProgress?: (message:string)=>void,
+):Promise<MandatoryPdfAnalysis>{
+  if(!analysis.unresolvedWorkerIds.length)return analysis;
+
+  const unresolvedIds=new Set(analysis.unresolvedWorkerIds.map(Number));
+  const unresolvedWorkers=workers.filter(worker=>unresolvedIds.has(Number(worker.id)));
+  if(!unresolvedWorkers.length)return analysis;
+
+  const pdfjs=await setupPdfJs();
+  const data=new Uint8Array(await file.arrayBuffer());
+  const pdf=await pdfjs.getDocument({data,useSystemFonts:true}).promise;
+  const worker=await createWorker('spa');
+  const scale=2.2;
+  const ocrRows:OcrWorkerRow[]=[];
+
+  try{
+    for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber+=1){
+      onProgress?.(`Localizando filas de trabajadores con OCR · página ${pageNumber}/${pdf.numPages}…`);
+      const page=await pdf.getPage(pageNumber);
+      const base=page.getViewport({scale:1});
+      const viewport=page.getViewport({scale});
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.ceil(viewport.width);
+      canvas.height=Math.ceil(viewport.height);
+      const context=canvas.getContext('2d',{willReadFrequently:true});
+      if(!context)continue;
+      await page.render({canvas,canvasContext:context,viewport}).promise;
+      const result:any=await (worker as any).recognize(canvas,{}, {blocks:true,tsv:true});
+      ocrRows.push(...collectTesseractLines(result?.data,scale,Number(base.height),pageNumber));
+    }
+  }finally{
+    await worker.terminate();
+  }
+
+  if(!ocrRows.length)return analysis;
+
+  const used=new Set<string>();
+  for(const anchor of analysis.anchors){
+    if(anchor.resolved&&anchor.nameX!=null&&anchor.nameY!=null){
+      const nearest=ocrRows
+        .filter(row=>row.page===anchor.page)
+        .sort((a,b)=>Math.abs(a.centerY-Number(anchor.nameCenterY??anchor.nameY))-Math.abs(b.centerY-Number(anchor.nameCenterY??anchor.nameY)))[0];
+      if(nearest&&scoreMandatoryWorkerNameText({apellidosNombre:anchor.workerName} as Person,nearest.text)>=0.82)used.add(nearest.key);
+    }
+  }
+
+  const replacements=new Map<number,MandatoryWorkerAnchor>();
+  for(const workerItem of unresolvedWorkers){
+    const candidates=candidateOcrRowsForWorker(workerItem,ocrRows).filter(item=>!used.has(item.row.key));
+    const best=candidates[0];
+    if(!best)continue;
+    if(candidates[1]&&best.score-candidates[1].score<0.025&&best.row.page===candidates[1].row.page){
+      continue;
+    }
+    used.add(best.row.key);
+    const row=best.row;
+    replacements.set(Number(workerItem.id),{
+      workerId:Number(workerItem.id),
+      workerName:String(workerItem.apellidosNombre||row.text),
+      dni:String(workerItem.dni||''),
+      page:row.page,
+      order:0,
+      nameX:row.x,
+      nameY:row.y,
+      nameWidth:row.width,
+      nameHeight:row.height,
+      nameRightX:row.right,
+      nameCenterY:row.centerY,
+      rowHeight:Math.max(12,row.height*1.55),
+      signatureX:null,
+      signatureY:null,
+      signatureWidth:null,
+      signatureHeight:null,
+      confidence:Math.min(0.98,best.score*(row.confidence>0?Math.max(.8,row.confidence/100):.9)),
+      resolved:true,
+      reason:'Nombre localizado por OCR de su línea visual antes de enviar el documento al portal.',
+    });
+  }
+
+  const merged=analysis.anchors.map(anchor=>replacements.get(Number(anchor.workerId))||{...anchor});
+  for(const anchor of merged){
+    if(!anchor.resolved||anchor.nameRightX==null||anchor.nameY==null||anchor.nameHeight==null)continue;
+    const peers=merged.filter(other=>other.resolved&&other.page===anchor.page&&other.workerId!==anchor.workerId&&other.nameCenterY!=null);
+    const center=Number(anchor.nameCenterY??(anchor.nameY+anchor.nameHeight/2));
+    const upper=peers.map(peer=>Number(peer.nameCenterY)).filter(y=>y>center).sort((a,b)=>a-b)[0]??null;
+    const lower=peers.map(peer=>Number(peer.nameCenterY)).filter(y=>y<center).sort((a,b)=>b-a)[0]??null;
+    const page=analysis.pages.find(meta=>meta.page===anchor.page);
+    if(!page)continue;
+    const box=computeSignatureBoxFromDetectedName({
+      pageWidth:page.width,
+      pageHeight:page.height,
+      nameX:Number(anchor.nameX),
+      nameY:Number(anchor.nameY),
+      nameRightX:Number(anchor.nameRightX),
+      nameHeight:Number(anchor.nameHeight),
+      upperWorkerCenterY:upper,
+      lowerWorkerCenterY:lower,
+    });
+    if(!box){
+      anchor.resolved=false;
+      anchor.reason='OCR localizó el nombre, pero no existe espacio seguro a su derecha.';
+      continue;
+    }
+    anchor.signatureX=box.x;
+    anchor.signatureY=box.y;
+    anchor.signatureWidth=box.width;
+    anchor.signatureHeight=box.height;
+  }
+
+  const validation=validateMandatorySignaturePlacement(merged,analysis.pages);
+  const invalidIds=new Set(validation.issues.map(issue=>Number(issue.workerId)));
+  for(const anchor of merged){
+    if(!invalidIds.has(Number(anchor.workerId)))continue;
+    anchor.resolved=false;
+    anchor.signatureX=null;
+    anchor.signatureY=null;
+    anchor.signatureWidth=null;
+    anchor.signatureHeight=null;
+    const messages=validation.issues.filter(issue=>Number(issue.workerId)===Number(anchor.workerId)).map(issue=>issue.message);
+    anchor.reason=messages.join(' ')||'La posición OCR no supera la validación geométrica.';
+  }
+
+  const ordered=[...merged].sort((a,b)=>
+    a.page-b.page ||
+    Number(b.nameCenterY??b.nameY??-Infinity)-Number(a.nameCenterY??a.nameY??-Infinity) ||
+    a.order-b.order
+  );
+  ordered.forEach((anchor,index)=>{anchor.order=index;});
+
+  return {
+    ...analysis,
     anchors:ordered,
     orderedWorkerIds:ordered.map(anchor=>anchor.workerId),
     unresolvedWorkerIds:ordered.filter(anchor=>!anchor.resolved).map(anchor=>anchor.workerId),

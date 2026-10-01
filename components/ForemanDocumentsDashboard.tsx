@@ -8,9 +8,10 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, updateSupervisorMandatoryAnchors } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
+import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
 
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -51,6 +52,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [mailMessage,setMailMessage]=useState('');
   const [importBusy,setImportBusy]=useState(false);
   const [editingMandatory,setEditingMandatory]=useState<DbMandatory|null>(null);
+  const [positioningMandatory,setPositioningMandatory]=useState<DbMandatory|null>(null);
   const [editWorkers,setEditWorkers]=useState<any[]>([]);
   const [editWorkerIds,setEditWorkerIds]=useState<Set<string>>(new Set());
   const [editWorkDate,setEditWorkDate]=useState('');
@@ -861,6 +863,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
             <button onClick={()=>void downloadStoredMandatoryPdf(card.item as DbMandatory,'original')} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700"><FileSignature className="w-4 h-4"/>Original</button>
+            {['inicio','control_presencia'].includes(String(card.item.document_type||''))&&
+              <button
+                onClick={()=>setPositioningMandatory(card.item as DbMandatory)}
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"
+              >
+                <Pencil className="w-4 h-4"/>Ajustar firmas
+              </button>}
           </>}
           {!(card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))&&
             <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>Editar</button>}
@@ -880,6 +889,21 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
     </>}
+
+    {positioningMandatory&&<MandatoryPdfAnchorEditor
+      documentId={positioningMandatory.id}
+      title={`${mandatoryDocumentLabel(positioningMandatory.document_type)} · Ajustar firmas`}
+      obra={positioningMandatory.obra}
+      anchors={(Array.isArray(positioningMandatory.details?.workerAnchors)?positioningMandatory.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
+      signedWorkerIds={Object.keys(positioningMandatory.signatures||{}).map(Number).filter(Number.isFinite)}
+      onCancel={()=>setPositioningMandatory(null)}
+      onSave={async(anchors)=>{
+        await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
+        setMailMessage('Posiciones de firma actualizadas. El PDF firmado se regenerará con estas posiciones.');
+        setPositioningMandatory(null);
+        await refresh(true);
+      }}
+    />}
 
     {editingCard&&<div className="fixed inset-0 z-[11500] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
