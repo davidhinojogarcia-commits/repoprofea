@@ -13,6 +13,7 @@
     "test:mandatory-worker-detection": "tsx scripts/testMandatoryWorkerDetection.ts",
     "test:modal-layering": "tsx scripts/testModalLayering.ts",
     "test:theme-contrast": "tsx scripts/testThemeContrast.ts",
+    "test:global-modal-stack": "tsx scripts/testGlobalModalStack.ts",
     "test:global-modal-audit": "tsx scripts/testGlobalModalAudit.ts"
   },
   "dependencies": {
