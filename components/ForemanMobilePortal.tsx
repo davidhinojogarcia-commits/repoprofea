@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { appAlert } from '../src/lib/appDialog';
-import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Wrench } from 'lucide-react';
+import { appAlert, appConfirm } from '../src/lib/appDialog';
+import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Trash2, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   type AdditionalWorksiteDocumentType,
@@ -17,6 +17,7 @@ import {
   getForemanMandatoryPdf,
   getForemanMandatorySignatures,
   repairForemanMandatoryAnchors,
+  removeForemanMandatoryWorker,
   storeForemanMandatorySignedPdf,
   createForemanOperationalDocument,
   resubmitForemanDocument,
@@ -880,6 +881,33 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
   };
 
+  const removeImportedWorkerFromDocument=async(doc:ForemanMandatoryDocument,worker:any)=>{
+    const workerId=Number(worker?.id);
+    if(!Number.isFinite(workerId))return;
+    const alreadySigned=Boolean(doc.signatures?.[String(workerId)]);
+    const ok=await appConfirm(
+      alreadySigned
+        ? `¿Quitar a ${worker.apellidosNombre} de este documento? También se eliminará su firma guardada para este documento.`
+        : `¿Quitar a ${worker.apellidosNombre} de este documento? Se considera una detección errónea de la importación y dejará de contar como firma pendiente.`,
+      {title:'Quitar persona detectada',confirmLabel:'Quitar del documento'},
+    );
+    if(!ok)return;
+    setSaving(true);
+    setOperationFeedback('');
+    try{
+      await removeForemanMandatoryWorker(token,doc.id,workerId);
+      await refresh();
+      setError('');
+      setOperationFeedback(`${worker.apellidosNombre} se ha quitado del documento.`);
+    }catch(e:any){
+      const message=e?.message||'No se pudo quitar la persona del documento.';
+      setError(message);
+      await appAlert(message,{title:'No se pudo quitar',kind:'error'});
+    }finally{
+      setSaving(false);
+    }
+  };
+
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
     const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
@@ -969,8 +997,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
-    const canFinalize=signedCount>0 && pendingRequired===0 &&
-      (isImportedMandatory || (assignedWorkers.length>0 && signedCount>=assignedWorkers.length));
+    const canFinalize=requiredSignatureTotal>0;
+    const partialSubmission=pendingRequired>0;
     const expanded=expandedMandatoryDocuments.has(doc.id);
 
     return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 overflow-hidden rounded-2xl bg-white border shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
@@ -1045,9 +1073,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                   : <>
                       <div className="text-base font-black text-slate-900">{worker.apellidosNombre}</div>
                       <div className="mt-1 text-sm text-slate-600">{worker.dni?worker.dni+' · ':''}{worker.categoria}</div>
-                      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                         <button type="button" disabled={saving} onClick={()=>void prepareImportedWorkerSignature(doc,worker)} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2 text-sm font-black text-white disabled:opacity-50">Firmar esta persona</button>
                         <button type="button" disabled={saving} onClick={()=>setNameCorrection({documentId:doc.id,workerId:Number(worker.id),value:String(worker.apellidosNombre||'')})} className="min-h-[50px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-700">Corregir nombre</button>
+                        <button type="button" disabled={saving} onClick={()=>void removeImportedWorkerFromDocument(doc,worker)} className="min-h-[50px] rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-black text-rose-700"><Trash2 className="mr-1 inline h-4 w-4"/>Quitar</button>
                       </div>
                     </>}
               </div>;
@@ -1092,20 +1121,28 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
               : <span className="ml-auto inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-700">Firma guardada ✓</span>;
           })()}
+          {isImportedMandatory&&!closed&&<button type="button" disabled={saving} onClick={()=>void removeImportedWorkerFromDocument(doc,worker)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-rose-300 bg-white text-rose-700" aria-label={'Quitar '+worker.apellidosNombre}><Trash2 className="h-4 w-4"/></button>}
         </div>)}</div>}
       </div>
 
       {!closed&&<button id={'foreman-signing-'+doc.id} type="button" disabled={saving||!canFinalize} onClick={async()=>{
+        if(partialSubmission){
+          const ok=await appConfirm(
+            `Faltan ${pendingRequired} firma(s). ¿Quieres enviar el documento al supervisor de todas formas? El supervisor verá claramente que la entrega está incompleta.`,
+            {title:'Enviar documento incompleto',confirmLabel:'Enviar incompleto'},
+          );
+          if(!ok)return;
+        }
         setSaving(true);
         setError('');
         try{
           if(exactOriginalMode){
-            setOperationFeedback('1/3 · Preparando el PDF original con las firmas…');
+            setOperationFeedback('1/3 · Preparando el PDF original con las firmas disponibles…');
             const prepared=await buildExactSignedPreview(doc,true);
             if(!prepared.fidelity?.ok){
               throw new Error('La comprobación de fidelidad ha detectado una diferencia fuera de las zonas de firma. El documento no se enviará.');
             }
-            setOperationFeedback('2/3 · Guardando el PDF firmado…');
+            setOperationFeedback('2/3 · Guardando el PDF para el supervisor…');
             try{
               await storeForemanMandatorySignedPdf({
                 token,
@@ -1115,7 +1152,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                 fidelity:prepared.fidelity,
               });
             }catch(firstError:any){
-              // Compatibilidad con documentos creados antes del posicionamiento automático.
               if(Array.isArray((prepared as any).anchors)&&(prepared as any).anchors.length){
                 await repairForemanMandatoryAnchors(token,doc.id,(prepared as any).anchors);
                 await storeForemanMandatorySignedPdf({
@@ -1131,10 +1167,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             }
           }
           setOperationFeedback('3/3 · Enviando el documento al supervisor…');
-          await finalizeForemanMandatoryDocument(token,doc.id);
+          const finalized:any=await finalizeForemanMandatoryDocument(token,doc.id);
           await refresh();
           setMandatoryWorkerChoice(current=>({...current,[doc.id]:''}));
-          setOperationFeedback('Documento firmado enviado correctamente al supervisor.');
+          setOperationFeedback(finalized?.partial
+            ? `Documento enviado al supervisor con ${finalized.signed||signedCount}/${finalized.total||requiredSignatureTotal} firmas.`
+            : 'Documento firmado enviado correctamente al supervisor.');
           setTab('completed');
         }catch(e:any){
           const message=e?.message||'No se pudo enviar el documento.';
@@ -1142,11 +1180,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           setOperationFeedback(message);
           await appAlert(message,{title:'No se pudo enviar',kind:'error'});
         }finally{setSaving(false);}
-      }} className="mt-4 min-h-[58px] w-full rounded-2xl bg-emerald-600 px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500">
-        {canFinalize?'Enviar documento firmado al supervisor':pendingRequired>0?`Faltan ${pendingRequired} firma(s)`:'Debe firmar al menos un trabajador'}
+      }} className={`mt-4 min-h-[58px] w-full rounded-2xl px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500 ${partialSubmission?'bg-amber-600':'bg-emerald-600'}`}>
+        {partialSubmission?`Enviar incompleto al supervisor · faltan ${pendingRequired}`:'Enviar documento firmado al supervisor'}
       </button>}
 
-      {closed&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-800">Documento finalizado y enviado al supervisor</div>}
+      {closed&&<div className={`mt-4 rounded-xl border px-3 py-2 text-center text-xs font-black ${doc.details?.submissionMode==='partial'?'border-amber-300 bg-amber-50 text-amber-900':'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{doc.details?.submissionMode==='partial'?`Documento enviado incompleto al supervisor · ${doc.details?.submittedSignedCount||0}/${doc.details?.submittedRequiredCount||requiredSignatureTotal} firmas`:'Documento finalizado y enviado al supervisor'}</div>}
       </div>}
     </div>;
   };
