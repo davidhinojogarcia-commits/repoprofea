@@ -5,6 +5,7 @@ import type { Person } from '../../types';
 import { getAptitudMedicaInfo } from '../../types';
 import { applyInstitutionalPdfStandard, getBase64Image, renderInstitutionalReportHeader } from './exportUtils';
 import { formatIban, formatSpanishSocialSecurityNumber } from './personalDataValidators';
+import { sortRelationWorkers } from './relationExportOrdering';
 
 const BLUE: [number, number, number] = [0, 84, 142];
 const LIGHT_BLUE: [number, number, number] = [240, 247, 255];
@@ -29,6 +30,7 @@ const aptitudLabel = (p: Person) => {
 const filename = (ext: 'pdf' | 'xlsx') => `PROFEA_RELACION_ADMINISTRATIVA_${MONTH}.${ext}`;
 
 export const prepareAdministrativeRelationPDF = (people: Person[]) => {
+  people = sortRelationWorkers(people);
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
   const supervisor = people.find(person => person.supervisorResponsable?.trim())?.supervisorResponsable?.trim() || '';
   renderInstitutionalReportHeader(
@@ -102,6 +104,7 @@ export const prepareAdministrativeRelationPDF = (people: Person[]) => {
 };
 
 export const prepareAdministrativeRelationExcel = async (people: Person[]) => {
+  people = sortRelationWorkers(people);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Diputación Provincial de Cádiz';
   workbook.company = 'Diputación Provincial de Cádiz';
