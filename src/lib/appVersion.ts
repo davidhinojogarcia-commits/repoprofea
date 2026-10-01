@@ -7,6 +7,9 @@ export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Revisión global de capas: modales de la app y del portal de encargados se mantienen siempre por delante del contenido.',
+  'Confirmaciones del escáner y checklist pasan al sistema global de diálogos de la aplicación.',
+  'El código QR de acceso del encargado queda centrado en la pantalla del móvil y mantiene un tamaño cómodo para escanear.',
   'Se refuerza globalmente la jerarquía de ventanas: cada modal nuevo queda siempre por encima del anterior, tanto en la app como en el portal de encargados.',
   'Todos los overlays a pantalla completa quedan auditados para salir del stacking context local mediante la capa global de modales.',
   'Los diálogos de la aplicación mantienen una capa superior reservada y el fondo queda bloqueado mientras haya una ventana abierta.',
