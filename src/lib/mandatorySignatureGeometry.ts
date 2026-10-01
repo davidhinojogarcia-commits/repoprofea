@@ -118,14 +118,21 @@ export const validateMandatorySignaturePlacement=(anchors:SignatureAnchorGeometr
       }
     }
 
-    const ownCenter={x:ownName.x+ownName.width/2,y:Number(anchor.nameCenterY??(ownName.y+ownName.height/2))};
-    const signatureCenter={x:sig.x+sig.width/2,y:sig.y+sig.height/2};
-    const ownDistance=Math.hypot(signatureCenter.x-ownCenter.x,signatureCenter.y-ownCenter.y);
+    const distanceBetweenBoxes=(a:{x:number;y:number;width:number;height:number},b:{x:number;y:number;width:number;height:number})=>{
+      const dx=Math.max(b.x-(a.x+a.width),a.x-(b.x+b.width),0);
+      const dy=Math.max(b.y-(a.y+a.height),a.y-(b.y+b.height),0);
+      return Math.hypot(dx,dy);
+    };
+    const ownDistance=distanceBetweenBoxes(sig,ownName);
     for(const other of resolved){
       if(other.workerId===anchor.workerId||other.page!==anchor.page||other.nameX==null||other.nameY==null)continue;
-      const ox=Number(other.nameX)+(Number(other.nameWidth||1)/2);
-      const oy=Number(other.nameCenterY??(Number(other.nameY)+(Number(other.nameHeight||other.rowHeight||10)/2)));
-      const otherDistance=Math.hypot(signatureCenter.x-ox,signatureCenter.y-oy);
+      const otherName={
+        x:Number(other.nameX),
+        y:Number(other.nameY),
+        width:Number(other.nameWidth||Math.max(1,Number(other.nameRightX||other.nameX)-Number(other.nameX))),
+        height:Number(other.nameHeight||other.rowHeight||10),
+      };
+      const otherDistance=distanceBetweenBoxes(sig,otherName);
       if(otherDistance+1<ownDistance){
         issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'CLOSER_TO_OTHER_WORKER',message:`La firma quedaría visualmente más cerca de ${other.workerName} que de su propio nombre.`});
         break;
