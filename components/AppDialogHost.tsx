@@ -79,7 +79,7 @@ export function AppDialogHost() {
     }
     if (event.key === 'Tab') {
       const selector = 'button:not([disabled]),[href],input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
-      const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(selector) || []);
+      const nodes = Array.from((dialogRef.current?.querySelectorAll(selector) ?? []) as NodeListOf<HTMLElement>);
       if (!nodes.length) {
         event.preventDefault();
         return;
