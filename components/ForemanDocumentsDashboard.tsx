@@ -185,6 +185,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const result=await processManualMandatoryFiles(files,{
         onProgress: message=>setMailMessage(message),
         obraHint:selectedDocsWork,
+        obraCandidates:workDocumentGroups.map(([work])=>work).filter(work=>work!=='Sin obra'),
       });
       if(result.importedDocuments>0){
         const missing=result.missingDirectoryWorkers||[];

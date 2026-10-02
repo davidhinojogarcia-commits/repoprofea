@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.18.7",
+  "version": "1.18.8",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

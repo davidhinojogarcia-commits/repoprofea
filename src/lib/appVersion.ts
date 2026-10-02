@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.18.7';
+export const APP_VERSION = '1.18.8';
 export const APP_RELEASE_DATE = '02/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Inicio y Control de presencia: cada PDF importado se clasifica por la obra escrita en el propio documento.',
+  'La obra seleccionada en pantalla ya no fuerza la clasificación de varios archivos; si no se identifica con seguridad, el documento no se importa en una obra incorrecta.',
   'Documentación de encargados: la descarga de Inicio/Control comprueba que el archivo recuperado sea realmente el PDF firmado.',
   'Si falta el PDF firmado persistido, se reconstruye con las firmas actuales guardadas; nunca se descarga el original etiquetado como firmado.',
   'Control de presencia: los nombres y apellidos se leen directamente del PDF importado, sin depender del Directorio de trabajadores.',

@@ -86,6 +86,12 @@ jobs:
 
       - name: Worker relation ordering regression
         run: npm run test:relation-ordering
+      - name: Mandatory worksite classification regression
+        run: npx tsx scripts/testMandatoryWorksiteClassification.ts
+
+      - name: Foreman attendance period filter regression
+        run: npx tsx scripts/testForemanAttendancePeriodFilter.ts
+
       - name: Mandatory worker detection regression
         run: npm run test:mandatory-worker-detection
       - name: Global modal layering regression
