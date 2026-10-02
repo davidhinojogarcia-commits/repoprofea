@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.18.6';
+export const APP_VERSION = '1.18.7';
 export const APP_RELEASE_DATE = '02/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Documentación de encargados: la descarga de Inicio/Control comprueba que el archivo recuperado sea realmente el PDF firmado.',
+  'Si falta el PDF firmado persistido, se reconstruye con las firmas actuales guardadas; nunca se descarga el original etiquetado como firmado.',
   'Control de presencia: los nombres y apellidos se leen directamente del PDF importado, sin depender del Directorio de trabajadores.',
   'Se refuerza la lectura de formatos APELLIDOS, NOMBRE con comas, espacios amplios, numeración de fila y saltos de línea.',
   'Revisión global de capas: modales de la app y del portal de encargados se mantienen siempre por delante del contenido.',
