@@ -367,6 +367,17 @@ export async function getSupervisorMandatoryPdf(
   }) as Promise<{ base64:string; filename:string; sha256:string; variant:'original'|'signed'; fidelity?:any }>;
 }
 
+
+export async function getSupervisorMandatorySignatures(
+  documentId: string,
+): Promise<Record<string, { signature?: string; signedAt?: string } | string>> {
+  const rows = await supabase.query('foreman_mandatory_documents', {
+    query: `id=eq.${encodeURIComponent(documentId)}&select=signatures&limit=1`,
+  });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row?.signatures && typeof row.signatures === 'object' ? row.signatures : {};
+}
+
 export async function updateSupervisorMandatoryAnchors(
   documentId: string,
   workerAnchors: any[],
