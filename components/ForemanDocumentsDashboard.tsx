@@ -32,7 +32,9 @@ const mandatoryDocumentLabel = (type:string) => ({
 } as Record<string,string>)[type] || type;
 
 const importedWorkersMissingFromDirectory = (item:DbMandatory): any[] => {
-  if(!['inicio','control_presencia'].includes(String(item.document_type||'')))return [];
+  // Control de presencia es independiente del Directorio: sus personas proceden
+  // exclusivamente del PDF importado y no deben marcarse como "no localizadas".
+  if(String(item.document_type||'')!=='inicio')return [];
   const imported=Array.isArray(item.details?.importedWorkers)?item.details?.importedWorkers:[];
   return imported.filter((worker:any)=>Number(worker?.id)<0);
 };
@@ -158,7 +160,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           `${result.importedDocuments} documento(s) recibido(s) de la administrativa y preparados para firma.`+
           (missing.length
             ? ` Atención: ${missing.length} trabajador(es) del PDF no aparecen en el Directorio: ${missing.join(", ")}.`
-            : ' Todos los trabajadores reconocidos están localizados en el Directorio.')
+            : ' Los nombres reconocidos se han tomado del documento importado.')
         );
         await refresh(true);
       } else if (!silent) {
@@ -190,7 +192,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           `${result.importedDocuments} documento(s) importado(s) y preparados para que el encargado recoja las firmas.${result.skippedFiles ? ` ${result.skippedFiles} archivo(s) no se pudieron importar.` : ''}`+
           (missing.length
             ? ` Atención: ${missing.length} trabajador(es) del PDF no aparecen en el Directorio: ${missing.join(", ")}.`
-            : ' Todos los trabajadores reconocidos están localizados en el Directorio.')
+            : ' Los nombres reconocidos se han tomado del documento importado.')
         );
         await refresh(true);
       }else{
