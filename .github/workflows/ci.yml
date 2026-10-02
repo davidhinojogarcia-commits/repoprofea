@@ -81,6 +81,9 @@ jobs:
           grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
+      - name: Supervisor signed PDF download regression
+        run: npx tsx scripts/testSupervisorSignedPdfDownload.ts
+
       - name: Worker relation ordering regression
         run: npm run test:relation-ordering
       - name: Mandatory worker detection regression

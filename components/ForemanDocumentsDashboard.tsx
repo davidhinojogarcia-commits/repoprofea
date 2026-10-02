@@ -8,7 +8,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, updateSupervisorMandatoryAnchors } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, updateSupervisorMandatoryAnchors } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
@@ -404,7 +404,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const buildSupervisorSignedPdf=async(item:DbMandatory)=>{
     try{
       const stored=await getSupervisorMandatoryPdf(item.id,'signed');
-      if(stored?.base64){
+      // La RPC devuelve el original si signed_pdf no existe. No debemos aceptar
+      // ese fallback como si fuese un documento firmado.
+      if(stored?.base64&&stored.variant==='signed'){
         return {
           bytes:undefined as Uint8Array|undefined,
           base64:stored.base64,
@@ -416,12 +418,23 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       // Si no existe un PDF firmado persistido, se reconstruye sobre el original.
     }
 
-    const original=await getSupervisorMandatoryPdf(item.id,'original');
+    const [original,freshSignatures]=await Promise.all([
+      getSupervisorMandatoryPdf(item.id,'original'),
+      getSupervisorMandatorySignatures(item.id),
+    ]);
+    const signatures=freshSignatures||{};
+    const validSignatureCount=Object.values(signatures).filter((raw:any)=>{
+      const value=typeof raw==='string'?raw:raw?.signature;
+      return typeof value==='string'&&value.startsWith('data:image/');
+    }).length;
+    if(validSignatureCount===0){
+      throw new Error('Este documento no contiene ninguna firma guardada. No se puede descargar como PDF firmado.');
+    }
     const anchors=(Array.isArray(item.details?.workerAnchors)?item.details?.workerAnchors:[]) as MandatoryWorkerAnchor[];
     const bytes=await buildSignedMandatoryPdf({
       originalPdfBase64:original.base64,
       anchors,
-      signatures:item.signatures||{},
+      signatures,
     });
     return {
       bytes,
