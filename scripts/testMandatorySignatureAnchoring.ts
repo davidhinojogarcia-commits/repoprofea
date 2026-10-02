@@ -236,3 +236,30 @@ console.log('mandatory signature anchoring extended tests: OK');
 }
 
 console.log('mandatory manual supervisor anchor regression tests: OK');
+
+
+// Control de presencia con columna FIRMA: el nombre puede estar muy a la izquierda,
+// pero la firma se coloca en la columna fija del documento conservando exactamente su fila.
+{
+  const signatureColumnX=455;
+  const centers=[700,675,650];
+  const boxes=centers.map((center,i)=>computeSignatureBoxFromDetectedName({
+    pageWidth:595,
+    pageHeight:842,
+    nameX:55,
+    nameY:center-5,
+    nameRightX:210+(i*8),
+    nameHeight:10,
+    signatureColumnX,
+    upperWorkerCenterY:i===0?null:centers[i-1],
+    lowerWorkerCenterY:i===centers.length-1?null:centers[i+1],
+  }));
+  boxes.forEach((box,i)=>{
+    assert(box);
+    assert(box.x>=signatureColumnX,'La firma debe comenzar dentro de la columna FIRMA.');
+    assert(Math.abs((box.y+box.height/2)-centers[i])<0.001,'La firma debe conservar el centro vertical de su propia fila.');
+  });
+  assert(boxes[0].y>boxes[1].y&&boxes[1].y>boxes[2].y,'Cada firma debe mantener el orden vertical de los trabajadores.');
+}
+
+console.log('mandatory signature column-row anchoring regression tests: OK');
