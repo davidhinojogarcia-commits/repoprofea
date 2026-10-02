@@ -10,7 +10,7 @@ import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getDocuments } from '../services/databaseService';
 import { prepareMandatoryDocumentFromEmail, restoreForemanMandatoryGmailSource } from '../services/foremanPortalService';
 import { analyzeMandatoryOriginalPdf, fileToBase64, resolveMandatoryAnchorsWithOcrRows, sha256Hex } from './mandatoryPdfOverlay';
-import { looksLikePrintedWorkerName } from './mandatoryWorkerDetection';
+import { extractPrintedWorkerNameCandidates } from './mandatoryWorkerDetection';
 
 const norm = (value: unknown) =>
   String(value || '')
@@ -170,31 +170,42 @@ const extractWorkersPrintedInPdf = (
   type: 'inicio'|'control_presencia',
 ): Person[] => {
   const canonicalByName = new Map<string,Person>();
-  for (const worker of workers) {
-    const key=cleanWorkerName(worker.apellidosNombre || '');
-    if(key && !canonicalByName.has(key))canonicalByName.set(key,worker);
+  if(type==='inicio'){
+    for (const worker of workers) {
+      const key=cleanWorkerName(worker.apellidosNombre || '');
+      if(key && !canonicalByName.has(key))canonicalByName.set(key,worker);
+    }
   }
 
   const seen=new Set<string>();
   const result:Person[]=[];
-  const rawLines=String(text||'').split(/\r?\n/);
   const normalizedObra=norm(obra);
+  const printedNames=extractPrintedWorkerNameCandidates(text);
 
-  for (const rawLine of rawLines) {
-    const line=rawLine.replace(/[|•·]+/g,' ').replace(/\s+/g,' ').trim();
-    if(!looksLikePrintedWorkerName(line))continue;
-
-    const key=cleanWorkerName(line);
+  for (const printedName of printedNames) {
+    const key=cleanWorkerName(printedName);
     if(!key||seen.has(key))continue;
     const keyTokens=key.split(' ').filter(Boolean);
     if(normalizedObra && keyTokens.length>=2 && (normalizedObra.includes(key) || key.includes(normalizedObra)))continue;
     seen.add(key);
 
-    // En Inicio el PDF manda: no se exige DNI ni que exista en Directorio.
-    // Si hay una coincidencia inequívoca, reutilizamos su identidad interna; si no,
-    // conservamos literalmente el nombre impreso y creamos identidad solo para este PDF.
-    const canonical=canonicalByName.get(key) || bestDirectoryNameMatch(line,workers);
-    const printedName=line;
+    // Control de presencia es independiente del Directorio: el PDF es la única
+    // fuente de personas. Se conserva exactamente el nombre leído y se genera
+    // una identidad local estable solo para este documento.
+    if(type==='control_presencia'){
+      result.push({
+        id:sourceWorkerId(key),
+        apellidosNombre:printedName,
+        dni:'',
+        categoria:category || '',
+        obra:obra || '',
+      } as Person);
+      continue;
+    }
+
+    // En Inicio también manda el PDF, pero se conserva la compatibilidad
+    // existente con una coincidencia inequívoca del Directorio.
+    const canonical=canonicalByName.get(key) || bestDirectoryNameMatch(printedName,workers);
     result.push(canonical
       ? ({...canonical,apellidosNombre:printedName,categoria:category||canonical.categoria||'',obra:obra||canonical.obra||''} as Person)
       : ({
@@ -206,11 +217,8 @@ const extractWorkersPrintedInPdf = (
         } as Person));
   }
 
-  // Para Inicio nunca retrocedemos a una búsqueda por DNI: si no se leyó un nombre,
-  // se fuerza OCR en la fase anterior y se informa para corrección manual.
   return result;
 };
-
 
 const matchWorkers = (workers: Person[], text: string) => {
   const lines = String(text || '')
@@ -295,17 +303,30 @@ const matchMandatoryWorkersWithOcrRetry = async (
 ) => {
   let text = firstText;
   let category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
-  let matched = matchWorkers(workers, text);
 
+  // Control de presencia no depende del Directorio. Solo comprobamos si el
+  // propio PDF contiene nombres legibles; si no, reforzamos la lectura con OCR.
+  if(type==='control_presencia'){
+    let printedNames=extractPrintedWorkerNameCandidates(text);
+    if(!printedNames.length){
+      onProgress?.(`No se localizaron nombres en ${file.name}. Reforzando lectura del documento…`);
+      const reinforced = await extractClientDocumentText(file, onProgress, { forceOcr: true, ocrScale: 2.6 });
+      text = reinforced.text || text;
+      printedNames=extractPrintedWorkerNameCandidates(text);
+    }
+    return { text, category, matched: [] as Person[], printedNames };
+  }
+
+  let matched = matchWorkers(workers, text);
   if (!matched.length) {
     onProgress?.(`No se localizaron trabajadores en ${file.name}. Reforzando lectura…`);
     const reinforced = await extractClientDocumentText(file, onProgress, { forceOcr: true, ocrScale: 2.4 });
     text = reinforced.text || text;
-    category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
+    category = extractCategoryWithFilenameFallback(text, file.name);
     matched = matchWorkers(workers, text);
   }
 
-  return { text, category, matched };
+  return { text, category, matched, printedNames: extractPrintedWorkerNameCandidates(text) };
 };
 
 export type MandatoryEmailIntakeResult = {
@@ -385,10 +406,12 @@ export async function processAdministrativeMandatoryInbox(options?: {
           continue;
         }
         const selected = listedWorkers;
-        selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
-          const name=String(worker.apellidosNombre||'').trim();
-          if(name)missingDirectoryWorkers.add(name);
-        });
+        if(type==='inicio'){
+          selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
+            const name=String(worker.apellidosNombre||'').trim();
+            if(name)missingDirectoryWorkers.add(name);
+          });
+        }
         const workDate = extractDate(extracted.text, message.internalDate);
         let analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
         if (analysis.unresolvedWorkerIds.length) {
@@ -485,10 +508,12 @@ export async function processManualMandatoryFiles(
         continue;
       }
       const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra, type);
-      selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
-        const name=String(worker.apellidosNombre||'').trim();
-        if(name)missingDirectoryWorkers.add(name);
-      });
+      if(type==='inicio'){
+        selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
+          const name=String(worker.apellidosNombre||'').trim();
+          if(name)missingDirectoryWorkers.add(name);
+        });
+      }
       if(!selected.length){
         skippedFiles += 1;
         warnings.push(`${file.name}: no se han podido leer nombres de personas en el PDF.`);

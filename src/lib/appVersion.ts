@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.18.5';
-export const APP_RELEASE_DATE = '01/10/2026';
+export const APP_VERSION = '1.18.6';
+export const APP_RELEASE_DATE = '02/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Control de presencia: los nombres y apellidos se leen directamente del PDF importado, sin depender del Directorio de trabajadores.',
+  'Se refuerza la lectura de formatos APELLIDOS, NOMBRE con comas, espacios amplios, numeración de fila y saltos de línea.',
   'Revisión global de capas: modales de la app y del portal de encargados se mantienen siempre por delante del contenido.',
   'Confirmaciones del escáner y checklist pasan al sistema global de diálogos de la aplicación.',
   'El código QR de acceso del encargado queda centrado en la pantalla del móvil y mantiene un tamaño cómodo para escanear.',

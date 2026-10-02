@@ -381,6 +381,7 @@ export async function analyzeMandatoryOriginalPdf(
       nameRightX:Number(anchor.nameRightX),
       nameHeight:Number(anchor.nameHeight),
       nextTextX,
+      signatureColumnX:pageInfo.signatureHeaderX,
       upperWorkerCenterY:upper,
       lowerWorkerCenterY:lower,
     });
@@ -390,7 +391,9 @@ export async function analyzeMandatoryOriginalPdf(
       anchor.signatureY=null;
       anchor.signatureWidth=null;
       anchor.signatureHeight=null;
-      anchor.reason='No existe espacio seguro inmediatamente a la derecha del nombre sin invadir texto u otra fila.';
+      anchor.reason=pageInfo.signatureHeaderX!=null
+        ? 'No existe espacio seguro dentro de la columna FIRMA de esta fila.'
+        : 'No existe espacio seguro inmediatamente a la derecha del nombre sin invadir texto u otra fila.';
       continue;
     }
     anchor.signatureX=box.x;

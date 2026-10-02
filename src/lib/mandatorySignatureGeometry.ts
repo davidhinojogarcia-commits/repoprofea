@@ -180,16 +180,22 @@ export const computeSignatureBoxFromDetectedName=(input:{
   nameRightX:number;
   nameHeight:number;
   nextTextX?:number|null;
+  signatureColumnX?:number|null;
   upperWorkerCenterY?:number|null;
   lowerWorkerCenterY?:number|null;
 })=>{
   const rightMargin=Math.max(14,input.pageWidth*0.02);
   const gap=Math.max(6,Math.min(11,input.nameHeight*0.65));
+  const signatureColumnX=input.signatureColumnX!=null?Number(input.signatureColumnX):null;
   const maxRight=Math.min(
     input.pageWidth-rightMargin,
-    input.nextTextX!=null?Number(input.nextTextX)-4:input.pageWidth-rightMargin,
+    signatureColumnX==null && input.nextTextX!=null?Number(input.nextTextX)-4:input.pageWidth-rightMargin,
   );
-  const startX=input.nameRightX+gap;
+  // Cuando el documento tiene una columna FIRMA explícita, usamos esa columna y
+  // únicamente heredamos la coordenada vertical de la fila del trabajador.
+  const startX=signatureColumnX!=null
+    ? Math.max(input.nameRightX+gap,signatureColumnX)
+    : input.nameRightX+gap;
   const available=maxRight-startX;
   const desiredWidth=Math.max(58,Math.min(92,input.pageWidth*0.145));
   const minWidth=28;
