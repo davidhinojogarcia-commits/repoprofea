@@ -11,6 +11,7 @@ import { getDocuments } from '../services/databaseService';
 import { prepareMandatoryDocumentFromEmail, restoreForemanMandatoryGmailSource } from '../services/foremanPortalService';
 import { analyzeMandatoryOriginalPdf, fileToBase64, resolveMandatoryAnchorsWithOcrRows, sha256Hex } from './mandatoryPdfOverlay';
 import { extractPrintedWorkerNameCandidates } from './mandatoryWorkerDetection';
+import { resolveMandatoryWorksite } from './mandatoryWorksiteDetection';
 
 const norm = (value: unknown) =>
   String(value || '')
@@ -47,11 +48,8 @@ const documentType = (filename: string, text: string): 'inicio' | 'control_prese
   return null;
 };
 
-const extractWorksiteFromText = (text: string) => {
-  const normalized = norm(text);
-  const match = normalized.match(/\b(\d{5})\s+(EE|GR)\b/) || normalized.match(/\b(\d{5})\s*-?\s*(EE|GR)\b/);
-  return match ? `${match[1]} ${match[2]}` : '';
-};
+const extractWorksiteFromText = (text: string, candidates: string[] = [], fallback = '') =>
+  resolveMandatoryWorksite({ text, candidates, fallback }).obra;
 
 const extractCategory = (text: string) => {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -341,6 +339,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
   existingSourceKeys?: Set<string>;
   onProgress?: (message: string) => void;
   restoreDeleted?: boolean;
+  obraCandidates?: string[];
 }): Promise<MandatoryEmailIntakeResult> {
   const settings = await loadAppBusinessSettings();
   const administrativeEmail = String(settings.administrative?.email || '').trim().toLowerCase();
@@ -392,7 +391,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
           options?.onProgress,
         );
         const category = recognition.category;
-        const documentObra = extractWorksiteFromText(recognition.text);
+        const documentObra = extractWorksiteFromText(recognition.text, options?.obraCandidates || []);
         const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra, type);
         if (!listedWorkers.length) {
           warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
@@ -466,7 +465,7 @@ export type MandatoryManualImportResult = {
 
 export async function processManualMandatoryFiles(
   files: File[],
-  options?: { onProgress?: (message: string) => void; obraHint?: string },
+  options?: { onProgress?: (message: string) => void; obraHint?: string; obraCandidates?: string[] },
 ): Promise<MandatoryManualImportResult> {
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
   const warnings: string[] = [];
@@ -500,11 +499,15 @@ export async function processManualMandatoryFiles(
       );
       const category = recognition.category;
       const obraHint = String(options?.obraHint || '').trim();
-      const documentObra = extractWorksiteFromText(recognition.text);
-      const obra = obraHint || documentObra;
+      const documentObra = extractWorksiteFromText(
+        recognition.text,
+        options?.obraCandidates || [],
+        files.length === 1 ? obraHint : '',
+      );
+      const obra = documentObra;
       if(!obra){
         skippedFiles += 1;
-        warnings.push(`${file.name}: no se ha podido identificar la obra escrita en el PDF. Selecciona primero la obra y vuelve a importar.`);
+        warnings.push(`${file.name}: no se ha podido identificar con seguridad la obra escrita en el PDF. No se ha importado para evitar clasificarlo en una obra incorrecta.`);
         continue;
       }
       const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra, type);
