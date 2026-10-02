@@ -39,7 +39,10 @@ const isLikelyPrintedWorkerName = (line: string) => {
   const upper=(line.match(/[A-ZÁÉÍÓÚÜÑÇ]/g)||[]).length;
   const uppercaseRatio=upper/letters.length;
 
-  return line.includes(',') || uppercaseRatio>=0.72;
+  const hasComma=line.includes(',');
+  const hasCompleteCommaName=/,\s*\S/.test(line);
+  if(hasComma&&!hasCompleteCommaName)return false;
+  return hasCompleteCommaName || uppercaseRatio>=0.72;
 };
 
 export const looksLikePrintedWorkerName = (rawLine: string) => {
