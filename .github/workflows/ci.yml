@@ -117,6 +117,14 @@ jobs:
         run: npm run test:mandatory-traceability-sql-v2
       - name: Mandatory traceability V2 E2E regression
         run: npm run test:mandatory-traceability-e2e-v2
+      - name: Mandatory traceability V2 regression
+        run: npm run test:mandatory-traceability-v2
+      - name: Mandatory traceability V2 integration contract
+        run: npm run test:mandatory-traceability-integration-v2
+      - name: Mandatory traceability V2 SQL invariants
+        run: npm run test:mandatory-traceability-sql-v2
+      - name: Mandatory traceability V2 correction/versioning E2E
+        run: npm run test:mandatory-traceability-e2e-v2
       - name: Mandatory worker detection regression
         run: npm run test:mandatory-worker-detection
       - name: Global modal layering regression
