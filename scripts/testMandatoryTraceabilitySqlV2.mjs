@@ -92,7 +92,7 @@ const serviceRpcs=new Set([...service.matchAll(/supabase\.rpc\('([^']+)'/g)].map
 const definedRpcs=new Set([...allMandatorySql.matchAll(/create or replace function public\.([a-z0-9_]+)\s*\(/gi)].map(m=>m[1]));
 for(const rpc of serviceRpcs){
   assert.ok(definedRpcs.has(rpc),`service RPC missing from migration: ${rpc}`);
-  assert.match(allMandatorySql,new RegExp(`grant execute on function public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\  assert.match(sql,new RegExp(`grant execute on function public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')}\\(`,'i'),`RPC missing execute grant: ${rpc}`);')}\\(`,'i'),`RPC missing execute grant: ${rpc}`);
+  assert.match(allMandatorySql,new RegExp(`grant execute on function public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')}\\(`,'i'),`RPC missing execute grant: ${rpc}`);
 }
 
 assert.ok(!/mandatory_document_events_v2\([^)]*\bpayload\b/i.test(sql),'events V2 insert uses nonexistent payload column');
