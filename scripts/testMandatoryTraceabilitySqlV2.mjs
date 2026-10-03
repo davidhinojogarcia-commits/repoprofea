@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const sql = fs.readFileSync(new URL('../supabase/migrations/20261003090000_mandatory_traceability_v2.sql', import.meta.url), 'utf8');
+const additiveMigrationUrl = new URL('../supabase/migrations/20261003213000_manual_missing_mandatory_worker.sql', import.meta.url);
+const additiveSql = fs.existsSync(additiveMigrationUrl) ? fs.readFileSync(additiveMigrationUrl, 'utf8') : '';
+const allMandatorySql = sql + '\n' + additiveSql;
 const must = (needle, msg=needle) => assert.ok(sql.includes(needle), msg);
 const functionBody = (name) => {
   const marker = `create or replace function public.${name}(`;
@@ -86,10 +89,10 @@ for(const fn of referenced){
 
 const service=fs.readFileSync(new URL('../src/services/mandatoryTraceabilityServiceV2.ts',import.meta.url),'utf8');
 const serviceRpcs=new Set([...service.matchAll(/supabase\.rpc\('([^']+)'/g)].map(m=>m[1]));
-const definedRpcs=new Set([...sql.matchAll(/create or replace function public\.([a-z0-9_]+)\s*\(/gi)].map(m=>m[1]));
+const definedRpcs=new Set([...allMandatorySql.matchAll(/create or replace function public\.([a-z0-9_]+)\s*\(/gi)].map(m=>m[1]));
 for(const rpc of serviceRpcs){
   assert.ok(definedRpcs.has(rpc),`service RPC missing from migration: ${rpc}`);
-  assert.match(sql,new RegExp(`grant execute on function public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')}\\(`,'i'),`RPC missing execute grant: ${rpc}`);
+  assert.match(allMandatorySql,new RegExp(`grant execute on function public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\  assert.match(sql,new RegExp(`grant execute on function public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')}\\(`,'i'),`RPC missing execute grant: ${rpc}`);')}\\(`,'i'),`RPC missing execute grant: ${rpc}`);
 }
 
 assert.ok(!/mandatory_document_events_v2\([^)]*\bpayload\b/i.test(sql),'events V2 insert uses nonexistent payload column');
