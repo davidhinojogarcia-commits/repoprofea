@@ -19,7 +19,8 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "validation/gestionprofea-trace-v1-19-0-20261003": false
+      "validation/gestionprofea-trace-v1-19-0-20261003": false,
+      "local/fix-control-presence-missing-worker-20261003": false
     }
   }
 }
