@@ -24,7 +24,11 @@ jobs:
           from pathlib import Path
           import base64, hashlib
           parts=sorted(Path('.validation').glob('pkg.part*.txt'))
+          for p in parts:
+              b=p.read_bytes()
+              print(f'{p.name} bytes={len(b)} sha256={hashlib.sha256(b).hexdigest()}')
           encoded=''.join(p.read_text(encoding='utf-8') for p in parts)
+          print(f'encoded_sha256={hashlib.sha256(encoded.encode()).hexdigest()}')
           raw=base64.b64decode(encoded, validate=True)
           out=Path('/tmp/gestionprofea-trazabilidad-v2.zip')
           out.write_bytes(raw)
