@@ -11,23 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Apply traceability V2 validation package
-        run: |
-          set -euo pipefail
-          cat .validation/pkg.part*.txt | base64 -d > /tmp/trace-v2.zip
-          echo "706a9e689402d9a5dbb3c8bd53f9364948d0a04680e85690d07ab2d62da74fc9  /tmp/trace-v2.zip" | sha256sum -c -
-          rm -rf /tmp/trace-v2
-          mkdir -p /tmp/trace-v2
-          unzip -q /tmp/trace-v2.zip -d /tmp/trace-v2
-          PKG=/tmp/trace-v2/gestionprofea-trazabilidad-v2-1.19.0
-          test -s "$PKG/apply-v2.mjs"
-          node "$PKG/scripts/verifyMandatoryTraceabilityPackageV2.mjs"
-          git show a5b3c6be5f397494f5a3100cf508740658dd64c2:.github/workflows/ci.yml > .github/workflows/ci.yml
-          node "$PKG/apply-v2.mjs" "$GITHUB_WORKSPACE"
-          grep -q '"version": "1.19.0"' package.json
-          test -s supabase/migrations/20261003090000_mandatory_traceability_v2.sql
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -109,14 +92,6 @@ jobs:
       - name: Foreman attendance period filter regression
         run: npx tsx scripts/testForemanAttendancePeriodFilter.ts
 
-      - name: Mandatory traceability V2 model regression
-        run: npm run test:mandatory-traceability-v2
-      - name: Mandatory traceability V2 integration regression
-        run: npm run test:mandatory-traceability-integration-v2
-      - name: Mandatory traceability V2 SQL regression
-        run: npm run test:mandatory-traceability-sql-v2
-      - name: Mandatory traceability V2 E2E regression
-        run: npm run test:mandatory-traceability-e2e-v2
       - name: Mandatory traceability V2 regression
         run: npm run test:mandatory-traceability-v2
       - name: Mandatory traceability V2 integration contract
