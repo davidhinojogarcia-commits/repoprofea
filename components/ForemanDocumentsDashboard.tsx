@@ -913,6 +913,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       documentId={positioningMandatory.id}
       title={`${mandatoryDocumentLabel(positioningMandatory.document_type)} · Ajustar firmas`}
       obra={positioningMandatory.obra}
+      documentType={positioningMandatory.document_type}
       anchors={(Array.isArray(positioningMandatory.details?.workerAnchors)?positioningMandatory.details?.workerAnchors:[]) as MandatoryWorkerAnchor[]}
       signedWorkerIds={Object.keys(positioningMandatory.signatures||{}).map(Number).filter(Number.isFinite)}
       onCancel={()=>setPositioningMandatory(null)}
