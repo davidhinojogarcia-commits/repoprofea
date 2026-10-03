@@ -10,6 +10,7 @@ type Props = {
   documentId: string;
   title: string;
   obra: string;
+  documentType?: string;
   anchors: MandatoryWorkerAnchor[];
   signedWorkerIds?: number[];
   onCancel: () => void;
@@ -17,7 +18,7 @@ type Props = {
   onRemoveWorker?: (workerId: number) => Promise<void> | void;
 };
 
-export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, anchors, signedWorkerIds = [], onCancel, onSave, onRemoveWorker }) => {
+export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, documentType, anchors, signedWorkerIds = [], onCancel, onSave, onRemoveWorker }) => {
   const [draft,setDraft]=useState<MandatoryWorkerAnchor[]>(()=>anchors.map(anchor=>({...anchor})));
   const [index,setIndex]=useState(0);
   const [pdf,setPdf]=useState<any>(null);
@@ -26,6 +27,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [removing,setRemoving]=useState(false);
   const [error,setError]=useState('');
   const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
+  const [manualName,setManualName]=useState('');
   const [zoom,setZoom]=useState(1);
   const [fitWidth,setFitWidth]=useState(true);
   const canvasRef=useRef<HTMLCanvasElement>(null);
@@ -55,6 +57,10 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 
   useEffect(()=>{
     let cancelled=false;
+    if(documentType==='control_presencia'){
+      setAvailableWorkers([]);
+      return()=>{cancelled=true;};
+    }
     (async()=>{
       try{
         const rows=await supabase.query('trabajadores',{
@@ -66,7 +72,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       }
     })();
     return()=>{cancelled=true;};
-  },[obra]);
+  },[obra,documentType]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -166,17 +172,25 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   const addManualWorker=()=>{
-    const used=new Set(draft.map(anchor=>Number(anchor.workerId)));
-    const worker=availableWorkers.find(row=>!used.has(Number(row.id)));
-    if(!worker){
-      setError('No hay más trabajadores disponibles en esta obra para añadir.');
+    const name=manualName.replace(/\s+/g,' ').trim();
+    if(name.length<3){
+      setError('Escribe el nombre y apellidos tal como aparecen en el PDF.');
       return;
     }
+    const normalized=name.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const duplicate=draft.some(anchor=>String(anchor.workerName||'').trim().toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'')===normalized);
+    if(duplicate){
+      setError('Ese trabajador ya figura en este documento.');
+      return;
+    }
+    const used=new Set(draft.map(anchor=>Number(anchor.workerId)));
+    let temporaryId=-(Date.now()+draft.length+1);
+    while(used.has(temporaryId))temporaryId-=1;
     const next:MandatoryWorkerAnchor={
-      workerId:Number(worker.id),
-      workerName:String(worker.apellidos_nombre||''),
-      dni:String(worker.dni||''),
-      page:1,
+      workerId:temporaryId,
+      workerName:name,
+      dni:'',
+      page:currentPage,
       order:draft.length,
       nameX:null,
       nameY:null,
@@ -187,10 +201,11 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       signatureHeight:32,
       confidence:0,
       resolved:false,
-      reason:'Trabajador añadido manualmente: selecciona su página y toca la zona de firma.',
+      reason:'Trabajador recuperado manualmente del PDF: toca su zona de firma.',
     };
     setDraft(list=>[...list,next]);
     setIndex(draft.length);
+    setManualName('');
     setError('');
   };
 
@@ -261,7 +276,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700':'text-amber-700'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
           </div>
 
-          <label className="mt-4 block text-sm font-black">Trabajador asociado a esta línea
+          {documentType!=='control_presencia'&&<label className="mt-4 block text-sm font-black">Trabajador asociado a esta línea
             <select
               value={current&&current.workerId>0?String(current.workerId):''}
               onChange={event=>assignCurrentWorker(Number(event.target.value))}
@@ -271,7 +286,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
               <option value="">Seleccionar trabajador…</option>
               {availableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
             </select>
-          </label>
+          </label>}
           {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
 
           <label className="mt-4 block text-sm font-black">Página
@@ -286,7 +301,13 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <button type="button" disabled={index<=0} onClick={()=>setIndex(i=>Math.max(0,i-1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Anterior</button>
             <button type="button" disabled={index>=draft.length-1} onClick={()=>setIndex(i=>Math.min(draft.length-1,i+1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Siguiente</button>
           </div>
-          <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador no detectado</button>
+          <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
+            <label className="block text-xs font-black uppercase tracking-wide text-[#00548E] dark:text-blue-200">Trabajador omitido por el reconocimiento
+              <input value={manualName} onChange={event=>setManualName(event.target.value)} placeholder="Nombre y apellidos exactamente como aparecen en el PDF" className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
+            </label>
+            <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador del PDF</button>
+            <div className="mt-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">Se añadirá solo a este documento. Después toca en el PDF, a la derecha de su nombre, para fijar la firma.</div>
+          </div>
           <button
             type="button"
             disabled={!current||!onRemoveWorker||removing}
