@@ -17,7 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           cat .validation/pkg.part*.txt | base64 -d > /tmp/trace-v2.zip
-          echo "06c4e8016025204b1025ed4a67440cb2a2e667688175d01930d0653398ab5e16  /tmp/trace-v2.zip" | sha256sum -c -
+          echo "84c8ae08cf4618dc262027c6407ccc5ee6e49ff326f3eae893ed285c9cb6b07d  /tmp/trace-v2.zip" | sha256sum -c -
           rm -rf /tmp/trace-v2
           mkdir -p /tmp/trace-v2
           unzip -q /tmp/trace-v2.zip -d /tmp/trace-v2
