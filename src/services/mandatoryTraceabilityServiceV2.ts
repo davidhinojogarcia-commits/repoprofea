@@ -64,6 +64,24 @@ export async function updateMandatoryDocumentWorkerGeometryV2(input: {
   });
 }
 
+export async function addMissingMandatoryDocumentWorkerV2(input: {
+  documentId: string;
+  printedName: string;
+  page: number;
+  rowIndex: number;
+  signatureBox: Record<string,number>;
+  nameBox?: Record<string,number>|null;
+}) {
+  return supabase.rpc('add_missing_mandatory_document_worker_v2', {
+    p_document_id: input.documentId,
+    p_printed_name: input.printedName,
+    p_page: input.page,
+    p_row_index: input.rowIndex,
+    p_signature_box: input.signatureBox,
+    p_name_box: input.nameBox || null,
+  });
+}
+
 export async function assignMandatoryDocumentV2(documentId: string) {
   return supabase.rpc('assign_mandatory_document_v2', { p_document_id: documentId });
 }
