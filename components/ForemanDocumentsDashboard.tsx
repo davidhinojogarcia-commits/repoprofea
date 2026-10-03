@@ -13,11 +13,14 @@ import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDo
 import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
 import ModalPortal from './ModalPortal';
+import MandatoryTraceabilityModal from './MandatoryTraceabilityModal';
+import MandatoryWorksiteReviewModal from './MandatoryWorksiteReviewModal';
+import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, getMandatoryTraceabilityV2, getSupervisorMandatorySignedPdfV2, reviewMandatoryDocumentWorkerV2, returnMandatoryDocumentV2, reviewSubmittedMandatoryDocumentV2, reopenMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
 
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
 type ActivityRow = { id:number; obra:string; entity_type:string; entity_id?:string|null; document_type?:string|null; action:string; actor_type:'supervisor'|'encargado'|'sistema'; actor_name?:string; worker_id?:number|null; metadata?:Record<string,any>; created_at:string };
 type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; snapshot:Record<string,any>; created_at:string };
@@ -73,6 +76,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [bulkDeleteMode,setBulkDeleteMode]=useState(false);
   const [bulkDeleteBusy,setBulkDeleteBusy]=useState(false);
   const [selectedDeleteKeys,setSelectedDeleteKeys]=useState<Set<string>>(new Set());
+  const [traceabilityModal,setTraceabilityModal]=useState<{title:string;data:any}|null>(null);
+  const [worksiteReview,setWorksiteReview]=useState<{item:DbMandatory;works:string[]}|null>(null);
   const refresh=async(silent=false)=>{
     if(!silent)setLoading(true);
     try{
@@ -389,6 +394,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   useEffect(()=>{
     setSelectedDeleteKeys(new Set());
   },[selectedDocsWork,selectedDocsMonth]);
+  const openMandatoryTraceability=async(item:DbMandatory)=>{setMailBusy(true);try{const data=await getMandatoryTraceabilityV2(item.id);setTraceabilityModal({title:mandatoryDocumentLabel(item.document_type)+' · '+item.obra,data});}catch(error:any){setMailMessage(error?.message||'No se pudo cargar la trazabilidad.');}finally{setMailBusy(false);}};
+  const openPendingWorksiteReview=async(item:DbMandatory)=>{setMailBusy(true);try{const rows=await supabase.query('obras',{query:'select=nombre&order=nombre.asc&limit=500'});setWorksiteReview({item,works:(Array.isArray(rows)?rows:[]).map((row:any)=>String(row.nombre||'')).filter(Boolean)});}catch(error:any){setMailMessage(error?.message||'No se pudieron cargar las obras.');}finally{setMailBusy(false);}};
+  const markMandatoryV2Reviewed=async(item:DbMandatory)=>{await reviewSubmittedMandatoryDocumentV2(item.id);await refresh(true);};
+  const returnMandatoryV2ForCorrection=async(item:DbMandatory)=>{const reason=await appPrompt('Indica al encargado qué debe corregir:',{title:'Solicitar corrección',confirmLabel:'Enviar corrección',placeholder:'Describe qué debe corregirse…'});if(!reason?.trim())return;await returnMandatoryDocumentV2(item.id,reason.trim());await refresh(true);};
+  const reopenMandatoryV2ForRepair=async(item:DbMandatory)=>{await reopenMandatoryDocumentV2(item.id);setMailMessage('Documento reabierto para reparación. Revisa personas y posiciones antes de volver a asignarlo.');await refresh(true);};
   const markReviewed=async(kind:'attendance'|'mandatory'|'document',id:string)=>{
     await reviewForemanItem(kind,id);
     await refresh(true);
@@ -403,46 +413,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     await refresh(true);
   };
   const buildSupervisorSignedPdf=async(item:DbMandatory)=>{
-    try{
-      const stored=await getSupervisorMandatoryPdf(item.id,'signed');
-      // La RPC devuelve el original si signed_pdf no existe. No debemos aceptar
-      // ese fallback como si fuese un documento firmado.
-      if(stored?.base64&&stored.variant==='signed'){
-        return {
-          bytes:undefined as Uint8Array|undefined,
-          base64:stored.base64,
-          filename:stored.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf',
-          source:'stored' as const,
-        };
-      }
-    }catch{
-      // Si no existe un PDF firmado persistido, se reconstruye sobre el original.
-    }
-
-    const [original,freshSignatures]=await Promise.all([
-      getSupervisorMandatoryPdf(item.id,'original'),
-      getSupervisorMandatorySignatures(item.id),
-    ]);
-    const signatures=freshSignatures||{};
-    const validSignatureCount=Object.values(signatures).filter((raw:any)=>{
-      const value=typeof raw==='string'?raw:raw?.signature;
-      return typeof value==='string'&&value.startsWith('data:image/');
-    }).length;
-    if(validSignatureCount===0){
-      throw new Error('Este documento no contiene ninguna firma guardada. No se puede descargar como PDF firmado.');
-    }
-    const anchors=(Array.isArray(item.details?.workerAnchors)?item.details?.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const bytes=await buildSignedMandatoryPdf({
-      originalPdfBase64:original.base64,
-      anchors,
-      signatures,
-    });
-    return {
-      bytes,
-      base64:undefined as string|undefined,
-      filename:original.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf',
-      source:'rebuilt' as const,
-    };
+    const stored:any=await getSupervisorMandatorySignedPdfV2(item.id);
+    if(!stored?.base64||stored.variant!=='signed')throw new Error('No existe un PDF firmado persistido para este documento.');
+    return {bytes:undefined as Uint8Array|undefined,base64:stored.base64,filename:stored.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf',source:'stored' as const};
   };
 
   const downloadStoredMandatoryPdf=async(item:DbMandatory,variant:'original'|'signed')=>{
@@ -673,76 +646,41 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   };
 
   const openMandatoryEditor = async (item: DbMandatory) => {
-    setEditingMandatory(item);
-    setEditWorkDate(String(item.work_date || '').slice(0,10));
-    setEditCategory(item.document_type === 'control_presencia' ? '' : String(item.category || ''));
-    setEditSearch('');
-    setEditWorkerFilter('all');
-    const importedIds=Array.isArray(item.details?.importedWorkerIds)?item.details.importedWorkerIds.map((id:any)=>String(id)):[];
-    setEditWorkerIds(new Set(importedIds.length?importedIds:(item.workers || []).map((worker:any) => String(worker.id))));
-    setEditBusy(true);
-    try {
-      const rows = await supabase.query('trabajadores', {
-        query: `obra=eq.${encodeURIComponent(item.obra)}&select=id,apellidos_nombre,dni,categoria,obra,num_oferta,periodo_inicio,periodo_fin&order=apellidos_nombre.asc`,
-      });
-      const available = (Array.isArray(rows) ? rows : []).map((row:any) => ({
-        id: row.id,
-        apellidosNombre: row.apellidos_nombre,
-        dni: row.dni,
-        categoria: row.categoria,
-        obra: row.obra,
-        numOferta: row.num_oferta,
-        periodoInicio: row.periodo_inicio,
-        periodoFin: row.periodo_fin,
-      }));
-      const byId = new Map<string, any>();
-      const importedSnapshots=Array.isArray(item.details?.importedWorkers)?item.details.importedWorkers:[];
-      [...importedSnapshots, ...(item.workers || []), ...available].forEach((worker:any) => byId.set(String(worker.id), worker));
-      setEditWorkers(Array.from(byId.values()).sort((a:any,b:any) => String(a.apellidosNombre || '').localeCompare(String(b.apellidosNombre || ''), 'es')));
-    } catch (error:any) {
-      setMailMessage(error?.message || 'No se pudieron cargar los trabajadores de la obra.');
-      setEditWorkers(item.workers || []);
-    } finally {
-      setEditBusy(false);
-    }
+    setEditingMandatory(item); setEditWorkDate(String(item.work_date||'').slice(0,10)); setEditCategory(item.document_type==='control_presencia'?'':String(item.category||'')); setEditSearch(''); setEditWorkerFilter('all');
+    const v2Workers=Array.isArray(item.details?.documentWorkersV2)?item.details.documentWorkersV2:[];
+    const importedSnapshots=Array.isArray(item.details?.importedWorkers)?item.details.importedWorkers:[];
+    const anchors=Array.isArray(item.details?.workerAnchors)?item.details.workerAnchors:[];
+    const byLegacy=new Map(importedSnapshots.map((worker:any)=>[Number(worker.id),worker]));
+    const rows=v2Workers.map((entry:any)=>{
+      const legacyIdRaw=Number(entry.legacyWorkerId); const hasLegacyId=Number.isFinite(legacyIdRaw); const legacyId=hasLegacyId?legacyIdRaw:null; const known:any=hasLegacyId?byLegacy.get(legacyIdRaw):null; const anchor=hasLegacyId?anchors.find((candidate:any)=>Number(candidate.workerId)===legacyIdRaw):null; const documentWorkerId=String(entry.id||anchor?.documentWorkerId||'');
+      return {id:hasLegacyId?legacyIdRaw:'v2:'+documentWorkerId,legacyWorkerId:legacyId,documentWorkerId,apellidosNombre:String(entry.printedName||known?.apellidosNombre||anchor?.workerName||'Persona del documento'),dni:String(known?.dni||anchor?.dni||''),categoria:String(known?.categoria||item.category||''),detectionStatus:String(entry.detectionStatus||'DETECTED')};
+    }).filter((worker:any)=>Boolean(worker.documentWorkerId));
+    setEditWorkers(rows);
+    setEditWorkerIds(new Set(rows.filter((worker:any)=>worker.detectionStatus!=='REJECTED').map((worker:any)=>String(worker.id))));
+    setEditBusy(false);
   };
 
   const saveMandatoryEditor = async () => {
-    if (!editingMandatory) return;
-    const selectedWorkers = editWorkers.filter((worker:any) => editWorkerIds.has(String(worker.id)));
-    if (!selectedWorkers.length) {
-      setMailMessage('Selecciona al menos un trabajador para el documento.');
-      return;
-    }
-    if (!editWorkDate) {
-      setMailMessage('Indica la fecha del documento.');
-      return;
-    }
+    if(!editingMandatory)return;
     setEditBusy(true);
-    try {
-      await updateForemanMandatoryDocument({
-        id: editingMandatory.id,
-        workDate: editWorkDate,
-        category: editingMandatory.document_type === 'control_presencia' ? '' : editCategory.trim(),
-        workers: selectedWorkers,
-        signatures: editingMandatory.signatures || {},
-        status: editingMandatory.status,
-        details: {
-          ...(editingMandatory.details || {}),
-          importedWorkerIds: selectedWorkers.map((worker:any)=>Number(worker.id)).filter(Number.isFinite),
-          importedWorkers: selectedWorkers,
-          workerAnchors: (Array.isArray(editingMandatory.details?.workerAnchors)?editingMandatory.details.workerAnchors:[])
-            .filter((anchor:any)=>selectedWorkers.some((worker:any)=>Number(worker.id)===Number(anchor.workerId))),
-        },
-      });
-      setMailMessage(`${mandatoryDocumentLabel(editingMandatory.document_type)} actualizado correctamente.`);
-      setEditingMandatory(null);
-      await refresh(true);
-    } catch (error:any) {
-      setMailMessage(error?.message || 'No se pudo actualizar el documento.');
-    } finally {
-      setEditBusy(false);
-    }
+    try{
+      const anchors=Array.isArray(editingMandatory.details?.workerAnchors)?editingMandatory.details.workerAnchors:[];
+      for(const worker of editWorkers as any[]){
+        if(!worker.documentWorkerId)continue;
+        if(!editWorkerIds.has(String(worker.id))){
+          await reviewMandatoryDocumentWorkerV2({documentId:editingMandatory.id,documentWorkerId:worker.documentWorkerId,action:'reject'});
+          continue;
+        }
+        const anchor=worker.legacyWorkerId!=null?anchors.find((candidate:any)=>Number(candidate.workerId)===Number(worker.legacyWorkerId)):null;
+        const nameBox=anchor?.nameX!=null&&anchor?.nameY!=null&&Number(anchor?.nameWidth||0)>0&&Number(anchor?.nameHeight||anchor?.rowHeight||0)>0?{x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)}:null;
+        const signatureBox=anchor?.signatureX!=null&&anchor?.signatureY!=null&&Number(anchor?.signatureWidth||0)>0&&Number(anchor?.signatureHeight||0)>0?{x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)}:null;
+        await reviewMandatoryDocumentWorkerV2({documentId:editingMandatory.id,documentWorkerId:worker.documentWorkerId,action:'confirm',printedName:String(worker.apellidosNombre||''),nameBox,signatureBox});
+      }
+      try{await assignMandatoryDocumentV2(editingMandatory.id);setMailMessage('Detección validada. Documento preparado para el encargado.');}
+      catch(error:any){setMailMessage(/todavía necesita revisión/i.test(String(error?.message||''))?'Las personas están revisadas. Ajusta las posiciones de firma pendientes antes de asignar el documento.':String(error?.message||'Documento revisado.'));}
+      setEditingMandatory(null); await refresh(true);
+    }catch(error:any){setMailMessage(error?.message||'No se pudo guardar la revisión del documento.');}
+    finally{setEditBusy(false);}
   };
 
   const removeDetectedWorkerAsSupervisor = async (item:DbMandatory,worker:any) => {
@@ -945,6 +883,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                 <Pencil className="w-4 h-4"/>Ajustar firmas
               </button>}
           </>}
+          {card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&<button onClick={()=>void openMandatoryTraceability(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700"><History className="w-4 h-4"/>Ver trazabilidad</button>}
+          {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW'&&<button onClick={()=>void openPendingWorksiteReview(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-black text-white"><Building2 className="w-4 h-4"/>Asignar obra</button>}
+          {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='PDF_VALIDATION_ERROR'&&<button onClick={()=>void reopenMandatoryV2ForRepair(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs font-black text-rose-800"><RotateCcw className="w-4 h-4"/>Reabrir para reparar</button>}
+          {card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&card.status==='completed'&&['SUBMITTED','RECEIVED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void markMandatoryV2Reviewed(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}
+          {card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&['SUBMITTED','RECEIVED','REVIEWED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void returnMandatoryV2ForCorrection(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>}
           <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>{card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))?'Trabajadores':'Editar'}</button>
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia'].includes(String(card.item.document_type||'')) && (
@@ -962,6 +905,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
     </>}
+
+    {traceabilityModal&&<MandatoryTraceabilityModal title={traceabilityModal.title} data={traceabilityModal.data} onClose={()=>setTraceabilityModal(null)}/>}
+    {worksiteReview&&<MandatoryWorksiteReviewModal documentLabel={mandatoryDocumentLabel(worksiteReview.item.document_type)} filename={String(worksiteReview.item.source_attachment_name||'')} works={worksiteReview.works} busy={mailBusy} onCancel={()=>setWorksiteReview(null)} onConfirm={async obra=>{setMailBusy(true);try{const result:any=await confirmMandatoryWorksiteV2(worksiteReview.item.id,obra);if(result?.lifecycleStatus==='READY')await assignMandatoryDocumentV2(worksiteReview.item.id);setWorksiteReview(null);setMailMessage(result?.lifecycleStatus==='READY'?'Obra asignada. Documento preparado automáticamente para el encargado.':'Obra asignada. Revisa las personas o posiciones pendientes.');await refresh(true);}catch(error:any){setMailMessage(error?.message||'No se pudo asignar la obra.');}finally{setMailBusy(false);}}}/>}
 
     {positioningMandatory&&<MandatoryPdfAnchorEditor
       documentId={positioningMandatory.id}
@@ -989,7 +935,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       }}
       onSave={async(anchors)=>{
         await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
-        setMailMessage('Posiciones de firma actualizadas. El PDF firmado se regenerará con estas posiciones.');
+        try{await assignMandatoryDocumentV2(positioningMandatory.id);setMailMessage('Posiciones actualizadas. Documento preparado para el encargado.');}
+        catch(error:any){setMailMessage(error?.message||'Posiciones actualizadas. El documento sigue pendiente de revisión.');}
         setPositioningMandatory(null);
         await refresh(true);
       }}
@@ -1149,10 +1096,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                   const id=String(worker.id);
                   const selected=editWorkerIds.has(id);
                   const importedIds=new Set((Array.isArray(editingMandatory.details?.importedWorkerIds)?editingMandatory.details.importedWorkerIds:[]).map((value:any)=>String(value)));
-                  const unmatched=Number(worker.id)<0;
+                  const unmatched=worker.legacyWorkerId==null || Number(worker.legacyWorkerId)<0;
                   if(editWorkerFilter==='selected'&&!selected)return false;
                   if(editWorkerFilter==='unselected'&&selected)return false;
-                  if(editWorkerFilter==='document'&&!importedIds.has(id))return false;
+                  if(editWorkerFilter==='document'&&!worker.documentWorkerId&&!importedIds.has(id))return false;
                   if(editWorkerFilter==='unmatched'&&!unmatched)return false;
                   const term=editSearch.trim().toLocaleLowerCase('es');
                   if(term&&![
@@ -1165,10 +1112,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                 .map((worker:any)=><div key={worker.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
                   <input type="checkbox" checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 rounded border-slate-300"/>
-                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span>{Number(worker.id)<0&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">Leído del PDF · no encontrado en Directorio · firma permitida</span>}</span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span>{(worker.legacyWorkerId==null||Number(worker.legacyWorkerId)<0)&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">Leído del PDF · identidad documental · firma permitida</span>}</span>
                 </label>
                 {editingMandatory.signatures?.[String(worker.id)]&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Firmado</span>}
-                {(Array.isArray(editingMandatory.details?.importedWorkerIds)?editingMandatory.details.importedWorkerIds:[]).some((id:any)=>Number(id)===Number(worker.id))&&<button type="button" disabled={editBusy} onClick={()=>void removeDetectedWorkerAsSupervisor(editingMandatory,worker)} className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl border border-rose-300 bg-rose-50 px-2.5 py-2 text-[11px] font-black text-rose-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5"/>Quitar</button>}
               </div>)}
             </div>
             <p className="mt-2 text-[11px] text-slate-500">Si eliminas un trabajador del documento, su firma dejará de formar parte de este documento. Las firmas de los trabajadores que permanezcan seleccionados se conservarán.</p>

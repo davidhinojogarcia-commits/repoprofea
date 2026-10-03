@@ -48,8 +48,12 @@ const documentType = (filename: string, text: string): 'inicio' | 'control_prese
   return null;
 };
 
-const extractWorksiteFromText = (text: string, candidates: string[] = [], fallback = '') =>
-  resolveMandatoryWorksite({ text, candidates, fallback }).obra;
+const extractWorksiteFromText = (text: string, candidates: string[] = [], fallback = '') => {
+  const resolved = resolveMandatoryWorksite({ text, candidates, fallback: '' });
+  if (resolved.source === 'candidate') return resolved.obra;
+  if (fallback) return fallback;
+  return '';
+};
 
 const extractCategory = (text: string) => {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -360,6 +364,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
   options?.onProgress?.('Consultando Gmail de la administrativa…');
   const messages = await scanAdministrativeGmail(administrativeEmail);
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
+  const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : (await getDocuments<any>('obras', { limitCount: 1000 })).map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
   const existing = options?.existingSourceKeys || new Set<string>();
   const warnings: string[] = [];
   const missingDirectoryWorkers = new Set<string>();
@@ -391,18 +396,16 @@ export async function processAdministrativeMandatoryInbox(options?: {
           options?.onProgress,
         );
         const category = recognition.category;
-        const documentObra = extractWorksiteFromText(recognition.text, options?.obraCandidates || []);
+        const documentObra = extractWorksiteFromText(recognition.text, knownWorksites);
         const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra, type);
         if (!listedWorkers.length) {
           warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
           skippedAttachments += 1;
           continue;
         }
-        const obra = documentObra || String(listedWorkers.find(worker=>worker.obra)?.obra || '').trim();
-        if(!obra){
-          warnings.push(`${attachment.filename}: no se ha podido identificar la obra escrita en el PDF.`);
-          skippedAttachments += 1;
-          continue;
+        const obra = documentObra || '__PENDING_WORKSITE__';
+        if(obra==='__PENDING_WORKSITE__'){
+          warnings.push(`${attachment.filename}: documento conservado pendiente de clasificar por obra.`);
         }
         const selected = listedWorkers;
         if(type==='inicio'){
@@ -468,6 +471,7 @@ export async function processManualMandatoryFiles(
   options?: { onProgress?: (message: string) => void; obraHint?: string; obraCandidates?: string[] },
 ): Promise<MandatoryManualImportResult> {
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
+  const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : (await getDocuments<any>('obras', { limitCount: 1000 })).map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
   const warnings: string[] = [];
   const missingDirectoryWorkers = new Set<string>();
   let importedDocuments = 0;
@@ -501,16 +505,14 @@ export async function processManualMandatoryFiles(
       const obraHint = String(options?.obraHint || '').trim();
       const documentObra = extractWorksiteFromText(
         recognition.text,
-        options?.obraCandidates || [],
+        knownWorksites,
         files.length === 1 ? obraHint : '',
       );
-      const obra = documentObra;
-      if(!obra){
-        skippedFiles += 1;
-        warnings.push(`${file.name}: no se ha podido identificar con seguridad la obra escrita en el PDF. No se ha importado para evitar clasificarlo en una obra incorrecta.`);
-        continue;
+      const obra = documentObra || '__PENDING_WORKSITE__';
+      if(obra==='__PENDING_WORKSITE__'){
+        warnings.push(`${file.name}: documento conservado pendiente de clasificar por obra.`);
       }
-      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, obra, type);
+      const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra || '', type);
       if(type==='inicio'){
         selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
           const name=String(worker.apellidosNombre||'').trim();

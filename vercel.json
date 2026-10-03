@@ -16,5 +16,10 @@
       "source": "/encargados/",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "validation/gestionprofea-trace-v1-19-0-20261003": false
+    }
+  }
 }
