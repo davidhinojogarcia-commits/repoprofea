@@ -1,5 +1,6 @@
 import type { Person } from '../../types';
 import { supabase } from '../lib/supabase';
+import { assignMandatoryDocumentV2, initializeMandatoryTraceabilityV2, reviewMandatoryDocumentWorkerV2, updateMandatoryDocumentWorkerGeometryV2, type MandatoryV2WorkerInput } from './mandatoryTraceabilityServiceV2';
 
 const FOREMAN_REQUEST_TIMEOUT_MS = 15000;
 
@@ -339,6 +340,57 @@ export async function prepareMandatoryDocumentFromEmail(input: {
       },
     });
   }
+  if (documentId) {
+    const anchors = Array.isArray(input.workerAnchors) ? input.workerAnchors : [];
+    const byLegacyId = new Map(anchors.map((anchor:any)=>[Number(anchor.workerId),anchor]));
+    const importedWorkers = Array.isArray(input.importedWorkers) ? input.importedWorkers : [];
+    const workerSnapshots:any[] = [...importedWorkers];
+    const snapshotIds = new Set(importedWorkers.map((worker:any)=>Number(worker.id)));
+    for(const anchor of anchors){
+      const anchorId=Number(anchor?.workerId);
+      if(Number.isFinite(anchorId)&&!snapshotIds.has(anchorId)){
+        workerSnapshots.push({id:anchorId,apellidosNombre:String(anchor?.workerName||'Persona del documento')});
+        snapshotIds.add(anchorId);
+      }
+    }
+    for(const rawId of (Array.isArray(input.workerIds)?input.workerIds:[])){
+      const workerId=Number(rawId);
+      if(Number.isFinite(workerId)&&!snapshotIds.has(workerId)){
+        workerSnapshots.push({id:workerId,apellidosNombre:'Persona incluida en el documento'});
+        snapshotIds.add(workerId);
+      }
+    }
+    const workersV2: MandatoryV2WorkerInput[] = workerSnapshots.map((worker:any,index:number): MandatoryV2WorkerInput =>{
+      const legacyWorkerId = Number(worker.id);
+      const anchor:any = byLegacyId.get(legacyWorkerId) || null;
+      const hasNameBox = Boolean(anchor && anchor.nameX!=null && anchor.nameY!=null && Number(anchor.nameWidth||0)>0 && Number(anchor.nameHeight||anchor.rowHeight||0)>0);
+      const hasSignatureBox = Boolean(anchor && anchor.signatureX!=null && anchor.signatureY!=null && Number(anchor.signatureWidth||0)>0 && Number(anchor.signatureHeight||0)>0);
+      const confidence = Number(anchor?.confidence || 0);
+      const manualConfirmed = Boolean(anchor?.resolved) && hasSignatureBox && (confidence>=0.999 || /confirmada manualmente por el supervisor|identidad confirmada por el supervisor/i.test(String(anchor?.reason||'')));
+      const confirmed = Boolean(anchor?.resolved) && hasSignatureBox && (hasNameBox || manualConfirmed);
+      return {
+        legacyWorkerId: Number.isFinite(legacyWorkerId) ? legacyWorkerId : null,
+        directoryWorkerId: null,
+        printedName: String(worker.apellidosNombre || anchor?.workerName || '').trim(),
+        page: anchor?.page != null ? Number(anchor.page) : null,
+        rowIndex: anchor?.order != null ? Number(anchor.order) : index,
+        detectionStatus: confirmed ? 'CONFIRMED' : 'DETECTED',
+        detectionConfidence: confidence || null,
+        positionStatus: confirmed ? 'RESOLVED' : 'PENDING',
+        positionSource: manualConfirmed && !hasNameBox ? 'MANUAL' : 'AUTO',
+        nameBox: hasNameBox ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null,
+        signatureBox: hasSignatureBox ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null,
+      };
+    }).filter((worker:any)=>worker.printedName);
+    const initialized:any=await initializeMandatoryTraceabilityV2({
+      documentId,
+      workers: workersV2,
+      detectedWorksite: input.obraHint && input.obraHint !== '__PENDING_WORKSITE__' ? input.obraHint : null,
+    });
+    if(initialized?.lifecycleStatus==='READY'){
+      await assignMandatoryDocumentV2(documentId);
+    }
+  }
   return id;
 }
 
@@ -382,41 +434,31 @@ export async function updateSupervisorMandatoryAnchors(
   documentId: string,
   workerAnchors: any[],
 ) {
-  const rows=await supabase.query('foreman_mandatory_documents',{
-    query:`id=eq.${encodeURIComponent(documentId)}&select=id,details&limit=1`,
+  const v2Rows=await supabase.query('mandatory_document_workers_v2',{
+    query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,printed_name,detection_status`,
   });
+  if(Array.isArray(v2Rows)&&v2Rows.length){
+    const byLegacyId=new Map(v2Rows.map((row:any)=>[Number(row.legacy_worker_id),row]));
+    for(const anchor of workerAnchors||[]){
+      const row:any=byLegacyId.get(Number(anchor.workerId));
+      if(!row||row.detection_status==='REJECTED')continue;
+      const nameBox=anchor.nameX!=null&&anchor.nameY!=null&&Number(anchor.nameWidth||0)>0&&Number(anchor.nameHeight||anchor.rowHeight||0)>0
+        ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null;
+      const signatureBox=anchor.signatureX!=null&&anchor.signatureY!=null&&Number(anchor.signatureWidth||0)>0&&Number(anchor.signatureHeight||0)>0
+        ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null;
+      if(signatureBox&&row.detection_status==='CONFIRMED'){
+        await updateMandatoryDocumentWorkerGeometryV2({documentId,documentWorkerId:String(row.id),nameBox,signatureBox,page:anchor.page!=null?Number(anchor.page):null,rowIndex:anchor.order!=null?Number(anchor.order):null});
+      }
+    }
+  }
+
+  const rows=await supabase.query('foreman_mandatory_documents',{query:`id=eq.${encodeURIComponent(documentId)}&select=id,details&limit=1`});
   const current=Array.isArray(rows)?rows[0]:null;
   if(!current)throw new Error('Documento no encontrado.');
-
-  await supabase.query('foreman_mandatory_documents',{
-    method:'PATCH',
-    prefer:'return=minimal',
-    query:`id=eq.${encodeURIComponent(documentId)}`,
-    body:{
-      details:{
-        ...(current.details||{}),
-        workerAnchors:workerAnchors||[],
-        supervisorAdjustedAnchorsAt:new Date().toISOString(),
-      },
-      updated_at:new Date().toISOString(),
-    },
-  });
-
-  // La próxima apertura/envío reconstruye el firmado sobre el original
-  // usando las posiciones ajustadas por el supervisor.
-  await supabase.query('foreman_mandatory_pdf_files',{
-    method:'PATCH',
-    prefer:'return=minimal',
-    query:`document_id=eq.${encodeURIComponent(documentId)}`,
-    body:{
-      signed_pdf:null,
-      signed_sha256:null,
-      fidelity:null,
-      updated_at:new Date().toISOString(),
-    },
-  });
+  await supabase.query('foreman_mandatory_documents',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(documentId)}`,body:{details:{...(current.details||{}),workerAnchors:workerAnchors||[],supervisorAdjustedAnchorsAt:new Date().toISOString()},updated_at:new Date().toISOString()}});
+  await supabase.query('foreman_mandatory_pdf_files',{method:'PATCH',prefer:'return=minimal',query:`document_id=eq.${encodeURIComponent(documentId)}`,body:{signed_pdf:null,signed_sha256:null,fidelity:null,updated_at:new Date().toISOString()}});
+  try{await assignMandatoryDocumentV2(documentId);}catch(error:any){if(!/todavía necesita revisión|No hay personas confirmadas/i.test(String(error?.message||'')))throw error;}
 }
-
 export async function repairForemanMandatoryAnchors(
   token: string,
   documentId: string,
@@ -518,16 +560,12 @@ export async function removeForemanMandatoryWorker(
   );
 }
 
-export async function removeSupervisorMandatoryWorker(
-  documentId: string,
-  workerId: number,
-) {
-  return supabase.rpc('remove_supervisor_mandatory_worker', {
-    p_document_id: documentId,
-    p_worker_id: workerId,
-  });
+export async function removeSupervisorMandatoryWorker(documentId:string,workerId:number){
+  const rows=await supabase.query('mandatory_document_workers_v2',{query:`document_id=eq.${encodeURIComponent(documentId)}&legacy_worker_id=eq.${encodeURIComponent(String(workerId))}&select=id&limit=1`});
+  const row=Array.isArray(rows)?rows[0]:null;
+  if(row?.id)return reviewMandatoryDocumentWorkerV2({documentId,documentWorkerId:String(row.id),action:'reject'});
+  return supabase.rpc('remove_supervisor_mandatory_worker',{p_document_id:documentId,p_worker_id:workerId});
 }
-
 
 export async function createForemanOperationalDocument(input: {
   token: string;

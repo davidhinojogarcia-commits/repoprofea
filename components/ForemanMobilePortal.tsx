@@ -26,6 +26,7 @@ import {
   type ForemanMandatoryDocument,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
+import { signMandatoryDocumentWorkerV2, submitMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
 import {
   analyzeMandatoryOriginalPdf,
   resolveMandatoryAnchorsWithOcrRows,
@@ -222,7 +223,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
   const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
-  const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;name:string}|null>(null);
+  const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;documentWorkerId?:string;name:string}|null>(null);
   const [mandatoryWorkerChoice,setMandatoryWorkerChoice]=useState<Record<string,string>>({});
   const [installPromptAvailable,setInstallPromptAvailable]=useState(Boolean(window.__profeaInstallPrompt));
   const [installHelpVisible,setInstallHelpVisible]=useState(false);
@@ -621,86 +622,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       getForemanMandatorySignatures(token,doc.id),
     ]);
     await assertStoredOriginalIntegrity(source);
-
-    // Recalcular siempre las posiciones desde el PDF original antes de generar la copia
-    // firmada. Así corregimos documentos antiguos y garantizamos que cada firma quede
-    // junto a la línea real del nombre del trabajador.
-    const importedIds=Array.isArray(doc.details?.importedWorkerIds)
-      ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id)&&id!==0)
-      : [];
-    const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
-    const existingAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    const existingById=new Map(existingAnchors.map(anchor=>[Number(anchor.workerId),anchor]));
-    const snapshotById=new Map<number,any>([
-      ...(data?.workers||[]).map(worker=>[Number(worker.id),worker] as [number,any]),
-      ...importedSnapshots.map((worker:any)=>[Number(worker.id),worker] as [number,any]),
-    ]);
-    const candidates=importedIds.map(id=>{
-      const known=snapshotById.get(id);
-      if(known)return known;
-      const anchor=existingById.get(id);
-      return {
-        id,
-        apellidosNombre:String(anchor?.workerName||'').trim(),
-        dni:String(anchor?.dni||'').trim(),
-        categoria:doc.category||'',
-        obra:data?.obra||'',
-      };
-    }).filter((worker:any)=>Number.isFinite(Number(worker.id))&&String(worker.apellidosNombre||'').trim());
-
-    let anchors=existingAnchors;
-    if(candidates.length){
-      try{
-        const originalBytes=base64ToBytes(source.base64);
-        const file=new File(
-          [originalBytes],
-          source.filename||String(doc.details?.sourceFilename||'documento.pdf'),
-          {type:'application/pdf'}
-        );
-        let analysis=await analyzeMandatoryOriginalPdf(
-          file,
-          candidates,
-          undefined,
-          String(doc.details?.sourceText||'')
-        );
-        if(analysis.unresolvedWorkerIds.length){
-          analysis=await resolveMandatoryAnchorsWithOcrRows(file,candidates,analysis);
-        }
-        if(analysis.anchors.length){
-          const detectedById=new Map(analysis.anchors.map(anchor=>[Number(anchor.workerId),anchor]));
-          const merged=existingAnchors.map(existing=>{
-            const detected=detectedById.get(Number(existing.workerId));
-            const existingHasConfirmedBox=Boolean(
-              existing.resolved &&
-              existing.signatureX!=null &&
-              existing.signatureY!=null &&
-              existing.signatureWidth!=null &&
-              existing.signatureHeight!=null
-            );
-            if(existingHasConfirmedBox)return existing;
-            if(detected?.resolved)return detected;
-            return detected||existing;
-          });
-          const existingIds=new Set(merged.map(anchor=>Number(anchor.workerId)));
-          for(const detected of analysis.anchors){
-            if(!existingIds.has(Number(detected.workerId)))merged.push(detected);
-          }
-          anchors=merged;
-          await repairForemanMandatoryAnchors(token,doc.id,anchors).catch(()=>undefined);
-        }
-      }catch(error){
-        console.warn('No se pudieron recalcular todas las posiciones de firma; se conservarán las existentes.',error);
-      }
-    }
-
-    const bytes=await buildSignedMandatoryPdf({
-      originalPdfBase64:source.base64,
-      anchors,
-      signatures:realSignatures||{},
-    });
-    const fidelity=verify
-      ? await verifyMandatoryPdfFidelity(source.base64,bytes,anchors)
-      : null;
+    const anchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
+    const requiredIds=new Set((Array.isArray(doc.details?.documentWorkersV2)?doc.details.documentWorkersV2:[])
+      .filter((worker:any)=>worker.detectionStatus==='CONFIRMED')
+      .map((worker:any)=>String(worker.legacyWorkerId)));
+    const unresolved=anchors.filter(anchor=>requiredIds.has(String(anchor.workerId))&&(!anchor.resolved||anchor.signatureX==null||anchor.signatureY==null||anchor.signatureWidth==null||anchor.signatureHeight==null));
+    if(unresolved.length)throw new Error('El supervisor debe resolver las posiciones de firma antes de continuar.');
+    const bytes=await buildSignedMandatoryPdf({originalPdfBase64:source.base64,anchors,signatures:realSignatures||{}});
+    const fidelity=verify?await verifyMandatoryPdfFidelity(source.base64,bytes,anchors):null;
     return {source,bytes,fidelity,anchors};
   };
 
@@ -745,9 +674,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     return key||'Sin periodo';
   };
 
-  const allAssignedMandatoryDocuments=(data?.mandatoryDocuments||[]).filter(
-    document=>['inicio','control_presencia'].includes(String(document.documentType||'')),
-  );
+  const allAssignedMandatoryDocuments=(data?.mandatoryDocuments||[]).filter(document=>{
+    if(!['inicio','control_presencia'].includes(String(document.documentType||'')))return false;
+    const lifecycle=String(document.details?.lifecycleStatus||'');
+    return !lifecycle || ['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION','SUBMITTED','RECEIVED','REVIEWED'].includes(lifecycle);
+  });
 
   const mandatoryPeriodOptions=useMemo(()=>{
     const byKey=new Map<string,{key:string;label:string;count:number;latest:number}>();
@@ -855,56 +786,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   </div>;
 
   const prepareImportedWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
-    // Regla estricta: nunca recogemos una firma si el nombre real no está localizado
-    // con seguridad en el PDF original. No existe posición aproximada de respaldo.
-    const currentAnchors=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]) as MandatoryWorkerAnchor[];
-    let current=currentAnchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
-    if(!current?.resolved){
-      setSaving(true);
-      setOperationFeedback('Localizando el nombre exacto en el PDF original…');
-      try{
-        const importedIds=Array.isArray(doc.details?.importedWorkerIds)
-          ? doc.details.importedWorkerIds.map((id:any)=>Number(id)).filter((id:number)=>Number.isFinite(id)&&id!==0)
-          : [];
-        const importedSnapshots=Array.isArray(doc.details?.importedWorkers)?doc.details.importedWorkers:[];
-        const anchorSnapshots=currentAnchors.map(anchor=>({
-          id:Number(anchor.workerId),
-          apellidosNombre:String(anchor.workerName||'').trim(),
-          dni:String(anchor.dni||'').trim(),
-          categoria:doc.category||'',
-          obra:data?.obra||'',
-        }));
-        const workerMap=new Map<number,any>([
-          ...(data?.workers||[]).map(item=>[Number(item.id),item] as [number,any]),
-          ...anchorSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
-          ...importedSnapshots.map((item:any)=>[Number(item.id),item] as [number,any]),
-          [Number(worker.id),worker],
-        ]);
-        const candidates=importedIds.map(id=>workerMap.get(id)).filter(Boolean) as any[];
-        if(candidates.length){
-          const source=await getForemanMandatoryPdf(token,doc.id,'original');
-          const bytes=base64ToBytes(source.base64);
-          const file=new File([bytes],source.filename||String(doc.details?.sourceFilename||'documento.pdf'),{type:'application/pdf'});
-          const analysis=await analyzeMandatoryOriginalPdf(file,candidates,undefined,String(doc.details?.sourceText||''));
-          await repairForemanMandatoryAnchors(token,doc.id,analysis.anchors);
-          current=analysis.anchors.find(anchor=>Number(anchor.workerId)===Number(worker.id));
-          await refresh();
-        }
-      }catch(e:any){
-        console.warn('No se pudo localizar con seguridad el nombre del trabajador.',e);
-      }finally{
-        setSaving(false);
-        setOperationFeedback('');
-      }
+    const v2Workers=Array.isArray(doc.details?.documentWorkersV2)?doc.details.documentWorkersV2:[];
+    const documentWorker=v2Workers.find((item:any)=>Number(item.legacyWorkerId)===Number(worker.id));
+    const anchor=(Array.isArray(doc.details?.workerAnchors)?doc.details.workerAnchors:[]).find((item:any)=>Number(item.workerId)===Number(worker.id));
+    if(!documentWorker?.id||documentWorker.detectionStatus!=='CONFIRMED'||!anchor?.resolved||anchor.signatureX==null||anchor.signatureY==null||anchor.signatureWidth==null||anchor.signatureHeight==null){
+      const message='Esta persona o su posición de firma sigue pendiente de revisión por el supervisor.';
+      setError(message); setOperationFeedback(message); await appAlert(message,{title:'Pendiente de revisión',kind:'warning'}); return;
     }
-    if(!current?.resolved||current.signatureX==null||current.signatureY==null){
-      const message='No se ha podido localizar con suficiente seguridad este nombre dentro del PDF original. Corrige el nombre y vuelve a intentarlo; la firma no se colocará de forma aproximada.';
-      setError(message);
-      setOperationFeedback(message);
-      await appAlert(message,{title:'Nombre pendiente de localizar',kind:'warning'});
-      return;
-    }
-    setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre});
+    setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),documentWorkerId:String(documentWorker.id),name:worker.apellidosNombre});
   };
 
   const removeImportedWorkerFromDocument=async(doc:ForemanMandatoryDocument,worker:any)=>{
@@ -1093,8 +982,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                       <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">{worker.dni?worker.dni+' · ':''}{worker.categoria}</div>
                       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                         <button type="button" disabled={saving} onClick={()=>void prepareImportedWorkerSignature(doc,worker)} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2 text-sm font-black text-white disabled:opacity-50">Firmar esta persona</button>
-                        <button type="button" disabled={saving} onClick={()=>setNameCorrection({documentId:doc.id,workerId:Number(worker.id),value:String(worker.apellidosNombre||'')})} className="min-h-[50px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-700">Corregir nombre</button>
-                        <button type="button" disabled={saving} onClick={()=>void removeImportedWorkerFromDocument(doc,worker)} className="min-h-[50px] rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-black text-rose-700"><Trash2 className="mr-1 inline h-4 w-4"/>Quitar</button>
                       </div>
                     </>}
               </div>;
@@ -1139,7 +1026,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
               : <span className="ml-auto inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-700">Firma guardada ✓</span>;
           })()}
-          {isImportedMandatory&&!closed&&<button type="button" disabled={saving} onClick={()=>void removeImportedWorkerFromDocument(doc,worker)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-rose-300 bg-white text-rose-700" aria-label={'Quitar '+worker.apellidosNombre}><Trash2 className="h-4 w-4"/></button>}
         </div>)}</div>}
       </div>
 
@@ -1154,38 +1040,16 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         setSaving(true);
         setError('');
         try{
+          let finalized:any;
           if(exactOriginalMode){
-            setOperationFeedback('1/3 · Preparando el PDF original con las firmas disponibles…');
+            setOperationFeedback('1/2 · Generando y validando el PDF firmado…');
             const prepared=await buildExactSignedPreview(doc,true);
-            if(!prepared.fidelity?.ok){
-              throw new Error('La comprobación de fidelidad ha detectado una diferencia fuera de las zonas de firma. El documento no se enviará.');
-            }
-            setOperationFeedback('2/3 · Guardando el PDF para el supervisor…');
-            try{
-              await storeForemanMandatorySignedPdf({
-                token,
-                documentId:doc.id,
-                pdfBase64:bytesToBase64(prepared.bytes),
-                signedSha256:await sha256Hex(prepared.bytes),
-                fidelity:prepared.fidelity,
-              });
-            }catch(firstError:any){
-              if(Array.isArray((prepared as any).anchors)&&(prepared as any).anchors.length){
-                await repairForemanMandatoryAnchors(token,doc.id,(prepared as any).anchors);
-                await storeForemanMandatorySignedPdf({
-                  token,
-                  documentId:doc.id,
-                  pdfBase64:bytesToBase64(prepared.bytes),
-                  signedSha256:await sha256Hex(prepared.bytes),
-                  fidelity:prepared.fidelity,
-                });
-              }else{
-                throw firstError;
-              }
-            }
+            if(!prepared.fidelity?.ok)throw new Error('La comprobación de fidelidad ha detectado una diferencia fuera de las zonas de firma.');
+            setOperationFeedback('2/2 · Enviando el mismo PDF al supervisor…');
+            finalized=await submitMandatoryDocumentV2({token,documentId:doc.id,pdfBase64:bytesToBase64(prepared.bytes),signedSha256:await sha256Hex(prepared.bytes),fidelity:{...(prepared.fidelity||{}),originalSha256:prepared.source.sha256}});
+          }else{
+            finalized=await finalizeForemanMandatoryDocument(token,doc.id);
           }
-          setOperationFeedback('3/3 · Enviando el documento al supervisor…');
-          const finalized:any=await finalizeForemanMandatoryDocument(token,doc.id);
           await refresh();
           setMandatoryWorkerChoice(current=>({...current,[doc.id]:''}));
           setOperationFeedback(finalized?.partial
@@ -1525,7 +1389,13 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       setMandatorySigning(null);
       setSaving(true);
       try{
-        await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);
+        const currentDoc=(data?.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
+        if(currentDoc&&['inicio','control_presencia'].includes(String(currentDoc.documentType))){
+          if(!current.documentWorkerId)throw new Error('No se ha podido identificar de forma estable a esta persona dentro del documento.');
+          await signMandatoryDocumentWorkerV2({token,documentId:current.documentId,documentWorkerId:current.documentWorkerId,signature:img});
+        }else{
+          await signMandatoryForemanDocument(token,current.documentId,current.workerId,img);
+        }
         const [verified,realSignatures]=await Promise.all([
           resolveForemanPortal(token),
           getForemanMandatorySignatures(token,current.documentId),
