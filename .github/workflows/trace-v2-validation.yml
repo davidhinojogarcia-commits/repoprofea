@@ -1,0 +1,72 @@
+name: Traceability V2 Technical Validation
+
+on:
+  push:
+    branches:
+      - 'validation/gestionprofea-trace-v1-19-0-20261003'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Reconstruct validated V2 package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .validation/pkg.part*.txt | base64 --decode > /tmp/gestionprofea-trazabilidad-v2.zip
+          echo "06c4e8016025204b1025ed4a67440cb2a2e667688175d01930d0653398ab5e16  /tmp/gestionprofea-trazabilidad-v2.zip" | sha256sum -c -
+          rm -rf /tmp/trace-v2
+          mkdir -p /tmp/trace-v2
+          unzip -q /tmp/gestionprofea-trazabilidad-v2.zip -d /tmp/trace-v2
+          PKG="$(find /tmp/trace-v2 -mindepth 1 -maxdepth 1 -type d | head -n1)"
+          test -n "$PKG"
+          echo "TRACE_V2_PACKAGE=$PKG" >> "$GITHUB_ENV"
+          node "$PKG/scripts/verifyMandatoryTraceabilityPackageV2.mjs"
+
+      - name: Apply V2 to full repository checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$TRACE_V2_PACKAGE/apply-v2.mjs" "$GITHUB_WORKSPACE"
+          git diff --check
+          grep -q "APP_VERSION = '1.19.0'" src/lib/appVersion.ts
+          test -s supabase/migrations/20261003090000_mandatory_traceability_v2.sql
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate existing architecture guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f src/lib/firebase.ts
+          test ! -f src/services/firestoreService.ts
+          if grep -RniE "src/lib/firebase|services/firestoreService|from ['\"]firebase(/|['\"])|FirebaseSyncModal|DatabaseSyncAlert|triggerFirestoreDatabaseSync|/api/database/save-workers-batch|/api/database/delete-worker|personasPROFEA_(groupId|activeWorkspace|activeWorkspaceId|lastSyncTime|isSyncing|syncMode|syncEmail)|Object.assign\\(globalThis as any|executeDatabaseSync|handleSyncPendingToCloud|currentEffectiveWorkspaceId|getOrCreateUserWorkspace|syncWorkerToWorkspace|syncWorkerToCloud|getOrCreateSyncGroup|fetchGroupData|subscribeToWorkspace" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy Firebase/manual synchronization/workspace compatibility code detected.'
+            exit 1
+          fi
+          if grep -RniE "(supabase\\.query|canonicalTable|collection|subscribeToDocuments|getDocuments|createDocument|updateDocument|deleteDocument)\\([^)]*['\"]workers['\"]" App.tsx index.tsx components src server api --include='*.ts' --include='*.tsx' --exclude='*.map' 2>/dev/null; then
+            echo 'Legacy workers runtime table reference detected.'
+            exit 1
+          fi
+          grep -q '"@supabase/supabase-js"' package.json
+          grep -q "signOut({ scope: 'local' })" src/lib/authService.ts
+          grep -q 'autoRefreshToken: true' src/lib/supabase.ts
+          grep -q 'persistSession: true' src/lib/supabase.ts
+
+      - name: Full GestionProfea 1.19.0 validation
+        run: npm run validate:mandatory-traceability-v2
+
+      - name: Confirm no validation artifacts altered production config
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"validation/gestionprofea-trace-v1-19-0-20261003": false' vercel.json
+          git diff --check
