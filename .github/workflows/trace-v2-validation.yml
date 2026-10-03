@@ -52,6 +52,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BASE_SHA="a5b3c6be5f397494f5a3100cf508740658dd64c2"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          for file in \
+            src/services/foremanPortalService.ts \
+            components/ForemanMobilePortal.tsx \
+            components/ForemanDocumentsDashboard.tsx \
+            src/lib/mandatoryEmailIntake.ts \
+            package.json \
+            src/lib/appVersion.ts \
+            .github/workflows/ci.yml \
+            package-lock.json
+          do
+            git show FETCH_HEAD:"$file" > "$file"
+          done
           node "$TRACE_V2_PACKAGE/apply-v2.mjs" "$GITHUB_WORKSPACE"
           git diff --check
           grep -q "APP_VERSION = '1.19.0'" src/lib/appVersion.ts
