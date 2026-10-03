@@ -94,6 +94,8 @@ jobs:
 
       - name: Mandatory traceability V2 regression
         run: npm run test:mandatory-traceability-v2
+      - name: Mandatory omitted worker recovery regression
+        run: npm run test:mandatory-missing-worker
       - name: Mandatory traceability V2 integration contract
         run: npm run test:mandatory-traceability-integration-v2
       - name: Mandatory traceability V2 SQL invariants
