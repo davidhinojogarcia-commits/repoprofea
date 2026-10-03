@@ -20,8 +20,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .validation/pkg.part*.txt | base64 --decode > /tmp/gestionprofea-trazabilidad-v2.zip
-          echo "06c4e8016025204b1025ed4a67440cb2a2e667688175d01930d0653398ab5e16  /tmp/gestionprofea-trazabilidad-v2.zip" | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          import base64, hashlib
+          parts=sorted(Path('.validation').glob('pkg.part*.txt'))
+          encoded=''.join(p.read_text(encoding='utf-8') for p in parts)
+          raw=base64.b64decode(encoded, validate=True)
+          out=Path('/tmp/gestionprofea-trazabilidad-v2.zip')
+          out.write_bytes(raw)
+          digest=hashlib.sha256(raw).hexdigest()
+          print(f'parts={len(parts)} base64_chars={len(encoded)} zip_bytes={len(raw)} sha256={digest}')
+          expected='06c4e8016025204b1025ed4a67440cb2a2e667688175d01930d0653398ab5e16'
+          if digest != expected:
+              raise SystemExit(f'SHA mismatch: expected {expected}, got {digest}')
+          PY
           rm -rf /tmp/trace-v2
           mkdir -p /tmp/trace-v2
           unzip -q /tmp/gestionprofea-trazabilidad-v2.zip -d /tmp/trace-v2
