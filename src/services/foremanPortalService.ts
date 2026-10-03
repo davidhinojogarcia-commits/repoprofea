@@ -1,6 +1,6 @@
 import type { Person } from '../../types';
 import { supabase } from '../lib/supabase';
-import { assignMandatoryDocumentV2, initializeMandatoryTraceabilityV2, reviewMandatoryDocumentWorkerV2, updateMandatoryDocumentWorkerGeometryV2, type MandatoryV2WorkerInput } from './mandatoryTraceabilityServiceV2';
+import { addMissingMandatoryDocumentWorkerV2, assignMandatoryDocumentV2, initializeMandatoryTraceabilityV2, reviewMandatoryDocumentWorkerV2, updateMandatoryDocumentWorkerGeometryV2, type MandatoryV2WorkerInput } from './mandatoryTraceabilityServiceV2';
 
 const FOREMAN_REQUEST_TIMEOUT_MS = 15000;
 
@@ -434,30 +434,53 @@ export async function updateSupervisorMandatoryAnchors(
   documentId: string,
   workerAnchors: any[],
 ) {
+  const normalizedAnchors=(workerAnchors||[]).map(anchor=>({...anchor}));
   const v2Rows=await supabase.query('mandatory_document_workers_v2',{
     query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,printed_name,detection_status`,
   });
-  if(Array.isArray(v2Rows)&&v2Rows.length){
-    const byLegacyId=new Map(v2Rows.map((row:any)=>[Number(row.legacy_worker_id),row]));
-    for(const anchor of workerAnchors||[]){
-      const row:any=byLegacyId.get(Number(anchor.workerId));
-      if(!row||row.detection_status==='REJECTED')continue;
-      const nameBox=anchor.nameX!=null&&anchor.nameY!=null&&Number(anchor.nameWidth||0)>0&&Number(anchor.nameHeight||anchor.rowHeight||0)>0
-        ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null;
-      const signatureBox=anchor.signatureX!=null&&anchor.signatureY!=null&&Number(anchor.signatureWidth||0)>0&&Number(anchor.signatureHeight||0)>0
-        ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null;
-      if(signatureBox&&row.detection_status==='CONFIRMED'){
-        await updateMandatoryDocumentWorkerGeometryV2({documentId,documentWorkerId:String(row.id),nameBox,signatureBox,page:anchor.page!=null?Number(anchor.page):null,rowIndex:anchor.order!=null?Number(anchor.order):null});
-      }
+  const byLegacyId=new Map((Array.isArray(v2Rows)?v2Rows:[]).map((row:any)=>[Number(row.legacy_worker_id),row]));
+
+  for(let index=0;index<normalizedAnchors.length;index+=1){
+    const anchor=normalizedAnchors[index];
+    const row:any=byLegacyId.get(Number(anchor.workerId));
+    const nameBox=anchor.nameX!=null&&anchor.nameY!=null&&Number(anchor.nameWidth||0)>0&&Number(anchor.nameHeight||anchor.rowHeight||0)>0
+      ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null;
+    const signatureBox=anchor.signatureX!=null&&anchor.signatureY!=null&&Number(anchor.signatureWidth||0)>0&&Number(anchor.signatureHeight||0)>0
+      ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null;
+
+    if(!row){
+      const printedName=String(anchor.workerName||'').replace(/\s+/g,' ').trim();
+      if(printedName.length<3||!signatureBox)continue;
+      const created:any=await addMissingMandatoryDocumentWorkerV2({
+        documentId,
+        printedName,
+        page:Math.max(1,Number(anchor.page||1)),
+        rowIndex:Number.isFinite(Number(anchor.order))?Number(anchor.order):index,
+        nameBox,
+        signatureBox,
+      });
+      const stableLegacyId=Number(created?.legacyWorkerId);
+      const documentWorkerId=String(created?.documentWorkerId||'');
+      if(!Number.isFinite(stableLegacyId)||!documentWorkerId)throw new Error('No se pudo crear una identidad documental estable para el trabajador añadido.');
+      normalizedAnchors[index]={...anchor,workerId:stableLegacyId,documentWorkerId,resolved:true,positionSource:'MANUAL',reason:'Trabajador recuperado manualmente del PDF y posición confirmada por el supervisor.'};
+      byLegacyId.set(stableLegacyId,{id:documentWorkerId,legacy_worker_id:stableLegacyId,printed_name:printedName,detection_status:'CONFIRMED'});
+      continue;
+    }
+
+    if(row.detection_status==='REJECTED')continue;
+    if(signatureBox&&row.detection_status==='CONFIRMED'){
+      await updateMandatoryDocumentWorkerGeometryV2({documentId,documentWorkerId:String(row.id),nameBox,signatureBox,page:anchor.page!=null?Number(anchor.page):null,rowIndex:anchor.order!=null?Number(anchor.order):null});
     }
   }
 
   const rows=await supabase.query('foreman_mandatory_documents',{query:`id=eq.${encodeURIComponent(documentId)}&select=id,details&limit=1`});
   const current=Array.isArray(rows)?rows[0]:null;
   if(!current)throw new Error('Documento no encontrado.');
-  await supabase.query('foreman_mandatory_documents',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(documentId)}`,body:{details:{...(current.details||{}),workerAnchors:workerAnchors||[],supervisorAdjustedAnchorsAt:new Date().toISOString()},updated_at:new Date().toISOString()}});
+  await supabase.query('foreman_mandatory_documents',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(documentId)}`,body:{details:{...(current.details||{}),workerAnchors:normalizedAnchors,supervisorAdjustedAnchorsAt:new Date().toISOString()},updated_at:new Date().toISOString()}});
   await supabase.query('foreman_mandatory_pdf_files',{method:'PATCH',prefer:'return=minimal',query:`document_id=eq.${encodeURIComponent(documentId)}`,body:{signed_pdf:null,signed_sha256:null,fidelity:null,updated_at:new Date().toISOString()}});
-  try{await assignMandatoryDocumentV2(documentId);}catch(error:any){if(!/todavía necesita revisión|No hay personas confirmadas/i.test(String(error?.message||'')))throw error;}
+  try{await assignMandatoryDocumentV2(documentId);}catch(error:any){
+    if(!/todavía necesita revisión|No hay personas confirmadas|ya está asignado o cerrado/i.test(String(error?.message||'')))throw error;
+  }
 }
 export async function repairForemanMandatoryAnchors(
   token: string,
