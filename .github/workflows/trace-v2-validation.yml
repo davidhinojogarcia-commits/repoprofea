@@ -36,7 +36,7 @@ jobs:
           out.write_bytes(raw)
           digest=hashlib.sha256(raw).hexdigest()
           print(f'zip_bytes={len(raw)} sha256={digest}')
-          expected='06c4e8016025204b1025ed4a67440cb2a2e667688175d01930d0653398ab5e16'
+          expected='b42f400576733c80afde8577cf515a9cd8bfd3b18f5a167b0f84fc733e989aa2'
           if digest != expected:
               raise SystemExit(f'SHA mismatch: expected {expected}, got {digest}')
           PY
