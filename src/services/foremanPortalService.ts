@@ -435,22 +435,51 @@ export async function updateSupervisorMandatoryAnchors(
   workerAnchors: any[],
 ) {
   const normalizedAnchors=(workerAnchors||[]).map(anchor=>({...anchor}));
-  const v2Rows=await supabase.query('mandatory_document_workers_v2',{
-    query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,printed_name,detection_status`,
-  });
-  const byLegacyId=new Map((Array.isArray(v2Rows)?v2Rows:[]).map((row:any)=>[Number(row.legacy_worker_id),row]));
+  const normalizeName=(value:unknown)=>String(value||'')
+    .replace(/\s+/g,' ')
+    .trim()
+    .toLocaleLowerCase('es')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'');
+  const toNameBox=(anchor:any)=>anchor.nameX!=null&&anchor.nameY!=null&&Number(anchor.nameWidth||0)>0&&Number(anchor.nameHeight||anchor.rowHeight||0)>0
+    ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null;
+  const toSignatureBox=(anchor:any)=>anchor.signatureX!=null&&anchor.signatureY!=null&&Number(anchor.signatureWidth||0)>0&&Number(anchor.signatureHeight||0)>0
+    ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null;
+  const sameNumber=(a:unknown,b:unknown)=>Math.abs(Number(a)-Number(b))<0.02;
+  const sameBox=(stored:any,expected:any)=>Boolean(
+    stored&&expected&&
+    sameNumber(stored.x,expected.x)&&
+    sameNumber(stored.y,expected.y)&&
+    sameNumber(stored.width,expected.width)&&
+    sameNumber(stored.height,expected.height)
+  );
+
+  const loadRows=async()=> {
+    const rows=await supabase.query('mandatory_document_workers_v2',{
+      query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,printed_name,detection_status,position_status,page,row_index,name_box,signature_box`,
+    });
+    return Array.isArray(rows)?rows:[];
+  };
+
+  let v2Rows:any[]=await loadRows();
+  let byLegacyId=new Map(v2Rows.map((row:any)=>[Number(row.legacy_worker_id),row]));
+  const findRecoveredRow=(anchor:any)=>v2Rows.find((row:any)=>
+    row.detection_status!=='REJECTED'&&
+    normalizeName(row.printed_name)===normalizeName(anchor.workerName)&&
+    Number(row.page||1)===Math.max(1,Number(anchor.page||1))
+  );
 
   for(let index=0;index<normalizedAnchors.length;index+=1){
     const anchor=normalizedAnchors[index];
-    const row:any=byLegacyId.get(Number(anchor.workerId));
-    const nameBox=anchor.nameX!=null&&anchor.nameY!=null&&Number(anchor.nameWidth||0)>0&&Number(anchor.nameHeight||anchor.rowHeight||0)>0
-      ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null;
-    const signatureBox=anchor.signatureX!=null&&anchor.signatureY!=null&&Number(anchor.signatureWidth||0)>0&&Number(anchor.signatureHeight||0)>0
-      ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null;
+    const nameBox=toNameBox(anchor);
+    const signatureBox=toSignatureBox(anchor);
+    if(!signatureBox)throw new Error(`Falta colocar la posición de firma de ${anchor.workerName||`trabajador ${index+1}`}.`);
+
+    let row:any=byLegacyId.get(Number(anchor.workerId))||findRecoveredRow(anchor);
 
     if(!row){
       const printedName=String(anchor.workerName||'').replace(/\s+/g,' ').trim();
-      if(printedName.length<3||!signatureBox)continue;
+      if(printedName.length<3)throw new Error(`No se pudo identificar al trabajador ${index+1}.`);
       const created:any=await addMissingMandatoryDocumentWorkerV2({
         documentId,
         printedName,
@@ -463,25 +492,114 @@ export async function updateSupervisorMandatoryAnchors(
       const documentWorkerId=String(created?.documentWorkerId||'');
       if(!Number.isFinite(stableLegacyId)||!documentWorkerId)throw new Error('No se pudo crear una identidad documental estable para el trabajador añadido.');
       normalizedAnchors[index]={...anchor,workerId:stableLegacyId,documentWorkerId,resolved:true,positionSource:'MANUAL',reason:'Trabajador recuperado manualmente del PDF y posición confirmada por el supervisor.'};
-      byLegacyId.set(stableLegacyId,{id:documentWorkerId,legacy_worker_id:stableLegacyId,printed_name:printedName,detection_status:'CONFIRMED'});
+      row={id:documentWorkerId,legacy_worker_id:stableLegacyId,printed_name:printedName,detection_status:'CONFIRMED',position_status:'RESOLVED',page:anchor.page,row_index:anchor.order,signature_box:signatureBox,name_box:nameBox};
+      v2Rows=[...v2Rows,row];
+      byLegacyId.set(stableLegacyId,row);
       continue;
     }
 
-    if(row.detection_status==='REJECTED')continue;
-    if(signatureBox&&row.detection_status==='CONFIRMED'){
-      await updateMandatoryDocumentWorkerGeometryV2({documentId,documentWorkerId:String(row.id),nameBox,signatureBox,page:anchor.page!=null?Number(anchor.page):null,rowIndex:anchor.order!=null?Number(anchor.order):null});
+    if(row.detection_status==='REJECTED')throw new Error(`${anchor.workerName||'El trabajador'} está marcado como eliminado y no puede recibir una firma.`);
+    if(row.detection_status!=='CONFIRMED'){
+      await reviewMandatoryDocumentWorkerV2({
+        documentId,
+        documentWorkerId:String(row.id),
+        action:'confirm',
+        printedName:String(anchor.workerName||row.printed_name||''),
+        nameBox,
+        signatureBox,
+      });
+    } else {
+      await updateMandatoryDocumentWorkerGeometryV2({
+        documentId,
+        documentWorkerId:String(row.id),
+        nameBox,
+        signatureBox,
+        page:anchor.page!=null?Number(anchor.page):null,
+        rowIndex:anchor.order!=null?Number(anchor.order):null,
+      });
     }
+
+    const stableLegacyId=Number(row.legacy_worker_id);
+    if(Number.isFinite(stableLegacyId)&&Number(anchor.workerId)!==stableLegacyId){
+      normalizedAnchors[index]={...anchor,workerId:stableLegacyId,documentWorkerId:String(row.id),resolved:true};
+    }
+  }
+
+  const verifyAndRepair=async(repair:boolean)=>{
+    v2Rows=await loadRows();
+    byLegacyId=new Map(v2Rows.map((row:any)=>[Number(row.legacy_worker_id),row]));
+    const failures:string[]=[];
+
+    for(let index=0;index<normalizedAnchors.length;index+=1){
+      const anchor=normalizedAnchors[index];
+      const expectedBox=toSignatureBox(anchor);
+      let row:any=byLegacyId.get(Number(anchor.workerId));
+      if(!row){
+        row=v2Rows.find((candidate:any)=>
+          candidate.detection_status!=='REJECTED'&&
+          normalizeName(candidate.printed_name)===normalizeName(anchor.workerName)&&
+          Number(candidate.page||1)===Math.max(1,Number(anchor.page||1))
+        );
+        if(row&&Number.isFinite(Number(row.legacy_worker_id))){
+          normalizedAnchors[index]={...anchor,workerId:Number(row.legacy_worker_id),documentWorkerId:String(row.id),resolved:true};
+        }
+      }
+
+      const valid=Boolean(
+        row&&
+        row.detection_status==='CONFIRMED'&&
+        row.position_status==='RESOLVED'&&
+        Number(row.page||1)===Math.max(1,Number(anchor.page||1))&&
+        sameBox(row.signature_box,expectedBox)
+      );
+      if(valid)continue;
+
+      if(repair&&row&&row.detection_status==='CONFIRMED'&&expectedBox){
+        await updateMandatoryDocumentWorkerGeometryV2({
+          documentId,
+          documentWorkerId:String(row.id),
+          nameBox:toNameBox(anchor),
+          signatureBox:expectedBox,
+          page:Math.max(1,Number(anchor.page||1)),
+          rowIndex:Number.isFinite(Number(anchor.order))?Number(anchor.order):index,
+        });
+        continue;
+      }
+
+      failures.push(String(anchor.workerName||`trabajador ${index+1}`));
+    }
+    return failures;
+  };
+
+  let failures=await verifyAndRepair(true);
+  if(failures.length)failures=await verifyAndRepair(false);
+  if(failures.length){
+    throw new Error(`No se han podido confirmar todas las posiciones: ${failures.join(', ')}. No se ha cerrado el editor; vuelve a pulsar Guardar posiciones.`);
   }
 
   const rows=await supabase.query('foreman_mandatory_documents',{query:`id=eq.${encodeURIComponent(documentId)}&select=id,details&limit=1`});
   const current=Array.isArray(rows)?rows[0]:null;
   if(!current)throw new Error('Documento no encontrado.');
-  await supabase.query('foreman_mandatory_documents',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(documentId)}`,body:{details:{...(current.details||{}),workerAnchors:normalizedAnchors,supervisorAdjustedAnchorsAt:new Date().toISOString()},updated_at:new Date().toISOString()}});
-  await supabase.query('foreman_mandatory_pdf_files',{method:'PATCH',prefer:'return=minimal',query:`document_id=eq.${encodeURIComponent(documentId)}`,body:{signed_pdf:null,signed_sha256:null,fidelity:null,updated_at:new Date().toISOString()}});
+  await supabase.query('foreman_mandatory_documents',{
+    method:'PATCH',
+    prefer:'return=minimal',
+    query:`id=eq.${encodeURIComponent(documentId)}`,
+    body:{
+      details:{...(current.details||{}),workerAnchors:normalizedAnchors,supervisorAdjustedAnchorsAt:new Date().toISOString()},
+      updated_at:new Date().toISOString(),
+    },
+  });
+  await supabase.query('foreman_mandatory_pdf_files',{
+    method:'PATCH',
+    prefer:'return=minimal',
+    query:`document_id=eq.${encodeURIComponent(documentId)}`,
+    body:{signed_pdf:null,signed_sha256:null,fidelity:null,updated_at:new Date().toISOString()},
+  });
   try{await assignMandatoryDocumentV2(documentId);}catch(error:any){
     if(!/todavía necesita revisión|No hay personas confirmadas|ya está asignado o cerrado/i.test(String(error?.message||'')))throw error;
   }
 }
+
 export async function repairForemanMandatoryAnchors(
   token: string,
   documentId: string,
