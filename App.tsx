@@ -43,6 +43,7 @@ const CalendarioIntegrado = lazy(() => import('./components/CalendarioIntegrado'
 const SubcontratasSection = lazy(() => import('./components/SubcontratasSection').then(module => ({ default: module.SubcontratasSection })));
 const SaeSection = lazy(() => import('./components/SaeSection').then(module => ({ default: module.SaeSection })));
 const InventorySection = lazy(() => import('./components/InventorySection').then(module => ({ default: module.InventorySection })));
+const PreventionSection = lazy(() => import('./components/PreventionSection').then(module => ({ default: module.PreventionSection })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
@@ -125,6 +126,7 @@ const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: strin
   documentacion_obra: { step: 'Paso 4 de 6', title: 'Documentación de obra', help: 'Completa y revisa los documentos de la obra.' },
   documentacion_encargados: { step: 'Seguimiento', title: 'Documentación de encargados', help: 'Revisa firmas, partes y registros diarios enviados desde obra.' },
   subcontratas: { step: 'Paso 5 de 6', title: 'CAE', help: 'Revisa la coordinación y documentación de empresas.' },
+  prevencion: { step: 'Prevención en obra', title: 'Incidencias y alertas', help: 'Comunica riesgos, revisa la tarea y registra las medidas adoptadas.' },
   inventario: { step: 'Paso 6 de 6', title: 'Maquinaria y herramientas', help: 'Consulta equipos disponibles, asignados o averiados.' },
   registro: { step: 'Tarea adicional', title: 'Añadir trabajador', help: 'Da de alta manualmente a un trabajador.' },
 };
@@ -311,7 +313,7 @@ function App() {
     setInterfaceMode(nextMode);
     if (
       nextMode === 'guided' &&
-      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'subcontratas', 'inventario', 'sae'].includes(activeView)
+      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
     ) {
       setActiveView('dashboard');
       window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
@@ -2533,6 +2535,14 @@ function App() {
                 onToast={(message, type) => setToast({ message, type })}
               />
             </div>
+            </Suspense>
+          )}
+
+          {activeView === 'prevencion' && (
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <div className="w-full max-w-[1600px] mx-auto min-w-0">
+                <PreventionSection savedObras={savedObras} />
+              </div>
             </Suspense>
           )}
 

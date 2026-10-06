@@ -33,6 +33,8 @@ jobs:
             echo 'Business data must not use localStorage.'
             exit 1
           fi
+      - name: Validate prevention persistence and permissions
+        run: npm run test:prevention
       - name: Validate auth session architecture
         run: |
           grep -q '"@supabase/supabase-js"' package.json
