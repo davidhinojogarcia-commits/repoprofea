@@ -26,6 +26,8 @@ assert.deepEqual(names, [
   "navigate",
   "apply_filters",
   "create_prevention_incident",
+  "list_mandatory_documents",
+  "prepare_inventory_fault_report",
   "prepare_delete_mandatory_documents",
 ]);
 assert.ok(TUTOR_AGENT_VERSION.length > 0);
