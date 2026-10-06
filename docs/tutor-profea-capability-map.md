@@ -40,3 +40,47 @@ Cuando se añada o cambie un módulo:
 3. Actualizar el catálogo estructurado del agente.
 4. Añadir prueba de política/validación.
 5. No marcar una capacidad como operativa hasta comprobar persistencia o resultado real.
+
+
+## Mapa de módulos auditados
+
+| Área | Vista / fuente principal | Capacidades verificadas |
+| --- | --- | --- |
+| Menú y modo guiado | `App.tsx`, `components/Sidebar.tsx` | selección de vista, modo guiado/completo y filtros globales |
+| Obras y periodos | `App.tsx`, `databaseService.ts`, tablas `obras` / `trabajadores` | lectura por RLS y filtros activos |
+| Gestión SAE | `src/services/saeService.ts` | necesidades, informes, candidatos y cambios de estado |
+| Directorio | `src/services/databaseService.ts` | CRUD de trabajadores con persistencia y RLS |
+| Reconocimientos médicos | `src/services/medicalRecognitionService.ts`, `citasService.ts` | persistencia de reconocimiento y CRUD de citas |
+| Prevención | `src/services/preventionService.ts`, migración `20261006074525_prevention_incidents_and_checks.sql` | incidencias, comprobaciones, seguimiento, idempotencia y concurrencia |
+| CAE / subcontratas | tablas/servicios de subcontratas y políticas existentes | acceso por propietario/recursos compartidos |
+| Documentación de obra | componentes de documentación y exportación existentes | generación y exportación según flujos actuales |
+| Documentación de encargados | `src/services/foremanPortalService.ts` | preparación, revisión, devolución, corrección, PDF y borrado con tombstones |
+| Portal de encargados | `foremanPortalService.ts`, migraciones 20260928–20261003 | acceso por token, documentos, asistencia y firma |
+| Inicios / Control presencia | `mandatoryTraceabilityServiceV2.ts` y migraciones V2 | documento original, trabajadores importados, geometría de firma, firma, envío, revisión y PDF firmado |
+| Registro horario | portal de encargados / asistencia | altas y firmas según periodo/obra autorizados |
+| Maquinaria y herramientas | `src/services/inventoryService.ts` | parques, elementos, movimientos, mantenimientos, documentos y compartición |
+| Configuración | `user_settings` y configuración de aplicación | obras guardadas, responsables y preferencias persistentes |
+
+### Reglas especialmente verificadas en documentación obligatoria
+
+- Los flujos V2 conservan el documento original y mantienen identidades documentales independientes del Directorio.
+- La detección y firma trabajan con los trabajadores del documento importado; las migraciones de integridad impiden cerrar si faltan firmas/posiciones requeridas.
+- La generación del PDF firmado y su fidelidad están cubiertas por regresiones existentes.
+- Tutor PROFEA no dispone de herramienta para firmar por un trabajador.
+- El borrado usa el RPC existente `delete_foreman_mandatory_documents`, que crea tombstones y está sujeto al usuario autenticado; el trigger de auditoría registra los borrados.
+
+## Herramientas operativas de esta rama
+
+| Herramienta | Tipo | Confirmación | Verificación |
+| --- | --- | --- | --- |
+| `list_works` | consulta | no | RLS / REST |
+| `search_workers` | consulta | no | RLS / REST, datos personales minimizados |
+| `list_pending_medical` | consulta | no | RLS / REST, sin diagnóstico médico |
+| `list_mandatory_documents` | consulta | no | RLS de documentación |
+| `prepare_inventory_fault_report` | consulta/preparación | no | RLS de inventario |
+| `navigate` | interfaz | no | vista permitida |
+| `apply_filters` | interfaz | no | filtros de cliente, sin persistencia |
+| `create_prevention_incident` | escritura | orden explícita | RPC, idempotencia, eventos |
+| `prepare_delete_mandatory_documents` | preparación sensible | sí, antes de borrar | calcula conjunto exacto, no modifica |
+
+La ejecución posterior del borrado no se solicita al modelo: el servidor valida una confirmación firmada, usuario, caducidad, obra activa y que el conjunto de documentos no haya cambiado antes de llamar al RPC real.
