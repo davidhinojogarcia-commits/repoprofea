@@ -287,7 +287,7 @@ async function startServer() {
         }))
         .filter((item: any) => item.text.trim());
 
-      const tutorModel = String(process.env.TUTOR_MODEL || "gemini-flash-latest").trim() || "gemini-flash-latest";
+      const tutorModel = String(process.env.TUTOR_MODEL || "gemini-3.7-flash").trim() || "gemini-3.7-flash";
       const knowledgeSlice = getTutorKnowledgeSlice(question, context.currentView);
 
       const plannerPrompt = `
