@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { normalizeTutorContext, toolCatalogForPrompt, TUTOR_AGENT_VERSION } from "../src/server/profeaTutorAgent";
+import { getTutorKnowledgeSlice } from "../src/lib/profeaTutorKnowledge";
 
 const context = normalizeTutorContext({
   currentView: "prevencion",
@@ -31,3 +32,11 @@ assert.equal(names.includes("sql"), false);
 assert.equal(names.includes("delete_documents"), false);
 
 console.log("Tutor PROFEA agent policy tests: OK");
+
+const preventionKnowledge = getTutorKnowledgeSlice("Registra una incidencia en esta obra", "prevencion");
+assert.match(preventionKnowledge, /PREVENCIÓN E INCIDENCIAS/);
+assert.doesNotMatch(preventionKnowledge, /SAE \/ SELECCIÓN/);
+
+const saeKnowledge = getTutorKnowledgeSlice("¿Cómo sigo con este candidato?", "sae");
+assert.match(saeKnowledge, /SAE \/ SELECCIÓN/);
+assert.doesNotMatch(saeKnowledge, /HERRAMIENTAS Y MAQUINARIA/);
