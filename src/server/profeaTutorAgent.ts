@@ -243,10 +243,14 @@ async function executeDataTool(call: TutorToolCall, context: TutorContext, token
   }
 }
 
-export async function executeTutorTools(calls: TutorToolCall[], context: TutorContext, token: string, requestId: string) {
+export async function executeTutorTools(calls: TutorToolCall[], context: TutorContext, token: string, requestId: string, userQuestion = "") {
   const results: TutorToolResult[] = [];
   for (const call of calls.slice(0, 4)) {
     try {
+      if (call.name === "create_prevention_incident" && !/(registra|registrar|crea|crear|anota|anotar|guarda|guardar|abre|abrir).{0,40}(incidencia|riesgo)|incidencia.{0,40}(registra|crea|anota|guarda|abre)/i.test(userQuestion)) {
+        results.push({ name: call.name, ok: false, verified: true, summary: "No se ejecutó porque la orden no contiene una petición explícita de crear la incidencia.", error: "EXPLICIT_MUTATION_REQUIRED" });
+        continue;
+      }
       results.push(await executeDataTool(call, context, token, requestId));
     } catch (error: any) {
       results.push({ name: call.name, ok: false, verified: true, summary: "La operación no se pudo completar.", error: String(error?.message || error).slice(0, 500) });
