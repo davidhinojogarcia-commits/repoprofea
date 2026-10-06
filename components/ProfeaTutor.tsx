@@ -29,6 +29,12 @@ type TutorMessage = {
     destination?: string;
     consequences: string;
   };
+  resultCards?: Array<{
+    kind: 'worker';
+    id: string;
+    title: string;
+    subtitle: string;
+  }>;
 };
 
 type TutorTaskState = {
@@ -56,6 +62,7 @@ interface ProfeaTutorProps {
   activePeriod?: string;
   onNavigate: (view: ViewMode) => void;
   onApplyFilters?: (filters: { obra?: string; periodo?: string }) => void;
+  onOpenWorker?: (worker: { id: string; name: string; obra?: string; periodo?: string }) => void;
 }
 
 const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -67,6 +74,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   activePeriod = '',
   onNavigate,
   onApplyFilters,
+  onOpenWorker,
 }) => {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -232,6 +240,17 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
           : 'idle',
         nextAction: String(data?.nextAction || '').trim(),
       };
+      const resultCards = Array.isArray(data?.toolResults)
+        ? data.toolResults.flatMap((result: any) => {
+            if (!['search_workers', 'list_pending_medical'].includes(String(result?.name)) || !Array.isArray(result?.data)) return [];
+            return result.data.slice(0, 12).map((worker: any) => ({
+              kind: 'worker' as const,
+              id: String(worker?.id || ''),
+              title: String(worker?.nombre || 'Trabajador'),
+              subtitle: [worker?.obra, worker?.periodo, worker?.reconocimiento].filter(Boolean).join(' · '),
+            }));
+          })
+        : [];
       setTaskState(nextTask);
       setMessages(current => [...current, {
         id: makeId(),
@@ -248,6 +267,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
           ? data.toolResults.map((result: any) => String(result?.summary || '').trim()).filter(Boolean).slice(0, 4)
           : [],
         pendingConfirmation: data?.pendingConfirmation?.token ? data.pendingConfirmation : undefined,
+        resultCards,
       }]);
     } catch (error) {
       console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
@@ -413,6 +433,23 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                           {message.toolSummaries.map((summary, index) => (
                             <div key={`${message.id}-tool-${index}`} className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200">
                               {summary}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {message.role === 'assistant' && message.resultCards && message.resultCards.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          {message.resultCards.map(card => (
+                            <div key={`${message.id}-worker-${card.id}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                              <div className="text-sm font-black text-slate-900 dark:text-white">{card.title}</div>
+                              <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">{card.subtitle}</div>
+                              <button
+                                type="button"
+                                className="mt-2 min-h-10 rounded-xl bg-[#00548E] px-3 py-2 text-xs font-black text-white"
+                                onClick={() => onOpenWorker?.({ id: card.id, name: card.title })}
+                              >
+                                Abrir trabajador
+                              </button>
                             </div>
                           ))}
                         </div>
