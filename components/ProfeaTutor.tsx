@@ -7,6 +7,7 @@ import {
   getLocalTutorFallback,
   type ProfeaTutorView,
 } from '../src/lib/profeaTutorKnowledge';
+import { supabase } from '../src/lib/supabase';
 
 type TutorMessage = {
   id: string;
@@ -18,6 +19,8 @@ type TutorMessage = {
   progressHint?: string;
   checkQuestion?: string;
   checkOptions?: string[];
+  verified?: boolean;
+  toolSummaries?: string[];
 };
 
 type TutorTaskState = {
@@ -41,7 +44,10 @@ const TUTOR_SESSION_KEY = 'profea:tutor:conversation:v2';
 interface ProfeaTutorProps {
   activeView: ViewMode;
   guidedMode?: boolean;
+  activeObra?: string;
+  activePeriod?: string;
   onNavigate: (view: ViewMode) => void;
+  onApplyFilters?: (filters: { obra?: string; periodo?: string }) => void;
 }
 
 const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -49,7 +55,10 @@ const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   activeView,
   guidedMode = false,
+  activeObra = '',
+  activePeriod = '',
   onNavigate,
+  onApplyFilters,
 }) => {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -145,14 +154,29 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
     setBusy(true);
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('Sesión no disponible');
+      const requestId = makeId();
       const response = await fetch('/api/profea-tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
+          requestId,
           question,
           currentView: viewOverride || activeView,
           currentViewLabel: viewOverride ? (PROFEA_TUTOR_VIEW_LABELS[viewOverride] || activeLabel) : activeLabel,
           guidedMode,
+          context: {
+            currentView: viewOverride || activeView,
+            currentViewLabel: viewOverride ? (PROFEA_TUTOR_VIEW_LABELS[viewOverride] || activeLabel) : activeLabel,
+            obra: activeObra,
+            periodo: activePeriod,
+            filters: { obra: activeObra, periodo: activePeriod },
+          },
           taskState,
           history: nextMessages.slice(-20).map(item => ({
             role: item.role,
@@ -166,6 +190,17 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       if (!response.ok) throw new Error('Tutor no disponible');
 
       const data = await response.json();
+      const clientActions = Array.isArray(data?.clientActions) ? data.clientActions : [];
+      for (const action of clientActions) {
+        if (action?.type === 'navigate' && action?.view) {
+          onNavigate(action.view as ViewMode);
+        } else if (action?.type === 'apply_filters') {
+          onApplyFilters?.({
+            obra: String(action?.obra || '').trim() || undefined,
+            periodo: String(action?.periodo || '').trim() || undefined,
+          });
+        }
+      }
       const answer = String(data?.answer || '').trim();
       if (!answer) throw new Error('Respuesta vacía');
 
@@ -199,6 +234,10 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         progressHint: String(data?.progressHint || '').trim() || undefined,
         checkQuestion: checkQuestion || undefined,
         checkOptions,
+        verified: Boolean(data?.verified),
+        toolSummaries: Array.isArray(data?.toolResults)
+          ? data.toolResults.map((result: any) => String(result?.summary || '').trim()).filter(Boolean).slice(0, 4)
+          : [],
       }]);
     } catch (error) {
       console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
@@ -353,6 +392,21 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                         : 'border border-slate-200/80 bg-white/68 text-slate-800 rounded-bl-md dark:border-slate-700 dark:bg-slate-900/65 dark:text-slate-100'
                     }`}>
                       <div className="whitespace-pre-wrap">{message.text}</div>
+                      {message.role === 'assistant' && message.verified && (
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          Verificado
+                        </div>
+                      )}
+                      {message.role === 'assistant' && message.toolSummaries && message.toolSummaries.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {message.toolSummaries.map((summary, index) => (
+                            <div key={`${message.id}-tool-${index}`} className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200">
+                              {summary}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {message.role === 'assistant' && message.progressHint && (
                         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
                           {message.progressHint}
