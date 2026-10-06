@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 export type TutorContext = {
   currentView?: string;
@@ -28,6 +28,14 @@ export type TutorToolResult = {
     view?: string;
     obra?: string;
     periodo?: string;
+  };
+  confirmation?: {
+    token: string;
+    action: string;
+    title: string;
+    recordsAffected: number;
+    destination?: string;
+    consequences: string;
   };
 };
 
@@ -82,6 +90,14 @@ export const TUTOR_TOOL_CATALOG = [
     mutates: true,
     required: ["obra", "workDate", "category", "severity", "title", "task", "description"],
   },
+  {
+    name: "prepare_delete_mandatory_documents",
+    purpose: "Calcular el alcance exacto antes de borrar documentos obligatorios de encargados de una obra.",
+    permissions: "RLS de documentos del supervisor; esta herramienta no borra nada.",
+    confirmation: true,
+    mutates: false,
+    required: ["obra"],
+  },
 ] as const;
 
 const ALLOWED_VIEWS = new Set([
@@ -118,6 +134,42 @@ function deterministicUuid(seed: string) {
   hex[16] = ["8","9","a","b"][parseInt(hex[16], 16) % 4];
   const value = hex.join("");
   return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
+}
+
+type ConfirmationPayload = {
+  v: 1;
+  action: "delete_mandatory_documents";
+  userId: string;
+  obra: string;
+  ids: string[];
+  exp: number;
+};
+
+function confirmationSecret() {
+  const value = process.env.TUTOR_CONFIRMATION_SECRET || process.env.GEMINI_API_KEY || "";
+  if (!value) throw new Error("Las confirmaciones sensibles no están configuradas en el servidor.");
+  return value;
+}
+
+function signConfirmation(payload: ConfirmationPayload) {
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = createHmac("sha256", confirmationSecret()).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function readConfirmation(token: string): ConfirmationPayload {
+  const [encoded, supplied] = String(token || "").split(".");
+  if (!encoded || !supplied) throw new Error("Confirmación no válida.");
+  const expected = createHmac("sha256", confirmationSecret()).update(encoded).digest("base64url");
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("Confirmación no válida.");
+  const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as ConfirmationPayload;
+  if (payload.v !== 1 || payload.action !== "delete_mandatory_documents" || !payload.userId || !payload.obra || !Array.isArray(payload.ids)) {
+    throw new Error("Confirmación no válida.");
+  }
+  if (!Number.isFinite(payload.exp) || payload.exp < Date.now()) throw new Error("La confirmación ha caducado. Vuelve a preparar la operación.");
+  return payload;
 }
 
 function getSupabaseConfig() {
@@ -168,7 +220,7 @@ function matchesText(value: unknown, needle: string) {
   return String(value || "").toLocaleLowerCase("es").includes(needle.toLocaleLowerCase("es"));
 }
 
-async function executeDataTool(call: TutorToolCall, context: TutorContext, token: string, requestId: string): Promise<TutorToolResult> {
+async function executeDataTool(call: TutorToolCall, context: TutorContext, token: string, requestId: string, userId: string): Promise<TutorToolResult> {
   const args = call.arguments || {};
   switch (call.name) {
     case "list_works": {
@@ -238,12 +290,55 @@ async function executeDataTool(call: TutorToolCall, context: TutorContext, token
       });
       return { name: call.name, ok: true, verified: true, summary: "Incidencia creada y confirmada por la base de datos.", data: { id: data?.id || id, obra: data?.obra || obra, status: data?.status || "pending", updated_at: data?.updated_at || "" } };
     }
+    case "prepare_delete_mandatory_documents": {
+      const obra = safeText(args.obra, 300) || context.obra || "";
+      if (!obra) return { name: call.name, ok: false, verified: true, summary: "Falta seleccionar la obra.", error: "OBRA_REQUIRED" };
+      if (context.obra && obra.toLocaleLowerCase("es") !== context.obra.toLocaleLowerCase("es")) {
+        return { name: call.name, ok: false, verified: true, summary: "La obra indicada ya no coincide con la obra activa.", error: "STALE_CONTEXT" };
+      }
+      const rows = await supabaseRequest(
+        `/rest/v1/foreman_mandatory_documents?select=id,obra,period_key,work_date,document_type,category,status&obra=eq.${encodeURIComponent(obra)}&order=work_date.desc&limit=500`,
+        token,
+      );
+      const ids = (Array.isArray(rows) ? rows : []).map((row: any) => String(row.id || "")).filter(Boolean);
+      if (!ids.length) {
+        return { name: call.name, ok: true, verified: true, summary: "No hay documentos obligatorios visibles de esa obra para borrar.", data: [] };
+      }
+      const confirmation = signConfirmation({
+        v: 1,
+        action: "delete_mandatory_documents",
+        userId,
+        obra,
+        ids,
+        exp: Date.now() + 10 * 60 * 1000,
+      });
+      return {
+        name: call.name,
+        ok: true,
+        verified: true,
+        summary: `${ids.length} documentos quedarían afectados. No se ha borrado nada todavía.`,
+        data: (rows || []).map((row: any) => ({
+          id: row.id,
+          tipo: row.document_type,
+          periodo: row.period_key,
+          fecha: row.work_date,
+          estado: row.status,
+        })),
+        confirmation: {
+          token: confirmation,
+          action: "delete_mandatory_documents",
+          title: `Borrar ${ids.length} documentos de ${obra}`,
+          recordsAffected: ids.length,
+          consequences: "Se crearán las marcas de borrado previstas por el flujo actual y los documentos dejarán de aparecer. La operación requiere esta confirmación exacta.",
+        },
+      };
+    }
     default:
       return { name: call.name, ok: false, verified: true, summary: "Herramienta no autorizada.", error: "TOOL_NOT_ALLOWED" };
   }
 }
 
-export async function executeTutorTools(calls: TutorToolCall[], context: TutorContext, token: string, requestId: string, userQuestion = "") {
+export async function executeTutorTools(calls: TutorToolCall[], context: TutorContext, token: string, requestId: string, userQuestion = "", userId = "") {
   const results: TutorToolResult[] = [];
   for (const call of calls.slice(0, 4)) {
     try {
@@ -251,7 +346,7 @@ export async function executeTutorTools(calls: TutorToolCall[], context: TutorCo
         results.push({ name: call.name, ok: false, verified: true, summary: "No se ejecutó porque la orden no contiene una petición explícita de crear la incidencia.", error: "EXPLICIT_MUTATION_REQUIRED" });
         continue;
       }
-      results.push(await executeDataTool(call, context, token, requestId));
+      results.push(await executeDataTool(call, context, token, requestId, userId));
     } catch (error: any) {
       results.push({ name: call.name, ok: false, verified: true, summary: "La operación no se pudo completar.", error: String(error?.message || error).slice(0, 500) });
     }
@@ -267,4 +362,54 @@ export function toolCatalogForPrompt() {
     confirmation: tool.confirmation,
     mutates: tool.mutates,
   }));
+}
+
+
+export async function executeTutorConfirmation(input: {
+  confirmationToken: string;
+  context: TutorContext;
+  token: string;
+  userId: string;
+}): Promise<TutorToolResult> {
+  const payload = readConfirmation(input.confirmationToken);
+  if (payload.userId !== input.userId) {
+    return { name: payload.action, ok: false, verified: true, summary: "La confirmación pertenece a otra sesión.", error: "CONFIRMATION_USER_MISMATCH" };
+  }
+  if (!input.context.obra || payload.obra.toLocaleLowerCase("es") !== input.context.obra.toLocaleLowerCase("es")) {
+    return { name: payload.action, ok: false, verified: true, summary: "La obra activa ha cambiado; la confirmación anterior queda invalidada.", error: "STALE_CONTEXT" };
+  }
+
+  const rows = await supabaseRequest(
+    `/rest/v1/foreman_mandatory_documents?select=id,obra&id=in.(${payload.ids.map(encodeURIComponent).join(",")})&limit=500`,
+    input.token,
+  );
+  const visibleIds = new Set((Array.isArray(rows) ? rows : []).filter((row: any) =>
+    String(row.obra || "").toLocaleLowerCase("es") === payload.obra.toLocaleLowerCase("es")
+  ).map((row: any) => String(row.id)));
+  if (visibleIds.size !== payload.ids.length || payload.ids.some(id => !visibleIds.has(id))) {
+    return { name: payload.action, ok: false, verified: true, summary: "El conjunto de documentos ha cambiado desde la confirmación. Vuelve a revisar el alcance.", error: "CONFIRMATION_SCOPE_CHANGED" };
+  }
+
+  const deleted = await supabaseRequest("/rest/v1/rpc/delete_foreman_mandatory_documents", input.token, {
+    method: "POST",
+    body: JSON.stringify({ p_ids: payload.ids, p_obra: null }),
+  });
+  const count = Number(deleted) || 0;
+  if (count !== payload.ids.length) {
+    return {
+      name: payload.action,
+      ok: false,
+      verified: true,
+      summary: `La base de datos confirmó ${count} borrados de ${payload.ids.length}; revisa el estado antes de repetir.`,
+      error: "PARTIAL_DELETE",
+      data: { deleted: count, expected: payload.ids.length, obra: payload.obra },
+    };
+  }
+  return {
+    name: payload.action,
+    ok: true,
+    verified: true,
+    summary: `${count} documentos de ${payload.obra} borrados y confirmados por la base de datos.`,
+    data: { deleted: count, obra: payload.obra },
+  };
 }
