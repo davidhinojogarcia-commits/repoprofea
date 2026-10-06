@@ -26,6 +26,7 @@ assert.deepEqual(names, [
   "navigate",
   "apply_filters",
   "create_prevention_incident",
+  "prepare_delete_mandatory_documents",
 ]);
 assert.ok(TUTOR_AGENT_VERSION.length > 0);
 assert.equal(names.includes("sql"), false);
