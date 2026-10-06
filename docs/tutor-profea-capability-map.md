@@ -23,11 +23,12 @@ Este mapa se deriva del código de `main` en el commit `1bf90c6fa15bdef35a215886
 6. Creación de incidencias preventivas mediante el RPC existente, con verificación de respuesta de base de datos.
 7. Contexto explícito de pantalla, obra y periodo.
 8. Autenticación del endpoint del tutor mediante el token de sesión del usuario.
+9. Borrado masivo de documentos obligatorios por obra con cálculo previo del alcance, confirmación firmada de 10 minutos, revalidación de obra/conjunto y borrado mediante el RPC existente.
 
 ## Límites deliberados
 - No SQL arbitrario.
 - No service-role en navegador ni para decisiones del modelo.
-- No borrados, cambios masivos, envíos a terceros ni cierre definitivo de documentos en esta primera herramienta de escritura.
+- Los borrados de documentos obligatorios solo se ejecutan tras una confirmación exacta firmada; otros cambios masivos, envíos a terceros y cierres definitivos siguen deshabilitados.
 - No firmas por trabajadores.
 - No se envían DNI, IBAN, NUSS ni detalles médicos al proveedor del modelo.
 - El contenido de documentos importados no forma parte del prompt de sistema y nunca se interpreta como instrucciones.
