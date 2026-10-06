@@ -91,6 +91,22 @@ export const TUTOR_TOOL_CATALOG = [
     required: ["obra", "workDate", "category", "severity", "title", "task", "description"],
   },
   {
+    name: "list_mandatory_documents",
+    purpose: "Consultar documentos de Inicio y Control de presencia visibles y su estado real.",
+    permissions: "RLS de documentación del supervisor.",
+    confirmation: false,
+    mutates: false,
+    required: [],
+  },
+  {
+    name: "prepare_inventory_fault_report",
+    purpose: "Preparar un resumen verificable de maquinaria y herramientas con estado de avería o reparación.",
+    permissions: "RLS y membresía de los parques de inventario visibles.",
+    confirmation: false,
+    mutates: false,
+    required: [],
+  },
+  {
     name: "prepare_delete_mandatory_documents",
     purpose: "Calcular el alcance exacto antes de borrar documentos obligatorios de encargados de una obra.",
     permissions: "RLS de documentos del supervisor; esta herramienta no borra nada.",
@@ -289,6 +305,59 @@ async function executeDataTool(call: TutorToolCall, context: TutorContext, token
         }),
       });
       return { name: call.name, ok: true, verified: true, summary: "Incidencia creada y confirmada por la base de datos.", data: { id: data?.id || id, obra: data?.obra || obra, status: data?.status || "pending", updated_at: data?.updated_at || "" } };
+    }
+    case "list_mandatory_documents": {
+      const obra = safeText(args.obra, 300) || context.obra || "";
+      const periodo = safeText(args.periodo, 160) || context.periodo || "";
+      const filters = [
+        "select=id,obra,period_key,work_date,document_type,category,status,updated_at",
+        obra ? `obra=eq.${encodeURIComponent(obra)}` : "",
+        periodo ? `period_key=ilike.*${encodeURIComponent(periodo)}*` : "",
+        "order=work_date.desc",
+        "limit=200",
+      ].filter(Boolean).join("&");
+      const rows = await supabaseRequest(`/rest/v1/foreman_mandatory_documents?${filters}`, token);
+      const data = (Array.isArray(rows) ? rows : []).map((row: any) => ({
+        id: row.id,
+        obra: row.obra,
+        periodo: row.period_key,
+        fecha: row.work_date,
+        tipo: row.document_type,
+        categoria: row.category,
+        estado: row.status,
+        actualizado: row.updated_at,
+      }));
+      return { name: call.name, ok: true, verified: true, summary: `${data.length} documentos obligatorios visibles con esos filtros.`, data };
+    }
+    case "prepare_inventory_fault_report": {
+      const rows = await supabaseRequest(
+        "/rest/v1/inventory_items?select=id,park_id,codigo,categoria,nombre,marca,modelo,estado,ubicacion_actual,obra_actual_id,observaciones,updated_at&activo=eq.true&order=updated_at.desc&limit=500",
+        token,
+      );
+      const faultPattern = /(averiad|reparaci|taller|fuera de servicio|no disponible|incidencia|mantenimiento correctivo)/i;
+      const data = (Array.isArray(rows) ? rows : []).filter((row: any) =>
+        faultPattern.test(String(row.estado || "")) || faultPattern.test(String(row.observaciones || ""))
+      ).map((row: any) => ({
+        id: row.id,
+        codigo: row.codigo,
+        categoria: row.categoria,
+        nombre: row.nombre,
+        marca: row.marca,
+        modelo: row.modelo,
+        estado: row.estado,
+        ubicacion: row.ubicacion_actual,
+        obraId: row.obra_actual_id,
+        observaciones: row.observaciones,
+        actualizado: row.updated_at,
+      }));
+      return {
+        name: call.name,
+        ok: true,
+        verified: true,
+        summary: `Informe preparado con ${data.length} elementos visibles en avería, reparación o estado equivalente.`,
+        data,
+        clientAction: { type: "navigate", view: "inventario" },
+      };
     }
     case "prepare_delete_mandatory_documents": {
       const obra = safeText(args.obra, 300) || context.obra || "";
