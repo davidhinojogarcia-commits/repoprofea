@@ -127,10 +127,11 @@ CONSEJOS DE USO
 `;
 
 export const PROFEA_TUTOR_QUICK_QUESTIONS = [
-  '¿Cómo empiezo una contratación en SAE?',
-  '¿Cómo envío una cita de reconocimiento médico?',
-  '¿Cómo genero un documento de obra?',
-  '¿Cómo reviso la documentación de encargados?',
+  'Explícame esta pantalla',
+  '¿Qué me falta por completar?',
+  'Busca un trabajador',
+  'Prepara un informe',
+  'Ayúdame paso a paso',
 ] as const;
 
 const normalize = (value: string) =>
@@ -199,4 +200,77 @@ export function getLocalTutorFallback(question: string, currentView?: string) {
       : 'Dime qué tarea quieres realizar en GestionProfea y te indicaré el módulo y los pasos exactos.',
     view: currentView as ProfeaTutorView | undefined,
   };
+}
+
+
+const KNOWLEDGE_HEADINGS = [
+  'REGLAS DEL TUTOR',
+  'RESUMEN / MENÚ INICIAL',
+  'SAE / SELECCIÓN',
+  'DIRECTORIO',
+  'RECONOCIMIENTOS MÉDICOS',
+  'DOCUMENTACIÓN DE OBRA',
+  'DOCUMENTACIÓN DE ENCARGADOS',
+  'PORTAL DEL ENCARGADO',
+  'CAE / SUBCONTRATAS',
+  'PREVENCIÓN E INCIDENCIAS',
+  'HERRAMIENTAS Y MAQUINARIA',
+  'CONFIGURACIÓN',
+  'PAPELERA',
+  'CONSEJOS DE USO',
+] as const;
+
+const VIEW_HEADING: Partial<Record<ProfeaTutorView, typeof KNOWLEDGE_HEADINGS[number]>> = {
+  dashboard: 'RESUMEN / MENÚ INICIAL',
+  sae: 'SAE / SELECCIÓN',
+  directorio: 'DIRECTORIO',
+  citas: 'RECONOCIMIENTOS MÉDICOS',
+  documentacion_obra: 'DOCUMENTACIÓN DE OBRA',
+  documentacion_encargados: 'DOCUMENTACIÓN DE ENCARGADOS',
+  subcontratas: 'CAE / SUBCONTRATAS',
+  prevencion: 'PREVENCIÓN E INCIDENCIAS',
+  inventario: 'HERRAMIENTAS Y MAQUINARIA',
+  configuracion: 'CONFIGURACIÓN',
+  papelera: 'PAPELERA',
+};
+
+function extractKnowledgeSection(heading: string) {
+  const marker = `\n${heading}\n`;
+  const start = PROFEA_TUTOR_KNOWLEDGE.indexOf(marker);
+  if (start < 0) return '';
+  const contentStart = start + marker.length;
+  const nextStarts = KNOWLEDGE_HEADINGS
+    .map(next => PROFEA_TUTOR_KNOWLEDGE.indexOf(`\n${next}\n`, contentStart))
+    .filter(index => index >= 0);
+  const end = nextStarts.length ? Math.min(...nextStarts) : PROFEA_TUTOR_KNOWLEDGE.length;
+  return `${heading}\n${PROFEA_TUTOR_KNOWLEDGE.slice(contentStart, end).trim()}`;
+}
+
+export function getTutorKnowledgeSlice(question: string, currentView?: string) {
+  const q = normalize(question);
+  const headings = new Set<string>(['REGLAS DEL TUTOR', 'CONSEJOS DE USO']);
+  const activeHeading = VIEW_HEADING[currentView as ProfeaTutorView];
+  if (activeHeading) headings.add(activeHeading);
+
+  const matches: Array<[RegExp, typeof KNOWLEDGE_HEADINGS[number]]> = [
+    [/\bsae\b|contrataci|candidat|oferta/, 'SAE / SELECCIÓN'],
+    [/directorio|trabajador|ficha/, 'DIRECTORIO'],
+    [/reconocimiento|medic|cita|aptitud/, 'RECONOCIMIENTOS MÉDICOS'],
+    [/documentacion de obra|epis|formacion|control horario/, 'DOCUMENTACIÓN DE OBRA'],
+    [/encargad|inicio|control de presencia|firma/, 'DOCUMENTACIÓN DE ENCARGADOS'],
+    [/portal/, 'PORTAL DEL ENCARGADO'],
+    [/cae|subcontrat/, 'CAE / SUBCONTRATAS'],
+    [/prevencion|incidencia|riesgo|proteccion|hidratacion|lluvia/, 'PREVENCIÓN E INCIDENCIAS'],
+    [/maquinaria|herramienta|inventario|averiad/, 'HERRAMIENTAS Y MAQUINARIA'],
+    [/configuracion|responsable|destinatario/, 'CONFIGURACIÓN'],
+    [/papelera|restaurar|borrado/, 'PAPELERA'],
+  ];
+  for (const [pattern, heading] of matches) {
+    if (pattern.test(q)) headings.add(heading);
+  }
+
+  return Array.from(headings)
+    .map(extractKnowledgeSection)
+    .filter(Boolean)
+    .join('\n\n');
 }
