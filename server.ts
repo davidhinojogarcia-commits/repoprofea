@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
-import { PROFEA_TUTOR_KNOWLEDGE, PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION } from "./src/lib/profeaTutorKnowledge";
+import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION, getTutorKnowledgeSlice } from "./src/lib/profeaTutorKnowledge";
 import { authenticateTutorRequest, executeTutorTools, normalizeTutorContext, toolCatalogForPrompt, TUTOR_AGENT_VERSION, type TutorToolCall } from "./src/server/profeaTutorAgent";
 
 // Helper to extract clean text/tables from Excel (.xlsx/.xls) and Word (.docx/.doc) buffers
@@ -287,6 +287,9 @@ async function startServer() {
         }))
         .filter((item: any) => item.text.trim());
 
+      const tutorModel = String(process.env.TUTOR_MODEL || "gemini-flash-latest").trim() || "gemini-flash-latest";
+      const knowledgeSlice = getTutorKnowledgeSlice(question, context.currentView);
+
       const plannerPrompt = `
 Eres Tutor PROFEA, agente operativo de GestionProfea.
 Tu objetivo es ayudar, consultar datos autorizados y ejecutar solo herramientas explícitamente permitidas.
@@ -314,7 +317,7 @@ CONVERSACIÓN RECIENTE:
 ${history.map((item: any) => `${item.role === "assistant" ? "Tutor" : "Usuario"}: ${item.text}`).join("\n") || "Sin conversación previa."}
 
 BASE DE CONOCIMIENTO v${PROFEA_TUTOR_KNOWLEDGE_VERSION}:
-${PROFEA_TUTOR_KNOWLEDGE}
+${knowledgeSlice}
 
 CATÁLOGO DE HERRAMIENTAS:
 ${JSON.stringify(toolCatalogForPrompt())}
@@ -342,7 +345,7 @@ Devuelve exclusivamente JSON:
 
       const ai = getGeminiClient();
       const planned = await callGeminiWithRetry(ai, {
-        preferredModel: "gemini-flash-latest",
+        preferredModel: tutorModel,
         contents: plannerPrompt,
         config: {
           maxOutputTokens: 1900,
@@ -426,7 +429,7 @@ Devuelve exclusivamente JSON con la misma estructura del plan, pero SIN toolCall
 }
 `;
         const synthesized = await callGeminiWithRetry(ai, {
-          preferredModel: "gemini-flash-latest",
+          preferredModel: tutorModel,
           contents: synthesisPrompt,
           config: {
             maxOutputTokens: 1700,
