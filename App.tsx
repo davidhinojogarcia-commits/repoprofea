@@ -2253,6 +2253,11 @@ function App() {
           if (obra) setSelectedObraFilter(obra);
           if (periodo) setSelectedQuincenaFilter(periodo);
         }}
+        onOpenWorker={({ name }) => {
+          setSearchTerm(name);
+          setActiveView('directorio');
+          window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'directorio' } }));
+        }}
       />
 
 
