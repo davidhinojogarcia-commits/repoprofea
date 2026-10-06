@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
 import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION, getTutorKnowledgeSlice } from "./src/lib/profeaTutorKnowledge";
-import { authenticateTutorRequest, executeTutorTools, normalizeTutorContext, toolCatalogForPrompt, TUTOR_AGENT_VERSION, type TutorToolCall } from "./src/server/profeaTutorAgent";
+import { authenticateTutorRequest, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, toolCatalogForPrompt, TUTOR_AGENT_VERSION, type TutorToolCall } from "./src/server/profeaTutorAgent";
 
 // Helper to extract clean text/tables from Excel (.xlsx/.xls) and Word (.docx/.doc) buffers
 async function extractTextFromOfficeBuffer(buffer: Buffer, filename: string): Promise<string> {
@@ -256,6 +256,7 @@ async function startServer() {
       const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
       const rawTaskState = req.body?.taskState && typeof req.body.taskState === "object" ? req.body.taskState : {};
       const requestId = String(req.body?.requestId || "").trim().slice(0, 180) || `tutor-${Date.now()}`;
+      const confirmationToken = String(req.body?.confirmationToken || "").trim().slice(0, 6000);
       const context = normalizeTutorContext({
         ...(req.body?.context || {}),
         currentView: req.body?.currentView,
@@ -304,7 +305,8 @@ REGLAS DE SEGURIDAD:
 - Para una modificación, solo solicita herramienta si el usuario la ha pedido expresamente.
 - Si el contexto "esta obra" o "este periodo" es ambiguo, no adivines: pide el dato que falta.
 - Navegación, filtros y consultas no requieren confirmación.
-- Borrados, cambios masivos, envíos a terceros y cierres definitivos no están habilitados en esta versión: explícalo si se solicitan.
+- Para borrar documentos obligatorios por obra usa primero prepare_delete_mandatory_documents. Esa herramienta solo calcula el alcance y genera una confirmación; nunca afirmes que ha borrado nada.
+- Cambios masivos distintos de ese borrado, envíos a terceros y cierres definitivos no están habilitados en esta versión.
 - No introduzcas en toolCalls una herramienta para "simular" una acción.
 
 CONTEXTO ACTUAL VALIDADO EN CLIENTE (el servidor volverá a validar permisos):
@@ -394,12 +396,24 @@ Devuelve exclusivamente JSON:
           }).filter((item: TutorToolCall) => item.name)
         : [];
 
-      const toolResults = calls.length
-        ? await executeTutorTools(calls, context, auth.token, requestId, question)
-        : [];
+      const toolResults = confirmationToken
+        ? [await executeTutorConfirmation({ confirmationToken, context, token: auth.token, userId: auth.userId })]
+        : calls.length
+          ? await executeTutorTools(calls, context, auth.token, requestId, question, auth.userId)
+          : [];
 
       let finalPayload: any = plan;
       if (toolResults.length) {
+        const modelToolResults = toolResults.map(result => ({
+          ...result,
+          confirmation: result.confirmation ? {
+            action: result.confirmation.action,
+            title: result.confirmation.title,
+            recordsAffected: result.confirmation.recordsAffected,
+            destination: result.confirmation.destination,
+            consequences: result.confirmation.consequences,
+          } : undefined,
+        }));
         const synthesisPrompt = `
 Eres Tutor PROFEA. Redacta la respuesta final usando SOLO los resultados verificados de herramientas.
 No cambies ni inventes datos. "Verificado" significa que verified=true en el resultado.
@@ -410,7 +424,7 @@ Mantén lenguaje sencillo y útil.
 Pregunta: ${question}
 Contexto: ${JSON.stringify(context)}
 Plan previo: ${JSON.stringify(plan)}
-Resultados de herramientas: ${JSON.stringify(toolResults)}
+Resultados de herramientas: ${JSON.stringify(modelToolResults)}
 
 Devuelve exclusivamente JSON con la misma estructura del plan, pero SIN toolCalls adicionales:
 {
@@ -481,6 +495,7 @@ Devuelve exclusivamente JSON con la misma estructura del plan, pero SIN toolCall
           data: result.data,
           error: result.error,
         })),
+        pendingConfirmation: toolResults.find(result => result.confirmation)?.confirmation || null,
         clientActions,
         suggestedView,
         suggestedLabel: suggestedView ? String(PROFEA_TUTOR_VIEW_LABELS[suggestedView as keyof typeof PROFEA_TUTOR_VIEW_LABELS] || "") : "",
