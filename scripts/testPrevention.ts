@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { filterPreventionRecords, preventionSummary, validatePreventionDraft, PREVENTION_CHECKS, type PreventionDraft, type PreventionRecord } from '../src/lib/prevention';
+const draft: PreventionDraft={obra:'Obra A',kind:'incident',work_date:'2026-10-01',category:'Otros',severity:'high',title:'Incidencia',task:'Tarea',description:'Riesgo',measures:'',responsible:'',deadline:'',checks:{},photo:null};
+validatePreventionDraft(draft);
+assert.throws(()=>validatePreventionDraft({...draft,description:''}),/Describe/);
+assert.throws(()=>validatePreventionDraft({...draft,kind:'precheck'}),/todas/);
+const checks=Object.fromEntries(PREVENTION_CHECKS.map(c=>[c.id,'yes'])) as PreventionDraft['checks'];
+validatePreventionDraft({...draft,kind:'precheck',checks});
+assert.throws(()=>validatePreventionDraft({...draft,kind:'precheck',checks:{...checks,water:'no'}}),/medidas/);
+const record={...draft,id:'1',status:'pending',actor:'Supervisor',created_at:'2026-10-01T08:00:00Z',updated_at:'2026-10-01T08:00:00Z',deadline:'2026-10-02',resolved_at:null} as PreventionRecord;
+const records=[record,{...record,id:'2',obra:'Obra B',status:'closed' as const},{...record,id:'3',kind:'precheck' as const,severity:'low' as const}];
+assert.equal(filterPreventionRecords(records,'Obra A','pending','','').length,2);
+assert.equal(filterPreventionRecords(records,'','','2026-10-02','').length,0);
+assert.deepEqual(preventionSummary(records,'2026-10-06'),{incidents:2,pending:2,high:1,overdue:2,prechecks:1,byWork:[{obra:'Obra A',incidents:1,pending:2},{obra:'Obra B',incidents:1,pending:0}]});
+console.log('PASS: validaciones, filtros, recuentos y plazos.');

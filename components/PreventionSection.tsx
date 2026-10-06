@@ -1,0 +1,192 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ClipboardCheck, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { PREVENTION_CATEGORIES, PREVENTION_CHECKS, PREVENTION_STATUS_LABELS, filterPreventionRecords, preventionSummary, preventionToday, type PreventionDraft, type PreventionRecord, type PreventionStatus } from '../src/lib/prevention';
+import { createPreventionRecord, followUpPreventionRecord, getPreventionRecordDetails, loadPreventionRecords } from '../src/services/preventionService';
+
+const inputClass = 'min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
+const buttonClass = 'min-h-12 rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-900 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
+const primaryClass = 'min-h-12 rounded-xl bg-[#00548E] px-4 py-2 font-bold text-white disabled:opacity-50';
+const freshDraft = (obra: string, kind: PreventionDraft['kind']): PreventionDraft => ({ obra, kind, work_date: preventionToday(), category: 'Otros', severity: 'medium', title: kind === 'precheck' ? 'Comprobación antes de empezar' : '', task: '', description: '', measures: '', responsible: '', deadline: '', checks: {}, photo: null });
+
+async function readPhoto(file: File): Promise<string> {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Utiliza una fotografía JPG, PNG o WebP.');
+  if (file.size > 15 * 1024 * 1024) throw new Error('La fotografía no puede superar 15 MB.');
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 1000 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('No se pudo preparar la fotografía.');
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const result = canvas.toDataURL('image/jpeg', 0.65);
+    if (result.length > 400000) throw new Error('La fotografía es demasiado grande. Utiliza otra imagen.');
+    return result;
+  } finally { bitmap.close(); }
+}
+
+function RecordDetails({ record, token }: { record: PreventionRecord; token?: string }) {
+  const [details, setDetails] = useState<Awaited<ReturnType<typeof getPreventionRecordDetails>> | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const inFlight = useRef(false);
+  return <details className="mt-3" onToggle={async e => {
+    if (!e.currentTarget.open || details || inFlight.current) return;
+    inFlight.current = true; setLoading(true); setError('');
+    try { setDetails(await getPreventionRecordDetails(record.id, token)); }
+    catch (e: any) { setError(e?.message || 'No se pudo cargar el historial. Cierra y vuelve a abrir para reintentar.'); }
+    finally { inFlight.current = false; setLoading(false); }
+  }}>
+    <summary className="min-h-12 cursor-pointer font-semibold">Ver historial{record.has_photo || record.photo ? ' y fotografía' : ''}</summary>
+    {loading && <p role="status">Cargando historial…</p>}
+    {error && <p role="alert">{error}</p>}
+    {details?.photo && <img src={details.photo} alt="Fotografía adjunta al registro" className="max-h-80 max-w-full rounded-xl" />}
+    <ol className="mt-3 space-y-3">{details?.events.map(event => <li key={event.id} className="rounded-xl border p-3 text-sm">
+      <b>{event.action === 'created' ? 'Registro inicial' : 'Seguimiento'} · {event.actor}</b>
+      <p>{new Date(event.created_at).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })} · {PREVENTION_STATUS_LABELS[event.snapshot.status]}</p>
+      <p className="whitespace-pre-wrap break-words">{event.snapshot.measures || 'Sin medidas registradas'}</p>
+      <p>Responsable: {event.snapshot.responsible || 'Pendiente'} · Plazo: {event.snapshot.deadline || 'Sin plazo'}</p>
+    </li>)}</ol>
+    {details && details.events.length === 100 && <p className="text-sm">Se muestran los últimos 100 cambios.</p>}
+  </details>;
+}
+
+function FollowUp({ record, onSave, busy }: { record: PreventionRecord; onSave: (r: PreventionRecord, status: PreventionStatus, measures: string, responsible: string, deadline: string) => Promise<void>; busy: boolean }) {
+  const [status, setStatus] = useState(record.status);
+  const [measures, setMeasures] = useState(record.measures);
+  const [responsible, setResponsible] = useState(record.responsible);
+  const [deadline, setDeadline] = useState(record.deadline || '');
+  return <form className="mt-4 grid gap-3" onSubmit={e => { e.preventDefault(); void onSave(record, status, measures, responsible, deadline); }}>
+    <label className="font-semibold">Estado<select className={inputClass} value={status} onChange={e => setStatus(e.target.value as PreventionStatus)}>{Object.entries(PREVENTION_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label className="font-semibold">Responsable<input required maxLength={200} className={inputClass} value={responsible} onChange={e => setResponsible(e.target.value)} /></label>
+    <label className="font-semibold">Plazo de actuación<input type="date" className={inputClass} value={deadline} onChange={e => setDeadline(e.target.value)} /></label>
+    <label className="font-semibold">Medidas adoptadas<textarea required={status === 'closed'} maxLength={4000} className={inputClass} value={measures} onChange={e => setMeasures(e.target.value)} /></label>
+    <button className={primaryClass} disabled={busy}>{busy ? 'Guardando…' : 'Guardar seguimiento'}</button>
+  </form>;
+}
+
+export function PreventionSection({ savedObras, token, foremanName }: { savedObras: string[]; token?: string; foremanName?: string }) {
+  const [records, setRecords] = useState<PreventionRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [truncated, setTruncated] = useState(false);
+  const [draft, setDraft] = useState<PreventionDraft | null>(null);
+  const draftId = useRef('');
+  const requestVersion = useRef(0);
+  const mutationLock = useRef(false);
+  const [obra, setObra] = useState(token ? savedObras[0] || '' : '');
+  const [status, setStatus] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  async function reload() {
+    const version = ++requestVersion.current;
+    setLoading(true); setError('');
+    try {
+      const result = await loadPreventionRecords(token);
+      if (version !== requestVersion.current) return;
+      setRecords(result.records); setTruncated(result.truncated);
+    } catch (e: any) {
+      if (version !== requestVersion.current) return;
+      setError(e?.message || 'No se pudieron cargar las incidencias.');
+    } finally { if (version === requestVersion.current) setLoading(false); }
+  }
+  useEffect(() => { setRecords([]); setDraft(null); void reload(); return () => { requestVersion.current++; }; }, [token]);
+  const works = [...new Set([...savedObras, ...records.map(r => r.obra)])].sort();
+  const filtered = useMemo(() => filterPreventionRecords(records, obra, status, from, to), [records, obra, status, from, to]);
+  const summary = useMemo(() => preventionSummary(filtered), [filtered]);
+  const urgent = records.filter(r => (!obra || r.obra === obra) && r.status !== 'closed' && (r.severity === 'high' || (r.deadline && r.deadline < preventionToday())));
+  const patchDraft = (patch: Partial<PreventionDraft>) => setDraft(d => d ? { ...d, ...patch } : d);
+  const begin = (kind: PreventionDraft['kind']) => {
+    draftId.current = crypto.randomUUID(); setError(''); setFeedback('');
+    setDraft({ ...freshDraft(obra || savedObras[0] || '', kind), responsible: foremanName || '' });
+  };
+  async function saveDraft(e: React.FormEvent) {
+    e.preventDefault(); if (!draft || mutationLock.current || photoBusy) return;
+    mutationLock.current = true; setBusy(true); setError(''); setFeedback('');
+    try {
+      const saved = await createPreventionRecord(draft, draftId.current, token);
+      setRecords(rs => [saved, ...rs.filter(r => r.id !== saved.id)]); setDraft(null);
+      setFeedback('Registro guardado. Queda disponible para el seguimiento del supervisor.');
+    } catch (e: any) { setError(e?.message || 'No se pudo guardar. Tus datos siguen en el formulario.'); }
+    finally { mutationLock.current = false; setBusy(false); }
+  }
+  async function saveFollowUp(record: PreventionRecord, nextStatus: PreventionStatus, measures: string, responsible: string, deadline: string) {
+    if (mutationLock.current) return;
+    mutationLock.current = true; setBusy(true); setError(''); setFeedback('');
+    try {
+      const saved = await followUpPreventionRecord(record, nextStatus, measures, responsible, deadline);
+      setRecords(rs => rs.map(r => r.id === saved.id ? saved : r)); setEditingId(null); setFeedback('Seguimiento guardado.');
+    } catch (e: any) { setError(e?.message || 'No se pudo guardar el seguimiento.'); }
+    finally { mutationLock.current = false; setBusy(false); }
+  }
+
+  return <section className="space-y-5 text-slate-900 dark:text-slate-100" aria-labelledby="prevention-title">
+    <header className="ui-surface rounded-2xl p-4 sm:p-6">
+      <h1 id="prevention-title" className="flex items-center gap-2 text-xl font-black"><ShieldCheck aria-hidden="true" />Incidencias y alertas</h1>
+      <p className="mt-2">Registra situaciones peligrosas, revisa la tarea y deja constancia de las medidas.</p>
+      <p className="mt-2 text-sm">Apoyo a la gestión preventiva. Aplica la evaluación de riesgos y los protocolos aprobados de la obra.</p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button className={primaryClass} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('incident')}><Plus className="mr-2 inline h-5 w-5" aria-hidden="true" />Comunicar incidencia</button>
+        <button className={buttonClass} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('precheck')}><ClipboardCheck className="mr-2 inline h-5 w-5" aria-hidden="true" />Comprobación antes de empezar</button>
+        <button className={buttonClass} disabled={busy || loading} onClick={() => void reload()}><RefreshCw className="mr-2 inline h-5 w-5" aria-hidden="true" />Actualizar</button>
+      </div>
+      {!savedObras.length && <p className="mt-3">Añade una obra en Configuración para registrar incidencias.</p>}
+    </header>
+    {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-900">{error}</p>}
+    {feedback && <p role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">{feedback}</p>}
+    {urgent.length > 0 && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 font-bold text-amber-950"><AlertTriangle className="mr-2 inline h-5 w-5" aria-hidden="true" />{urgent.length} registros con prioridad alta o plazo vencido en las obras seleccionadas.</p>}
+    <aside className="ui-surface rounded-xl p-4 text-sm">
+      <b>Avisos meteorológicos:</b> consulta manual en <a className="underline" href="https://www.aemet.es/es/eltiempo/prediccion/avisos" target="_blank" rel="noopener noreferrer">AEMET</a>. La consulta automática y los recordatorios de hidratación quedan para la siguiente fase. La ausencia de avisos no garantiza seguridad.
+    </aside>
+    {draft && <form className="ui-surface grid gap-4 rounded-2xl p-4 sm:p-6" onSubmit={saveDraft}>
+      <h2 className="text-lg font-black">{draft.kind === 'incident' ? 'Nueva incidencia o situación peligrosa' : 'Comprobación previa de la tarea'}</h2>
+      <fieldset disabled={busy || photoBusy} className="grid gap-4 sm:grid-cols-2">
+        <label className="font-semibold">Obra<select required disabled={Boolean(token)} className={inputClass} value={draft.obra} onChange={e => patchDraft({ obra: e.target.value })}><option value="">Selecciona obra</option>{savedObras.map(w => <option key={w}>{w}</option>)}</select></label>
+        <label className="font-semibold">Fecha<input required type="date" max={preventionToday()} className={inputClass} value={draft.work_date} onChange={e => patchDraft({ work_date: e.target.value })} /></label>
+        <label className="font-semibold">Título<input required maxLength={200} className={inputClass} value={draft.title} onChange={e => patchDraft({ title: e.target.value })} /></label>
+        <label className="font-semibold">Tarea prevista<input required maxLength={300} className={inputClass} value={draft.task} onChange={e => patchDraft({ task: e.target.value })} /></label>
+        <label className="font-semibold">Tipo de riesgo<select className={inputClass} value={draft.category} onChange={e => patchDraft({ category: e.target.value })}>{PREVENTION_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label>
+        <label className="font-semibold">Prioridad comunicada<select className={inputClass} value={draft.severity} onChange={e => patchDraft({ severity: e.target.value as PreventionDraft['severity'] })}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label>
+        {draft.kind === 'precheck' && <fieldset className="sm:col-span-2 space-y-3"><legend className="font-black">Responde todas las comprobaciones</legend>{PREVENTION_CHECKS.map(c => <label key={c.id} className="block rounded-xl border p-3 font-semibold">{c.label}<select required className={`${inputClass} mt-2`} value={draft.checks[c.id] || ''} onChange={e => patchDraft({ checks: { ...draft.checks, [c.id]: e.target.value as any } })}><option value="">Selecciona respuesta</option><option value="yes">Comprobado</option><option value="no">Pendiente / problema detectado</option><option value="na">No aplica</option></select></label>)}<p className="text-sm">Registrar esta comprobación no autoriza por sí solo el inicio de los trabajos.</p></fieldset>}
+        <label className="font-semibold sm:col-span-2">Descripción del riesgo<textarea required={draft.kind === 'incident'} maxLength={4000} className={inputClass} value={draft.description} onChange={e => patchDraft({ description: e.target.value })} /></label>
+        <label className="font-semibold sm:col-span-2">Medidas adoptadas o propuestas<textarea maxLength={4000} className={inputClass} value={draft.measures} onChange={e => patchDraft({ measures: e.target.value })} /></label>
+        <label className="font-semibold">Responsable de actuación<input maxLength={200} className={inputClass} value={draft.responsible} onChange={e => patchDraft({ responsible: e.target.value })} /></label>
+        <label className="font-semibold">Plazo de actuación<input type="date" className={inputClass} value={draft.deadline} onChange={e => patchDraft({ deadline: e.target.value })} /></label>
+        <label className="font-semibold sm:col-span-2">Fotografía opcional<input type="file" accept="image/jpeg,image/png,image/webp" className={`${inputClass} mt-2`} onChange={async e => { const file = e.target.files?.[0]; if (!file) return; setPhotoBusy(true); setError(''); try { patchDraft({ photo: await readPhoto(file) }); } catch (error: any) { setError(error.message); } finally { setPhotoBusy(false); } }} /></label>
+        {draft.photo && <div><img src={draft.photo} alt="Fotografía de la incidencia" className="max-h-48 rounded-xl" /><button type="button" className={`${buttonClass} mt-2`} onClick={() => patchDraft({ photo: null })}>Quitar fotografía</button></div>}
+      </fieldset>
+      <div className="flex flex-wrap gap-3"><button className={primaryClass} disabled={busy || photoBusy}>{busy ? 'Guardando…' : photoBusy ? 'Preparando fotografía…' : 'Guardar registro'}</button><button type="button" className={buttonClass} disabled={busy || photoBusy} onClick={() => setDraft(null)}>Cancelar</button></div>
+    </form>}
+    <div className="ui-surface grid gap-3 rounded-2xl p-4 sm:grid-cols-4">
+      <label>Obra<select className={inputClass} disabled={Boolean(token)} value={obra} onChange={e => setObra(e.target.value)}><option value="">Todas mis obras</option>{works.map(w => <option key={w}>{w}</option>)}</select></label>
+      <label>Estado<select className={inputClass} value={status} onChange={e => setStatus(e.target.value)}><option value="">Todos los estados</option>{Object.entries(PREVENTION_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>Desde<input type="date" className={inputClass} value={from} onChange={e => setFrom(e.target.value)} /></label>
+      <label>Hasta<input type="date" className={inputClass} min={from || undefined} value={to} onChange={e => setTo(e.target.value)} /></label>
+    </div>
+    {truncated && <p role="status">Se muestran los 500 registros más recientes. Los recuentos corresponden únicamente a esos registros.</p>}
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Incidencias', summary.incidents], ['Pendientes', summary.pending], ['Prioridad alta', summary.high], ['Comprobaciones', summary.prechecks]].map(([label, count]) => <div key={label} className="ui-surface rounded-xl p-4"><p className="text-sm">{label}</p><b className="text-2xl">{count}</b></div>)}</div>
+    <p className="text-sm">Recuentos según los filtros. No representan una tasa de accidentes ni una comparación de seguridad entre obras.</p>
+    {!token && summary.byWork.length > 1 && <div className="ui-surface overflow-x-auto rounded-xl p-4">
+      <table className="w-full text-left text-sm"><caption className="mb-3 text-left font-black">Registros por obra según los filtros</caption><thead><tr><th scope="col" className="p-2">Obra</th><th scope="col" className="p-2">Incidencias</th><th scope="col" className="p-2">Pendientes</th></tr></thead><tbody>{summary.byWork.map(row => <tr key={row.obra}><th scope="row" className="p-2 font-semibold">{row.obra}</th><td className="p-2">{row.incidents}</td><td className="p-2">{row.pending}</td></tr>)}</tbody></table>
+    </div>}
+    {loading ? <p role="status">Cargando registros…</p> : !filtered.length && !error ? <p className="ui-surface rounded-xl p-4">No hay registros para estos filtros.</p> : null}
+    <div className="space-y-3">{filtered.map(record => <article key={record.id} className="ui-surface rounded-2xl p-4 sm:p-5">
+      <div className="flex flex-wrap justify-between gap-2"><h2 className="font-black">{record.title}</h2><span className="rounded-lg border px-3 py-1 text-sm font-bold">{record.kind === 'precheck' && record.status === 'closed' ? 'Comprobación registrada' : PREVENTION_STATUS_LABELS[record.status]}</span></div>
+      <p className="mt-2 break-words text-sm">{record.obra} · {record.work_date} · {record.category} · Prioridad {record.severity === 'high' ? 'alta' : record.severity === 'medium' ? 'media' : 'baja'}</p>
+      <p className="mt-2"><b>Tarea:</b> {record.task}</p>
+      <p className="mt-2 whitespace-pre-wrap break-words">{record.description}</p>
+      {record.measures && <p className="mt-2 whitespace-pre-wrap break-words"><b>Medidas:</b> {record.measures}</p>}
+      <p className="mt-2 text-sm"><b>Responsable:</b> {record.responsible || 'Pendiente de asignar'}{record.deadline ? ` · Plazo: ${record.deadline}` : ''}</p>
+      <p className="mt-1 text-sm">Registrado por {record.actor} · Actualizado {new Date(record.updated_at).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>
+      {record.kind === 'precheck' && <details className="mt-3"><summary className="cursor-pointer min-h-12 font-semibold">Ver comprobaciones</summary><ul className="mt-2 space-y-2">{PREVENTION_CHECKS.map(c => <li key={c.id}>{c.label}: <b>{record.checks[c.id] === 'yes' ? 'Comprobado' : record.checks[c.id] === 'no' ? 'Problema detectado' : 'No aplica'}</b></li>)}</ul></details>}
+      <div key={`details:${record.updated_at}`}><RecordDetails record={record} token={token} /></div>
+      {!token && <button className={`${buttonClass} mt-3`} disabled={busy} onClick={() => setEditingId(editingId === record.id ? null : record.id)}>{editingId === record.id ? 'Cerrar seguimiento' : 'Gestionar seguimiento'}</button>}
+      {editingId === record.id && !token && <div key={`followup:${record.updated_at}`}><FollowUp record={record} onSave={saveFollowUp} busy={busy} /></div>}
+    </article>)}</div>
+  </section>;
+}
