@@ -8,6 +8,7 @@ export const PROFEA_TUTOR_VIEW_LABELS = {
   documentacion_obra: 'Documentación de obra',
   documentacion_encargados: 'Documentación de encargados',
   subcontratas: 'CAE',
+  prevencion: 'Prevención e incidencias',
   inventario: 'Herramientas y maquinaria',
   configuracion: 'Configuración',
   papelera: 'Papelera',
@@ -16,6 +17,8 @@ export const PROFEA_TUTOR_VIEW_LABELS = {
 } as const;
 
 export type ProfeaTutorView = keyof typeof PROFEA_TUTOR_VIEW_LABELS;
+
+export const PROFEA_TUTOR_KNOWLEDGE_VERSION = '2026.10.06.1';
 
 export const PROFEA_TUTOR_KNOWLEDGE = `
 GESTIONPROFEA / PROFEA — GUÍA DE USO PARA SUPERVISORES
@@ -26,7 +29,7 @@ REGLAS DEL TUTOR
 - Si una función no está documentada, indícalo y orienta al usuario hacia el módulo más cercano.
 - Prioriza instrucciones cortas, numeradas y concretas.
 - No pidas DNI, datos médicos ni otra información personal para explicar cómo usar la aplicación.
-- No realices cambios en nombre del usuario: el tutor guía y puede llevar a un módulo, pero no debe modificar registros.
+- Las acciones operativas solo pueden ejecutarse mediante herramientas autorizadas del servidor. Nunca afirmes una modificación sin un resultado verificado de herramienta.
 - Si el usuario pregunta "qué hago ahora", usa el CONTEXTO DE PANTALLA ACTUAL.
 - Cuando existan dos flujos parecidos, aclara la diferencia.
 
@@ -97,6 +100,11 @@ CAE / SUBCONTRATAS
 - Incluye control del Libro de Subcontratación y revisión de documentación.
 - La previsualización permite revisar antes de validar.
 
+PREVENCIÓN E INCIDENCIAS
+- Gestiona incidencias preventivas, comprobaciones previas y seguimiento.
+- La creación y seguimiento usan RPCs con validación de obra, idempotencia y control de concurrencia.
+- El Tutor puede preparar y crear una incidencia cuando están todos los campos obligatorios, pero no determina aptitud médica ni sustituye decisiones preventivas profesionales.
+
 HERRAMIENTAS Y MAQUINARIA
 - Permite consultar inventario, asignaciones, estado y trazabilidad.
 - Los informes de situación deben incluir todas las herramientas/maquinaria y un resumen por obra.
@@ -159,6 +167,11 @@ const LOCAL_TUTOR_ANSWERS: Array<{ words: string[]; answer: string; view?: Profe
     words: ['directorio','trabajador','ficha','editar'],
     answer: 'En Directorio busca al trabajador por nombre, DNI, obra o quincena. Abre su ficha con Editar, modifica los datos necesarios y guarda. Desde Directorio también tienes los informes y acciones rápidas.',
     view: 'directorio',
+  },
+  {
+    words: ['prevencion','incidencia','riesgo','proteccion'],
+    answer: 'En Prevención puedes registrar incidencias y comprobaciones previas por obra. El Tutor puede ayudarte a localizar la obra activa y preparar una incidencia con los campos obligatorios.',
+    view: 'prevencion',
   },
   {
     words: ['cae','subcontrata','subcontratas'],
