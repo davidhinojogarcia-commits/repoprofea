@@ -21,7 +21,8 @@
     "test:mandatory-traceability-sql-v2": "node scripts/testMandatoryTraceabilitySqlV2.mjs",
     "test:mandatory-traceability-e2e-v2": "node scripts/testMandatoryTraceabilityE2E.mjs",
     "validate:mandatory-traceability-v2": "node scripts/validateMandatoryTraceabilityReleaseV2.mjs",
-    "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs"
+    "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
+    "test:tutor-agent": "tsx scripts/testProfeaTutorAgent.ts"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
