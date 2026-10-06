@@ -17,7 +17,7 @@ const invalid = normalizeTutorContext({ currentView: "javascript:alert(1)", obra
 assert.equal(invalid.currentView, "");
 assert.equal(invalid.obra, "");
 
-const names = toolCatalogForPrompt().map(item => item.name);
+const names: string[] = toolCatalogForPrompt().map(item => item.name);
 assert.deepEqual(names, [
   "list_works",
   "search_workers",
