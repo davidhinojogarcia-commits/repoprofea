@@ -21,6 +21,14 @@ type TutorMessage = {
   checkOptions?: string[];
   verified?: boolean;
   toolSummaries?: string[];
+  pendingConfirmation?: {
+    token: string;
+    action: string;
+    title: string;
+    recordsAffected: number;
+    destination?: string;
+    consequences: string;
+  };
 };
 
 type TutorTaskState = {
@@ -143,7 +151,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
     }, 120);
   };
 
-  const ask = async (rawQuestion?: string, viewOverride?: ProfeaTutorView) => {
+  const ask = async (rawQuestion?: string, viewOverride?: ProfeaTutorView, confirmationToken?: string) => {
     const question = String(rawQuestion ?? input).trim();
     if (!question || busy) return;
 
@@ -167,6 +175,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         body: JSON.stringify({
           requestId,
           question,
+          confirmationToken: confirmationToken || undefined,
           currentView: viewOverride || activeView,
           currentViewLabel: viewOverride ? (PROFEA_TUTOR_VIEW_LABELS[viewOverride] || activeLabel) : activeLabel,
           guidedMode,
@@ -238,6 +247,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         toolSummaries: Array.isArray(data?.toolResults)
           ? data.toolResults.map((result: any) => String(result?.summary || '').trim()).filter(Boolean).slice(0, 4)
           : [],
+        pendingConfirmation: data?.pendingConfirmation?.token ? data.pendingConfirmation : undefined,
       }]);
     } catch (error) {
       console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
@@ -405,6 +415,42 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                               {summary}
                             </div>
                           ))}
+                        </div>
+                      )}
+                      {message.role === 'assistant' && message.pendingConfirmation && (
+                        <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100">
+                          <div className="text-sm font-black">{message.pendingConfirmation.title}</div>
+                          <div className="mt-1 text-xs font-semibold">
+                            Registros afectados: {message.pendingConfirmation.recordsAffected}
+                          </div>
+                          {message.pendingConfirmation.destination && (
+                            <div className="mt-1 text-xs font-semibold">Destino: {message.pendingConfirmation.destination}</div>
+                          )}
+                          <div className="mt-1 text-xs">{message.pendingConfirmation.consequences}</div>
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void ask(
+                                `Confirmo: ${message.pendingConfirmation?.title || 'esta operación'}`,
+                                undefined,
+                                message.pendingConfirmation?.token,
+                              )}
+                              className="min-h-11 flex-1 rounded-xl bg-amber-700 px-3 py-2 text-sm font-black text-white disabled:opacity-50"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setMessages(current => current.map(item =>
+                                item.id === message.id ? { ...item, pendingConfirmation: undefined } : item
+                              ))}
+                              className="min-h-11 rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-black text-amber-900 disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-100"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
                         </div>
                       )}
                       {message.role === 'assistant' && message.progressHint && (
