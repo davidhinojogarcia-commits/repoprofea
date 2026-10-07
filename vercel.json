@@ -23,7 +23,8 @@
       "local/fix-control-presence-missing-worker-20261003": false,
       "local/prevention-phase1-20261006": false,
       "local/reduce-supabase-consumption-20261007": false,
-      "local/reduce-supabase-requests-phase2-20261007": false
+      "local/reduce-supabase-requests-phase2-20261007": false,
+      "feat/consumption-cache-temporary-documents": false
     }
   }
 }

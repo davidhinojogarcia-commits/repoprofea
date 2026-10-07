@@ -9,6 +9,7 @@ type ListOptions = {
   includeShared?: boolean;
   allForAdmin?: boolean;
   limitCount?: number;
+  fresh?: boolean;
 };
 
 const TABLE_BY_COLLECTION: Record<string, string> = {
@@ -480,6 +481,7 @@ export async function getDocuments<T = DatabaseRecord>(
   const limit = options.limitCount ? `&limit=${options.limitCount}` : "";
   const rows = await supabase.query(table, {
     query: `select=${selectForTable(table)}&order=updated_at.desc${limit}`,
+    fresh: options.fresh === true,
   });
   return (rows || []).map((row: any) => hydrate(row, table) as T);
 }
@@ -498,13 +500,13 @@ export function subscribeToDocuments<T = DatabaseRecord>(
   let refreshPending = false;
   const table = canonicalTable(collectionName);
 
-  const run = async () => {
+  const run = async (fresh = false) => {
     if (!active || document.visibilityState === 'hidden') return;
     if (readInFlight) { refreshPending = true; return; }
     readInFlight = true;
     try {
       if (!active) return;
-      const items = await getDocuments<T>(collectionName, options);
+      const items = await getDocuments<T>(collectionName, { ...options, fresh });
       consecutiveReadFailures = 0;
       if (active) onUpdate(items);
     } catch (error) {
@@ -519,7 +521,7 @@ export function subscribeToDocuments<T = DatabaseRecord>(
         retryTimer = window.setTimeout(
           () => {
             retryTimer = null;
-            void run();
+            void run(true);
           },
           consecutiveReadFailures === 1 ? 500 : 1500,
         );
@@ -536,7 +538,7 @@ export function subscribeToDocuments<T = DatabaseRecord>(
     if (!active || document.visibilityState === 'hidden' || refreshTimer !== null) return;
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
-      void run();
+      void run(true);
     }, table === "trabajadores" ? 280 : 120);
   };
 

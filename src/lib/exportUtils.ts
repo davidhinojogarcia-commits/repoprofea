@@ -152,7 +152,7 @@ export const applyPdfFooters = (doc: jsPDF, customConfig?: Partial<PdfCustomConf
 
 export const generateSamplePreviewPDF = (customConfig?: Partial<PdfCustomConfig>) => {
   const config = { ...getStoredPdfConfig(), ...customConfig };
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'landscape', format: 'a4' });
 
   renderInstitutionalReportHeader(
     doc,
@@ -601,7 +601,7 @@ export const preparePRLExcelData = async (dataToExport: Person[]) => {
 
 export const preparePRLPDFData = (dataToExport: Person[]) => {
   dataToExport = sortRelationWorkers(dataToExport);
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
 
@@ -817,7 +817,7 @@ export const prepareRRMMExcelData = async (dataToExport: Person[]) => {
 
 export const prepareRRMMPDFData = (dataToExport: Person[]) => {
   dataToExport = sortRelationWorkers(dataToExport);
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
   const supervisorName = dataToExport[0]?.supervisorResponsable || '-';
 
@@ -926,7 +926,7 @@ export const prepareRRMMPDFData = (dataToExport: Person[]) => {
 };
 
 export const preparePRLLimitacionesPDFData = (dataToExport: Person[]) => {
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
 
   // Filtrar exclusivamente trabajadores con limitaciones físicas detectadas
@@ -1214,7 +1214,7 @@ export const prepareExcelData = async (dataToExport: Person[], allPeople?: Perso
 
 export const preparePDFData = (dataToExport: Person[], allPeople?: Person[]) => {
   dataToExport = sortRelationWorkers(dataToExport);
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'landscape', format: 'a4' });
   const config = getStoredPdfConfig();
   const grouped: { [key: string]: Person[] } = {};
   dataToExport.forEach(p => {
@@ -1433,7 +1433,7 @@ export const prepareCalzadoExcelData = async (dataToExport: Person[]) => {
 
 export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
   dataToExport = sortRelationWorkers(dataToExport);
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
   const config = getStoredPdfConfig();
 
   const drawCalzadoHeader = () =>
@@ -1510,11 +1510,13 @@ export const prepareCalzadoPDFData = (dataToExport: Person[]) => {
 export const downloadExcel = (buffer: ExcelJS.Buffer, filename: string) => {
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
+  const downloadUrl = URL.createObjectURL(blob);
+  link.href = downloadUrl;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
 };
 
 export const downloadPDF = (doc: jsPDF, filename: string) => {
@@ -1535,6 +1537,8 @@ export const fallbackManualEmail = (asunto: string, cuerpo: string, pdfBlob: Blo
   excelLink.href = excelUrl;
   excelLink.download = excelName;
   excelLink.click();
+
+  window.setTimeout(() => { URL.revokeObjectURL(pdfUrl); URL.revokeObjectURL(excelUrl); }, 60_000);
 
   const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
   
@@ -1598,7 +1602,7 @@ export const generateWorkerIDCardPDF = async (
   allPeople: Person[],
   options: { includeQr?: boolean; qrUrl?: string } = {},
 ) => {
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
   const cleanDni = selectedPerson.dni.trim().toUpperCase().replace(/[\s-]/g, '');
   const history = allPeople.filter(p => p.dni.trim().toUpperCase().replace(/[\s-]/g, '') === cleanDni);
 
@@ -1902,7 +1906,7 @@ export const generateWorkerIDCardPDF = async (
 };
 
 export const generateWorkerHistoryOnlyPDF = async (selectedPerson: Person, allPeople: Person[]) => {
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
   const cleanDni = selectedPerson.dni.trim().toUpperCase().replace(/[\s-]/g, '');
   
   // Get all historic contracts for this employee
@@ -2093,7 +2097,7 @@ export const generatePeriodicReportPDF = async (
   supervisorName?: string, 
   zonaName?: string
 ) => {
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
 
   const drawFittedText = (
     text: string,
@@ -2425,7 +2429,7 @@ export const generatePeriodicReportPDF = async (
 };
 
 export const generateObraSummaryPDF = async (obraName: string, workers: Person[]) => {
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
   const totalWorkers = workers.length;
   const prlCount = workers.filter(p => p.formacion === 'Sí').length;
   const prlPercent = totalWorkers > 0 ? Math.round((prlCount / totalWorkers) * 100) : 0;
@@ -2666,7 +2670,7 @@ export const generateMedicalTicketsPDF = async (
   workStartHourDefault: string = '08:00',
   workEndHourDefault: string = '15:00'
 ) => {
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
   const appSettings = await loadAppBusinessSettings().catch(() => null);
   const configuredSupervisor = appSettings?.supervisor;
   for (let i = 0; i < workers.length; i++) {
@@ -2990,7 +2994,7 @@ export const generateStatsSummaryPDF = async ({
   obraFilter,
   people = []
 }: GenerateStatsPDFParams) => {
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4' });
   const total = stats.total || people.length;
 
   // Criterio de formaciones solicitado:

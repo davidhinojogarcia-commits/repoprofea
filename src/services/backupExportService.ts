@@ -5,7 +5,7 @@ import { loadSubcontratasPreferences } from './subcontratasPreferencesService';
 
 const safeRawTable = async (table: string) => {
   try {
-    return await supabase.query(table, { query: 'select=*&limit=10000' }) || [];
+    return await supabase.query(table, { query: 'select=*&limit=10000', fresh: true }) || [];
   } catch (error) {
     console.warn(`No se pudo incluir la tabla ${table} en la copia`, error);
     return [];
@@ -35,16 +35,16 @@ export async function buildSupabaseSystemBackup(accountEmail = '') {
     inventoryParkMembers,
     subcontrataDocumentos,
   ] = await Promise.all([
-    getDocuments<any>('trabajadores', { limitCount: 10000 }),
-    getDocuments<any>('trash', { limitCount: 10000 }),
-    getDocuments<any>('citas', { limitCount: 10000 }),
-    getDocuments<any>('subcontratas', { limitCount: 10000 }),
-    getDocuments<any>('reconocimientos', { limitCount: 10000 }),
-    getDocuments<any>('contrataciones', { limitCount: 10000 }),
-    getDocuments<any>('obras', { limitCount: 10000 }),
+    getDocuments<any>('trabajadores', { limitCount: 10000, fresh: true }),
+    getDocuments<any>('trash', { limitCount: 10000, fresh: true }),
+    getDocuments<any>('citas', { limitCount: 10000, fresh: true }),
+    getDocuments<any>('subcontratas', { limitCount: 10000, fresh: true }),
+    getDocuments<any>('reconocimientos', { limitCount: 10000, fresh: true }),
+    getDocuments<any>('contrataciones', { limitCount: 10000, fresh: true }),
+    getDocuments<any>('obras', { limitCount: 10000, fresh: true }),
     loadAppBusinessSettings(),
     loadSubcontratasPreferences(),
-    supabase.query('user_settings', { query: `user_id=eq.${encodeURIComponent(data.user.id)}&select=settings&limit=1` }).catch(() => []),
+    supabase.query('user_settings', { query: `user_id=eq.${encodeURIComponent(data.user.id)}&select=settings&limit=1`, fresh: true }).catch(() => []),
     safeRawTable('inventory_parks'),
     safeRawTable('inventory_items'),
     safeRawTable('inventory_movements'),

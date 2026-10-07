@@ -86,7 +86,7 @@ const setupDoc = (
   subtitle: string,
   context: WorksiteDocumentContext,
 ) => {
-  const doc = new jsPDF({ orientation: "landscape", format: "a4" });
+  const doc = new jsPDF({ compress: true, orientation: "landscape", format: "a4" });
   const config = getStoredPdfConfig();
   const w = doc.internal.pageSize.getWidth();
 

@@ -46,7 +46,7 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
     return m?`${m[3]}/${m[2]}/${m[1]}`:String(value||'');
   };
   const rows=day.rows||[];
-  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+  const doc=new jsPDF({ compress: true,unit:'mm',format:'a4',orientation:'landscape'});
 
   const drawField=(label:string,value:string,x:number,y:number,width:number,labelWidth:number,height=6)=>{
     doc.setDrawColor(...BORDER);doc.setLineWidth(0.18);
@@ -310,7 +310,7 @@ export function generateForemanMandatoryDocumentPdf(
   }
 
   if (record.documentType === 'control_presencia') {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const doc = new jsPDF({ compress: true, unit: 'mm', format: 'a4', orientation: 'portrait' });
     renderInstitutionalReportHeader(
       doc,
       'CONTROL DE PRESENCIA',
@@ -381,7 +381,7 @@ export function generateForemanMandatoryDocumentPdf(
     return { doc, filename: `CONTROL_PRESENCIA_${record.workDate}.pdf` };
   }
 
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const doc = new jsPDF({ compress: true, unit: 'mm', format: 'a4', orientation: 'portrait' });
   renderInstitutionalReportHeader(
     doc,
     'INICIO / INCORPORACIÓN AL CENTRO DE TRABAJO',
