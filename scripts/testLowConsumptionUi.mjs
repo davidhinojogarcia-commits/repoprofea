@@ -1,0 +1,74 @@
+import {build} from 'esbuild';
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+import React,{act} from 'react';
+import {createRoot} from 'react-dom/client';
+const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
+for(const key of ['window','document','localStorage','HTMLElement','Event'])globalThis[key]=dom.window[key];
+Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
+globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+let hidden=false;
+Object.defineProperty(document,'visibilityState',{get:()=>hidden?'hidden':'visible'});
+window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+const intervals=new Map();let next=0;
+window.setInterval=(callback,delay)=>{const id=++next;intervals.set(id,{callback,delay});return id;};
+window.clearInterval=id=>intervals.delete(id);
+let calls=[];let restricted=false;
+globalThis.__dashboardTest={getSessionUser:async()=>({id:'owner'}),supabase:{query:async(table,{query})=>{
+  calls.push({table,query});
+  if(restricted)throw Object.assign(new Error('quota'),{status:402});
+  return [];
+}}};
+const entry=new URL('../components/ForemanDocumentsDashboard.tsx',import.meta.url).pathname;
+const source=await fs.readFile(entry,'utf8');
+const output=new URL('./.low-consumption-ui.mjs',import.meta.url);
+const plugin={name:'dashboard-dependencies',setup(builder){
+  builder.onResolve({filter:/^\.\.?\//},args=>{
+    if(args.importer!==entry||args.path.includes('foremanDashboardLoader'))return;
+    return {path:args.path,namespace:'test-stubs'};
+  });
+  builder.onLoad({filter:/.*/,namespace:'test-stubs'},args=>{
+    const declaration=source.split('\n').find(line=>line.startsWith('import ')&&line.includes("'"+args.path+"'"));
+    if(!declaration||declaration.startsWith('import type '))return {contents:'export {};'};
+    if(args.path.endsWith('/supabase'))return {contents:'export const {supabase,getSessionUser}=globalThis.__dashboardTest;'};
+    const named=declaration.match(/\{([^}]+)\}/)?.[1].split(',').map(s=>s.trim()).filter(s=>!s.startsWith('type '))||[];
+    let contents=named.map(name=>`export const ${name}= ${name==='ADDITIONAL_WORKSITE_DOCUMENTS'?'{}':name==='processAdministrativeMandatoryInbox'?'async()=>({importedDocuments:0,warnings:[]})':'()=>null'};`).join('\n');
+    if(!declaration.includes('{'))contents+='\nexport default ()=>null;';
+    return {contents,loader:'js'};
+  });
+}};
+const root=createRoot(document.getElementById('root'));
+try{
+  await build({entryPoints:[entry],bundle:true,platform:'node',format:'esm',packages:'external',outfile:output.pathname,plugins:[plugin]});
+  const {ForemanDocumentsDashboard}=await import(output.href);
+  await act(async()=>{root.render(React.createElement(ForemanDocumentsDashboard));});
+  assert.equal(calls.length,5,'initial load');
+  const poll=[...intervals.values()].find(timer=>timer.delay===60_000);
+  assert(poll,'one-minute polling');
+  assert([...intervals.values()].some(timer=>timer.delay===300_000),'mail checks every five minutes');
+  calls=[];
+  await act(async()=>{poll.callback();});
+  assert.equal(calls.length,5);
+  assert(calls.every(call=>call.query.startsWith('select=id,')),'idle polling has no signatures or snapshots');
+  hidden=true;calls=[];
+  await act(async()=>{poll.callback();document.dispatchEvent(new Event('visibilitychange'));});
+  assert.equal(calls.length,0,'hidden tab produces no polling requests');
+  hidden=false;
+  await act(async()=>{document.dispatchEvent(new Event('visibilitychange'));});
+  assert.equal(calls.length,5,'resume checks revisions');
+  calls=[];
+  const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='Actualizar');
+  assert(button);
+  await act(async()=>{button.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));});
+  assert.equal(calls.length,5,'manual refresh remains functional');
+  restricted=true;calls=[];
+  await act(async()=>{poll.callback();});
+  const attempted=calls.length;
+  await act(async()=>{poll.callback();document.dispatchEvent(new Event('visibilitychange'));});
+  assert.equal(calls.length,attempted,'quota restriction stops automatic polling');
+  assert(document.body.textContent.includes('Las comprobaciones automáticas se han detenido'));
+  await act(async()=>root.unmount());
+  assert.equal(intervals.size,0,'unmount removes both timers');
+  console.log('Dashboard UI regressions passed: lightweight polling, hidden tab, resume, manual refresh, quota stop and cleanup.');
+}finally{await fs.rm(output,{force:true});dom.window.close();}

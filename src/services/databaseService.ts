@@ -494,9 +494,14 @@ export function subscribeToDocuments<T = DatabaseRecord>(
   let refreshTimer: number | null = null;
   let retryTimer: number | null = null;
   let consecutiveReadFailures = 0;
+  let readInFlight = false;
+  let refreshPending = false;
   const table = canonicalTable(collectionName);
 
   const run = async () => {
+    if (!active || document.visibilityState === 'hidden') return;
+    if (readInFlight) { refreshPending = true; return; }
+    readInFlight = true;
     try {
       if (!active) return;
       const items = await getDocuments<T>(collectionName, options);
@@ -504,6 +509,10 @@ export function subscribeToDocuments<T = DatabaseRecord>(
       if (active) onUpdate(items);
     } catch (error) {
       if (!active) return;
+      if ([401, 402, 403, 429].includes(Number((error as any)?.status))) {
+        onError?.(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
       consecutiveReadFailures += 1;
       if (consecutiveReadFailures < 3) {
         if (retryTimer !== null) window.clearTimeout(retryTimer);
@@ -517,11 +526,14 @@ export function subscribeToDocuments<T = DatabaseRecord>(
         return;
       }
       onError?.(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      readInFlight = false;
+      if (refreshPending && active) { refreshPending = false; scheduleRefresh(); }
     }
   };
 
   const scheduleRefresh = () => {
-    if (!active || refreshTimer !== null) return;
+    if (!active || document.visibilityState === 'hidden' || refreshTimer !== null) return;
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
       void run();
