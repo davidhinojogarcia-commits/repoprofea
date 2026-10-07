@@ -45,6 +45,19 @@ export class ForemanDashboardLoader {
         const revisions=await this.query(source.table,{query:`select=id,${source.revision}${suffix}`});
         if(!Array.isArray(revisions))throw new Error('Respuesta de actualización no válida.');
         if(fingerprint(revisions,source.revision)===fingerprint(previous[index],source.revision))return previous[index];
+        const existing=new Map(previous[index].map(row=>[String(row.id),row]));
+        const changed=revisions.filter(row=>String(row[source.revision]||'')!==String(existing.get(String(row.id))?.[source.revision]||'')||!existing.has(String(row.id)));
+        // Download only changed rows, not every document and signature in the collection.
+        for(let offset=0;offset<changed.length;offset+=100){
+          const ids=changed.slice(offset,offset+100).map(row=>JSON.stringify(String(row.id))).join(',');
+          const rows=await this.query(source.table,{query:`select=${source.select}&id=in.${encodeURIComponent(`(${ids})`)}${suffix}`});
+          if(!Array.isArray(rows))throw new Error('Respuesta de documentación no válida.');
+          const returned=new Set(rows.map(row=>String(row.id)));
+          for(const row of changed.slice(offset,offset+100))if(!returned.has(String(row.id)))existing.delete(String(row.id));
+          for(const row of rows)existing.set(String(row.id),row);
+        }
+        // Revision ordering preserves the visible list; omitted IDs represent deletions.
+        return revisions.map(row=>existing.get(String(row.id))).filter((row):row is Record<string,any>=>!!row);
       }
       const rows=await this.query(source.table,{query:`select=${source.select}${suffix}`});
       if(!Array.isArray(rows))throw new Error('Respuesta de documentación no válida.');

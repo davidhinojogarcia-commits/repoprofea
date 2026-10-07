@@ -439,7 +439,7 @@ export const generateContractAttendancePdf = (
   workers: Person[],
   context: AttendanceContext,
 ) => {
-  const doc = new jsPDF({ orientation: "landscape", format: "a4" });
+  const doc = new jsPDF({ compress: true, orientation: "landscape", format: "a4" });
   doc.setProperties({
     title: "REGISTRO DIARIO DE JORNADA · PERIODOS CONTRATADOS",
     author: "Diputación Provincial de Cádiz",

@@ -23,7 +23,9 @@
     "validate:mandatory-traceability-v2": "node scripts/validateMandatoryTraceabilityReleaseV2.mjs",
     "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
     "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs",
-    "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs"
+    "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs",
+    "test:consumption-cache": "node scripts/testConsumptionCache.mjs",
+    "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

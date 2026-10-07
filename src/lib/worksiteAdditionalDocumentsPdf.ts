@@ -22,7 +22,7 @@ const fmt=(v:string)=>{const m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})/);r
 const fileSafe=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
 
 export function generateAdditionalWorksiteDocument(type:AdditionalWorksiteDocumentType,worker:Person|null,ctx:AdditionalWorksiteContext,answers:WorksiteDocumentAnswers={},signatures?:WorksiteDocumentSignatures){
-  const def=ADDITIONAL_WORKSITE_DOCUMENTS[type]; const doc=new jsPDF({unit:'mm',format:'a4'}); const cfg=getStoredPdfConfig();
+  const def=ADDITIONAL_WORKSITE_DOCUMENTS[type]; const doc=new jsPDF({ compress: true,unit:'mm',format:'a4'}); const cfg=getStoredPdfConfig();
   const pw=doc.internal.pageSize.getWidth(), ph=doc.internal.pageSize.getHeight(), left=14, right=pw-14, width=right-left;
   doc.setProperties({title:def.title,author:'Diputación Provincial de Cádiz',creator:'GestionPROFEA'});
   const drawDocumentHeader = () => renderInstitutionalReportHeader(

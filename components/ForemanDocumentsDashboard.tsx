@@ -11,7 +11,7 @@ import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, updateSupervisorMandatoryAnchors } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
-import { buildSignedMandatoryPdf, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
+import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
 import ModalPortal from './ModalPortal';
 import MandatoryTraceabilityModal from './MandatoryTraceabilityModal';
@@ -70,6 +70,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [editingCard,setEditingCard]=useState<any|null>(null);
   const [genericEditDraft,setGenericEditDraft]=useState<any>({});
   const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
+  const restoreOriginalInputRef=useRef<HTMLInputElement>(null);
+  const restoreOriginalTargetRef=useRef<string|null>(null);
   const completedBaselineRef=useRef<Set<string>|null>(null);
   const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
@@ -446,6 +448,17 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     return {bytes:undefined as Uint8Array|undefined,base64:stored.base64,filename:stored.filename||mandatoryDocumentLabel(item.document_type)||'documento.pdf',source:'stored' as const};
   };
 
+  const restoreOriginal=async(file:File)=>{
+    const documentId=restoreOriginalTargetRef.current;
+    if(!documentId)return;
+    try{
+      await supabase.rpc('restore_mandatory_original_pdf',{p_document_id:documentId,p_pdf_base64:await fileToBase64(file)});
+      setMailMessage('Original reimportado. Ya puedes devolver el documento para corregir. El PDF firmado se conserva.');
+      await refresh(true);
+    }catch(error:any){setMailMessage(error?.message||'No se pudo reimportar el original.');}
+    finally{restoreOriginalTargetRef.current=null;if(restoreOriginalInputRef.current)restoreOriginalInputRef.current.value='';}
+  };
+
   const downloadStoredMandatoryPdf=async(item:DbMandatory,variant:'original'|'signed')=>{
     if(variant==='signed'){
       const built=await buildSupervisorSignedPdf(item);
@@ -784,6 +797,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se comprueban los cambios cada minuto mientras esta pantalla esté visible.</p></div>
         <div className="flex flex-wrap gap-2">
+          <input ref={restoreOriginalInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={event=>{const file=event.target.files?.[0];if(file)void restoreOriginal(file);}} />
           <input
             ref={mandatoryFileInputRef}
             type="file"
@@ -901,7 +915,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
-            <button onClick={()=>void downloadStoredMandatoryPdf(card.item as DbMandatory,'original')} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><FileSignature className="w-4 h-4"/>Original</button>
+            <button onClick={()=>{if(card.item.details?.originalPdfPurged){restoreOriginalTargetRef.current=card.id;restoreOriginalInputRef.current?.click();}else void downloadStoredMandatoryPdf(card.item as DbMandatory,'original');}} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><FileSignature className="w-4 h-4"/>{card.item.details?.originalPdfPurged?'Reimportar original':'Original'}</button>
             {['inicio','control_presencia'].includes(String(card.item.document_type||''))&&
               <button
                 onClick={()=>setPositioningMandatory(card.item as DbMandatory)}

@@ -1,5 +1,6 @@
 import { createClient, type User } from '@supabase/supabase-js';
 import { RequestLimiter } from './requestLimiter';
+import { ReadResponseCache } from './readResponseCache';
 import {
   applyRestMutationToCachedReads,
   enqueueOfflineOperation,
@@ -65,11 +66,27 @@ const isNetworkFailure = (error: unknown) =>
   /failed to fetch|networkerror|network request failed|load failed/i.test(String((error as any)?.message || error || ''));
 
 const requestLimiter = new RequestLimiter();
-async function performNetworkRequest(path: string, options: RequestInit = {}): Promise<any> {
+const readResponseCache = new ReadResponseCache();
+const cacheChannel = typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('profea-read-cache-invalidation') : null;
+if (cacheChannel) cacheChannel.onmessage = () => readResponseCache.clear();
+function invalidateReadCache() {
+  readResponseCache.clear();
+  cacheChannel?.postMessage('invalidate');
+}
+client.auth.onAuthStateChange(() => readResponseCache.clear());
+async function performNetworkRequest(path: string, options: RequestInit = {}, fresh = false): Promise<any> {
   const user = await getSessionUser();
   const method = String(options.method || 'GET').toUpperCase();
   const key = JSON.stringify([path, Array.from(new Headers(options.headers).entries()).sort()]);
-  return requestLimiter.run(user?.id || 'anonymous', key, method === 'GET', () => sendNetworkRequest(path, options));
+  const load = () => requestLimiter.run(user?.id || 'anonymous', key, method === 'GET', () => sendNetworkRequest(path, options));
+  if (method !== 'GET') {
+    invalidateReadCache();
+    try { return await load(); } finally { invalidateReadCache(); }
+  }
+  // Keep document/signature and permission reads live. Cache only ordinary lists/settings.
+  const cacheable = !!user && /^\/rest\/v1\/(trabajadores|obras|user_settings|inventory_items|inventory_parks)(\?|$)/.test(path);
+  return readResponseCache.read(JSON.stringify([user?.id || 'anonymous', key]), load, cacheable && !fresh ? 15_000 : 0);
 }
 
 async function sendNetworkRequest(path: string, options: RequestInit = {}): Promise<any> {
@@ -115,6 +132,7 @@ function optimisticRestResult(path: string, options: RequestInit) {
 }
 
 async function queueRestRequest(path: string, options: RequestInit, userId: string) {
+  invalidateReadCache();
   const method = String(options.method || 'GET').toUpperCase();
   const headers = Object.fromEntries(new Headers(options.headers).entries());
   const rawBody = options.body == null ? null : typeof options.body === 'string' ? options.body : String(options.body);
@@ -141,7 +159,7 @@ async function queueRestRequest(path: string, options: RequestInit, userId: stri
   return optimisticRestResult(path, options);
 }
 
-async function request(path: string, options: RequestInit = {}): Promise<any> {
+async function request(path: string, options: RequestInit = {}, fresh = false): Promise<any> {
   const method = String(options.method || 'GET').toUpperCase();
   const user = await getSessionUser();
   const userId = user?.id || 'anonymous';
@@ -154,7 +172,7 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
       throw new Error('Sin conexión y sin una copia local disponible de estos datos.');
     }
     try {
-      const result = await performNetworkRequest(path, options);
+      const result = await performNetworkRequest(path, options, fresh);
       await writeOfflineCache(cacheKey, result);
       return result;
     } catch (error) {
@@ -236,16 +254,19 @@ const cleanHistoryReadQuery = (query = '') => {
 
 async function readHistoryRows(table: string, query = ''): Promise<any[]> {
   const cleanQuery = cleanHistoryReadQuery(query);
-  const result = await request(`/rest/v1/${table}${cleanQuery ? `?${cleanQuery}` : '?select=*'}`, { method: 'GET' });
+  const result = await request(`/rest/v1/${table}${cleanQuery ? `?${cleanQuery}` : '?select=*'}`, { method: 'GET' }, true);
   return Array.isArray(result) ? cloneHistoryValue(result) : [];
 }
 
 async function readRowsByIds(table: string, ids: unknown[]): Promise<any[]> {
   const unique = Array.from(new Set(ids.filter(id => id !== undefined && id !== null).map(String)));
   const rows: any[] = [];
-  for (const id of unique) {
-    const found = await readHistoryRows(table, `${idFilter(id)}&limit=1`);
-    if (found[0]) rows.push(found[0]);
+  for (let offset = 0; offset < unique.length; offset += 100) {
+    const batch = unique.slice(offset, offset + 100);
+    // PostgREST quoted values keep commas/parentheses in identifiers literal.
+    const values = batch.map(id => JSON.stringify(id)).join(',');
+    const found = await readHistoryRows(table, `id=in.${encodeURIComponent(`(${values})`)}`);
+    rows.push(...found);
   }
   return rows;
 }
@@ -519,7 +540,8 @@ async function commitRpcHistory(context: RpcHistoryContext, result: any) {
 
 async function executeHistoryStep(step: ActionHistoryStep) {
   if (step.kind === 'rpc') {
-    const { error } = await client.rpc(step.name, step.body || {});
+    invalidateReadCache();
+    const { error } = await Promise.resolve(client.rpc(step.name, step.body || {})).finally(invalidateReadCache);
     if (error) throw error;
     return;
   }
@@ -554,8 +576,8 @@ async function syncObrasPreventiveResource(rows: any): Promise<any> {
     const user = await getSessionUser();
     if (!user) return rows;
 
-    const settingsRows = await request(`/rest/v1/user_settings?user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`);
-    const mapping = settingsRows?.[0]?.settings?.subcontratasPreferences?.obrasRecursosPreventivos;
+    const settingsRows = await request(`/rest/v1/user_settings?user_id=eq.${encodeURIComponent(user.id)}&select=preferences:settings->subcontratasPreferences&limit=1`);
+    const mapping = settingsRows?.[0]?.preferences?.obrasRecursosPreventivos;
     if (!mapping || typeof mapping !== 'object') return rows;
 
     const entries = Object.entries(mapping as Record<string, any>);
@@ -647,7 +669,8 @@ async function replayOperation(operation: OfflineOperation) {
     return;
   }
   if (operation.kind === 'rpc') {
-    const { data, error } = await client.rpc(operation.payload.name, operation.payload.body || {});
+    invalidateReadCache();
+    const { data, error } = await Promise.resolve(client.rpc(operation.payload.name, operation.payload.body || {})).finally(invalidateReadCache);
     if (error) throw error;
     return data;
   }
@@ -724,7 +747,7 @@ export const supabase = {
   removeChannel(channel: ReturnType<typeof client.channel>) {
     return client.removeChannel(channel);
   },
-  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string } = {}) {
+  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean } = {}) {
     const headers: Record<string, string> = {};
     if (options.prefer) headers.Prefer = options.prefer;
     const method = options.method || 'GET';
@@ -748,7 +771,7 @@ export const supabase = {
       method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
+    }, options.fresh === true);
 
     if (historyContext) commitRestHistory(historyContext);
 
@@ -768,8 +791,13 @@ export const supabase = {
         console.warn('No se pudo preparar el historial reversible del RPC:', error);
       }
     }
-    const { data, error } = await client.rpc(name, body);
-    if (error) throw error;
+    invalidateReadCache();
+    let data: any;
+    try {
+      const result = await client.rpc(name, body);
+      if (result.error) throw result.error;
+      data = result.data;
+    } finally { invalidateReadCache(); }
     if (historyContext) {
       try {
         await commitRpcHistory(historyContext, data);
@@ -781,7 +809,9 @@ export const supabase = {
   },
   async edgeFunction(name: string, body: any) {
     if (isOffline()) throw new Error('Esta operación necesita conexión a internet.');
-    const { data, error } = await client.functions.invoke(name, { body });
+    invalidateReadCache();
+    const result = await client.functions.invoke(name, { body }).finally(invalidateReadCache);
+    const { data, error } = result;
     if (error) {
       const friendly = new Error(await edgeFunctionErrorMessage(error));
       (friendly as any).cause = error;

@@ -232,7 +232,7 @@ export async function exportInventoryStatusPdf(input: {
   documents: InventoryDocument[];
 }) {
   const { park, items, movements, maintenance, documents } = input;
-  const doc = new jsPDF({ orientation: 'portrait', format: 'a4', unit: 'mm' });
+  const doc = new jsPDF({ compress: true, orientation: 'portrait', format: 'a4', unit: 'mm' });
   const title = 'Informe de situación de herramientas y maquinaria';
   const subtitle = `${park.zona} · ${park.nombre}`;
   addHeader(doc, title, subtitle);

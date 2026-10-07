@@ -37,6 +37,31 @@ calls.length=0;
 await loader.load(false);
 assert.equal(calls.length,5,'manual/after-save refresh bypasses revisions');
 
+let deltaRows=Array.from({length:200},(_,i)=>({id:String(i),updated_at:'1',signatures:{worker:`signature-${i}`}}));
+const deltaCalls:{table:string;query:string;count:number}[]=[];
+const deltaLoader=new ForemanDashboardLoader(async(table,{query})=>{
+  const params=new URLSearchParams(query);
+  let rows=table==='foreman_documents'?deltaRows:[];
+  const filter=params.get('id');
+  if(filter){
+    const ids=new Set(JSON.parse(`[${filter.slice(4,-1)}]`));
+    rows=rows.filter(row=>ids.has(row.id));
+  }
+  deltaCalls.push({table,query,count:rows.length});
+  return params.get('select')==='id,updated_at'
+    ? rows.map(({id,updated_at})=>({id,updated_at})) : structuredClone(rows);
+},'owner-A');
+const deltaInitial=await deltaLoader.load();deltaCalls.length=0;
+deltaRows=deltaRows.map(row=>row.id==='99'?{...row,updated_at:'2',signatures:{worker:'new-signature'}}:row);
+const deltaChanged=await deltaLoader.load(true);
+assert.equal(deltaCalls.find(call=>call.query.includes('&id=in.'))?.count,1,'one changed signature downloads one row from 200 documents');
+assert.equal(deltaChanged[0][99].signatures.worker,'new-signature');
+assert.equal(deltaChanged[0][98],deltaInitial[0][98],'unchanged rows reuse their original payload');
+deltaCalls.length=0;deltaRows=deltaRows.filter(row=>row.id!=='99');
+const deltaDeleted=await deltaLoader.load(true);
+assert.equal(deltaDeleted[0].length,199);
+assert(!deltaCalls.some(call=>call.query.includes('&id=in.')),'deletion requires no document payload download');
+
 let fail=true;
 const recovery=new ForemanDashboardLoader(async()=>{if(fail)throw new Error('network');return [];},'owner-B');
 await assert.rejects(recovery.load());fail=false;
