@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { getSessionUser, supabase } from '../src/lib/supabase';
-import { ForemanDashboardLoader, FOREMAN_REFRESH_INTERVAL_MS } from '../src/services/foremanDashboardLoader';
+import { ForemanDashboardLoader } from '../src/services/foremanDashboardLoader';
+import { claimMorningRefresh, FOREMAN_SCHEDULE_CHECK_MS } from '../src/services/foremanMorningRefresh';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
 import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, generateForemanMandatoryDocumentPdf } from '../src/lib/foremanDocumentsPdf';
@@ -23,7 +24,6 @@ type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; d
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
-type ActivityRow = { id:number; obra:string; entity_type:string; entity_id?:string|null; document_type?:string|null; action:string; actor_type:'supervisor'|'encargado'|'sistema'; actor_name?:string; worker_id?:number|null; metadata?:Record<string,any>; created_at:string };
 type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; document_type?:string; work_date?:string; legacy_work_date?:string; created_at:string };
 
 const mandatoryDocumentLabel = (type:string) => ({
@@ -47,9 +47,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [documents,setDocuments]=useState<DbDocument[]>([]);
   const [attendance,setAttendance]=useState<DbAttendance[]>([]);
   const [mandatory,setMandatory]=useState<DbMandatory[]>([]);
-  const [activity,setActivity]=useState<ActivityRow[]>([]);
   const [versions,setVersions]=useState<VersionRow[]>([]);
-  const [controlView,setControlView]=useState<'status'|'activity'|'history'>('status');
+  const [controlView,setControlView]=useState<'status'|'history'>('status');
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
@@ -73,9 +72,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const restoreOriginalInputRef=useRef<HTMLInputElement>(null);
   const restoreOriginalTargetRef=useRef<string|null>(null);
   const completedBaselineRef=useRef<Set<string>|null>(null);
-  const activityBaselineRef=useRef<number|null>(null);
   const [completionNotice,setCompletionNotice]=useState('');
-  const [activityNotice,setActivityNotice]=useState('');
   const [bulkDeleteMode,setBulkDeleteMode]=useState(false);
   const [bulkDeleteBusy,setBulkDeleteBusy]=useState(false);
   const [selectedDeleteKeys,setSelectedDeleteKeys]=useState<Set<string>>(new Set());
@@ -99,6 +96,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         loaderRef.current={ownerId:user.id,loader:new ForemanDashboardLoader(supabase.query,user.id)};
         automaticRefreshBlockedRef.current=false;
       }
+      if(!checkOnly)claimMorningRefresh(user.id,'documents');
       const results=await loaderRef.current.loader.load(checkOnly);
       const nextDocuments=Array.isArray(results[0])?results[0]:[];
       const nextAttendance=Array.isArray(results[1])?results[1]:[];
@@ -106,23 +104,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setDocuments(nextDocuments);
       setAttendance(nextAttendance);
       setMandatory(nextMandatory);
-      const nextActivity=Array.isArray(results[3])?results[3]:[];
-      setActivity(nextActivity);
-      setVersions(Array.isArray(results[4])?results[4]:[]);
-      const newestActivityId=nextActivity.length?Math.max(...nextActivity.map((row:any)=>Number(row.id)||0)):0;
-      if(activityBaselineRef.current===null){
-        activityBaselineRef.current=newestActivityId;
-      }else if(newestActivityId>activityBaselineRef.current){
-        const newRows=nextActivity.filter((row:any)=>(Number(row.id)||0)>Number(activityBaselineRef.current||0));
-        const relevant=newRows.filter((row:any)=>!['access_updated','updated'].includes(String(row.action||'')));
-        if(relevant.length){
-          setActivityNotice(relevant.length===1
-            ? 'Hay una nueva actividad del encargado o del supervisor en la documentación.'
-            : `Hay ${relevant.length} movimientos nuevos en la documentación de encargados.`);
-        }
-        activityBaselineRef.current=newestActivityId;
-      }
-
+      setVersions(Array.isArray(results[3])?results[3]:[]);
       const completedIds=new Set(nextMandatory.filter((item:any)=>item.status==='completed').map((item:any)=>String(item.id)));
       if(completedBaselineRef.current===null){
         completedBaselineRef.current=completedIds;
@@ -151,9 +133,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     void refreshRef.current();
     const check=()=>{
       if(document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current)return;
+      const ownerId=loaderRef.current?.ownerId;
+      if(!ownerId||!claimMorningRefresh(ownerId,'documents'))return;
       void refreshRef.current(true,true);
     };
-    const timer=window.setInterval(check,FOREMAN_REFRESH_INTERVAL_MS);
+    const timer=window.setInterval(check,FOREMAN_SCHEDULE_CHECK_MS);
     document.addEventListener('visibilitychange',check);
     window.addEventListener('online',check);
     return()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',check);window.removeEventListener('online',check);};
@@ -208,9 +192,16 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const scanMailRef=useRef(scanAdministrativeMail);
   scanMailRef.current=scanAdministrativeMail;
   useEffect(()=>{
-    const first=window.setTimeout(()=>void scanMailRef.current(true),2500);
-    const timer=window.setInterval(()=>void scanMailRef.current(true),300000);
-    return()=>{window.clearTimeout(first);window.clearInterval(timer);};
+    const check=()=>{
+      if(document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current)return;
+      const ownerId=loaderRef.current?.ownerId;
+      if(!ownerId||!claimMorningRefresh(ownerId,'mail'))return;
+      void scanMailRef.current(true);
+    };
+    const first=window.setTimeout(check,2500);
+    const timer=window.setInterval(check,FOREMAN_SCHEDULE_CHECK_MS);
+    document.addEventListener('visibilitychange',check);
+    return()=>{window.clearTimeout(first);window.clearInterval(timer);document.removeEventListener('visibilitychange',check);};
   },[]);
   const importMandatoryFiles = async (files: File[]) => {
     if (!files.length || importBusy) return;
@@ -630,7 +621,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         prefer: 'return=minimal',
       });
 
-      setMailMessage('Documento actualizado correctamente. El cambio ha quedado registrado en Actividad.');
+      setMailMessage('Documento actualizado correctamente. El cambio ha quedado guardado.');
       setEditingCard(null);
       setGenericEditDraft({});
       await refresh(true);
@@ -648,7 +639,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       return;
     }
     const ok = await appConfirm(
-      `¿Eliminar definitivamente “${card.title}” de ${card.obra}? La eliminación quedará registrada en Actividad y las versiones históricas ya guardadas se conservarán.`,
+      `¿Eliminar definitivamente “${card.title}” de ${card.obra}? Las versiones históricas ya guardadas se conservarán.`,
       { title: 'Eliminar documento', confirmLabel: 'Eliminar definitivamente' },
     );
     if (!ok) return;
@@ -665,7 +656,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         setEditingCard(null);
         setGenericEditDraft({});
       }
-      setMailMessage('Documento eliminado correctamente. La eliminación ha quedado registrada en Actividad.');
+      setMailMessage('Documento eliminado correctamente. La eliminación ha quedado guardada.');
       await refresh(true);
     } catch (error:any) {
       console.error('No se pudo eliminar el documento del encargado:', error);
@@ -779,13 +770,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const correctionCount=visibleMandatory.filter(i=>i.correction_pending).length+documents.filter(i=>i.correction_pending).length+attendance.filter(i=>i.correction_pending).length;
   const incompleteCount=visibleMandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
   const reviewCount=visibleMandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
-  const actionLabel=(action:string)=>({
-    created:'Creado',created_and_finalized:'Creado y finalizado',signature_updated:'Firma registrada o actualizada',
-    finalized:'Finalizado por el encargado',reviewed:'Revisado por el supervisor',returned_for_correction:'Devuelto para corrección',
-    attendance_updated:'Jornada actualizada',answers_updated:'Datos modificados',access_authorized:'Acceso autorizado',
-    access_revoked:'Acceso desautorizado',access_rotated:'Acceso renovado',access_updated:'Acceso al portal',status_changed:'Cambio de estado',updated:'Actualizado'
-  } as Record<string,string>)[action]||action;
-  const entityLabel=(row:ActivityRow|VersionRow)=>{
+  const entityLabel=(row:VersionRow)=>{
     const type=row.document_type;
     if(type)return mandatoryDocumentLabel(String(type));
     if(row.entity_type==='foreman_attendance_days')return 'Registro diario de jornada';
@@ -795,7 +780,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   return <div className="space-y-5">
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se comprueban los cambios cada minuto mientras esta pantalla esté visible.</p></div>
+        <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento documental</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Hasta tres comprobaciones automáticas al día entre las 08:00 y las 14:00 (hora de España), solo con esta pantalla visible. Pulsa Actualizar para consultar cambios a cualquier hora.</p></div>
         <div className="flex flex-wrap gap-2">
           <input ref={restoreOriginalInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={event=>{const file=event.target.files?.[0];if(file)void restoreOriginal(file);}} />
           <input
@@ -820,7 +805,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
       {mailMessage&&<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">{mailMessage}</div>}
       {completionNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"><span>{completionNotice}</span><button onClick={()=>setCompletionNotice('')} className="rounded-lg border border-emerald-300 px-2 py-1 text-[10px]">OK</button></div>}
-      {activityNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-xs font-black text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><span>{activityNotice}</span><button onClick={()=>{setActivityNotice('');setControlView('activity')}} className="rounded-lg border border-blue-300 px-2 py-1 text-[10px]">Ver actividad</button></div>}
       {directoryMismatchDocuments.length>0&&<div className="mt-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0"/>
@@ -834,9 +818,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         {([['Inicio / Control',visibleMandatory.length],['Documentos normalizados',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
       <button onClick={()=>setControlView('status')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='status'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><ListChecks className="w-4 h-4"/>Estado actual</button>
-      <button onClick={()=>setControlView('activity')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='activity'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><Clock3 className="w-4 h-4"/>Actividad ({activity.length})</button>
       <button onClick={()=>setControlView('history')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='history'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><History className="w-4 h-4"/>Historial / versiones ({versions.length})</button>
     </div>
 
@@ -1061,25 +1044,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         </div>
       </div>
     </div></ModalPortal>}
-
-    {controlView==='activity'&&<div className="space-y-2">
-      {!activity.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay movimientos registrados.</div>}
-      {activity.map(row=><div key={row.id} className="rounded-2xl bg-white dark:bg-slate-900 border p-4">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-2 py-1 text-[10px] font-black ${row.actor_type==='supervisor'?'bg-blue-50 text-blue-800':row.actor_type==='encargado'?'bg-emerald-50 text-emerald-800':'bg-slate-100 text-slate-700'}`}>{row.actor_type==='supervisor'?'Supervisor':row.actor_type==='encargado'?'Encargado':'Sistema'}</span>
-              <span className="text-sm font-black">{actionLabel(row.action)}</span>
-            </div>
-            <div className="mt-1 text-sm font-semibold">{entityLabel(row)}</div>
-            <div className="mt-1 text-xs text-slate-500">{row.obra}{row.actor_name?' · '+row.actor_name:''}</div>
-            {row.metadata?.correctionReason&&<div className="mt-2 text-xs font-bold text-amber-800">Motivo: {row.metadata.correctionReason}</div>}
-            {typeof row.metadata?.signedCount==='number'&&<div className="mt-1 text-xs text-slate-500">Firmas: {row.metadata.signedCount}/{row.metadata.workerCount??'-'}</div>}
-          </div>
-          <time className="text-xs font-bold text-slate-500">{new Date(row.created_at).toLocaleString('es-ES')}</time>
-        </div>
-      </div>)}
-    </div>}
 
     {controlView==='history'&&<div className="space-y-2">
       {!versions.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay versiones finalizadas guardadas.</div>}
