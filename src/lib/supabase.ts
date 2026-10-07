@@ -1,4 +1,5 @@
 import { createClient, type User } from '@supabase/supabase-js';
+import { RequestLimiter } from './requestLimiter';
 import {
   applyRestMutationToCachedReads,
   enqueueOfflineOperation,
@@ -63,7 +64,15 @@ const isNetworkFailure = (error: unknown) =>
   error instanceof TypeError ||
   /failed to fetch|networkerror|network request failed|load failed/i.test(String((error as any)?.message || error || ''));
 
+const requestLimiter = new RequestLimiter();
 async function performNetworkRequest(path: string, options: RequestInit = {}): Promise<any> {
+  const user = await getSessionUser();
+  const method = String(options.method || 'GET').toUpperCase();
+  const key = JSON.stringify([path, Array.from(new Headers(options.headers).entries()).sort()]);
+  return requestLimiter.run(user?.id || 'anonymous', key, method === 'GET', () => sendNetworkRequest(path, options));
+}
+
+async function sendNetworkRequest(path: string, options: RequestInit = {}): Promise<any> {
   const token = await getAccessToken();
   const headers = new Headers(options.headers);
   headers.set('apikey', SUPABASE_KEY);

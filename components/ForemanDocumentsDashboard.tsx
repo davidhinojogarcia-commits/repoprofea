@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
-import { supabase } from '../src/lib/supabase';
+import { getSessionUser, supabase } from '../src/lib/supabase';
+import { ForemanDashboardLoader, FOREMAN_REFRESH_INTERVAL_MS } from '../src/services/foremanDashboardLoader';
 import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
 import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, generateForemanMandatoryDocumentPdf } from '../src/lib/foremanDocumentsPdf';
@@ -23,7 +24,7 @@ type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string;
 type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
 type ActivityRow = { id:number; obra:string; entity_type:string; entity_id?:string|null; document_type?:string|null; action:string; actor_type:'supervisor'|'encargado'|'sistema'; actor_name?:string; worker_id?:number|null; metadata?:Record<string,any>; created_at:string };
-type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; snapshot:Record<string,any>; created_at:string };
+type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; document_type?:string; work_date?:string; legacy_work_date?:string; created_at:string };
 
 const mandatoryDocumentLabel = (type:string) => ({
   inicio:'Inicio / incorporación',
@@ -78,24 +79,25 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [selectedDeleteKeys,setSelectedDeleteKeys]=useState<Set<string>>(new Set());
   const [traceabilityModal,setTraceabilityModal]=useState<{title:string;data:any}|null>(null);
   const [worksiteReview,setWorksiteReview]=useState<{item:DbMandatory;works:string[]}|null>(null);
-  const refresh=async(silent=false)=>{
+  const loaderRef=useRef<{ownerId:string;loader:ForemanDashboardLoader}|null>(null);
+  const refreshInFlightRef=useRef<Promise<void>|null>(null);
+  const automaticRefreshBlockedRef=useRef(false);
+  const refresh=async(silent=false,checkOnly=false):Promise<void>=>{
+    if(checkOnly&&automaticRefreshBlockedRef.current)return;
+    if(refreshInFlightRef.current){
+      if(checkOnly)return refreshInFlightRef.current;
+      await refreshInFlightRef.current;
+    }
+    const task=(async()=>{
     if(!silent)setLoading(true);
     try{
-      const userResult=await supabase.auth.getUser();
-      const user=userResult.data.user;
+      const user=await getSessionUser();
       if(!user)return;
-      const docsQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=updated_at.desc&limit=500';
-      const daysQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=work_date.desc&limit=180';
-      const mandatoryQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=work_date.desc&limit=300';
-      const activityQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=created_at.desc&limit=500';
-      const versionsQuery='owner_id=eq.'+encodeURIComponent(user.id)+'&select=*&order=created_at.desc&limit=300';
-      const results=await Promise.all([
-        supabase.query('foreman_documents',{query:docsQuery}),
-        supabase.query('foreman_attendance_days',{query:daysQuery}),
-        supabase.query('foreman_mandatory_documents',{query:mandatoryQuery}),
-        supabase.query('foreman_activity_log',{query:activityQuery}),
-        supabase.query('foreman_document_versions',{query:versionsQuery}),
-      ]);
+      if(loaderRef.current?.ownerId!==user.id){
+        loaderRef.current={ownerId:user.id,loader:new ForemanDashboardLoader(supabase.query,user.id)};
+        automaticRefreshBlockedRef.current=false;
+      }
+      const results=await loaderRef.current.loader.load(checkOnly);
       const nextDocuments=Array.isArray(results[0])?results[0]:[];
       const nextAttendance=Array.isArray(results[1])?results[1]:[];
       const nextMandatory=Array.isArray(results[2])?results[2]:[];
@@ -131,11 +133,33 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         }
         completedBaselineRef.current=completedIds;
       }
+    }catch(error:any){
+      if([401,402,403].includes(Number(error?.status)))automaticRefreshBlockedRef.current=true;
+      setMailMessage(error?.status===402
+        ? 'Supabase ha restringido el servicio. Las comprobaciones automáticas se han detenido.'
+        : error?.message||'No se pudo actualizar la documentación.');
     }finally{if(!silent)setLoading(false);}
+    })();
+    refreshInFlightRef.current=task;
+    try{await task;}finally{if(refreshInFlightRef.current===task)refreshInFlightRef.current=null;}
   };
-  useEffect(()=>{void refresh();const timer=window.setInterval(()=>void refresh(true),5000);return()=>window.clearInterval(timer);},[]);
+  const refreshRef=useRef(refresh);
+  refreshRef.current=refresh;
+  useEffect(()=>{
+    void refreshRef.current();
+    const check=()=>{
+      if(document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current)return;
+      void refreshRef.current(true,true);
+    };
+    const timer=window.setInterval(check,FOREMAN_REFRESH_INTERVAL_MS);
+    document.addEventListener('visibilitychange',check);
+    window.addEventListener('online',check);
+    return()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',check);window.removeEventListener('online',check);};
+  },[]);
+  const mailScanInFlightRef=useRef(false);
   const scanAdministrativeMail = async (silent=false) => {
-    if (mailBusy) return;
+    if (mailScanInFlightRef.current || (silent && (document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current))) return;
+    mailScanInFlightRef.current=true;
     setMailBusy(true);
     if (!silent) setMailMessage('Comprobando Gmail de la administrativa…');
     try {
@@ -172,16 +196,20 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         setMailMessage(result.warnings[0] || 'Gmail revisado. No hay nuevos documentos obligatorios.');
       }
     } catch (error:any) {
+      if([401,402,403].includes(Number(error?.status)))automaticRefreshBlockedRef.current=true;
       setMailMessage(error?.message || 'No se pudo comprobar Gmail.');
     } finally {
+      mailScanInFlightRef.current=false;
       setMailBusy(false);
     }
   };
+  const scanMailRef=useRef(scanAdministrativeMail);
+  scanMailRef.current=scanAdministrativeMail;
   useEffect(()=>{
-    const first=window.setTimeout(()=>void scanAdministrativeMail(true),2500);
-    const timer=window.setInterval(()=>void scanAdministrativeMail(true),60000);
+    const first=window.setTimeout(()=>void scanMailRef.current(true),2500);
+    const timer=window.setInterval(()=>void scanMailRef.current(true),300000);
     return()=>{window.clearTimeout(first);window.clearInterval(timer);};
-  },[mandatory.length]);
+  },[]);
   const importMandatoryFiles = async (files: File[]) => {
     if (!files.length || importBusy) return;
     setImportBusy(true);
@@ -745,8 +773,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     access_revoked:'Acceso desautorizado',access_rotated:'Acceso renovado',access_updated:'Acceso al portal',status_changed:'Cambio de estado',updated:'Actualizado'
   } as Record<string,string>)[action]||action;
   const entityLabel=(row:ActivityRow|VersionRow)=>{
-    const snap='snapshot' in row?row.snapshot:null;
-    const type=('document_type' in row?row.document_type:null)||snap?.document_type;
+    const type=row.document_type;
     if(type)return mandatoryDocumentLabel(String(type));
     if(row.entity_type==='foreman_attendance_days')return 'Registro diario de jornada';
     if(row.entity_type==='foreman_portal_access')return 'Acceso del encargado';
@@ -755,7 +782,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   return <div className="space-y-5">
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se actualiza automáticamente cada 5 segundos.</p></div>
+        <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento en tiempo real</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Se comprueban los cambios cada minuto mientras esta pantalla esté visible.</p></div>
         <div className="flex flex-wrap gap-2">
           <input
             ref={mandatoryFileInputRef}
@@ -1046,7 +1073,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <div className="flex items-center gap-2"><History className="w-4 h-4 text-[#00548E]"/><span className="font-black">{entityLabel(version)}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black">Versión {version.version_no}</span></div>
-            <div className="mt-1 text-xs text-slate-500">{version.obra} · {String(version.snapshot?.work_date||version.snapshot?.workDate||'').slice(0,10)}</div>
+            <div className="mt-1 text-xs text-slate-500">{version.obra} · {String(version.work_date||version.legacy_work_date||'').slice(0,10)}</div>
             <div className="mt-1 text-xs font-semibold text-slate-600">Copia inalterable del estado en el momento de finalizar.</div>
           </div>
           <time className="text-xs font-bold text-slate-500">{new Date(version.created_at).toLocaleString('es-ES')}</time>
