@@ -14,8 +14,15 @@ window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener()
 const intervals=new Map();let next=0;
 window.setInterval=(callback,delay)=>{const id=++next;intervals.set(id,{callback,delay});return id;};
 window.clearInterval=id=>intervals.delete(id);
-let calls=[];let restricted=false;
+const timeouts=new Map();
+window.setTimeout=(callback,delay)=>{const id=++next;timeouts.set(id,{callback,delay});return id;};
+window.clearTimeout=id=>timeouts.delete(id);
+const RealDate=globalThis.Date;
+let clock=RealDate.parse('2026-10-08T06:00:00Z');
+globalThis.Date=class extends RealDate {constructor(...args){super(...(args.length?args:[clock]));}static now(){return clock;}};
+let calls=[];let mailCalls=0;let restricted=false;
 globalThis.__dashboardTest={getSessionUser:async()=>({id:'owner'}),supabase:{query:async(table,{query})=>{
+  if(table==='foreman_mandatory_delete_tombstones'){mailCalls++;return [];}
   calls.push({table,query});
   if(restricted)throw Object.assign(new Error('quota'),{status:402});
   return [];
@@ -25,7 +32,7 @@ const source=await fs.readFile(entry,'utf8');
 const output=new URL('./.low-consumption-ui.mjs',import.meta.url);
 const plugin={name:'dashboard-dependencies',setup(builder){
   builder.onResolve({filter:/^\.\.?\//},args=>{
-    if(args.importer!==entry||args.path.includes('foremanDashboardLoader'))return;
+    if(args.importer!==entry||(args.path.includes('foremanDashboardLoader')||args.path.includes('foremanMorningRefresh')))return;
     return {path:args.path,namespace:'test-stubs'};
   });
   builder.onLoad({filter:/.*/,namespace:'test-stubs'},args=>{
@@ -43,32 +50,51 @@ try{
   await build({entryPoints:[entry],bundle:true,platform:'node',format:'esm',packages:'external',outfile:output.pathname,plugins:[plugin]});
   const {ForemanDocumentsDashboard}=await import(output.href);
   await act(async()=>{root.render(React.createElement(ForemanDocumentsDashboard));});
-  assert.equal(calls.length,5,'initial load');
+  assert.equal(calls.length,4,'initial load');
+  assert(!calls.some(c=>c.table==='foreman_activity_log'));
+  assert(![...document.querySelectorAll('button')].some(b=>/Actividad|Ver actividad/.test(b.textContent)));
   const poll=[...intervals.values()].find(timer=>timer.delay===60_000);
-  assert(poll,'one-minute polling');
-  assert([...intervals.values()].some(timer=>timer.delay===300_000),'mail checks every five minutes');
+  assert(poll,'local schedule clock');
+  assert.equal([...intervals.values()].filter(timer=>timer.delay===60_000).length,2,'document and mail clocks use morning budget');
   calls=[];
   await act(async()=>{poll.callback();});
-  assert.equal(calls.length,5);
-  assert(calls.every(call=>call.query.startsWith('select=id,')),'idle polling has no signatures or snapshots');
+  assert.equal(calls.length,0,'opening consumes the current morning slot');
+  clock=RealDate.parse('2026-10-08T08:00:00Z');
+  calls=[];
+  await act(async()=>{poll.callback();});
+  assert.equal(calls.length,4);
+  assert(calls.every(call=>call.query.startsWith('select=id,')),'idle checks have no signatures or snapshots');
+  calls=[];
+  await act(async()=>{poll.callback();document.dispatchEvent(new Event('visibilitychange'));});
+  assert.equal(calls.length,0,'no repeated checks in the same slot');
+  clock=RealDate.parse('2026-10-08T10:00:00Z');
   hidden=true;calls=[];
   await act(async()=>{poll.callback();document.dispatchEvent(new Event('visibilitychange'));});
   assert.equal(calls.length,0,'hidden tab produces no polling requests');
   hidden=false;
   await act(async()=>{document.dispatchEvent(new Event('visibilitychange'));});
-  assert.equal(calls.length,5,'resume checks revisions');
+  assert.equal(calls.length,4,'resume checks revisions');
   calls=[];
   const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='Actualizar');
   assert(button);
   await act(async()=>{button.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));});
-  assert.equal(calls.length,5,'manual refresh remains functional');
+  assert.equal(calls.length,4,'manual refresh remains functional');
+  calls=[];clock=RealDate.parse('2026-10-08T15:00:00Z');
+  const mailBefore=mailCalls;
+  await act(async()=>{for(const timer of intervals.values())timer.callback();document.dispatchEvent(new Event('visibilitychange'));});
+  assert.equal(mailCalls,mailBefore,'afternoon has no automatic mail reads');
+  assert.equal(calls.length,0,'afternoon has no automatic network requests');
+  await act(async()=>{button.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));});
+  assert.equal(calls.length,4,'afternoon manual refresh works');
+  clock=RealDate.parse('2026-10-09T06:00:00Z');
   restricted=true;calls=[];
   await act(async()=>{poll.callback();});
   const attempted=calls.length;
+  clock=RealDate.parse('2026-10-09T08:00:00Z');
   await act(async()=>{poll.callback();document.dispatchEvent(new Event('visibilitychange'));});
   assert.equal(calls.length,attempted,'quota restriction stops automatic polling');
   assert(document.body.textContent.includes('Las comprobaciones automáticas se han detenido'));
   await act(async()=>root.unmount());
   assert.equal(intervals.size,0,'unmount removes both timers');
   console.log('Dashboard UI regressions passed: lightweight polling, hidden tab, resume, manual refresh, quota stop and cleanup.');
-}finally{await fs.rm(output,{force:true});dom.window.close();}
+}finally{globalThis.Date=RealDate;await fs.rm(output,{force:true});dom.window.close();}

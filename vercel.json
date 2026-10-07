@@ -24,7 +24,8 @@
       "local/prevention-phase1-20261006": false,
       "local/reduce-supabase-consumption-20261007": false,
       "local/reduce-supabase-requests-phase2-20261007": false,
-      "feat/consumption-cache-temporary-documents": false
+      "feat/consumption-cache-temporary-documents": false,
+      "local/remove-activity-morning-refresh-20261007": false
     }
   }
 }

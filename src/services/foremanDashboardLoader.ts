@@ -1,12 +1,10 @@
 // Lightweight revision checks avoid repeatedly transferring signatures and snapshots.
-export const FOREMAN_REFRESH_INTERVAL_MS = 60_000;
 export type DashboardRows = Record<string, any>[];
 type Query = (table: string, options: {query: string}) => Promise<any>;
 const sources = [
   {table:'foreman_documents',order:'updated_at.desc',limit:500,revision:'updated_at',select:'*'},
   {table:'foreman_attendance_days',order:'work_date.desc',limit:180,revision:'updated_at',select:'*'},
   {table:'foreman_mandatory_documents',order:'work_date.desc',limit:300,revision:'updated_at',select:'*'},
-  {table:'foreman_activity_log',order:'created_at.desc',limit:500,revision:'created_at',select:'*'},
   // Only these snapshot fields are displayed. Never transfer the complete signed snapshot.
   {table:'foreman_document_versions',order:'created_at.desc',limit:300,revision:'created_at',select:'id,obra,entity_type,entity_id,version_no,created_at,document_type:snapshot->>document_type,work_date:snapshot->>work_date,legacy_work_date:snapshot->>workDate'},
 ];
