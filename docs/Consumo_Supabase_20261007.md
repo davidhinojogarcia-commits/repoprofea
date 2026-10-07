@@ -47,3 +47,17 @@ El consumo de `Logs Ingest` incluye los registros automáticos de API, Auth, Pos
 Para confirmar el ahorro real después de publicar, comparar al menos 48–72 horas de incrementos diarios, con actividad y usuarios similares, tanto en Logs Ingest como en Egress y número de peticiones. El acumulado mensual no desciende al aplicar una corrección, y no puede garantizarse un consumo mínimo fijo independiente del uso.
 
 Referencia: https://supabase.com/docs/guides/platform/manage-your-usage/logs-ingest
+
+## Retención automática de auditoría: aplicada en Supabase
+
+Por petición expresa del usuario del 7 de octubre se ha activado en producción una tarea SQL diaria `gestionprofea-audit-retention` a las 03:20 UTC (05:20 Madrid en verano / 04:20 en invierno). Conserva los eventos LOGIN de los últimos 30 días y el resto de `audit_logs` de los últimos 180 días. Los registros de ejecución de esta tarea se conservan 7 días; no altera el historial de otras tareas Cron.
+
+La migración `20261007094440_app_audit_log_retention.sql` habilita pg_cron y crea una función privada SECURITY INVOKER con search_path vacío, sin ejecución para PUBLIC, anon, authenticated ni service_role. El cron la ejecuta como postgres. No cambia las políticas RLS de audit_logs. Cada ejecución borra como máximo 10.000 entradas antiguas, por orden de fecha, con un timeout de 60 segundos; si se acumulara más atraso, se procesaría en las siguientes ejecuciones. La tabla ya tiene índice por timestamp. No se crean copias ni archivos de exportación de los eventos eliminados: la expiración es definitiva.
+
+Solo se expira la auditoría general de la aplicación. No se borran documentos, firmas, versiones documentales, trazabilidad V2 ni foreman_activity_log. Los plazos son una política operativa elegida para limitar almacenamiento, no una afirmación de cumplimiento de obligaciones legales de conservación.
+
+Verificación: `node scripts/testAuditRetentionSql.mjs` ejecuta la función en Postgres/PGlite y comprueba los límites exactos, permisos, lote de 10.000, conservación documental e idempotencia. El programador se simula en local; en Supabase se verificó pg_cron instalado, tarea activa a la hora indicada y usuario postgres, y se ejecutó manualmente la función. Resultado inicial: 0 eventos eliminados porque los 66.627 registros todavía no superan los plazos. Los avisos de seguridad de Supabase conservan los mismos tipos y cantidades que antes del cambio; no aparecieron avisos nuevos. La primera ejecución nocturna programada queda pendiente de su horario.
+
+Importante: esta limpieza limita filas y espacio de la auditoría; no reduce retrospectivamente Logs Ingest ni Egress. Los logs de la plataforma los conserva Supabase conforme al plan, y no existe aquí una tarea SQL que pueda borrarlos. Reducir su generación requiere publicar las optimizaciones de peticiones del PR #223, además de mantener la configuración poco verbosa de PostgreSQL ya verificada.
+
+Referencias: https://supabase.com/docs/guides/cron/quickstart ; https://supabase.com/docs/guides/observability/logs ; https://supabase.com/docs/guides/platform/manage-your-usage/logs-ingest
