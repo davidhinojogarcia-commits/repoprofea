@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Share2, Users, X, Loader2, UserMinus, CheckCircle2, Eye, Pencil, Search } from 'lucide-react';
-import { supabase } from '../src/lib/supabase';
+import { getSessionUser, supabase } from '../src/lib/supabase';
 import { getRecordShares, listShareableProfiles, shareRecordWithUser, unshareRecordWithUser } from '../src/lib/functions';
 import { showAppToast } from '../src/lib/appToast';
 
@@ -52,8 +52,8 @@ export const ShareRecordButton: React.FC<Props> = ({
     let active = true;
     const resolveAccess = async () => {
       try {
-        const authResult = await supabase.auth.getUser();
-        const currentUserId = authResult.data.user?.id || '';
+        const sessionUser = await getSessionUser();
+        const currentUserId = sessionUser?.id || '';
         let resolvedOwnerId = providedOwnerId || '';
 
         if (!resolvedOwnerId) {

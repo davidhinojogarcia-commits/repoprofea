@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSessionUser, supabase } from './supabase';
 
 type CallResult<T>={data:T};
 async function call<T>(action:string,payload:any={}):Promise<CallResult<T>>{return {data:await supabase.edgeFunction('admin-users',{action,...payload})};}
@@ -6,14 +6,14 @@ async function call<T>(action:string,payload:any={}):Promise<CallResult<T>>{retu
 // Compatibilidad con llamadas antiguas: ya no crea ni presume un primer administrador.
 // El rol procede exclusivamente del perfil activo almacenado en Supabase.
 export const bootstrapFirstAdmin=async()=>{
-  const user=(await supabase.auth.getUser()).data.user;
+  const user=(await getSessionUser());
   if(!user)return {data:{ok:false,role:null as 'admin'|'user'|null}};
   const rows=await supabase.query('profiles',{query:`select=role,active&id=eq.${encodeURIComponent(user.id)}&limit=1`});
   const profile=rows?.[0];
   const role=profile?.active===true&&(profile.role==='admin'||profile.role==='user')?profile.role:null;
   return {data:{ok:role!==null,role}};
 };
-export const touchLogin=async()=>({data:{ok:true,email:(await supabase.auth.getUser()).data.user?.email||''}});
+export const touchLogin=async()=>({data:{ok:true,email:(await getSessionUser())?.email||''}});
 export const createManagedUser=(payload:any)=>call<{uid:string;email:string;role:'admin'|'user'}>('create',payload);
 export const updateManagedUserProfile=(payload:any)=>call<{ok:boolean}>('update_profile',payload);
 export const updateManagedUserRole=async(payload:any)=>{
@@ -106,4 +106,4 @@ export const unshareRecordWithUser=async(payload:{resourceType:string;resourceId
   return deleteDataPermission(payload);
 };
 
-export const writeAuditEvent=async(payload:any)=>{const user=(await supabase.auth.getUser()).data.user;if(user)await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:user.id,user_email:user.email||'',action:payload.action,resource_type:payload.resourceType||'',resource_id:payload.resourceId||'',details:payload.details||{}}});return {data:{ok:true}};};
+export const writeAuditEvent=async(payload:any)=>{const user=(await getSessionUser());if(user)await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:user.id,user_email:user.email||'',action:payload.action,resource_type:payload.resourceType||'',resource_id:payload.resourceId||'',details:payload.details||{}}});return {data:{ok:true}};};

@@ -135,7 +135,7 @@ export const VirtualPersonList: React.FC<VirtualPersonListProps> = ({
               <div key={`virtual_person_${person.id}_${index}`} ref={(node) => measureItem(person.id, node)} style={{ position: 'absolute', top: `${topOffset}px`, left: 0, right: 0, width: '100%' }}>
                 <div className="space-y-2">
                   <PersonCard person={person} isSelected={selectedSet.has(person.id)} onToggleSelect={onToggleSelect} onDelete={onDelete} onEdit={onEdit} onGenerateIDCard={onGenerateIDCard} onExportHistoryPDF={onExportHistoryPDF} onOpenCalendar={onOpenCalendar} isSyncActive={isSyncActive} onToggleSync={onToggleSync} sameDniWorkers={sameDniWorkers} />
-                  <div className="flex justify-end pr-1"><ShareRecordButton resourceType="trabajadores" resourceId={person.id} /></div>
+                  <div className="flex justify-end pr-1"><ShareRecordButton resourceType="trabajadores" resourceId={person.id} ownerId={person.ownerId} /></div>
                 </div>
               </div>
             );

@@ -1,18 +1,18 @@
-import { supabase } from '../lib/supabase';
+import { getSessionUser, supabase } from '../lib/supabase';
 import type { PdfCustomConfig } from '../../types';
 
 async function requireUser() {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('No hay una sesión autenticada.');
-  return data.user;
+  const user = await getSessionUser();
+  if (!user) throw new Error('No hay una sesión autenticada.');
+  return user;
 }
 
 export async function loadPdfPreferences(): Promise<Partial<PdfCustomConfig>> {
   const user = await requireUser();
   const rows = await supabase.query('user_settings', {
-    query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=preferences:settings->pdfPreferences&limit=1`,
   });
-  const value = rows?.[0]?.settings?.pdfPreferences;
+  const value = rows?.[0]?.preferences;
   return value && typeof value === 'object' ? value : {};
 }
 

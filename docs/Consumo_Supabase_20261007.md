@@ -27,3 +27,37 @@ Las pruebas de datos verifican revisiones sin cambios, recarga selectiva, borrad
 Límites: la primera carga y los datos modificados todavía incluyen el contenido necesario para las operaciones actuales del panel, dentro de sus límites de consulta existentes. No hay paginación nueva ni migración de firmas a Storage. La reducción diaria real debe medirse tras desplegar; estos cambios no restituyen la cuota ya consumida. Se preservan los registros de auditoría y la trazabilidad.
 
 La rama local/reduce-supabase-consumption-20261007 tiene desactivados los despliegues automáticos de Vercel. Fusión y publicación pendientes de validación del usuario.
+
+## Segunda revisión: peticiones por trabajador y configuración
+
+La primera fase se fusionó en PR #222 y está publicada en producción (commit `10ba2f47e94359f1fad2a2a34ebaa4a35630ef0e`). Esta segunda fase se prepara por separado para validación del usuario antes de fusionar y publicar.
+
+Los tres renderizadores del Directorio ya reciben `Person.ownerId`, hidratado desde `trabajadores.owner_id`, pero no lo pasaban al botón Compartir. Cada botón ejecutaba una comprobación remota de usuario y una consulta de propietario al montarse. El propietario conocido ahora se reutiliza; si falta, permanece la consulta de respaldo. El modal conserva las RPC de consultar, conceder y retirar permisos. Los datos locales deciden la visibilidad del botón, y Supabase continúa autorizando las operaciones mediante sus reglas y RPC.
+
+Los servicios de SAE, escáner, reconocimiento médico, preferencias, auditoría y los controles de compartición usan la sesión del SDK para obtener la identidad. La renovación automática del token sigue habilitada. No se modifica la autenticación de las funciones de servidor ni se redefine `auth.getUser` globalmente. Se preservan los registros de auditoría de las operaciones.
+
+Las cuatro lecturas de configuración solicitan solamente su rama JSON (`pdfPreferences`, `subcontratasPreferences`, `subcontratas` o `annualHiringPeriods`), conservando el filtro por usuario y las escrituras mediante `patch_user_settings`. El tamaño total de configuración observado en seis usuarios era 33.377 bytes: esta medida reduce transferencia, pero por sí sola no explica consumos de varios GB.
+
+Validación adicional: `npm run test:consumption-phase2`. Monta el botón real y comprueba que 100 trabajadores con propietario conocido no necesitan consultas de propietario ni peticiones remotas de identidad. Comprueba también el respaldo cuando falta el propietario, ocultación para otros propietarios, RPC de compartir/retirar, lectura y guardado parcial de preferencias, aislamiento por usuario, ausencia de sesión, conservación de auditoría y guardado médico. Las pruebas usan transporte simulado: no acreditan ahorro diario ni sustituyen la validación funcional del usuario en Supabase.
+
+También pasan TypeScript, compilación, las pruebas de bajo consumo de la fase 1, recuperación de trabajador ausente y anclaje de firmas. La rama de segunda fase tiene desactivados los despliegues automáticos de Vercel.
+
+El consumo de `Logs Ingest` incluye los registros automáticos de API, Auth, Postgres, Realtime y otros servicios; no equivale al tamaño de `audit_logs` ni al volumen de fichas almacenadas. Reducir peticiones evita actividad que genera esos registros. PostgreSQL ya tenía una configuración poco verbosa: declaraciones DDL, sin registro de cada consulta ni de conexiones, mensajes desde warning. No se apaga la auditoría ni se borran registros para intentar reducir el contador de ingestión.
+
+Para confirmar el ahorro real después de publicar, comparar al menos 48–72 horas de incrementos diarios, con actividad y usuarios similares, tanto en Logs Ingest como en Egress y número de peticiones. El acumulado mensual no desciende al aplicar una corrección, y no puede garantizarse un consumo mínimo fijo independiente del uso.
+
+Referencia: https://supabase.com/docs/guides/platform/manage-your-usage/logs-ingest
+
+## Retención automática de auditoría: aplicada en Supabase
+
+Por petición expresa del usuario del 7 de octubre se ha activado en producción una tarea SQL diaria `gestionprofea-audit-retention` a las 03:20 UTC (05:20 Madrid en verano / 04:20 en invierno). Conserva los eventos LOGIN de los últimos 30 días y el resto de `audit_logs` de los últimos 180 días. Los registros de ejecución de esta tarea se conservan 7 días; no altera el historial de otras tareas Cron.
+
+La migración `20261007094440_app_audit_log_retention.sql` habilita pg_cron y crea una función privada SECURITY INVOKER con search_path vacío, sin ejecución para PUBLIC, anon, authenticated ni service_role. El cron la ejecuta como postgres. No cambia las políticas RLS de audit_logs. Cada ejecución borra como máximo 10.000 entradas antiguas, por orden de fecha, con un timeout de 60 segundos; si se acumulara más atraso, se procesaría en las siguientes ejecuciones. La tabla ya tiene índice por timestamp. No se crean copias ni archivos de exportación de los eventos eliminados: la expiración es definitiva.
+
+Solo se expira la auditoría general de la aplicación. No se borran documentos, firmas, versiones documentales, trazabilidad V2 ni foreman_activity_log. Los plazos son una política operativa elegida para limitar almacenamiento, no una afirmación de cumplimiento de obligaciones legales de conservación.
+
+Verificación: `node scripts/testAuditRetentionSql.mjs` ejecuta la función en Postgres/PGlite y comprueba los límites exactos, permisos, lote de 10.000, conservación documental e idempotencia. El programador se simula en local; en Supabase se verificó pg_cron instalado, tarea activa a la hora indicada y usuario postgres, y se ejecutó manualmente la función. Resultado inicial: 0 eventos eliminados porque los 66.627 registros todavía no superan los plazos. Los avisos de seguridad de Supabase conservan los mismos tipos y cantidades que antes del cambio; no aparecieron avisos nuevos. La primera ejecución nocturna programada queda pendiente de su horario.
+
+Importante: esta limpieza limita filas y espacio de la auditoría; no reduce retrospectivamente Logs Ingest ni Egress. Los logs de la plataforma los conserva Supabase conforme al plan, y no existe aquí una tarea SQL que pueda borrarlos. Reducir su generación requiere publicar las optimizaciones de peticiones del PR #223, además de mantener la configuración poco verbosa de PostgreSQL ya verificada.
+
+Referencias: https://supabase.com/docs/guides/cron/quickstart ; https://supabase.com/docs/guides/observability/logs ; https://supabase.com/docs/guides/platform/manage-your-usage/logs-ingest

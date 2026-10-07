@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Share2, Users, X, Loader2, Eye, Pencil, Search, CheckCircle2 } from 'lucide-react';
-import { supabase } from '../src/lib/supabase';
+import { getSessionUser, supabase } from '../src/lib/supabase';
 import { listShareableProfiles } from '../src/lib/functions';
 import { showAppToast } from '../src/lib/appToast';
 
@@ -32,10 +32,10 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
     setSelectedUsers([]);
     setAccess('read');
 
-    Promise.all([listShareableProfiles(), supabase.auth.getUser()])
-      .then(async ([profiles, authResult]) => {
+    Promise.all([listShareableProfiles(), getSessionUser()])
+      .then(async ([profiles, sessionUser]) => {
         if (!active) return;
-        const userId = authResult.data.user?.id || '';
+        const userId = sessionUser?.id || '';
         setUsers(profiles || []);
         setCurrentUserId(userId);
       })

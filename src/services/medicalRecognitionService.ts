@@ -1,5 +1,5 @@
 import type { Person } from '../../types';
-import { supabase } from '../lib/supabase';
+import { getSessionUser, supabase } from '../lib/supabase';
 
 const hasMedicalData = (person: Person) => Boolean(
   person.reconocimientoEstado ||
@@ -18,17 +18,17 @@ const dateOrNull = (value: unknown) => {
 export async function persistMedicalRecognition(person: Person): Promise<void> {
   if (!hasMedicalData(person)) return;
 
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Debes iniciar sesión para guardar el reconocimiento médico.');
+  const user = await getSessionUser();
+  if (!user) throw new Error('Debes iniciar sesión para guardar el reconocimiento médico.');
 
-  const recognitionId = `${data.user.id}:${person.id}`;
+  const recognitionId = `${user.id}:${person.id}`;
   const workerRows = await supabase.query('trabajadores', {
     query: `select=obra_id&id=eq.${encodeURIComponent(String(person.id))}&limit=1`,
   });
   const obraId = (person as any).obraId || workerRows?.[0]?.obra_id || null;
   const payload = {
     id: recognitionId,
-    owner_id: data.user.id,
+    owner_id: user.id,
     obra_id: obraId,
     trabajador_id: person.id,
     dni: person.dni || '',
@@ -51,8 +51,8 @@ export async function persistMedicalRecognition(person: Person): Promise<void> {
       centroMedico: person.sitioReconocimiento || '',
       observaciones: person.reconocimientoObservaciones || '',
     },
-    created_by: data.user.id,
-    updated_by: data.user.id,
+    created_by: user.id,
+    updated_by: user.id,
   };
 
   await supabase.query('reconocimientos', {
