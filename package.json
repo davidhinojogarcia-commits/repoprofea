@@ -1,5 +1,5 @@
 {
-  "name": "sistema-contratación-profea_dhg",
+  "name": "sistema-contrataci\u00f3n-profea_dhg",
   "private": true,
   "version": "1.19.0",
   "type": "module",
@@ -22,7 +22,8 @@
     "test:mandatory-traceability-e2e-v2": "node scripts/testMandatoryTraceabilityE2E.mjs",
     "validate:mandatory-traceability-v2": "node scripts/validateMandatoryTraceabilityReleaseV2.mjs",
     "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
-    "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs"
+    "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs",
+    "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

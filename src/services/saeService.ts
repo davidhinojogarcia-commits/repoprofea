@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase";
+import { getSessionUser, supabase } from "../lib/supabase";
 
 export type SaeNeed = {
   id: string;
@@ -124,9 +124,9 @@ const statusFromDb: Record<string, string> = Object.fromEntries(
 );
 
 const uid = async () => {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error("Debe iniciar sesión.");
-  return data.user.id;
+  const user = await getSessionUser();
+  if (!user) throw new Error("Debe iniciar sesión.");
+  return user.id;
 };
 const authContext = async () => {
   const ownerId = await uid();

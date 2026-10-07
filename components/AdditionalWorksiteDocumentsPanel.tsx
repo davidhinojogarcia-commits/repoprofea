@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { Person } from '../types';
 import { getDocuments } from '../src/services/databaseService';
-import { supabase } from '../src/lib/supabase';
+import { getSessionUser, supabase } from '../src/lib/supabase';
 import { downloadPDF } from '../src/lib/exportUtils';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
@@ -195,17 +195,17 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
     const refresh = async () => {
       setLoading(true);
       try {
-        const [people, obras, userResult] = await Promise.all([
+        const [people, obras, sessionUser] = await Promise.all([
           getDocuments<Person>('trabajadores'),
           supabase.query('obras', {
             query: 'select=id,nombre,municipio,empresa,cif,recurso_preventivo&order=nombre.asc',
           }),
-          supabase.auth.getUser(),
+          getSessionUser(),
         ]);
         if (cancelled) return;
         setWorkers(people || []);
         setWorks((obras || []) as WorkRow[]);
-        const uid = userResult.data.user?.id;
+        const uid = sessionUser?.id;
         if (uid) {
           const profiles = await supabase.query('profiles', {
             query: `select=*&id=eq.${encodeURIComponent(uid)}&limit=1`,
@@ -216,7 +216,7 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
             safe(profile.display_name) ||
               safe(profile.full_name) ||
               [safe(profile.nombre), safe(profile.apellidos)].filter(Boolean).join(' ') ||
-              safe(userResult.data.user?.email),
+              safe(sessionUser?.email),
           );
         }
       } finally {

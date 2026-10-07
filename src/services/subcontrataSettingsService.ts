@@ -1,5 +1,5 @@
 import type { ObraRecursoPreventivo, ReporteTecnicoConfig, SubcontrataDocItem } from '../../types';
-import { supabase } from '../lib/supabase';
+import { getSessionUser, supabase } from '../lib/supabase';
 
 export interface SubcontrataSettings {
   checklistTemplate?: SubcontrataDocItem[];
@@ -20,12 +20,12 @@ const normalizeChecklistTemplate = (template?: SubcontrataDocItem[]): Subcontrat
 };
 
 const readSettings = async (): Promise<Record<string, any>> => {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Debes iniciar sesión para cargar la configuración.');
+  const user = await getSessionUser();
+  if (!user) throw new Error('Debes iniciar sesión para cargar la configuración.');
   const rows = await supabase.query('user_settings', {
-    query: `select=settings&user_id=eq.${encodeURIComponent(data.user.id)}&limit=1`,
+    query: `select=subcontratas:settings->subcontratas&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
   });
-  return rows?.[0]?.settings || {};
+  return { subcontratas: rows?.[0]?.subcontratas || {} };
 };
 
 export async function loadSubcontrataSettings(): Promise<SubcontrataSettings> {

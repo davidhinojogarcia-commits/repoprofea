@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { getSessionUser, supabase } from '../lib/supabase';
 
 export type AnnualHiringMonth = {
   month: number;
@@ -66,17 +66,17 @@ const normalizeRecord = (value: any): AnnualHiringPeriodsRecord | null => {
 };
 
 async function requireUser() {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('No hay una sesión autenticada.');
-  return data.user;
+  const user = await getSessionUser();
+  if (!user) throw new Error('No hay una sesión autenticada.');
+  return user;
 }
 
 export async function listAnnualHiringPeriods(): Promise<AnnualHiringPeriodsRecord[]> {
   const user = await requireUser();
   const rows = await supabase.query('user_settings', {
-    query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=periods:settings->annualHiringPeriods&limit=1`,
   });
-  const raw = rows?.[0]?.settings?.annualHiringPeriods;
+  const raw = rows?.[0]?.periods;
   if (!Array.isArray(raw)) return [];
   return raw.map(normalizeRecord).filter(Boolean) as AnnualHiringPeriodsRecord[];
 }

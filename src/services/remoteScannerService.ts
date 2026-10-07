@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { getSessionUser, supabase } from '../lib/supabase';
 
 export type RemoteScannerSession = {
   id: string;
@@ -33,8 +33,7 @@ const endOfTodayIso = () => {
 const pairingUrlFor = (token: string) => `${window.location.origin}/?remote-scanner=${encodeURIComponent(token)}`;
 
 export async function getOrCreateDailyRemoteScannerSession(): Promise<RemoteScannerSession> {
-  const { data } = await supabase.auth.getUser();
-  const user = data.user;
+  const user = await getSessionUser();
   if (!user) throw new Error('Debes iniciar sesión para vincular el escáner móvil.');
 
   const savedToken = localStorage.getItem(TOKEN_STORAGE) || '';
