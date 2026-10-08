@@ -53,6 +53,12 @@ export function AuthGate({ children }: AuthGateProps) {
   useEffect(() => { roleRef.current = role; }, [role]);
 
   useEffect(() => {
+    // Salvaguarda de arranque: una sesión local dañada o un refresh atascado no debe
+    // dejar la aplicación indefinidamente en la pantalla de carga.
+    const startupSafetyTimer = window.setTimeout(() => {
+      setLoading(current => current ? false : current);
+    }, 8000);
+
     const validateAuthenticatedUser = async (currentUser: SupabaseUser, event: AuthChangeEvent) => {
       const validationId = ++authValidationRef.current;
       setUser(currentUser);
@@ -64,7 +70,22 @@ export function AuthGate({ children }: AuthGateProps) {
 
       setError('');
       try {
-        const currentProfile = await getUserProfile();
+        let currentProfile: AuthProfile | null = null;
+        let lastValidationError: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            currentProfile = await getUserProfile();
+            lastValidationError = null;
+            break;
+          } catch (validationError) {
+            lastValidationError = validationError;
+            if (attempt < 2) {
+              await new Promise(resolve => window.setTimeout(resolve, 350 * (attempt + 1)));
+            }
+          }
+        }
+        if (lastValidationError) throw lastValidationError;
+
         const currentRole = currentProfile?.role || null;
         if (validationId !== authValidationRef.current) return;
         setProfile(currentProfile);
@@ -80,12 +101,15 @@ export function AuthGate({ children }: AuthGateProps) {
           setError('Tu cuenta no tiene un rol autorizado. Contacta con un administrador.');
           await signOutUser();
         }
-      } catch {
+      } catch (validationError) {
         if (validationId !== authValidationRef.current) return;
         setRole(null);
         setProfile(null);
-        setError('No se ha podido validar tu cuenta. Contacta con un administrador.');
-        await signOutUser().catch(() => undefined);
+        // No destruir una sesión válida por un fallo temporal de red/Supabase.
+        // El formulario queda disponible para reintentar y el siguiente evento de
+        // autenticación volverá a validar el perfil.
+        console.warn('Validación temporal de autenticación fallida:', validationError);
+        setError('No se ha podido validar la sesión. Comprueba la conexión y vuelve a intentarlo.');
       } finally {
         if (validationId === authValidationRef.current) setLoading(false);
       }
@@ -131,6 +155,7 @@ export function AuthGate({ children }: AuthGateProps) {
     });
 
     return () => {
+      window.clearTimeout(startupSafetyTimer);
       unsubscribe();
       if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
     };
