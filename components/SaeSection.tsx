@@ -42,6 +42,7 @@ import {
   listSaeCandidates,
   listSaeNeeds,
   listSaeReports,
+  loadSaeReportFile,
   monthNumber,
   updateSaeCandidate,
   updateSaeNeed,
@@ -1067,6 +1068,17 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
   };
 
+  const ensureReportFile = async (report: SaeReport): Promise<SaeReport> => {
+    if (report.fileBase64) return report;
+    const fileBase64 = await loadSaeReportFile(report);
+    const hydrated = { ...report, fileBase64 };
+    setReports((previous) =>
+      previous.map((item) => item.id === report.id ? hydrated : item),
+    );
+    setPreviewReport((current) => current?.id === report.id ? hydrated : current);
+    return hydrated;
+  };
+
   const buildReturnPdfBytes = async (
     report: SaeReport,
     offsetX = 0,
@@ -1076,18 +1088,19 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   ): Promise<Uint8Array> => {
     const rows = archivedVersion?.candidates?.length
       ? archivedVersion.candidates
-      : candidates.filter((c) => c.reportId === report.id);
+      : candidates.filter((candidate) => candidate.reportId === report.id);
     if (!rows.length)
       throw new Error("No hay candidatos asociados al informe.");
     if (requireComplete) {
-      const p = rows.filter((c) => !c.resultCode);
-      if (p.length)
-        throw new Error(`Quedan ${p.length} candidatos sin código SAE.`);
+      const pendingRows = rows.filter((candidate) => !candidate.resultCode);
+      if (pendingRows.length)
+        throw new Error(`Quedan ${pendingRows.length} candidatos sin código SAE.`);
     }
-    if (!report.fileBase64.startsWith("data:application/pdf"))
+    const hydratedReport = await ensureReportFile(report);
+    if (!hydratedReport.fileBase64.startsWith("data:application/pdf"))
       throw new Error("La devolución sobre original requiere PDF.");
     const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
-    const pdf = await PDFDocument.load(dataUrlToBytes(report.fileBase64));
+    const pdf = await PDFDocument.load(dataUrlToBytes(hydratedReport.fileBase64));
     const font = await pdf.embedFont(StandardFonts.HelveticaBold);
     const pages = pdf.getPages();
     for (const c of rows) {
