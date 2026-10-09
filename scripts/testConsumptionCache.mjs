@@ -67,6 +67,16 @@ try {
   assert.equal(calls.filter(call=>call.options.method==='GET').length,3,'205 undo preimages require three bounded reads');
   assert(calls.filter(call=>call.options.method==='GET').every(call=>new URL(call.url).searchParams.get('id').startsWith('in.(')));
 
+  calls = [];
+  await supabase.query('trabajadores',{
+    method:'PATCH',
+    query:'id=eq.1',
+    body:{name:'updated'},
+    historyBeforeRows:[{id:'1',name:'before'}],
+  });
+  assert.equal(calls.filter(call=>call.options.method==='GET').length,0,'known undo preimage avoids a duplicate Supabase read');
+  assert.equal(calls.filter(call=>call.options.method==='PATCH').length,1);
+
   // A remote Realtime change must bypass the short cache even within its TTL.
   const events = new EventTarget();
   globalThis.document = new EventTarget();
