@@ -248,7 +248,7 @@ export async function createPreventionCommunicationActPdf(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.8);
     doc.setTextColor(88, 100, 112);
-    doc.text(`© ${year} Juan Hinojo García (Jefe de Servicio). Todos los derechos reservados.`, marginX, pageHeight - 10);
+    doc.text(`© ${year} David Hinojo García. Todos los derechos reservados.`, marginX, pageHeight - 10);
     doc.text('Sistema de Gestión PROFEA · Acta de comunicación preventiva', marginX, pageHeight - 6.5);
     doc.text(`Página ${page} de ${pages}`, pageWidth - marginX, pageHeight - 6.5, { align: 'right' });
   }
