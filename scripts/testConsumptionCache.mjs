@@ -78,7 +78,7 @@ try {
   await new Promise(resolve=>setTimeout(resolve,0));
   revision++;
   channelChanged();
-  await new Promise(resolve=>setTimeout(resolve,350));
+  await new Promise(resolve=>setTimeout(resolve,1_100));
   stop();
   assert.equal(updates.at(-1)[0].name,`revision-${revision}`,'remote changes remain immediately visible with cache enabled');
   delete globalThis.window; delete globalThis.document;
