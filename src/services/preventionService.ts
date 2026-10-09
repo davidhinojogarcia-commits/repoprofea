@@ -41,3 +41,15 @@ export async function loadPreventionActHistory(ids: string[], token?: string): P
   });
   return Array.isArray(result) ? result : [];
 }
+
+export async function editPreventionRecord(record: PreventionRecord, patch: Partial<PreventionRecord>): Promise<PreventionRecord> {
+  return supabase.rpc('edit_prevention_record', {
+    p_id: record.id,
+    p_data: patch,
+    p_expected_updated_at: record.updated_at,
+  });
+}
+
+export async function deletePreventionRecord(id: string): Promise<void> {
+  await supabase.rpc('delete_prevention_record', { p_id: id });
+}
