@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ClipboardCheck, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, Pencil, Plus, RefreshCw, Share2, ShieldCheck, Trash2 } from 'lucide-react';
 import { PREVENTION_CATEGORIES, PREVENTION_CHECKS, PREVENTION_STATUS_LABELS, filterPreventionRecords, preventionSummary, preventionToday, type PreventionDraft, type PreventionRecord, type PreventionStatus } from '../src/lib/prevention';
-import { createPreventionRecord, followUpPreventionRecord, getPreventionRecordDetails, loadPreventionRecords } from '../src/services/preventionService';
+import { createPreventionRecord, deletePreventionRecord, editPreventionRecord, followUpPreventionRecord, getPreventionRecordDetails, loadPreventionActHistory, loadPreventionRecords } from '../src/services/preventionService';
+import { appConfirm } from '../src/lib/appDialog';
+import { createPreventionCommunicationActPdf, shareOrDownloadPreventionAct } from '../src/services/preventionActPdf';
 
 const inputClass = 'min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
 const buttonClass = 'min-h-12 rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-900 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
@@ -51,6 +53,57 @@ function RecordDetails({ record, token }: { record: PreventionRecord; token?: st
   </details>;
 }
 
+function EditPreventionRecord({ record, works, onSave, onCancel, busy }: {
+  record: PreventionRecord;
+  works: string[];
+  onSave: (record: PreventionRecord, patch: Partial<PreventionRecord>) => Promise<void>;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const [draft, setDraft] = useState({
+    obra: record.obra,
+    work_date: record.work_date,
+    category: record.category,
+    severity: record.severity,
+    title: record.title,
+    task: record.task,
+    description: record.description,
+    measures: record.measures,
+    responsible: record.responsible,
+    deadline: record.deadline || '',
+    checks: { ...record.checks },
+    status: record.status,
+  });
+
+  return <form className="mt-4 grid gap-3 rounded-xl border p-4" onSubmit={e => {
+    e.preventDefault();
+    void onSave(record, draft);
+  }}>
+    <h3 className="font-black">Editar registro preventivo</h3>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className="font-semibold">Obra<select className={inputClass} value={draft.obra} onChange={e => setDraft(d => ({ ...d, obra: e.target.value }))}>{works.map(w => <option key={w}>{w}</option>)}</select></label>
+      <label className="font-semibold">Fecha<input required type="date" max={preventionToday()} className={inputClass} value={draft.work_date} onChange={e => setDraft(d => ({ ...d, work_date: e.target.value }))} /></label>
+      <label className="font-semibold">Título<input required maxLength={200} className={inputClass} value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} /></label>
+      <label className="font-semibold">Tarea<input required maxLength={300} className={inputClass} value={draft.task} onChange={e => setDraft(d => ({ ...d, task: e.target.value }))} /></label>
+      <label className="font-semibold">Tipo de riesgo<select className={inputClass} value={draft.category} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))}>{PREVENTION_CATEGORIES.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label className="font-semibold">Prioridad<select className={inputClass} value={draft.severity} onChange={e => setDraft(d => ({ ...d, severity: e.target.value as PreventionRecord['severity'] }))}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label>
+      <label className="font-semibold">Estado<select className={inputClass} value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value as PreventionStatus }))}>{Object.entries(PREVENTION_STATUS_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label className="font-semibold">Responsable<input maxLength={200} className={inputClass} value={draft.responsible} onChange={e => setDraft(d => ({ ...d, responsible: e.target.value }))} /></label>
+      <label className="font-semibold sm:col-span-2">Descripción<textarea required={record.kind === 'incident'} maxLength={4000} className={inputClass} value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} /></label>
+      <label className="font-semibold sm:col-span-2">Medidas<textarea required={draft.status === 'closed'} maxLength={4000} className={inputClass} value={draft.measures} onChange={e => setDraft(d => ({ ...d, measures: e.target.value }))} /></label>
+      <label className="font-semibold">Plazo<input type="date" className={inputClass} value={draft.deadline} onChange={e => setDraft(d => ({ ...d, deadline: e.target.value }))} /></label>
+    </div>
+    {record.kind === 'precheck' && <fieldset className="space-y-2">
+      <legend className="font-black">Comprobaciones</legend>
+      {PREVENTION_CHECKS.map(check => <label key={check.id} className="block rounded-xl border p-3 font-semibold">{check.label}<select className={`${inputClass} mt-2`} value={draft.checks[check.id] || 'na'} onChange={e => setDraft(d => ({ ...d, checks: { ...d.checks, [check.id]: e.target.value as any } }))}><option value="yes">Comprobado</option><option value="no">Pendiente / problema detectado</option><option value="na">No aplica</option></select></label>)}
+    </fieldset>}
+    <div className="flex flex-wrap gap-3">
+      <button className={primaryClass} disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
+      <button type="button" className={buttonClass} disabled={busy} onClick={onCancel}>Cancelar</button>
+    </div>
+  </form>;
+}
+
 function FollowUp({ record, onSave, busy }: { record: PreventionRecord; onSave: (r: PreventionRecord, status: PreventionStatus, measures: string, responsible: string, deadline: string) => Promise<void>; busy: boolean }) {
   const [status, setStatus] = useState(record.status);
   const [measures, setMeasures] = useState(record.measures);
@@ -82,6 +135,8 @@ export function PreventionSection({ savedObras, token, foremanName }: { savedObr
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  const [actBusy, setActBusy] = useState(false);
 
   async function reload() {
     const version = ++requestVersion.current;
@@ -125,6 +180,63 @@ export function PreventionSection({ savedObras, token, foremanName }: { savedObr
     finally { mutationLock.current = false; setBusy(false); }
   }
 
+  async function saveRecordEdit(record: PreventionRecord, patch: Partial<PreventionRecord>) {
+    if (mutationLock.current) return;
+    mutationLock.current = true; setBusy(true); setError(''); setFeedback('');
+    try {
+      const saved = await editPreventionRecord(record, patch);
+      setRecords(current => current.map(item => item.id === saved.id ? saved : item));
+      setEditingRecordId(null);
+      setFeedback('Registro preventivo actualizado.');
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo actualizar el registro.');
+    } finally {
+      mutationLock.current = false; setBusy(false);
+    }
+  }
+
+  async function removeRecord(record: PreventionRecord) {
+    const ok = await appConfirm(
+      `¿Eliminar definitivamente "${record.title}"? Esta acción elimina también su historial preventivo asociado.`,
+      { title: 'Eliminar registro preventivo', confirmLabel: 'Eliminar' },
+    );
+    if (!ok) return;
+    setBusy(true); setError(''); setFeedback('');
+    try {
+      await deletePreventionRecord(record.id);
+      setRecords(current => current.filter(item => item.id !== record.id));
+      if (editingId === record.id) setEditingId(null);
+      if (editingRecordId === record.id) setEditingRecordId(null);
+      setFeedback('Registro preventivo eliminado.');
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo eliminar el registro.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sharePreventiveAct() {
+    if (!filtered.length || actBusy) return;
+    if (filtered.length > 200) {
+      setError('Aplica filtros antes de generar el acta. El máximo es de 200 registros por PDF.');
+      return;
+    }
+    setActBusy(true); setError(''); setFeedback('');
+    try {
+      const history = await loadPreventionActHistory(filtered.map(record => record.id), token);
+      const { blob, fileName } = await createPreventionCommunicationActPdf(filtered, history, { obra, status, from, to });
+      const result = await shareOrDownloadPreventionAct(blob, fileName);
+      setFeedback(result === 'shared'
+        ? 'Acta de comunicación preventiva preparada para compartir.'
+        : 'Acta de comunicación preventiva generada en PDF.');
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
+      setError(e?.message || 'No se pudo generar el acta de comunicación preventiva.');
+    } finally {
+      setActBusy(false);
+    }
+  }
+
   return <section className="space-y-5 text-slate-900 dark:text-slate-100" aria-labelledby="prevention-title">
     <header className="ui-surface rounded-2xl p-4 sm:p-6">
       <h1 id="prevention-title" className="flex items-center gap-2 text-xl font-black"><ShieldCheck aria-hidden="true" />Incidencias y alertas</h1>
@@ -134,6 +246,7 @@ export function PreventionSection({ savedObras, token, foremanName }: { savedObr
         <button className={primaryClass} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('incident')}><Plus className="mr-2 inline h-5 w-5" aria-hidden="true" />Comunicar incidencia</button>
         <button className={buttonClass} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('precheck')}><ClipboardCheck className="mr-2 inline h-5 w-5" aria-hidden="true" />Comprobación antes de empezar</button>
         <button className={buttonClass} disabled={busy || loading} onClick={() => void reload()}><RefreshCw className="mr-2 inline h-5 w-5" aria-hidden="true" />Actualizar</button>
+        <button className={buttonClass} disabled={busy || loading || actBusy || !filtered.length} onClick={() => void sharePreventiveAct()}><Share2 className="mr-2 inline h-5 w-5" aria-hidden="true" />{actBusy ? 'Preparando acta…' : 'Compartir acta PDF'}</button>
       </div>
       {!savedObras.length && <p className="mt-3">Añade una obra en Configuración para registrar incidencias.</p>}
     </header>
@@ -168,6 +281,7 @@ export function PreventionSection({ savedObras, token, foremanName }: { savedObr
       <label>Desde<input type="date" className={inputClass} value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label>Hasta<input type="date" className={inputClass} min={from || undefined} value={to} onChange={e => setTo(e.target.value)} /></label>
     </div>
+    <p className="text-sm text-slate-600 dark:text-slate-300">El acta PDF respeta estos filtros e incluye incidencias, comprobaciones y su historial de seguimiento. Se genera localmente y no se guarda en Supabase.</p>
     {truncated && <p role="status">Se muestran los 500 registros más recientes. Los recuentos corresponden únicamente a esos registros.</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Incidencias', summary.incidents], ['Pendientes', summary.pending], ['Prioridad alta', summary.high], ['Comprobaciones', summary.prechecks]].map(([label, count]) => <div key={label} className="ui-surface rounded-xl p-4"><p className="text-sm">{label}</p><b className="text-2xl">{count}</b></div>)}</div>
     <p className="text-sm">Recuentos según los filtros. No representan una tasa de accidentes ni una comparación de seguridad entre obras.</p>
@@ -185,8 +299,13 @@ export function PreventionSection({ savedObras, token, foremanName }: { savedObr
       <p className="mt-1 text-sm">Registrado por {record.actor} · Actualizado {new Date(record.updated_at).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>
       {record.kind === 'precheck' && <details className="mt-3"><summary className="cursor-pointer min-h-12 font-semibold">Ver comprobaciones</summary><ul className="mt-2 space-y-2">{PREVENTION_CHECKS.map(c => <li key={c.id}>{c.label}: <b>{record.checks[c.id] === 'yes' ? 'Comprobado' : record.checks[c.id] === 'no' ? 'Problema detectado' : 'No aplica'}</b></li>)}</ul></details>}
       <div key={`details:${record.updated_at}`}><RecordDetails record={record} token={token} /></div>
-      {!token && <button className={`${buttonClass} mt-3`} disabled={busy} onClick={() => setEditingId(editingId === record.id ? null : record.id)}>{editingId === record.id ? 'Cerrar seguimiento' : 'Gestionar seguimiento'}</button>}
+      {!token && <div className="mt-3 flex flex-wrap gap-2">
+        <button className={buttonClass} disabled={busy} onClick={() => setEditingId(editingId === record.id ? null : record.id)}>{editingId === record.id ? 'Cerrar seguimiento' : 'Gestionar seguimiento'}</button>
+        <button className={buttonClass} disabled={busy} onClick={() => setEditingRecordId(editingRecordId === record.id ? null : record.id)}><Pencil className="mr-2 inline h-4 w-4" aria-hidden="true" />{editingRecordId === record.id ? 'Cerrar edición' : 'Editar'}</button>
+        <button className={buttonClass} disabled={busy} onClick={() => void removeRecord(record)}><Trash2 className="mr-2 inline h-4 w-4" aria-hidden="true" />Eliminar</button>
+      </div>}
       {editingId === record.id && !token && <div key={`followup:${record.updated_at}`}><FollowUp record={record} onSave={saveFollowUp} busy={busy} /></div>}
+      {editingRecordId === record.id && !token && <EditPreventionRecord record={record} works={works} onSave={saveRecordEdit} onCancel={() => setEditingRecordId(null)} busy={busy} />}
     </article>)}</div>
   </section>;
 }
