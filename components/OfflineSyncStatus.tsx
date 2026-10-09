@@ -38,8 +38,8 @@ export const OfflineSyncStatus: React.FC = () => {
     ? `Sin conexión${state.pending > 0 ? ` · ${state.pending}` : ''}`
     : state.syncing
       ? `Sincronizando${state.pending > 0 ? ` · ${state.pending}` : ''}`
-      : state.lastError
-        ? 'Error sync'
+      : state.lastError && state.pending > 0
+        ? `Error sync · ${state.pending}`
         : state.pending > 0
           ? `${state.pending} pendiente${state.pending === 1 ? '' : 's'}`
           : 'Sincronizado';
@@ -48,7 +48,7 @@ export const OfflineSyncStatus: React.FC = () => {
     ? WifiOff
     : state.syncing
       ? RefreshCw
-      : state.lastError
+      : state.lastError && state.pending > 0
         ? AlertTriangle
         : state.pending > 0
           ? Wifi
@@ -61,8 +61,8 @@ export const OfflineSyncStatus: React.FC = () => {
         if (state.online && !state.syncing && state.pending > 0) void flushOfflineQueue();
       }}
       title={
-        state.lastError
-          ? `${state.lastError}. Toca para reintentar cuando tengas conexión.`
+        state.lastError && state.pending > 0
+          ? `${state.lastError}. Toca para reintentar (${state.pending} pendiente${state.pending === 1 ? '' : 's'}).`
           : state.pending > 0
             ? 'Los cambios están guardados en este dispositivo. Toca para intentar sincronizarlos.'
             : 'El trabajo del dispositivo está sincronizado con el servidor.'
