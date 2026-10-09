@@ -264,18 +264,19 @@ export async function createSaeNeed(input: NeedInput): Promise<SaeNeed> {
       created_by: ownerId,
     },
   });
-  for (const category of input.categorias)
+  if (input.categorias.length) {
     await supabase.query("sae_need_categories", {
       method: "POST",
       prefer: "return=minimal",
-      body: {
+      body: input.categorias.map((category) => ({
         id: uuid(),
         need_id: id,
         category: category.categoria,
         requested_count: category.cantidad,
         created_by: ownerId,
-      },
+      })),
     });
+  }
   return {
     ...input,
     id,
@@ -302,18 +303,19 @@ export async function updateSaeNeed(
     prefer: "return=minimal",
     query: `need_id=eq.${encodeURIComponent(id)}`,
   });
-  for (const category of input.categorias)
+  if (input.categorias.length) {
     await supabase.query("sae_need_categories", {
       method: "POST",
       prefer: "return=minimal",
-      body: {
+      body: input.categorias.map((category) => ({
         id: uuid(),
         need_id: id,
         category: category.categoria,
         requested_count: category.cantidad,
         created_by: ownerId,
-      },
+      })),
     });
+  }
 }
 
 export async function deleteSaeNeed(id: string): Promise<void> {
@@ -549,48 +551,47 @@ export async function createSaeReport(
         updated_by: ownerId,
       },
     });
-    for (const c of candidates) {
-      const hiringMonth = monthNumber(c.mes || report.mes);
-      const fortnight = fortnightNumber(c.quincena || report.quincena);
+    if (candidates.length) {
+      const candidateRows = candidates.map((candidate) => ({
+        id: uuid(),
+        need_id: needId,
+        source_report_id: id,
+        owner_id: ownerId,
+        original_full_name: candidate.fullNameOriginal,
+        normalized_full_name: candidate.normalizedName,
+        first_name: candidate.nombre || null,
+        surnames: candidate.apellidos || null,
+        category: candidate.categoria || null,
+        offer_number: candidate.offerNumber || report.offerNumber || null,
+        work_name: candidate.obra || report.obra || null,
+        work_code: candidate.codigoObra || report.codigoObra || null,
+        hiring_month: monthNumber(candidate.mes || report.mes),
+        fortnight: fortnightNumber(candidate.quincena || report.quincena),
+        source_page: Math.max(1, Number(candidate.pageNumber || 1)),
+        source_row_text: `${candidate.orderNumber} ${candidate.fullNameOriginal}`.trim(),
+        source_position: {
+          orderNumber: candidate.orderNumber,
+          x: candidate.overlayX,
+          y: candidate.overlayY,
+        },
+        confidence: String(candidate.confidence || "Media").toLowerCase(),
+        evidence: [
+          {
+            type: "document-row",
+            page: candidate.pageNumber,
+            text: candidate.fullNameOriginal,
+          },
+        ],
+        status: "sin_asignar",
+        selected_for_hire: false,
+        result_code: null,
+        created_by: ownerId,
+        updated_by: ownerId,
+      }));
       await supabase.query("sae_candidates", {
         method: "POST",
         prefer: "return=minimal",
-        body: {
-          id: uuid(),
-          need_id: needId,
-          source_report_id: id,
-          owner_id: ownerId,
-          original_full_name: c.fullNameOriginal,
-          normalized_full_name: c.normalizedName,
-          first_name: c.nombre || null,
-          surnames: c.apellidos || null,
-          category: c.categoria || null,
-          offer_number: c.offerNumber || report.offerNumber || null,
-          work_name: c.obra || report.obra || null,
-          work_code: c.codigoObra || report.codigoObra || null,
-          hiring_month: hiringMonth,
-          fortnight,
-          source_page: Math.max(1, Number(c.pageNumber || 1)),
-          source_row_text: `${c.orderNumber} ${c.fullNameOriginal}`.trim(),
-          source_position: {
-            orderNumber: c.orderNumber,
-            x: c.overlayX,
-            y: c.overlayY,
-          },
-          confidence: String(c.confidence || "Media").toLowerCase(),
-          evidence: [
-            {
-              type: "document-row",
-              page: c.pageNumber,
-              text: c.fullNameOriginal,
-            },
-          ],
-          status: "sin_asignar",
-          selected_for_hire: false,
-          result_code: null,
-          created_by: ownerId,
-          updated_by: ownerId,
-        },
+        body: candidateRows,
       });
     }
   
