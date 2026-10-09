@@ -84,7 +84,10 @@ async function performNetworkRequest(path: string, options: RequestInit = {}, fr
     if (!user) return 0;
     if (/^\/rest\/v1\/(obras|user_settings)(\?|$)/.test(path)) return 5 * 60_000;
     if (/^\/rest\/v1\/(trabajadores|inventory_items|inventory_parks)(\?|$)/.test(path)) return 60_000;
-    return 0;
+    // Regla general de bajo consumo: las lecturas REST repetidas se sirven
+    // durante 30 s desde memoria. Las mutaciones limpian esta caché y las
+    // lecturas que necesiten actualidad inmediata pueden usar fresh:true.
+    return 30_000;
   })();
   return readResponseCache.read(
     JSON.stringify([user?.id || 'anonymous', key]),
@@ -380,6 +383,15 @@ export function initializeOfflineSync() {
   window.setTimeout(sync, 800);
 }
 
+const isReadOnlyRpc = (name: string) =>
+  /^(get_|list_|resolve_)/.test(name) || name === 'scanner_mobile_status';
+
+async function runRpc(name: string, body: any = {}) {
+  const result = await client.rpc(name, body);
+  if (result.error) throw result.error;
+  return result.data;
+}
+
 export const supabase = {
   get url() { return SUPABASE_URL; },
   get key() { return SUPABASE_KEY; },
@@ -411,11 +423,19 @@ export const supabase = {
   },
   async rpc(name: string, body: any = {}) {
     if (isOffline()) throw new Error('Esta operación necesita conexión. Los movimientos y cambios de obra compatibles se guardan automáticamente para sincronizarse después.');
+    const user = await getSessionUser();
+    if (isReadOnlyRpc(name)) {
+      const scope = user?.id || 'anonymous';
+      const key = JSON.stringify(['rpc', name, body]);
+      return readResponseCache.read(
+        JSON.stringify([scope, key]),
+        () => requestLimiter.run(scope, key, true, () => runRpc(name, body)),
+        30_000,
+      );
+    }
     invalidateReadCache();
     try {
-      const result = await client.rpc(name, body);
-      if (result.error) throw result.error;
-      return result.data;
+      return await runRpc(name, body);
     } finally {
       invalidateReadCache();
     }
