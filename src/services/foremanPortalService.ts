@@ -436,21 +436,28 @@ export async function updateSupervisorMandatoryAnchors(
 ) {
   const normalizedAnchors=(workerAnchors||[]).map(anchor=>({...anchor}));
   const v2Rows=await supabase.query('mandatory_document_workers_v2',{
-    query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,printed_name,detection_status`,
+    query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,printed_name,detection_status,page`,
+    networkOnly:true,
   });
-  const byLegacyId=new Map((Array.isArray(v2Rows)?v2Rows:[]).map((row:any)=>[Number(row.legacy_worker_id),row]));
+  const savedRows=Array.isArray(v2Rows)?v2Rows:[];
+  const byLegacyId=new Map(savedRows.filter((row:any)=>row.legacy_worker_id!=null).map((row:any)=>[Number(row.legacy_worker_id),row]));
+  const byDocumentId=new Map(savedRows.map((row:any)=>[String(row.id),row]));
 
   for(let index=0;index<normalizedAnchors.length;index+=1){
     const anchor=normalizedAnchors[index];
-    const row:any=byLegacyId.get(Number(anchor.workerId));
+    // A retry after a partially completed save must reuse the stable documentary identity.
+    const row:any=byDocumentId.get(String(anchor.documentWorkerId||'')) || byLegacyId.get(Number(anchor.workerId)) ||
+      (Number(anchor.workerId)<0?savedRows.find((candidate:any)=>candidate.detection_status!=='REJECTED'&&String(candidate.printed_name||'').trim().toLocaleLowerCase('es')===String(anchor.workerName||'').trim().toLocaleLowerCase('es')&&Number(candidate.page||1)===Number(anchor.page||1)):null);
     const nameBox=anchor.nameX!=null&&anchor.nameY!=null&&Number(anchor.nameWidth||0)>0&&Number(anchor.nameHeight||anchor.rowHeight||0)>0
       ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null;
     const signatureBox=anchor.signatureX!=null&&anchor.signatureY!=null&&Number(anchor.signatureWidth||0)>0&&Number(anchor.signatureHeight||0)>0
       ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null;
 
+    if(row?.detection_status==='REJECTED')continue;
+    if(!signatureBox)throw new Error(`Falta una posición de firma válida para ${anchor.workerName||'el trabajador'}.`);
     if(!row){
       const printedName=String(anchor.workerName||'').replace(/\s+/g,' ').trim();
-      if(printedName.length<3||!signatureBox)continue;
+      if(printedName.length<3)throw new Error('Indica el nombre completo del trabajador añadido.');
       const created:any=await addMissingMandatoryDocumentWorkerV2({
         documentId,
         printedName,
@@ -467,20 +474,47 @@ export async function updateSupervisorMandatoryAnchors(
       continue;
     }
 
-    if(row.detection_status==='REJECTED')continue;
-    if(signatureBox&&row.detection_status==='CONFIRMED'){
+    normalizedAnchors[index]={...anchor,workerId:Number(row.legacy_worker_id),documentWorkerId:String(row.id)};
+    if(row.detection_status!=='CONFIRMED'){
+      await reviewMandatoryDocumentWorkerV2({documentId,documentWorkerId:String(row.id),action:'confirm',printedName:String(anchor.workerName||row.printed_name),nameBox,signatureBox});
+    }
+    if(signatureBox){
       await updateMandatoryDocumentWorkerGeometryV2({documentId,documentWorkerId:String(row.id),nameBox,signatureBox,page:anchor.page!=null?Number(anchor.page):null,rowIndex:anchor.order!=null?Number(anchor.order):null});
     }
   }
 
-  const rows=await supabase.query('foreman_mandatory_documents',{query:`id=eq.${encodeURIComponent(documentId)}&select=id,details&limit=1`});
-  const current=Array.isArray(rows)?rows[0]:null;
-  if(!current)throw new Error('Documento no encontrado.');
-  await supabase.query('foreman_mandatory_documents',{method:'PATCH',prefer:'return=minimal',query:`id=eq.${encodeURIComponent(documentId)}`,body:{details:{...(current.details||{}),workerAnchors:normalizedAnchors,supervisorAdjustedAnchorsAt:new Date().toISOString()},updated_at:new Date().toISOString()}});
-  await supabase.query('foreman_mandatory_pdf_files',{method:'PATCH',prefer:'return=minimal',query:`document_id=eq.${encodeURIComponent(documentId)}`,body:{signed_pdf:null,signed_sha256:null,fidelity:null,updated_at:new Date().toISOString()}});
+  // RPCs maintain the legacy projection. Never overwrite it with the editor's stale draft.
   try{await assignMandatoryDocumentV2(documentId);}catch(error:any){
     if(!/todavía necesita revisión|No hay personas confirmadas|ya está asignado o cerrado/i.test(String(error?.message||'')))throw error;
   }
+  const persistedWorkers=await supabase.query('mandatory_document_workers_v2',{
+    query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,detection_status,position_status,signature_box,page,row_index`,
+    networkOnly:true,
+  });
+  const documents=await supabase.query('foreman_mandatory_documents',{
+    query:`id=eq.${encodeURIComponent(documentId)}&select=id,details,lifecycle_status&limit=1`,networkOnly:true,
+  });
+  const document=Array.isArray(documents)?documents[0]:null;
+  if(!document)throw new Error('No se pudo verificar el guardado de posiciones.');
+  const persistedById=new Map((Array.isArray(persistedWorkers)?persistedWorkers:[]).map((row:any)=>[String(row.id),row]));
+  for(const anchor of normalizedAnchors){
+    const original:any=byDocumentId.get(String(anchor.documentWorkerId||''))||byLegacyId.get(Number(anchor.workerId));
+    if(original?.detection_status==='REJECTED')continue;
+    const row:any=persistedById.get(String(anchor.documentWorkerId||''));
+    const savedAnchor=(document.details?.workerAnchors||[]).find((candidate:any)=>String(candidate.documentWorkerId)===String(anchor.documentWorkerId));
+    const coordinatesMatch=['x','y','width','height'].every((key,index)=>
+      Number(row?.signature_box?.[key])===Number(anchor[['signatureX','signatureY','signatureWidth','signatureHeight'][index]])&&
+      Number(savedAnchor?.[['signatureX','signatureY','signatureWidth','signatureHeight'][index]])===Number(anchor[['signatureX','signatureY','signatureWidth','signatureHeight'][index]])
+    );
+    if(!row||row.detection_status!=='CONFIRMED'||row.position_status!=='RESOLVED'||!savedAnchor||!coordinatesMatch||
+       Number(row.page)!==Number(anchor.page)||Number(savedAnchor.page)!==Number(anchor.page)||
+       (anchor.order!=null&&Number(row.row_index)!==Number(anchor.order))||
+       !(document.details?.importedWorkerIds||[]).some((id:any)=>Number(id)===Number(anchor.workerId))){
+      throw new Error(`No se pudo verificar la posición guardada de ${anchor.workerName||'un trabajador'}. Vuelve a guardar con conexión.`);
+    }
+  }
+  return document;
+
 }
 export async function repairForemanMandatoryAnchors(
   token: string,
@@ -731,3 +765,4 @@ export async function restoreForemanMandatoryGmailSource(gmailMessageId: string,
     p_attachment_name: attachmentName,
   })) || 0;
 }
+

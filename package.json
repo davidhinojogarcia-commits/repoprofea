@@ -21,6 +21,7 @@
     "test:mandatory-traceability-sql-v2": "node scripts/testMandatoryTraceabilitySqlV2.mjs",
     "test:mandatory-traceability-e2e-v2": "node scripts/testMandatoryTraceabilityE2E.mjs",
     "validate:mandatory-traceability-v2": "node scripts/validateMandatoryTraceabilityReleaseV2.mjs",
+    "test:mandatory-persistence": "node scripts/testMandatoryPersistence.mjs && node scripts/testMandatoryNetworkVerification.mjs",
     "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
     "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs",
     "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs",
@@ -59,3 +60,4 @@
     "vite": "^6.2.0"
   }
 }
+
