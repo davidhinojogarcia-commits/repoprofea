@@ -85,8 +85,19 @@ async function performNetworkRequest(path: string, options: RequestInit = {}, fr
     try { return await load(); } finally { invalidateReadCache(); }
   }
   // Keep document/signature and permission reads live. Cache only ordinary lists/settings.
-  const cacheable = !!user && /^\/rest\/v1\/(trabajadores|obras|user_settings|inventory_items|inventory_parks)(\?|$)/.test(path);
-  return readResponseCache.read(JSON.stringify([user?.id || 'anonymous', key]), load, cacheable && !fresh ? 15_000 : 0);
+  // Static configuration can stay warm for longer because every local mutation
+  // invalidates the cache immediately across tabs.
+  const cacheTtl = (() => {
+    if (!user) return 0;
+    if (/^\/rest\/v1\/(obras|user_settings)(\?|$)/.test(path)) return 5 * 60_000;
+    if (/^\/rest\/v1\/(trabajadores|inventory_items|inventory_parks)(\?|$)/.test(path)) return 60_000;
+    return 0;
+  })();
+  return readResponseCache.read(
+    JSON.stringify([user?.id || 'anonymous', key]),
+    load,
+    !fresh ? cacheTtl : 0,
+  );
 }
 
 async function sendNetworkRequest(path: string, options: RequestInit = {}): Promise<any> {
