@@ -109,8 +109,11 @@ try {
   calls=[];
   await api.writeAuditLog('UPDATE','trabajadores','103',{changed:'name'});
   await api.writeAuditEvent({action:'UPDATE',resourceType:'citas',resourceId:'appointment'});
-  assert.equal(calls.filter(call=>call.table==='audit_logs' && call.method==='POST').length,2,'both audit paths still write their events');
-  assert(calls.every(call=>call.body.user_id==='owner-A'));
+  assert.equal(calls.filter(call=>call.table==='audit_logs' && call.method==='POST').length,0,'non-login activity is not audited');
+  await api.writeAuditLog('LOGIN','auth','owner-A');
+  await api.writeAuditEvent({action:'LOGIN',resourceType:'auth',resourceId:'owner-A'});
+  assert.equal(calls.filter(call=>call.table==='audit_logs' && call.method==='POST').length,2,'login access remains audited');
+  assert(calls.filter(call=>call.table==='audit_logs').every(call=>call.body.action==='LOGIN' && call.body.user_id==='owner-A'));
   await api.persistMedicalRecognition({id:103,dni:'test',reconocimientoEstado:'apto'});
   const medical = calls.find(call=>call.table==='reconocimientos' && call.method==='POST');
   assert(medical);
