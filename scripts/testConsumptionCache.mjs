@@ -30,10 +30,8 @@ try {
     define:{'import.meta.env':'{}'},plugins:[{name:'isolated-transport',setup(b){
       b.onResolve({filter:/^@supabase\/supabase-js$/},()=>({path:'sdk',namespace:'test'}));
       b.onResolve({filter:/\.\/offlineStore$/},()=>({path:'offline',namespace:'test'}));
-      b.onResolve({filter:/\.\/actionHistory$/},()=>({path:'history',namespace:'test'}));
       b.onLoad({filter:/.*/,namespace:'test'},({path})=>({contents:path==='sdk'
         ? 'export const {createClient}=globalThis.__cacheTest;'
-        : path==='history' ? 'export const isReplayingActionHistory=()=>false; export const recordActionHistory=()=>{}; export const setActionHistoryExecutor=()=>{};'
         : 'export const offlineCacheKey=(...args)=>JSON.stringify(args); export const readOfflineCache=async()=>null; export const writeOfflineCache=async()=>{}; export const applyRestMutationToCachedReads=async()=>{}; export const enqueueOfflineOperation=async()=>{}; export const listOfflineOperations=async()=>[]; export const removeOfflineOperation=async()=>{}; export const setOfflineSyncActivity=async()=>{}; export const updateOfflineOperationFailure=async()=>{};'}));
     }}]});
   const {supabase,ReadResponseCache,getDocuments,subscribeToDocuments} = await import(out.href);
@@ -64,18 +62,8 @@ try {
   assert.equal(calls.length,liveBefore+2,'signature and document reads always remain live');
   calls = [];
   await supabase.query('trabajadores',{method:'POST',body:Array.from({length:205},(_,id)=>({id:String(id)}))});
-  assert.equal(calls.filter(call=>call.options.method==='GET').length,3,'205 undo preimages require three bounded reads');
-  assert(calls.filter(call=>call.options.method==='GET').every(call=>new URL(call.url).searchParams.get('id').startsWith('in.(')));
-
-  calls = [];
-  await supabase.query('trabajadores',{
-    method:'PATCH',
-    query:'id=eq.1',
-    body:{name:'updated'},
-    historyBeforeRows:[{id:'1',name:'before'}],
-  });
-  assert.equal(calls.filter(call=>call.options.method==='GET').length,0,'known undo preimage avoids a duplicate Supabase read');
-  assert.equal(calls.filter(call=>call.options.method==='PATCH').length,1);
+  assert.equal(calls.filter(call=>call.options.method==='GET').length,0,'bulk writes no longer perform undo preimage reads');
+  assert.equal(calls.filter(call=>call.options.method==='POST').length,1,'bulk write remains a single request');
 
   // A remote Realtime change must bypass the short cache even within its TTL.
   const events = new EventTarget();
