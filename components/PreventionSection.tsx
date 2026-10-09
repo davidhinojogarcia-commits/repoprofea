@@ -118,7 +118,7 @@ function FollowUp({ record, onSave, busy }: { record: PreventionRecord; onSave: 
   </form>;
 }
 
-export function PreventionSection({ savedObras, token, foremanName }: { savedObras: string[]; token?: string; foremanName?: string }) {
+export function PreventionSection({ savedObras, token, foremanName, supervisorName, supervisorEmail }: { savedObras: string[]; token?: string; foremanName?: string; supervisorName?: string; supervisorEmail?: string }) {
   const [records, setRecords] = useState<PreventionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -224,7 +224,12 @@ export function PreventionSection({ savedObras, token, foremanName }: { savedObr
     setActBusy(true); setError(''); setFeedback('');
     try {
       const history = await loadPreventionActHistory(filtered.map(record => record.id), token);
-      const { blob, fileName } = await createPreventionCommunicationActPdf(filtered, history, { obra, status, from, to });
+      const { blob, fileName } = await createPreventionCommunicationActPdf(
+        filtered,
+        history,
+        { obra, status, from, to },
+        { supervisorName, supervisorEmail },
+      );
       const result = await shareOrDownloadPreventionAct(blob, fileName);
       setFeedback(result === 'shared'
         ? 'Acta de comunicación preventiva preparada para compartir.'

@@ -2455,7 +2455,11 @@ function App() {
           {activeView === 'prevencion' && (
             <Suspense fallback={<ViewLoadingFallback />}>
               <div className="w-full max-w-[1600px] mx-auto min-w-0">
-                <PreventionSection savedObras={savedObras} />
+                <PreventionSection
+                  savedObras={savedObras}
+                  supervisorName={supervisorName}
+                  supervisorEmail={authenticatedUser.email || ''}
+                />
               </div>
             </Suspense>
           )}
