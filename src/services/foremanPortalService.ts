@@ -1,6 +1,6 @@
 import type { Person } from '../../types';
 import { supabase } from '../lib/supabase';
-import { addMissingMandatoryDocumentWorkerV2, assignMandatoryDocumentV2, initializeMandatoryTraceabilityV2, reviewMandatoryDocumentWorkerV2, updateMandatoryDocumentWorkerGeometryV2, type MandatoryV2WorkerInput } from './mandatoryTraceabilityServiceV2';
+import { addMissingMandatoryDocumentWorkerV2, initializeMandatoryTraceabilityV2, reviewMandatoryDocumentWorkerV2, updateMandatoryDocumentWorkerGeometryV2, type MandatoryV2WorkerInput } from './mandatoryTraceabilityServiceV2';
 
 const FOREMAN_REQUEST_TIMEOUT_MS = 15000;
 
@@ -382,14 +382,12 @@ export async function prepareMandatoryDocumentFromEmail(input: {
         signatureBox: hasSignatureBox ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null,
       };
     }).filter((worker:any)=>worker.printedName);
-    const initialized:any=await initializeMandatoryTraceabilityV2({
+    await initializeMandatoryTraceabilityV2({
       documentId,
       workers: workersV2,
       detectedWorksite: input.obraHint && input.obraHint !== '__PENDING_WORKSITE__' ? input.obraHint : null,
     });
-    if(initialized?.lifecycleStatus==='READY'){
-      await assignMandatoryDocumentV2(documentId);
-    }
+    // Publication is an explicit supervisor action after reviewing this draft.
   }
   return id;
 }
@@ -484,9 +482,6 @@ export async function updateSupervisorMandatoryAnchors(
   }
 
   // RPCs maintain the legacy projection. Never overwrite it with the editor's stale draft.
-  try{await assignMandatoryDocumentV2(documentId);}catch(error:any){
-    if(!/todavía necesita revisión|No hay personas confirmadas|ya está asignado o cerrado/i.test(String(error?.message||'')))throw error;
-  }
   const persistedWorkers=await supabase.query('mandatory_document_workers_v2',{
     query:`document_id=eq.${encodeURIComponent(documentId)}&select=id,legacy_worker_id,detection_status,position_status,signature_box,page,row_index`,
     networkOnly:true,
@@ -765,4 +760,5 @@ export async function restoreForemanMandatoryGmailSource(gmailMessageId: string,
     p_attachment_name: attachmentName,
   })) || 0;
 }
+
 

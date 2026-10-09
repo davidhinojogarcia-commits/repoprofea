@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { getSupervisorMandatoryPdf } from '../src/services/foremanPortalService';
+import { suggestSafeMandatorySignaturePositions, validateMandatorySignaturePlacement } from '../src/lib/mandatorySignatureGeometry';
 import { supabase } from '../src/lib/supabase';
 import { base64ToBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 
@@ -139,10 +140,30 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     return()=>{cancelled=true;};
   },[pdf,current,currentPage,zoom,fitWidth]);
 
+  const readPageGeometry=async()=>{
+    if(!pdf)throw new Error('Espera a que se cargue el PDF original.');
+    return Promise.all(Array.from({length:pdf.numPages},async(_,index)=>{
+      const page=await pdf.getPage(index+1);const box=page.view;
+      return {page:index+1,width:Number(box[2])-Number(box[0]),height:Number(box[3])-Number(box[1])};
+    }));
+  };
+  const suggestPositions=async()=>{
+    setSaving(true);setError('');
+    try {
+      const pages=await readPageGeometry();
+      const suggested=suggestSafeMandatorySignaturePositions(draft,pages);
+      setDraft(suggested);
+      const validation=validateMandatorySignaturePlacement(suggested,pages);
+      if(!validation.ok)setError(validation.issues.map(issue=>`${issue.workerName}: ${issue.message}`).join(' '));
+    } catch(e:any){setError(e?.message||'No se pudieron ajustar las posiciones.');}
+    finally{setSaving(false);}
+  };
+
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
 
   const selectPage=(value:number)=>{
     if(!current)return;
+    if(currentIdentityLocked){setError('Revoca la firma antes de cambiar la página del trabajador.');return;}
     setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,page:Math.max(1,Math.min(pageCount,value)),resolved:false}:anchor));
   };
 
@@ -355,9 +376,10 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 
       <div className="shrink-0 flex flex-col gap-2 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4 sm:flex-row sm:items-center sm:justify-between" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
         <div className={`text-sm font-black ${unresolved?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : 'Todas las posiciones están confirmadas'}</div>
+        <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] disabled:opacity-50">Ajustar automáticamente dentro de cada fila</button>
         <button type="button" disabled={saving||unresolved>0} onClick={async()=>{
           setSaving(true);setError('');
-          try{await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
+          try{const validation=validateMandatorySignaturePlacement(draft,await readPageGeometry());if(!validation.ok)throw new Error(validation.issues.map(issue=>`${issue.workerName}: ${issue.message}`).join(' '));await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
           finally{setSaving(false);}
         }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar posiciones'}</button>
       </div>
@@ -366,3 +388,4 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 };
 
 export default MandatoryPdfAnchorEditor;
+

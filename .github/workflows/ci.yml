@@ -98,6 +98,8 @@ jobs:
         run: npm run test:mandatory-traceability-v2
       - name: Mandatory omitted worker recovery regression
         run: npm run test:mandatory-missing-worker
+      - name: Manual portal publication and signature revocation
+        run: npm run test:foreman-publication
       - name: Mandatory selection and manual position persistence
         run: npm run test:mandatory-persistence
       - name: SAE code position persistence
@@ -162,4 +164,5 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 

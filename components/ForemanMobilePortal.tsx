@@ -27,7 +27,7 @@ import {
   type ForemanMandatoryDocument,
   type ForemanPortalPayload,
 } from '../src/services/foremanPortalService';
-import { signMandatoryDocumentWorkerV2, submitMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
+import { revokeMandatorySignatureV2, signMandatoryDocumentWorkerV2, submitMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
 import {
   analyzeMandatoryOriginalPdf,
   resolveMandatoryAnchorsWithOcrRows,
@@ -816,6 +816,21 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
+  const revokeWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
+    if(saving)return;
+    if(!await appConfirm(`Se eliminará la firma de ${worker.apellidosNombre}. Esta persona tendrá que firmar de nuevo.`,{title:'Revocar firma',confirmLabel:'Revocar firma'}))return;
+    const documentWorker=(doc.details?.documentWorkersV2||[]).find((entry:any)=>String(entry.legacyWorkerId)===String(worker.id));
+    if(!documentWorker?.id){setError('No se pudo identificar esta firma. El supervisor debe revisar el documento.');return;}
+    setSaving(true);
+    try {
+      await revokeMandatorySignatureV2({token,documentId:doc.id,documentWorkerId:String(documentWorker.id)});
+      setMandatorySignatureImages(current=>{const next={...current,[doc.id]:{...current[doc.id]}};delete next[doc.id][String(worker.id)];return next;});
+      await refresh();
+      setError('');setOperationFeedback(`Firma revocada. ${worker.apellidosNombre} puede volver a firmar.`);
+    } catch(e:any){setError(e?.message||'No se pudo revocar la firma.');}
+    finally{setSaving(false);}
+  };
+
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
     const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
@@ -905,8 +920,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
-    const canFinalize=requiredSignatureTotal>0;
-    const partialSubmission=pendingRequired>0;
+    const canFinalize=requiredSignatureTotal>0&&pendingRequired===0;
     const expanded=expandedMandatoryDocuments.has(doc.id);
 
     return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 overflow-hidden rounded-2xl bg-white border shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
@@ -945,7 +959,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size>0&&<div className="mt-3 rounded-2xl border-2 border-[#00548E]/20 bg-blue-50/50 p-3">
         <div className="text-base font-black text-[#00548E]">Personas listas para firmar</div>
-        <p className="mt-1 text-sm leading-5 text-slate-600">Estas son exactamente las personas leídas del documento importado. Todas quedan habilitadas automáticamente para firmar, sin revisión previa del supervisor.</p>
+        <p className="mt-1 text-sm leading-5 text-slate-600">Trabajadores revisados y habilitados por el supervisor para este documento.</p>
         {importedCandidates.length>0
           ? <div className="mt-3 space-y-2">{importedCandidates.map(worker=>{
               const editing=nameCorrection?.documentId===doc.id&&Number(nameCorrection.workerId)===Number(worker.id);
@@ -987,11 +1001,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
                     </>}
               </div>;
             })}</div>
-          : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todas las personas detectadas en el documento ya han firmado.</div>}
+          : <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">Todos los trabajadores habilitados por el supervisor ya han firmado.</div>}
       </div>}
 
       {!closed&&isImportedMandatory&&importedWorkerIds.size===0&&<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        No se han podido leer nombres de personas en este PDF. Vuelve a importar un documento legible para habilitar las firmas automáticamente.
+        No se han podido leer nombres de personas en este PDF. El supervisor debe revisar los trabajadores y volver a enviar el documento al portal.
       </div>}
 
       {!closed&&!isImportedMandatory&&operationalCandidates.length>0&&<div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
@@ -1010,7 +1024,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       <div className="mt-3 rounded-xl border bg-slate-50 p-3">
         <div className="text-xs font-black uppercase tracking-wide text-slate-500">Trabajadores que ya han firmado</div>
         {!signedWorkers.length&&<div className="mt-2 text-sm font-semibold text-slate-500">Todavía no hay firmas guardadas.</div>}
-        {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=><div key={worker.id} className="flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+        {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=><div key={worker.id} className="flex min-h-[58px] flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
           <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
           {(()=>{
             const raw=doc.signatures?.[String(worker.id)];
@@ -1027,17 +1041,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
               ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
               : <span className="ml-auto inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-700">Firma guardada ✓</span>;
           })()}
+          {!closed&&isImportedMandatory&&<button type="button" disabled={saving} onClick={()=>void revokeWorkerSignature(doc,worker)} className="min-h-[48px] rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar firma y volver a firmar</button>}
         </div>)}</div>}
       </div>
+      {!closed&&pendingRequired>0&&<p className="mt-3 text-sm font-bold text-amber-900">Faltan {pendingRequired} firma(s) obligatoria(s) para enviar.</p>}
+      {!closed&&isImportedMandatory&&<p className="mt-3 text-sm text-slate-600">Si una firma está mal colocada, pide al supervisor que retire el documento del portal y corrija su posición. No hace falta repetirla si corresponde a la persona correcta.</p>}
 
       {!closed&&<button id={'foreman-signing-'+doc.id} type="button" disabled={saving||!canFinalize} onClick={async()=>{
-        if(partialSubmission){
-          const ok=await appConfirm(
-            `Faltan ${pendingRequired} firma(s). ¿Quieres enviar el documento al supervisor de todas formas? El supervisor verá claramente que la entrega está incompleta.`,
-            {title:'Enviar documento incompleto',confirmLabel:'Enviar incompleto'},
-          );
-          if(!ok)return;
-        }
+        if(pendingRequired>0){setError('Faltan firmas obligatorias. Completa todas antes de enviar.');return;}
         setSaving(true);
         setError('');
         try{
@@ -1062,8 +1073,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           setError(message);
           setOperationFeedback(message);
         }finally{setSaving(false);}
-      }} className={`mt-4 min-h-[58px] w-full rounded-2xl px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500 ${partialSubmission?'bg-amber-600':'bg-emerald-600'}`}>
-        {partialSubmission?`Enviar incompleto al supervisor · faltan ${pendingRequired}`:'Enviar documento firmado al supervisor'}
+      }} className={`mt-4 min-h-[58px] w-full rounded-2xl px-4 py-4 text-base font-black text-white touch-manipulation disabled:bg-slate-200 disabled:text-slate-500 bg-emerald-600`}>
+        Finalizar y enviar al supervisor
       </button>}
 
       {closed&&<div className={`mt-4 rounded-xl border px-3 py-2 text-center text-xs font-black ${doc.details?.submissionMode==='partial'?'border-amber-300 bg-amber-50 text-amber-900':'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{doc.details?.submissionMode==='partial'?`Documento enviado incompleto al supervisor · ${doc.details?.submittedSignedCount||0}/${doc.details?.submittedRequiredCount||requiredSignatureTotal} firmas`:'Documento finalizado y enviado al supervisor'}</div>}
@@ -1443,3 +1454,4 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }} onCancel={()=>setMandatorySigning(null)}/>} 
   </div>;
 };
+

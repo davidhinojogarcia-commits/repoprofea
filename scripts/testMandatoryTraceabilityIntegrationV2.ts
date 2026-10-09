@@ -42,11 +42,9 @@ assert.ok(dashboard.includes('reopenMandatoryDocumentV2'), 'Historical invalid P
 assert.ok(!release.includes('se reconstruye con las firmas actuales guardadas'), '1.19.0 notes must not advertise supervisor PDF reconstruction');
 assert.ok(!release.includes('Eliminación disponible tanto para supervisor como para encargado'), '1.19.0 notes must not advertise foreman identity deletion');
 
-assert.ok(service.includes("initialized?.lifecycleStatus==='READY'")&&service.includes('assignMandatoryDocumentV2(documentId)'), 'Fully resolved imports must auto-assign to foreman');
-
-
-assert.ok(dashboard.includes("result?.lifecycleStatus==='READY'")&&dashboard.includes('assignMandatoryDocumentV2(worksiteReview.item.id)'), 'Resolving the worksite must auto-assign when the rest of the document is already READY');
-
+assert.ok(!service.includes('assignMandatoryDocumentV2(documentId)'), 'Imports and geometry saves must remain drafts');
+assert.ok(!dashboard.includes('assignMandatoryDocumentV2(worksiteReview.item.id)'), 'Worksite confirmation must not publish automatically');
+assert.ok(dashboard.includes('Enviar al portal de encargados'), 'Explicit publication button is required');
 
 assert.ok(intake.includes("resolveMandatoryWorksite({ text, candidates, fallback: '' })"), 'Automatic detection must not let an unknown printed label bypass the known-worksite check');
 assert.ok(intake.includes("if (fallback) return fallback"), 'A single manual PDF may use the supervisor-selected worksite as an explicit fallback');
@@ -58,3 +56,4 @@ assert.match(dashboard, /editWorkerFilter==='document'&&!worker\.documentWorkerI
 assert.ok(!dashboard.includes('removeDetectedWorkerAsSupervisor(editingMandatory,worker)'), 'legacy supervisor delete button must be removed from V2 editor');
 
 console.log('Mandatory traceability V2 integration contract passed.');
+

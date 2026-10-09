@@ -57,8 +57,8 @@ try {
   await supabase.query('trabajadores',options);
   assert.equal(calls.length,afterRpc+2,'session changes clear cache');
   const liveBefore = calls.length;
-  await supabase.query('foreman_mandatory_documents',options);
-  await supabase.query('foreman_mandatory_documents',options);
+  await supabase.query('foreman_mandatory_documents',{...options,networkOnly:true});
+  await supabase.query('foreman_mandatory_documents',{...options,networkOnly:true});
   assert.equal(calls.length,liveBefore+2,'signature and document reads always remain live');
   calls = [];
   await supabase.query('trabajadores',{method:'POST',body:Array.from({length:205},(_,id)=>({id:String(id)}))});
@@ -113,3 +113,4 @@ try {
   assert.deepEqual(await readPdf(compressed),await readPdf(plain),'compression preserves text and coordinates');
   console.log('PASS: scoped cache, freshness, invalidation, history batching, memory bounds and PDF fidelity');
 } finally { await unlink(out.pathname).catch(()=>{}); }
+

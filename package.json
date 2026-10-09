@@ -1,7 +1,7 @@
 {
   "name": "sistema-contrataci\u00f3n-profea_dhg",
   "private": true,
-  "version": "1.19.0",
+  "version": "1.20.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -9,6 +9,7 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
+    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs",
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
     "test:relation-ordering": "tsx scripts/testRelationExportOrdering.ts",
     "test:mandatory-worker-detection": "tsx scripts/testMandatoryWorkerDetection.ts",
@@ -61,4 +62,5 @@
     "vite": "^6.2.0"
   }
 }
+
 

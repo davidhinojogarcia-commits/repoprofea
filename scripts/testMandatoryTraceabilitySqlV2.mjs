@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 const sql = fs.readFileSync(new URL('../supabase/migrations/20261003090000_mandatory_traceability_v2.sql', import.meta.url), 'utf8');
 const additiveMigrationUrl = new URL('../supabase/migrations/20261003213000_manual_missing_mandatory_worker.sql', import.meta.url);
 const additiveSql = fs.existsSync(additiveMigrationUrl) ? fs.readFileSync(additiveMigrationUrl, 'utf8') : '';
-const allMandatorySql = sql + '\n' + additiveSql;
+const publicationFile=fs.readdirSync(new URL('../supabase/migrations/',import.meta.url)).find(name=>name.endsWith('manual_foreman_publication_and_signature_revoke.sql'));
+const publicationSql=publicationFile?fs.readFileSync(new URL('../supabase/migrations/'+publicationFile,import.meta.url),'utf8'):'';
+const allMandatorySql = sql + '\n' + additiveSql + '\n' + publicationSql;
 const must = (needle, msg=needle) => assert.ok(sql.includes(needle), msg);
 const functionBody = (name) => {
   const marker = `create or replace function public.${name}(`;
@@ -247,3 +249,4 @@ console.log('Mandatory traceability V2 SQL invariants passed.');
   assert.match(init, /coalesce\(nullif\(v_item->>'legacyWorkerId',''\)::bigint,\(-900000000000000::bigint-v_bridge_seq\)\)/i, 'new document-only workers need a negative bridge id');
   assert.match(sql, /if legacy_id is null then bridge_seq:=bridge_seq\+1; legacy_id:=-900000000000000::bigint-bridge_seq; end if;/i, 'historical null ids need a negative bridge id');
 }
+

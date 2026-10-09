@@ -208,3 +208,14 @@ export async function reopenMandatoryDocumentV2(documentId: string) {
   return supabase.rpc('reopen_mandatory_document_v2', { p_document_id: documentId });
 }
 
+
+
+export async function withdrawMandatoryDocumentV2(documentId: string) {
+  return supabase.rpc('withdraw_mandatory_document_v2', { p_document_id: documentId });
+}
+
+export async function revokeMandatorySignatureV2(input: { token: string; documentId: string; documentWorkerId: string }) {
+  return supabase.rpc('revoke_mandatory_signature_v2', {
+    p_token: input.token, p_document_id: input.documentId, p_document_worker_id: input.documentWorkerId,
+  });
+}
