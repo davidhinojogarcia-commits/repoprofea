@@ -22,3 +22,22 @@ export async function followUpPreventionRecord(record: PreventionRecord, status:
     p_expected_updated_at: record.updated_at,
   });
 }
+
+export type PreventionActHistoryEvent = {
+  id: number;
+  record_id: string;
+  actor: string;
+  action: 'created' | 'follow_up';
+  created_at: string;
+  snapshot: PreventionRecord;
+};
+
+export async function loadPreventionActHistory(ids: string[], token?: string): Promise<PreventionActHistoryEvent[]> {
+  if (!ids.length) return [];
+  if (ids.length > 200) throw new Error('El acta no puede incluir más de 200 registros a la vez.');
+  const result = await supabase.rpc('get_prevention_acta_history', {
+    p_ids: ids,
+    p_token: token || null,
+  });
+  return Array.isArray(result) ? result : [];
+}
