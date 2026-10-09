@@ -33,6 +33,7 @@ export type SaeReport = {
   needId: string;
   fileName: string;
   fileBase64: string;
+  storagePath?: string;
   extractedText: string;
   extractionSource: string;
   offerNumber: string;
@@ -447,60 +448,72 @@ export async function updateSaeReportStatus(
 
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
   await uid();
-  const reportQuery = `select=*${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}&order=created_at.desc`;
+  const reportQuery = `select=id,need_id,file_name,storage_path,raw_text,extraction_method,processing_status,detected_legend,created_at${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}&order=created_at.desc`;
   const [rows, candidateRows] = await Promise.all([
     supabase.query("sae_reports", { query: reportQuery }),
     supabase.query("sae_candidates", {
       query: `select=source_report_id,offer_number,work_name,work_code,hiring_month,fortnight,category${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}`,
     }),
   ]);
-  return await Promise.all(
-    (rows || []).map(async (r: any) => {
-      const sample =
-        (candidateRows || []).find((c: any) => c.source_report_id === r.id) ||
-        {};
-      return {
-        id: r.id,
-        needId: r.need_id,
-        fileName: r.file_name || "",
-        fileBase64: await downloadSaeFile(r.storage_path || ""),
-        extractedText: r.raw_text || "",
-        extractionSource: r.extraction_method || "",
-        offerNumber: sample.offer_number || "",
-        obra: sample.work_name || "",
-        codigoObra: sample.work_code || "",
-        mes: monthLabel(Number(sample.hiring_month || 0)),
-        quincena: fortnightLabel(
-          sample.fortnight == null ? null : Number(sample.fortnight),
-        ),
-        categoria: sample.category || "",
-        status:
-          r.detected_legend?.__workflow_state === "finalized" ||
-          r.processing_status === "finalized"
-            ? "finalized"
-            : "review",
-        versions: Array.isArray(r.detected_legend?.__finalized_versions)
-          ? r.detected_legend.__finalized_versions
-              .map((version: any, index: number) => ({
-                version: Number(version?.version || index + 1),
-                finalizedAt: String(version?.finalizedAt || ""),
-                candidates: Array.isArray(version?.candidates)
-                  ? version.candidates.map((candidate: any) => ({
-                      id: String(candidate?.id || ""),
-                      orderNumber: Number(candidate?.orderNumber || 0),
-                      resultCode: String(candidate?.resultCode || ""),
-                      pageNumber: Math.max(1, Number(candidate?.pageNumber || 1)),
-                      overlayX: Number(candidate?.overlayX ?? 184),
-                      overlayY: Number(candidate?.overlayY ?? 50),
-                    }))
-                  : [],
-              }))
-              .filter((version: SaeReportVersion) => version.candidates.length > 0)
-          : [],
-        createdAt: r.created_at,
-      } as SaeReport;
-    }),
-  );
+  return (rows || []).map((r: any) => {
+    const sample =
+      (candidateRows || []).find((candidate: any) => candidate.source_report_id === r.id) ||
+      {};
+    return {
+      id: r.id,
+      needId: r.need_id,
+      fileName: r.file_name || "",
+      fileBase64: "",
+      storagePath: r.storage_path || "",
+      extractedText: r.raw_text || "",
+      extractionSource: r.extraction_method || "",
+      offerNumber: sample.offer_number || "",
+      obra: sample.work_name || "",
+      codigoObra: sample.work_code || "",
+      mes: monthLabel(Number(sample.hiring_month || 0)),
+      quincena: fortnightLabel(
+        sample.fortnight == null ? null : Number(sample.fortnight),
+      ),
+      categoria: sample.category || "",
+      status:
+        r.detected_legend?.__workflow_state === "finalized" ||
+        r.processing_status === "finalized"
+          ? "finalized"
+          : "review",
+      versions: Array.isArray(r.detected_legend?.__finalized_versions)
+        ? r.detected_legend.__finalized_versions
+            .map((version: any, index: number) => ({
+              version: Number(version?.version || index + 1),
+              finalizedAt: String(version?.finalizedAt || ""),
+              candidates: Array.isArray(version?.candidates)
+                ? version.candidates.map((candidate: any) => ({
+                    id: String(candidate?.id || ""),
+                    orderNumber: Number(candidate?.orderNumber || 0),
+                    resultCode: String(candidate?.resultCode || ""),
+                    pageNumber: Math.max(1, Number(candidate?.pageNumber || 1)),
+                    overlayX: Number(candidate?.overlayX ?? 184),
+                    overlayY: Number(candidate?.overlayY ?? 50),
+                  }))
+                : [],
+            }))
+            .filter((version: SaeReportVersion) => version.candidates.length > 0)
+        : [],
+      createdAt: r.created_at,
+    } as SaeReport;
+  });
+}
+
+export async function loadSaeReportFile(report: Pick<SaeReport, "id" | "storagePath" | "fileBase64">): Promise<string> {
+  if (report.fileBase64) return report.fileBase64;
+  let storagePath = String(report.storagePath || "");
+  if (!storagePath) {
+    const rows = await supabase.query("sae_reports", {
+      query: `select=storage_path&id=eq.${encodeURIComponent(report.id)}&limit=1`,
+    });
+    storagePath = String(rows?.[0]?.storage_path || "");
+  }
+  if (!storagePath) throw new Error("El informe SAE no tiene un archivo asociado.");
+  return downloadSaeFile(storagePath);
 }
 
 export async function createSaeReport(
