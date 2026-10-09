@@ -414,9 +414,14 @@ export async function updateDocument<T extends DatabaseRecord>(
   if (!current)
     throw new Error("El registro ya no existe o no tienes permiso para verlo.");
   const merged = { ...current, ...patch, id } as DatabaseRecord;
-  const body: any = await serialize(table, merged);
-  if (isLegacyNumericTable(table) || table === "trabajadores" || table === "obras")
+  const [body, beforeBody] = await Promise.all([
+    serialize(table, merged),
+    serialize(table, current as DatabaseRecord),
+  ]) as [any, any];
+  if (isLegacyNumericTable(table) || table === "trabajadores" || table === "obras") {
     body.updated_by = user.id;
+    beforeBody.updated_by = (current as DatabaseRecord).updatedBy ?? null;
+  }
 
   const requireVerifiedWorkerUpdate = table === "trabajadores";
   const mutationResult = await supabase.query(table, {
@@ -424,6 +429,7 @@ export async function updateDocument<T extends DatabaseRecord>(
     prefer: requireVerifiedWorkerUpdate ? "return=representation" : "return=minimal",
     query: `id=eq.${encodeURIComponent(String(id))}`,
     body,
+    historyBeforeRows: [{ id, ...beforeBody }],
   });
 
   let persisted = merged as T;
