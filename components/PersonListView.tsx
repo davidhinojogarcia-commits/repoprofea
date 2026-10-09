@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import ModalPortal from './ModalPortal';
 import { Person } from '../types';
-import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, Undo2, Redo2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
+import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleCalendarModal } from './GoogleCalendarModal';
@@ -41,10 +41,6 @@ interface PersonListProps {
   googleToken?: string | null;
   onGoogleLogin?: () => void;
   onToast?: (message: string, type: 'success' | 'error') => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
 }
 
 const formatDate = (dateStr: string) => {
@@ -104,11 +100,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   setSelectedQuincenaFilter,
   googleToken,
   onGoogleLogin,
-  onToast,
-  onUndo,
-  onRedo,
-  canUndo = false,
-  canRedo = false
+  onToast
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -489,41 +481,6 @@ export const PersonList: React.FC<PersonListProps> = ({
           Complete el formulario para agregar registros o utilice la importación para cargar un archivo con listado de trabajadores.
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-3 justify-center items-center">
-          {(onUndo || onRedo) && (
-            <div className="flex items-center gap-2">
-              {onUndo && (
-                <button
-                  onClick={onUndo}
-                  disabled={!canUndo}
-                  className={`flex items-center justify-center px-4 py-3 rounded-xl transition-all text-sm font-bold border ${
-                    canUndo 
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 shadow-sm cursor-pointer' 
-                      : 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-900/50 dark:text-slate-600 dark:border-slate-800 cursor-not-allowed opacity-50'
-                  }`}
-                  title="Deshacer cambio (Ctrl+Z)"
-                >
-                  <Undo2 className="w-4 h-4 mr-2" /> Deshacer
-                </button>
-              )}
-              {onRedo && (
-                <button
-                  onClick={onRedo}
-                  disabled={!canRedo}
-                  className={`flex items-center justify-center px-4 py-3 rounded-xl transition-all text-sm font-bold border ${
-                    canRedo 
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 shadow-sm cursor-pointer' 
-                      : 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-900/50 dark:text-slate-600 dark:border-slate-800 cursor-not-allowed opacity-50'
-                  }`}
-                  title="Rehacer cambio (Ctrl+Y)"
-                >
-                  <Redo2 className="w-4 h-4 mr-2" /> Rehacer
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
         <AnimatePresence>
           {showImportModal && (
             <ModalPortal label="PersonListView"><div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm text-left">
@@ -622,42 +579,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                  accept=".xlsx, .xls, .json, .pdf" 
                  className="hidden" 
                />
-               {(onUndo || onRedo) && (
-                 <div className="flex items-center gap-1 mr-1">
-                   {onUndo && (
-                     <button
-                       onClick={onUndo}
-                       disabled={!canUndo}
-                       className={`p-2 rounded-lg transition-all flex items-center gap-1 text-xs font-semibold select-none border ${
-                         canUndo 
-                           ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 shadow-xs cursor-pointer' 
-                           : 'text-slate-400 border-slate-100 dark:bg-slate-900/50 dark:text-slate-600 dark:border-slate-800/80 cursor-not-allowed opacity-50'
-                       }`}
-                       title={canUndo ? 'Deshacer cambio (Ctrl+Z)' : 'Nada que deshacer'}
-                       aria-label="Deshacer cambio"
-                     >
-                       <Undo2 className="w-4 h-4" />
-                       <span className="hidden sm:inline">Deshacer</span>
-                     </button>
-                   )}
-                   {onRedo && (
-                     <button
-                       onClick={onRedo}
-                       disabled={!canRedo}
-                       className={`p-2 rounded-lg transition-all flex items-center gap-1 text-xs font-semibold select-none border ${
-                         canRedo 
-                           ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 shadow-xs cursor-pointer' 
-                           : 'text-slate-400 border-slate-100 dark:bg-slate-900/50 dark:text-slate-600 dark:border-slate-800/80 cursor-not-allowed opacity-50'
-                       }`}
-                       title={canRedo ? 'Rehacer cambio (Ctrl+Y)' : 'Nada que rehacer'}
-                       aria-label="Rehacer cambio"
-                     >
-                       <Redo2 className="w-4 h-4" />
-                       <span className="hidden sm:inline">Rehacer</span>
-                     </button>
-                   )}
-                 </div>
-               )}
+
 
 
           </div>
