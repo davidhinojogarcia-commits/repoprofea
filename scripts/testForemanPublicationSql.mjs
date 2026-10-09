@@ -42,6 +42,8 @@ try {
  const projection=fs.readFileSync(new URL('../supabase/migrations/20261009181601_preserve_active_mandatory_worker_snapshot.sql',import.meta.url),'utf8');
  await db.exec(projection.slice(0,projection.indexOf('CREATE OR REPLACE FUNCTION public.review_mandatory_document_worker_v2')));
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009200007_atomic_mandatory_draft_positions.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009200007_atomic_mandatory_draft_positions.sql',import.meta.url),'utf8'));
  // Running the migration again must not change documents or add events.
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
  await query("insert into foreman_portal_access(owner_id,obra,foreman_name,token_hash,active) values($1,'Obra A','Encargado',encode(extensions.digest($2,'sha256'),'hex'),true)",[owner,token]);
@@ -53,7 +55,28 @@ try {
  await asUser(other);await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/Documento no válido/);
  await assert.rejects(rpc('withdraw_mandatory_document_v2',[doc]),/Documento no válido/);
  await asUser(null);assert.equal((await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.length,0,'draft invisible');
- await asUser(owner);await rpc('assign_mandatory_document_v2',[doc]);
+ await db.exec('reset role');await db.exec('grant select on foreman_mandatory_documents,mandatory_document_workers_v2 to authenticated');
+ await asUser(owner);
+ const draftWorker=(worker,number,y)=>({documentWorkerId:worker,printedName:'Persona '+number,page:1,rowIndex:number,nameBox:{x:60,y:y+2,width:120,height:10},signatureBox:box(y),resolved:true});
+ const conflicting=[draftWorker(w1,1,500),draftWorker(w2,2,500)];
+ const revision=(await query('select updated_at from foreman_mandatory_documents where id=$1',[doc]))[0].updated_at;
+ const savedDraft=await rpc('save_mandatory_positions_draft_v2',[doc,conflicting,revision]);
+ assert.ok(savedDraft.details.draftSaveHash,'overlapping draft persists');
+ const draftRetry=await rpc('save_mandatory_positions_draft_v2',[doc,conflicting,revision]);
+ assert.equal(draftRetry.updated_at,savedDraft.updated_at,'same payload retry is idempotent');
+ await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/colision|solap|firma/i,'publication still blocks overlaps');
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520)],'2000-01-01T00:00:00Z']),/Otro cambio/,'stale editor cannot overwrite');
+ const before=await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520),draftWorker(id(999),2,470)],savedDraft.updated_at]),/identidad documental/);
+ assert.deepEqual(await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]),before,'late failure rolls back earlier changes');
+ const pending={...draftWorker(id(13),3,440),create:true,resolved:false,signatureBox:null};
+ const pendingSaved=await rpc('save_mandatory_positions_draft_v2',[doc,[pending],savedDraft.updated_at]);
+ assert.equal((await query('select position_status from mandatory_document_workers_v2 where id=$1',[id(13)]))[0].position_status,'PENDING','new worker can be saved before positioning');
+ await db.exec('reset role');await query("update mandatory_document_workers_v2 set detection_status='REJECTED' where id=$1",[id(13)]);await query('update foreman_mandatory_documents set updated_at=now() where id=$1',[doc]);await asUser(owner);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[pending],null]),/ya fue eliminado/,'stale save never resurrects deleted workers');
+ await rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,500),draftWorker(w2,2,470)],null]);
+ await rpc('assign_mandatory_document_v2',[doc]);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,conflicting,null]),/Retira primero/,'published document locked');
  await asUser(null);assert.equal((await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.length,1,'explicitly published document visible');
  const signature='data:image/png;base64,'+'A'.repeat(40);
  await asUser(null);await rpc('sign_mandatory_document_worker_v2',[token,doc,w1,signature]);

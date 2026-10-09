@@ -17,6 +17,8 @@ declare global {
 }
 
 export type MandatoryWorkerAnchor = {
+  documentWorkerId?: string;
+  draftNew?: boolean;
   workerId: number;
   workerName: string;
   dni: string;
@@ -977,4 +979,5 @@ export function pdfBlobFromBytes(value:Uint8Array) {
   copy.set(value);
   return new Blob([copy.buffer], { type:'application/pdf' });
 }
+
 

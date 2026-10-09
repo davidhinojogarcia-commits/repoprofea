@@ -27,6 +27,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [saving,setSaving]=useState(false);
   const [removing,setRemoving]=useState(false);
   const [error,setError]=useState('');
+  const [feedback,setFeedback]=useState('');
+  const [pages,setPages]=useState<{page:number;width:number;height:number}[]>([]);
   const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
   const [manualName,setManualName]=useState('');
   const [zoom,setZoom]=useState(1);
@@ -84,7 +86,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
         if(!pdfjs.GlobalWorkerOptions.workerSrc)pdfjs.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
         const loaded=await pdfjs.getDocument({data:base64ToBytes(source.base64),useSystemFonts:true}).promise;
-        if(!cancelled)setPdf(loaded);
+        const geometry=await Promise.all(Array.from({length:loaded.numPages},async(_,i)=>{const page=await loaded.getPage(i+1);const box=page.view;return {page:i+1,width:Number(box[2])-Number(box[0]),height:Number(box[3])-Number(box[1])};}));
+        if(!cancelled){setPdf(loaded);setPages(geometry);}
       }catch(e:any){
         if(!cancelled)setError(e?.message||'No se pudo abrir el PDF original.');
       }finally{
@@ -116,20 +119,21 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       await page.render({canvas,canvasContext:ctx,viewport}).promise;
       if(cancelled)return;
 
-      if(current.resolved&&current.signatureX!=null&&current.signatureY!=null){
-        const p1=viewportPoint(viewport,Number(current.signatureX),Number(current.signatureY));
+      for(const anchor of draft.filter(anchor=>anchor.page===currentPage&&anchor.resolved&&anchor.signatureX!=null&&anchor.signatureY!=null)){
+        const selected=anchor===current;
+        const p1=viewportPoint(viewport,Number(anchor.signatureX),Number(anchor.signatureY));
         const p2=viewportPoint(
           viewport,
-          Number(current.signatureX)+Number(current.signatureWidth||110),
-          Number(current.signatureY)+Number(current.signatureHeight||32),
+          Number(anchor.signatureX)+Number(anchor.signatureWidth||110),
+          Number(anchor.signatureY)+Number(anchor.signatureHeight||32),
         );
         const left=Math.min(p1[0],p2[0]);
         const top=Math.min(p1[1],p2[1]);
         const width=Math.abs(p2[0]-p1[0]);
         const height=Math.abs(p2[1]-p1[1]);
         ctx.save();
-        ctx.strokeStyle='#00548E';
-        ctx.lineWidth=3;
+        ctx.strokeStyle=selected?'#00548E':'#64748b';
+        ctx.lineWidth=selected?3:1;
         ctx.setLineDash([8,5]);
         ctx.strokeRect(left,top,width,height);
         ctx.fillStyle='rgba(0,84,142,0.10)';
@@ -138,7 +142,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       }
     })().catch(e=>setError(e?.message||'No se pudo representar la página.'));
     return()=>{cancelled=true;};
-  },[pdf,current,currentPage,zoom,fitWidth]);
+  },[pdf,current,draft,currentPage,zoom,fitWidth]);
 
   const readPageGeometry=async()=>{
     if(!pdf)throw new Error('Espera a que se cargue el PDF original.');
@@ -154,11 +158,15 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       const suggested=suggestSafeMandatorySignaturePositions(draft,pages);
       setDraft(suggested);
       const validation=validateMandatorySignaturePlacement(suggested,pages);
-      if(!validation.ok)setError(validation.issues.map(issue=>`${issue.workerName}: ${issue.message}`).join(' '));
+      setFeedback(validation.ok?'Posiciones ajustadas. Revisa el resultado antes de enviarlo.':'Se han ajustado las filas que permiten una corrección segura. Revisa los avisos de cada trabajador.');
     } catch(e:any){setError(e?.message||'No se pudieron ajustar las posiciones.');}
     finally{setSaving(false);}
   };
 
+  const validation=useMemo(()=>pages.length?validateMandatorySignaturePlacement(draft,pages):{ok:false,issues:[]},[draft,pages]);
+  const currentIssues=validation.issues.filter(issue=>issue.workerId===current?.workerId);
+  const conflictIds=new Set(validation.issues.map(issue=>issue.workerId));
+  const nextConflict=()=>{const candidates=draft.map((_,i)=>(index+i+1)%draft.length);const next=candidates.find(i=>conflictIds.has(draft[i].workerId));if(next!=null)setIndex(next);};
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
 
   const selectPage=(value:number)=>{
@@ -174,7 +182,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }
     const worker=availableWorkers.find(row=>Number(row.id)===Number(workerId));
     if(!worker||!current)return;
-    const duplicate=draft.some((anchor,i)=>i!==index&&Number(anchor.workerId)===Number(worker.id));
+    const duplicate=draft.some((anchor,i)=>i!==index&&String(anchor.workerName).trim().toLocaleLowerCase('es')===String(worker.apellidos_nombre).trim().toLocaleLowerCase('es'));
     if(duplicate){
       setError('Ese trabajador ya está asociado a otra línea del documento.');
       return;
@@ -182,7 +190,6 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     setError('');
     setDraft(list=>list.map((anchor,i)=>i===index?{
       ...anchor,
-      workerId:Number(worker.id),
       workerName:String(worker.apellidos_nombre||''),
       dni:String(worker.dni||''),
       resolved:Boolean(anchor.signatureX!=null&&anchor.signatureY!=null&&anchor.signatureWidth&&anchor.signatureHeight),
@@ -209,6 +216,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     while(used.has(temporaryId))temporaryId-=1;
     const next:MandatoryWorkerAnchor={
       workerId:temporaryId,
+      documentWorkerId:crypto.randomUUID(),
+      draftNew:true,
       workerName:name,
       dni:'',
       page:currentPage,
@@ -218,8 +227,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       rowHeight:null,
       signatureX:null,
       signatureY:null,
-      signatureWidth:110,
-      signatureHeight:32,
+      signatureWidth:90,
+      signatureHeight:12,
       confidence:0,
       resolved:false,
       reason:'Trabajador recuperado manualmente del PDF: toca su zona de firma.',
@@ -233,14 +242,14 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const removeCurrentWorker=async()=>{
     if(!current||!onRemoveWorker||removing)return;
     setRemoving(true);
-    setError('');
+    setError('');setFeedback('');
     try{
       const workerId=Number(current.workerId);
-      await onRemoveWorker(workerId);
+      if(!current.draftNew)await onRemoveWorker(workerId);
       const nextDraft=draft.filter((_,i)=>i!==index).map((anchor,i)=>({...anchor,order:i}));
       setDraft(nextDraft);
       setIndex(nextDraft.length?Math.min(index,nextDraft.length-1):0);
-      setError(nextDraft.length
+      setFeedback(nextDraft.length
         ? `${current.workerName||'Trabajador'} eliminado del documento. Ya no cuenta como firma pendiente.`
         : 'El documento se ha quedado sin trabajadores válidos.');
     }catch(e:any){
@@ -257,8 +266,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     const x=(event.clientX-rect.left)*(canvas.width/rect.width);
     const y=(event.clientY-rect.top)*(canvas.height/rect.height);
     const [pdfX,pdfY]=pdfPointFromViewport(viewportRef.current,x,y);
-    const boxWidth=Number(current.signatureWidth||110);
-    const boxHeight=Number(current.signatureHeight||32);
+    const boxWidth=Math.min(92,Number(current.signatureWidth||90));
+    const boxHeight=Math.min(Number(current.signatureHeight||12),Math.max(8,Number(current.nameHeight||current.rowHeight||12)));
     const viewBox=viewportRef.current.viewBox||[0,0,595,842];
     const pageWidth=Math.abs(Number(viewBox[2]||595)-Number(viewBox[0]||0));
     const pageHeight=Math.abs(Number(viewBox[3]||842)-Number(viewBox[1]||0));
@@ -299,7 +308,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 
           {documentType!=='control_presencia'&&<label className="mt-4 block text-sm font-black">Trabajador asociado a esta línea
             <select
-              value={current&&current.workerId>0?String(current.workerId):''}
+              value={String(availableWorkers.find(worker=>String(worker.apellidos_nombre).trim().toLocaleLowerCase('es')===String(current?.workerName).trim().toLocaleLowerCase('es'))?.id||'')}
               onChange={event=>assignCurrentWorker(Number(event.target.value))}
               disabled={currentIdentityLocked}
               className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
@@ -318,6 +327,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             </div>
           </label>
 
+          {current&&<div className="mt-4 grid grid-cols-2 gap-2">{(['signatureWidth','signatureHeight'] as const).map((field,i)=><label key={field} className="text-sm font-bold">{i===0?'Ancho de firma':'Alto de firma'}<input type="number" min={i===0?28:8} max={i===0?160:40} value={current[field]|| (i===0?90:12)} onChange={event=>{const value=Number(event.target.value);if(!Number.isFinite(value)||value<(i===0?28:8)||value>(i===0?160:40))return;setDraft(list=>list.map((anchor,n)=>n===index?{...anchor,[field]:value}:anchor));}} className="mt-1 min-h-[44px] w-full rounded-xl border bg-white px-2 text-slate-900"/></label>)}</div>}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button type="button" disabled={index<=0} onClick={()=>setIndex(i=>Math.max(0,i-1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Anterior</button>
             <button type="button" disabled={index>=draft.length-1} onClick={()=>setIndex(i=>Math.min(draft.length-1,i+1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Siguiente</button>
@@ -341,6 +351,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100">
             El recuadro azul marca dónde se colocará la firma. Colócalo en la misma línea del trabajador, inmediatamente a la derecha de su nombre. El PDF original no se mueve ni se rediseña.
           </div>
+          {feedback&&<div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{feedback}</div>}
+          {currentIssues.length>0&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>Revisar esta firma antes de enviar</strong><ul className="mt-2 list-disc pl-4">{currentIssues.map((issue,i)=><li key={i}>{issue.message}</li>)}</ul><p className="mt-2">Puedes guardar el borrador y continuar después.</p></div>}
+          {conflictIds.size>0&&<button type="button" onClick={nextConflict} className="mt-2 min-h-[44px] w-full rounded-xl border border-amber-400 px-3 text-sm font-bold">Ir al siguiente trabajador pendiente ({conflictIds.size})</button>}
           {error&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/70 dark:text-rose-100">{error}</div>}
         </aside>
 
@@ -375,13 +388,13 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       </div>
 
       <div className="shrink-0 flex flex-col gap-2 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4 sm:flex-row sm:items-center sm:justify-between" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
-        <div className={`text-sm font-black ${unresolved?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : 'Todas las posiciones están confirmadas'}</div>
+        <div className={`text-sm font-black ${unresolved||!validation.ok?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : validation.ok?'Posiciones comprobadas: sin conflictos':'Hay posiciones que revisar antes de enviar'}</div>
         <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] disabled:opacity-50">Ajustar automáticamente dentro de cada fila</button>
-        <button type="button" disabled={saving||unresolved>0} onClick={async()=>{
+        <button type="button" disabled={loading||saving||removing} onClick={async()=>{
           setSaving(true);setError('');
-          try{const validation=validateMandatorySignaturePlacement(draft,await readPageGeometry());if(!validation.ok)throw new Error(validation.issues.map(issue=>`${issue.workerName}: ${issue.message}`).join(' '));await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
+          try{await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
           finally{setSaving(false);}
-        }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar posiciones'}</button>
+        }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar borrador'}</button>
       </div>
     </div>
   </div></ModalPortal>;

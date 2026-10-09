@@ -10,7 +10,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, updateSupervisorMandatoryAnchors } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
@@ -695,7 +695,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   const loadCurrentMandatoryDocument = async (item: DbMandatory): Promise<DbMandatory> => {
     const rows=await supabase.query('foreman_mandatory_documents',{
-      query:`id=eq.${encodeURIComponent(item.id)}&select=id,details,workers,signatures,work_date,category,lifecycle_status,status&limit=1`,
+      query:`id=eq.${encodeURIComponent(item.id)}&select=id,details,workers,signatures,work_date,category,lifecycle_status,status,updated_at&limit=1`,
       networkOnly:true,
     });
     if(!Array.isArray(rows)||!rows[0])throw new Error('Documento no encontrado. Actualiza la documentación.');
@@ -964,24 +964,14 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       onCancel={()=>setPositioningMandatory(null)}
       onRemoveWorker={async(workerId)=>{
         await removeSupervisorMandatoryWorker(positioningMandatory.id,workerId);
-        setPositioningMandatory(current=>current&&current.id===positioningMandatory.id
-          ? {
-              ...current,
-              signatures:Object.fromEntries(Object.entries(current.signatures||{}).filter(([id])=>Number(id)!==Number(workerId))),
-              details:{
-                ...(current.details||{}),
-                importedWorkerIds:(Array.isArray(current.details?.importedWorkerIds)?current.details.importedWorkerIds:[]).filter((id:any)=>Number(id)!==Number(workerId)),
-                importedWorkers:(Array.isArray(current.details?.importedWorkers)?current.details.importedWorkers:[]).filter((worker:any)=>Number(worker.id)!==Number(workerId)),
-                workerAnchors:(Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[]).filter((anchor:any)=>Number(anchor.workerId)!==Number(workerId)),
-              },
-            }
-          : current);
+        const persisted=await loadCurrentMandatoryDocument(positioningMandatory);
+        setPositioningMandatory(persisted);
         setMailMessage('Trabajador eliminado del documento. Ya no cuenta como firma pendiente.');
         await refresh(true);
       }}
       onSave={async(anchors)=>{
-        const saved=await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
-        setMailMessage('Posiciones y trabajadores guardados y verificados. Pulsa Enviar al portal de encargados cuando esté listo.');
+        await saveSupervisorMandatoryDraft(positioningMandatory.id,anchors,positioningMandatory.updated_at);
+        setMailMessage('Borrador guardado y verificado. Puedes seguir corrigiendo las posiciones pendientes antes de enviarlo al portal.');
         setPositioningMandatory(null);
         await refresh(true);
       }}

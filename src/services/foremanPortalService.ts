@@ -613,9 +613,14 @@ export async function removeForemanMandatoryWorker(
 }
 
 export async function removeSupervisorMandatoryWorker(documentId:string,workerId:number){
-  const rows=await supabase.query('mandatory_document_workers_v2',{query:`document_id=eq.${encodeURIComponent(documentId)}&legacy_worker_id=eq.${encodeURIComponent(String(workerId))}&select=id&limit=1`});
+  const rows=await supabase.query('mandatory_document_workers_v2',{query:`document_id=eq.${encodeURIComponent(documentId)}&legacy_worker_id=eq.${encodeURIComponent(String(workerId))}&select=id&limit=1`,networkOnly:true});
   const row=Array.isArray(rows)?rows[0]:null;
-  if(row?.id)return reviewMandatoryDocumentWorkerV2({documentId,documentWorkerId:String(row.id),action:'reject'});
+  if(row?.id){
+    await reviewMandatoryDocumentWorkerV2({documentId,documentWorkerId:String(row.id),action:'reject'});
+    const verified=await supabase.query('mandatory_document_workers_v2',{query:`id=eq.${encodeURIComponent(String(row.id))}&select=id,detection_status&limit=1`,networkOnly:true});
+    if(!Array.isArray(verified)||verified[0]?.detection_status!=='REJECTED')throw new Error('No se pudo verificar la eliminación del trabajador.');
+    return verified[0];
+  }
   return supabase.rpc('remove_supervisor_mandatory_worker',{p_document_id:documentId,p_worker_id:workerId});
 }
 
@@ -762,3 +767,23 @@ export async function restoreForemanMandatoryGmailSource(gmailMessageId: string,
 }
 
 
+export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any[],expectedUpdatedAt?:string|null){
+  const toBox=(anchor:any,prefix:string)=>{
+    const values=prefix==='name'?[anchor.nameX,anchor.nameY,anchor.nameWidth??(anchor.nameRightX!=null&&anchor.nameX!=null?anchor.nameRightX-anchor.nameX:null),anchor.nameHeight??anchor.rowHeight]:['X','Y','Width','Height'].map(key=>anchor[prefix+key]);
+    if(values.some(value=>value==null))return null;
+    const [x,y,width,height]=values.map(Number);
+    if(![x,y,width,height].every(Number.isFinite)||x<0||y<0||width<=0||height<=0)throw new Error('Coordenadas no válidas. Revisa el trabajador seleccionado.');
+    return {x,y,width,height};
+  };
+  const workers=anchors.map((anchor,index)=>{
+    if(!anchor.documentWorkerId)throw new Error('Falta la identidad documental. Cierra y vuelve a abrir el editor.');
+    return {documentWorkerId:anchor.documentWorkerId,create:Boolean(anchor.draftNew),printedName:String(anchor.workerName||'').trim(),
+      page:Math.max(1,Number(anchor.page||1)),rowIndex:index,resolved:Boolean(anchor.resolved),
+      nameBox:toBox(anchor,'name'),signatureBox:toBox(anchor,'signature')};
+  });
+  const saved:any=await supabase.rpc('save_mandatory_positions_draft_v2',{p_document_id:documentId,p_workers:workers,p_expected_updated_at:expectedUpdatedAt||null});
+  const rows=await supabase.query('foreman_mandatory_documents',{query:`id=eq.${encodeURIComponent(documentId)}&select=id,details,lifecycle_status,status,updated_at&limit=1`,networkOnly:true});
+  const verified=Array.isArray(rows)?rows[0]:null;
+  if(!saved?.details?.draftSaveHash||!verified||verified.details?.draftSaveHash!==saved.details.draftSaveHash||verified.updated_at!==saved.updated_at)throw new Error('No se pudo verificar el borrador guardado. Reabre el documento para consultar su estado.');
+  return verified;
+}
