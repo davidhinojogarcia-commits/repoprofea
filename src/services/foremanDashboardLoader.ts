@@ -2,9 +2,27 @@
 export type DashboardRows = Record<string, any>[];
 type Query = (table: string, options: {query: string}) => Promise<any>;
 const sources = [
-  {table:'foreman_documents',order:'updated_at.desc',limit:500,revision:'updated_at',select:'*'},
-  {table:'foreman_attendance_days',order:'work_date.desc',limit:180,revision:'updated_at',select:'*'},
-  {table:'foreman_mandatory_documents',order:'work_date.desc',limit:300,revision:'updated_at',select:'*'},
+  {
+    table:'foreman_documents',
+    order:'updated_at.desc',
+    limit:500,
+    revision:'updated_at',
+    select:'id,obra,work_date,document_type,worker_id,worker_snapshot,answers,signatures,completed_by,status,completed_at,updated_at,correction_pending,correction_reason',
+  },
+  {
+    table:'foreman_attendance_days',
+    order:'work_date.desc',
+    limit:180,
+    revision:'updated_at',
+    select:'id,obra,work_date,foreman_name,rows,status,completed_at,updated_at,correction_pending,correction_reason',
+  },
+  {
+    table:'foreman_mandatory_documents',
+    order:'work_date.desc',
+    limit:300,
+    revision:'updated_at',
+    select:'id,obra,period_key,work_date,document_type,category,workers,signatures,status,completed_at,updated_at,source_gmail_message_id,source_gmail_thread_id,source_rfc_message_id,source_email_from,source_email_subject,source_attachment_name,returned_gmail_message_id,returned_at,details,correction_pending,correction_reason,lifecycle_status',
+  },
 ];
 const fingerprint = (rows: DashboardRows, revision: string) => JSON.stringify(
   rows.map(row=>[String(row.id),String(row[revision]||'')]).sort((a,b)=>a[0].localeCompare(b[0])),
