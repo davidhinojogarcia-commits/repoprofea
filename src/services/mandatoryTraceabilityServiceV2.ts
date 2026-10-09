@@ -46,6 +46,62 @@ export async function reviewMandatoryDocumentWorkerV2(input: {
   });
 }
 
+export async function saveMandatoryWorkerSelectionV2(input: {
+  documentId: string;
+  workers: Array<{
+    documentWorkerId: string;
+    selected: boolean;
+    printedName: string;
+    nameBox?: Record<string, number> | null;
+    signatureBox?: Record<string, number> | null;
+  }>;
+}) {
+  const readWorkers = () => supabase.query('mandatory_document_workers_v2', {
+    query: `document_id=eq.${encodeURIComponent(input.documentId)}&select=id,legacy_worker_id,detection_status`,
+    networkOnly: true,
+  });
+  const before = await readWorkers();
+  const byId = new Map((Array.isArray(before) ? before : []).map((row: any) => [String(row.id), row]));
+  for (const worker of input.workers) {
+    if (!byId.has(worker.documentWorkerId)) throw new Error('La lista de trabajadores ha cambiado. Actualiza el documento antes de guardar.');
+  }
+  // Reject first; unchanged confirmed workers must not be reconfirmed in an assigned document.
+  for (const worker of input.workers.filter(worker => !worker.selected)) {
+    if (byId.get(worker.documentWorkerId)?.detection_status === 'REJECTED') continue;
+    await reviewMandatoryDocumentWorkerV2({ documentId: input.documentId, documentWorkerId: worker.documentWorkerId, action: 'reject' });
+  }
+  for (const worker of input.workers.filter(worker => worker.selected)) {
+    if (byId.get(worker.documentWorkerId)?.detection_status === 'CONFIRMED') continue;
+    await reviewMandatoryDocumentWorkerV2({ ...worker, documentId: input.documentId, action: 'confirm' });
+  }
+  const after = await readWorkers();
+  const persisted = new Map((Array.isArray(after) ? after : []).map((row: any) => [String(row.id), row]));
+  const documents = await supabase.query('foreman_mandatory_documents', {
+    query: `id=eq.${encodeURIComponent(input.documentId)}&select=id,details,signatures,workers&limit=1`,
+    networkOnly: true,
+  });
+  const document = Array.isArray(documents) ? documents[0] : null;
+  if (!document) throw new Error('No se pudo verificar el documento guardado.');
+  for (const worker of input.workers) {
+    const row: any = persisted.get(worker.documentWorkerId);
+    if (!row || row.detection_status !== (worker.selected ? 'CONFIRMED' : 'REJECTED')) {
+      throw new Error('La selección de trabajadores no quedó guardada. Mantén abierto el documento y vuelve a intentarlo.');
+    }
+    if (!worker.selected && row.legacy_worker_id != null) {
+      const legacyId = String(row.legacy_worker_id);
+      const ids = document.details?.importedWorkerIds || [];
+      const anchors = document.details?.workerAnchors || [];
+      if (ids.some((id: any) => String(id) === legacyId) ||
+          anchors.some((anchor: any) => String(anchor.workerId) === legacyId) ||
+          (document.workers || []).some((entry: any) => String(entry.id) === legacyId) ||
+          Object.prototype.hasOwnProperty.call(document.signatures || {}, legacyId)) {
+        throw new Error('El trabajador desmarcado todavía aparece en la lista de firmas. No se ha confirmado el guardado.');
+      }
+    }
+  }
+  return document;
+}
+
 export async function updateMandatoryDocumentWorkerGeometryV2(input: {
   documentId: string;
   documentWorkerId: string;
@@ -151,3 +207,4 @@ export async function getMandatoryTraceabilityV2(documentId: string) {
 export async function reopenMandatoryDocumentV2(documentId: string) {
   return supabase.rpc('reopen_mandatory_document_v2', { p_document_id: documentId });
 }
+

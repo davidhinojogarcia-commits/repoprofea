@@ -17,7 +17,7 @@ import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
 import ModalPortal from './ModalPortal';
 import MandatoryTraceabilityModal from './MandatoryTraceabilityModal';
 import MandatoryWorksiteReviewModal from './MandatoryWorksiteReviewModal';
-import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, getMandatoryTraceabilityV2, getSupervisorMandatorySignedPdfV2, reviewMandatoryDocumentWorkerV2, returnMandatoryDocumentV2, reviewSubmittedMandatoryDocumentV2, reopenMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
+import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, getMandatoryTraceabilityV2, getSupervisorMandatorySignedPdfV2, saveMandatoryWorkerSelectionV2, returnMandatoryDocumentV2, reviewSubmittedMandatoryDocumentV2, reopenMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
 
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
@@ -673,7 +673,28 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     openGenericEditor(card);
   };
 
+  const loadCurrentMandatoryDocument = async (item: DbMandatory): Promise<DbMandatory> => {
+    const rows=await supabase.query('foreman_mandatory_documents',{
+      query:`id=eq.${encodeURIComponent(item.id)}&select=id,details,workers,signatures,work_date,category,lifecycle_status,status&limit=1`,
+      networkOnly:true,
+    });
+    if(!Array.isArray(rows)||!rows[0])throw new Error('Documento no encontrado. Actualiza la documentación.');
+    return {...item,...rows[0]};
+  };
+
+  const openMandatoryAnchorEditor = async (item: DbMandatory) => {
+    if(editBusy)return;
+    setEditBusy(true);
+    try{setPositioningMandatory(await loadCurrentMandatoryDocument(item));}
+    catch(error:any){setMailMessage(error?.message||'No se pudieron cargar las posiciones guardadas.');}
+    finally{setEditBusy(false);}
+  };
+
   const openMandatoryEditor = async (item: DbMandatory) => {
+    if(editBusy)return;
+    setEditBusy(true);
+    try{item=await loadCurrentMandatoryDocument(item);}
+    catch(error:any){setEditBusy(false);setMailMessage(error?.message||'No se pudo cargar la selección guardada.');return;}
     setEditingMandatory(item); setEditWorkDate(String(item.work_date||'').slice(0,10)); setEditCategory(item.document_type==='control_presencia'?'':String(item.category||'')); setEditSearch(''); setEditWorkerFilter('all');
     const v2Workers=Array.isArray(item.details?.documentWorkersV2)?item.details.documentWorkersV2:[];
     const importedSnapshots=Array.isArray(item.details?.importedWorkers)?item.details.importedWorkers:[];
@@ -693,19 +714,17 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     setEditBusy(true);
     try{
       const anchors=Array.isArray(editingMandatory.details?.workerAnchors)?editingMandatory.details.workerAnchors:[];
-      for(const worker of editWorkers as any[]){
-        if(!worker.documentWorkerId)continue;
-        if(!editWorkerIds.has(String(worker.id))){
-          await reviewMandatoryDocumentWorkerV2({documentId:editingMandatory.id,documentWorkerId:worker.documentWorkerId,action:'reject'});
-          continue;
-        }
-        const anchor=worker.legacyWorkerId!=null?anchors.find((candidate:any)=>Number(candidate.workerId)===Number(worker.legacyWorkerId)):null;
-        const nameBox=anchor?.nameX!=null&&anchor?.nameY!=null&&Number(anchor?.nameWidth||0)>0&&Number(anchor?.nameHeight||anchor?.rowHeight||0)>0?{x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)}:null;
-        const signatureBox=anchor?.signatureX!=null&&anchor?.signatureY!=null&&Number(anchor?.signatureWidth||0)>0&&Number(anchor?.signatureHeight||0)>0?{x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)}:null;
-        await reviewMandatoryDocumentWorkerV2({documentId:editingMandatory.id,documentWorkerId:worker.documentWorkerId,action:'confirm',printedName:String(worker.apellidosNombre||''),nameBox,signatureBox});
-      }
-      try{await assignMandatoryDocumentV2(editingMandatory.id);setMailMessage('Detección validada. Documento preparado para el encargado.');}
-      catch(error:any){setMailMessage(/todavía necesita revisión/i.test(String(error?.message||''))?'Las personas están revisadas. Ajusta las posiciones de firma pendientes antes de asignar el documento.':String(error?.message||'Documento revisado.'));}
+      await saveMandatoryWorkerSelectionV2({
+        documentId: editingMandatory.id,
+        workers: (editWorkers as any[]).filter(worker=>worker.documentWorkerId).map(worker=>{
+          const anchor=worker.legacyWorkerId!=null?anchors.find((candidate:any)=>Number(candidate.workerId)===Number(worker.legacyWorkerId)):null;
+          const nameBox=anchor?.nameX!=null&&anchor?.nameY!=null&&Number(anchor?.nameWidth||0)>0&&Number(anchor?.nameHeight||anchor?.rowHeight||0)>0?{x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)}:null;
+          const signatureBox=anchor?.signatureX!=null&&anchor?.signatureY!=null&&Number(anchor?.signatureWidth||0)>0&&Number(anchor?.signatureHeight||0)>0?{x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)}:null;
+          return {documentWorkerId:worker.documentWorkerId,selected:editWorkerIds.has(String(worker.id)),printedName:String(worker.apellidosNombre||''),nameBox,signatureBox};
+        }),
+      });
+      try{await assignMandatoryDocumentV2(editingMandatory.id);setMailMessage('Selección guardada y verificada. Documento preparado para el encargado.');}
+      catch(error:any){setMailMessage(/todavía necesita revisión/i.test(String(error?.message||''))?'Selección guardada y verificada. Ajusta las posiciones de firma pendientes antes de asignar el documento.':/ya está asignado o cerrado/i.test(String(error?.message||''))?'Selección guardada y verificada. Los trabajadores desmarcados ya no están en la lista de firmas.':String(error?.message||'Documento revisado.'));}
       setEditingMandatory(null); await refresh(true);
     }catch(error:any){setMailMessage(error?.message||'No se pudo guardar la revisión del documento.');}
     finally{setEditBusy(false);}
@@ -884,7 +903,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             <button onClick={()=>{if(card.item.details?.originalPdfPurged){restoreOriginalTargetRef.current=card.id;restoreOriginalInputRef.current?.click();}else void downloadStoredMandatoryPdf(card.item as DbMandatory,'original');}} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><FileSignature className="w-4 h-4"/>{card.item.details?.originalPdfPurged?'Reimportar original':'Original'}</button>
             {['inicio','control_presencia'].includes(String(card.item.document_type||''))&&
               <button
-                onClick={()=>setPositioningMandatory(card.item as DbMandatory)}
+                onClick={()=>void openMandatoryAnchorEditor(card.item as DbMandatory)}
                 className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900 dark:border-amber-600 dark:bg-amber-950/80 dark:text-amber-50"
               >
                 <Pencil className="w-4 h-4"/>Ajustar firmas
@@ -941,9 +960,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         await refresh(true);
       }}
       onSave={async(anchors)=>{
-        await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
-        try{await assignMandatoryDocumentV2(positioningMandatory.id);setMailMessage('Posiciones actualizadas. Documento preparado para el encargado.');}
-        catch(error:any){setMailMessage(error?.message||'Posiciones actualizadas. El documento sigue pendiente de revisión.');}
+        const saved=await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
+        setMailMessage(['ASSIGNED','IN_SIGNATURE'].includes(saved.lifecycle_status)?'Posiciones y trabajadores guardados y verificados. Documento disponible para el encargado.':'Posiciones y trabajadores guardados y verificados. El documento sigue pendiente de revisión.');
         setPositioningMandatory(null);
         await refresh(true);
       }}

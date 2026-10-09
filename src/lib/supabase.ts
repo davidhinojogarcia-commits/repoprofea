@@ -166,11 +166,17 @@ async function queueRestRequest(path: string, options: RequestInit, userId: stri
   return optimisticRestResult(path, options);
 }
 
-async function request(path: string, options: RequestInit = {}, fresh = false): Promise<any> {
+async function request(path: string, options: RequestInit = {}, fresh = false, networkOnly = false): Promise<any> {
   const method = String(options.method || 'GET').toUpperCase();
   const user = await getSessionUser();
   const userId = user?.id || 'anonymous';
   const cacheKey = offlineCacheKey(userId, 'rest', path);
+
+  // Persistence checks must never accept a cached/offline copy as server proof.
+  if (networkOnly) {
+    if (isOffline()) throw new Error('Se necesita conexión para verificar el guardado.');
+    return performNetworkRequest(path, options, true);
+  }
 
   if (method === 'GET') {
     if (isOffline()) {
@@ -403,7 +409,7 @@ export const supabase = {
   removeChannel(channel: ReturnType<typeof client.channel>) {
     return client.removeChannel(channel);
   },
-  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean } = {}) {
+  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean; networkOnly?: boolean } = {}) {
     const headers: Record<string, string> = {};
     if (options.prefer) headers.Prefer = options.prefer;
     const method = options.method || 'GET';
@@ -413,7 +419,7 @@ export const supabase = {
       method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    }, options.fresh === true);
+    }, options.fresh === true, options.networkOnly === true);
 
     if (table === 'obras' && upperMethod === 'GET') {
       return syncObrasPreventiveResource(result);
@@ -455,3 +461,4 @@ export const supabase = {
 };
 
 export { SUPABASE_URL, SUPABASE_KEY, STORAGE_KEY };
+

@@ -1,6 +1,6 @@
 // Lightweight revision checks avoid repeatedly transferring signatures and snapshots.
 export type DashboardRows = Record<string, any>[];
-type Query = (table: string, options: {query: string}) => Promise<any>;
+type Query = (table: string, options: {query: string; fresh?: boolean}) => Promise<any>;
 const sources = [
   {
     table:'foreman_documents',
@@ -73,7 +73,7 @@ export class ForemanDashboardLoader {
         // Revision ordering preserves the visible list; omitted IDs represent deletions.
         return revisions.map(row=>existing.get(String(row.id))).filter((row):row is Record<string,any>=>!!row);
       }
-      const rows=await this.query(source.table,{query:`select=${source.select}${suffix}`});
+      const rows=await this.query(source.table,{query:`select=${source.select}${suffix}`,fresh:!checkOnly});
       if(!Array.isArray(rows))throw new Error('Respuesta de documentación no válida.');
       return rows;
     }));
@@ -81,3 +81,4 @@ export class ForemanDashboardLoader {
     return results;
   }
 }
+

@@ -17,7 +17,7 @@ assert.match(editor,/signatureX:null[\s\S]*resolved:false/);
 
 assert.match(service,/add_missing_mandatory_document_worker_v2/);
 assert.match(portal,/addMissingMandatoryDocumentWorkerV2/);
-assert.match(portal,/if\(!row\)[\s\S]*printedName[\s\S]*signatureBox[\s\S]*addMissingMandatoryDocumentWorkerV2/);
+assert.match(portal,/if\(!row\)[\s\S]*printedName[\s\S]*addMissingMandatoryDocumentWorkerV2\([\s\S]*signatureBox/);
 assert.match(portal,/normalizedAnchors\[index\]=\{[\s\S]*workerId:stableLegacyId[\s\S]*documentWorkerId/);
 
 assert.match(sql,/create or replace function public\.add_missing_mandatory_document_worker_v2/);
@@ -37,3 +37,4 @@ assert.match(sql,/'documentWorkersV2',v_workers/);
 assert.match(sql,/grant execute on function public\.add_missing_mandatory_document_worker_v2/);
 
 console.log('Manual missing-worker recovery regression passed.');
+
