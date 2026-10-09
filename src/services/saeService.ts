@@ -69,6 +69,8 @@ export type SaeCandidate = {
   overlayX: number;
   overlayY: number;
   confidence: string;
+  alignmentOffsetX?: number;
+  alignmentOffsetY?: number;
 };
 
 const MONTHS = [
@@ -634,10 +636,11 @@ export async function createSaeReport(
 
 export async function listSaeCandidates(
   needId?: string,
+  options: { reportId?: string; networkOnly?: boolean } = {},
 ): Promise<SaeCandidate[]> {
   await uid();
-  const query = `select=*${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}&order=created_at.asc`;
-  const rows = await supabase.query("sae_candidates", { query });
+  const query = `select=*${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}${options.reportId ? `&source_report_id=eq.${encodeURIComponent(options.reportId)}` : ""}&order=created_at.asc`;
+  const rows = await supabase.query("sae_candidates", { query, networkOnly: options.networkOnly });
   return (rows || [])
     .map((r: any) => {
       const pos = r.source_position || {};
@@ -667,14 +670,46 @@ export async function listSaeCandidates(
         linkedWorkerId:
           r.existing_worker_id == null ? null : Number(r.existing_worker_id),
         pageNumber: Number(r.source_page || 1),
-        overlayX: Number(pos.x ?? 184),
-        overlayY: Number(pos.y ?? 50),
+        overlayX: Number(pos.x ?? 184) + Number(r.alignment_offset_x ?? 0),
+        overlayY: Number(pos.y ?? 50) + Number(r.alignment_offset_y ?? 0),
+        alignmentOffsetX: Number(r.alignment_offset_x ?? 0),
+        alignmentOffsetY: Number(r.alignment_offset_y ?? 0),
         confidence: r.confidence
           ? `${String(r.confidence).charAt(0).toUpperCase()}${String(r.confidence).slice(1)}`
           : "Media",
       };
     })
     .sort((a: SaeCandidate, b: SaeCandidate) => a.orderNumber - b.orderNumber);
+}
+
+export function positionSaePreviewCandidates(rows: SaeCandidate[], x: number, y: number): SaeCandidate[] {
+  return rows.map(c => ({ ...c,
+    overlayX: c.overlayX - (c.alignmentOffsetX ?? 0) + x,
+    overlayY: c.overlayY - (c.alignmentOffsetY ?? 0) + y,
+  }));
+}
+
+export async function saveSaeReportAlignment(reportId: string, x: number, y: number): Promise<SaeCandidate[]> {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Las coordenadas SAE deben ser números válidos.");
+  const ownerId = await uid();
+  // These existing numeric columns store an absolute adjustment, not repeated deltas.
+  const offsetX = Math.round(x * 100) / 100;
+  const offsetY = Math.round(y * 100) / 100;
+  const before = await listSaeCandidates(undefined, { reportId, networkOnly: true });
+  if (!before.length) throw new Error("No hay candidatos asociados al informe.");
+  // One transactional PATCH changes every row in this report and preserves source_position.
+  await supabase.query("sae_candidates", {
+    method: "PATCH", networkOnly: true, prefer: "return=minimal",
+    query: `source_report_id=eq.${encodeURIComponent(reportId)}&owner_id=eq.${encodeURIComponent(ownerId)}`,
+    body: { alignment_offset_x: offsetX, alignment_offset_y: offsetY, updated_by: ownerId },
+  });
+  const saved = await listSaeCandidates(undefined, { reportId, networkOnly: true });
+  const ids = new Set(saved.map(row => row.id));
+  if (saved.length !== before.length || before.some(row => !ids.has(row.id)) ||
+      saved.some(row => row.alignmentOffsetX !== offsetX || row.alignmentOffsetY !== offsetY)) {
+    throw new Error("No se pudo verificar la posición guardada del informe SAE. Vuelve a abrirlo para consultar su estado.");
+  }
+  return saved;
 }
 
 export async function updateSaeCandidate(
@@ -760,3 +795,4 @@ export const SAE_RESULT_CODES = [
   ["2212", "Otros motivos"],
   ["2500", "Ya estaba ocupado el puesto de trabajo"],
 ] as const;
+

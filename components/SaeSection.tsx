@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
 import {
@@ -43,6 +43,8 @@ import {
   listSaeNeeds,
   listSaeReports,
   loadSaeReportFile,
+  saveSaeReportAlignment,
+  positionSaePreviewCandidates,
   monthNumber,
   updateSaeCandidate,
   updateSaeNeed,
@@ -157,6 +159,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewOffsetX, setPreviewOffsetX] = useState(0);
   const [previewOffsetY, setPreviewOffsetY] = useState(0);
+  const [previewSaving, setPreviewSaving] = useState(false);
+  const previewRequest = useRef(0);
   const [annualPeriods, setAnnualPeriods] = useState<AnnualHiringPeriodsRecord[]>([]);
   const selectedNeed = needs.find((n) => n.id === selectedNeedId) || null;
   const selectedReport = reports.find((report) => report.id === selectedReportId) || null;
@@ -1085,10 +1089,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     offsetY = 0,
     requireComplete = true,
     archivedVersion?: SaeReportVersion,
+    candidateRows?: SaeCandidate[],
   ): Promise<Uint8Array> => {
     const rows = archivedVersion?.candidates?.length
       ? archivedVersion.candidates
-      : candidates.filter((candidate) => candidate.reportId === report.id);
+      : candidateRows ?? candidates.filter((candidate) => candidate.reportId === report.id);
     if (!rows.length)
       throw new Error("No hay candidatos asociados al informe.");
     if (requireComplete) {
@@ -1223,8 +1228,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
   };
 
-  const refreshPreview = async (report: SaeReport, x: number, y: number) => {
-    const bytes = await buildReturnPdfBytes(report, x, y, false);
+  const refreshPreview = async (report: SaeReport, x: number, y: number, rows = candidates.filter(c => c.reportId === report.id)) => {
+    const requestId = ++previewRequest.current;
+    const positioned = positionSaePreviewCandidates(rows, x, y);
+    const bytes = await buildReturnPdfBytes(report, 0, 0, false, undefined, positioned);
+    if (requestId !== previewRequest.current) return;
     const url = URL.createObjectURL(bytesToBlob(bytes));
     setPreviewUrl((p) => {
       if (p) URL.revokeObjectURL(p);
@@ -1232,17 +1240,27 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     });
   };
   const openPreview = async (report: SaeReport) => {
+    if (previewSaving) return;
     setPreviewReport(report);
-    setPreviewOffsetX(0);
-    setPreviewOffsetY(0);
+    setPreviewSaving(true);
     try {
-      await refreshPreview(report, 0, 0);
+      const rows = await listSaeCandidates(undefined, { reportId: report.id, networkOnly: true });
+      const x = rows[0]?.alignmentOffsetX ?? 0;
+      const y = rows[0]?.alignmentOffsetY ?? 0;
+      setCandidates(previous => [...previous.filter(c => c.reportId !== report.id), ...rows]);
+      setPreviewOffsetX(x);
+      setPreviewOffsetY(y);
+      await refreshPreview(report, x, y, rows);
     } catch (e: any) {
       setPreviewReport(null);
       onToast(e.message || "No se pudo abrir la vista previa.", "error");
+    } finally {
+      setPreviewSaving(false);
     }
   };
   const closePreview = () => {
+    if (previewSaving) return;
+    ++previewRequest.current;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl("");
     setPreviewReport(null);
@@ -1250,34 +1268,22 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     setPreviewOffsetY(0);
   };
   const applyPreviewOffset = async () => {
-    if (!previewReport) return;
-    const rows = candidates.filter((c) => c.reportId === previewReport.id);
+    if (!previewReport || previewSaving) return;
+    setPreviewSaving(true);
+    ++previewRequest.current;
     try {
-      await Promise.all(
-        rows.map((c) =>
-          updateSaeCandidate(c.id, {
-            overlayX: c.overlayX + previewOffsetX,
-            overlayY: c.overlayY + previewOffsetY,
-          }),
-        ),
-      );
-      setCandidates((p) =>
-        p.map((c) =>
-          c.reportId === previewReport.id
-            ? {
-                ...c,
-                overlayX: c.overlayX + previewOffsetX,
-                overlayY: c.overlayY + previewOffsetY,
-              }
-            : c,
-        ),
-      );
-      setPreviewOffsetX(0);
-      setPreviewOffsetY(0);
-      await refreshPreview(previewReport, 0, 0);
-      onToast("Posición guardada.", "success");
+      const rows = await saveSaeReportAlignment(previewReport.id, previewOffsetX, previewOffsetY);
+      setCandidates(previous => [...previous.filter(c => c.reportId !== previewReport.id), ...rows]);
+      const x = rows[0].alignmentOffsetX ?? 0;
+      const y = rows[0].alignmentOffsetY ?? 0;
+      setPreviewOffsetX(x);
+      setPreviewOffsetY(y);
+      onToast("Posición guardada y verificada.", "success");
+      await refreshPreview(previewReport, x, y, rows);
     } catch (e: any) {
       onToast(e.message || "No se pudo guardar el ajuste.", "error");
+    } finally {
+      setPreviewSaving(false);
     }
   };
 
@@ -2118,7 +2124,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   Vista previa SAE · {previewReport.fileName}
                 </div>
                 <div className="text-xs text-slate-500">
-                  X/Y desplazan todos los códigos en milímetros.
+                  X/Y ajustan todos los códigos en milímetros. La posición guardada se conserva hasta que la cambies.
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -2127,6 +2133,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   <input
                     type="number"
                     step="0.5"
+                    disabled={previewSaving}
                     value={previewOffsetX}
                     onChange={(e) => {
                       const v = Number(e.target.value) || 0;
@@ -2141,6 +2148,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   <input
                     type="number"
                     step="0.5"
+                    disabled={previewSaving}
                     value={previewOffsetY}
                     onChange={(e) => {
                       const v = Number(e.target.value) || 0;
@@ -2152,12 +2160,14 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                 </label>
                 <button
                   onClick={() => void applyPreviewOffset()}
+                  disabled={previewSaving}
                   className="px-3 py-2 rounded-lg bg-[#00548E] text-white text-xs font-bold"
                 >
-                  Guardar posición
+                  {previewSaving ? "Guardando…" : "Guardar posición"}
                 </button>
                 <button
                   onClick={closePreview}
+                  disabled={previewSaving}
                   className="px-3 py-2 rounded-lg border text-xs font-bold"
                 >
                   Cerrar
@@ -2183,3 +2193,4 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     </div>
   );
 };
+
