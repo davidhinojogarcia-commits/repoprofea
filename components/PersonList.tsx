@@ -38,10 +38,8 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> =
     [props.people, statusFilters],
   );
 
-  const { onUndo: _onUndo, onRedo: _onRedo, canUndo: _canUndo, canRedo: _canRedo, ...listProps } = props;
-
   return <div>
     {props.people.length > 0 && <DirectoryStatusFilter value={statusFilters} onChange={setStatusFilters} counts={counts} />}
-    <PersonListView {...listProps} people={visiblePeople} onDeleteMultiple={handleDeleteMultiple} />
+    <PersonListView {...props} people={visiblePeople} onDeleteMultiple={handleDeleteMultiple} />
   </div>;
 };

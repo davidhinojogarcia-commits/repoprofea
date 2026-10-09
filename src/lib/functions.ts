@@ -106,4 +106,20 @@ export const unshareRecordWithUser=async(payload:{resourceType:string;resourceId
   return deleteDataPermission(payload);
 };
 
-export const writeAuditEvent=async(payload:any)=>{const user=(await getSessionUser());if(user)await supabase.query('audit_logs',{method:'POST',prefer:'return=minimal',body:{user_id:user.id,user_email:user.email||'',action:payload.action,resource_type:payload.resourceType||'',resource_id:payload.resourceId||'',details:payload.details||{}}});return {data:{ok:true}};};
+export const writeAuditEvent=async(payload:any)=>{
+  if(payload?.action!=='LOGIN')return {data:{ok:true}};
+  const user=await getSessionUser();
+  if(user)await supabase.query('audit_logs',{
+    method:'POST',
+    prefer:'return=minimal',
+    body:{
+      user_id:user.id,
+      user_email:user.email||'',
+      action:'LOGIN',
+      resource_type:payload.resourceType||'auth',
+      resource_id:payload.resourceId||user.id,
+      details:payload.details||{},
+    },
+  });
+  return {data:{ok:true}};
+};

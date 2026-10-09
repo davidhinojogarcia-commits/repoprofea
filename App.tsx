@@ -2,12 +2,6 @@
 import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth } from './src/lib/supabaseData';
 import { getSessionUser, supabase } from './src/lib/supabase';
-import {
-  getActionHistoryState,
-  redoActionHistory,
-  subscribeActionHistory,
-  undoActionHistory,
-} from './src/lib/actionHistory';
 import { Header } from './components/Header';
 import { useAuthShell } from './components/AuthGate';
 import { GuidedHome } from './components/GuidedHome';
@@ -176,19 +170,11 @@ function App() {
     });
   }, []);
 
-  const [historyState, setHistoryState] = useState(() => getActionHistoryState());
   const peopleRef = useRef<Person[]>(people);
   useEffect(() => {
     peopleRef.current = people;
   }, [people]);
 
-  useEffect(() => subscribeActionHistory(setHistoryState), []);
-
-  const canUndo = historyState.canUndo;
-  const canRedo = historyState.canRedo;
-
-  // Conserva la actualización inmediata del Directorio, pero el historial real
-  // se registra en la capa de datos para que abarque todos los módulos.
   const setPeopleWithHistory = useCallback((
     value: Person[] | ((prev: Person[]) => Person[]),
     _recordHistory: boolean = true
@@ -199,70 +185,6 @@ function App() {
     });
   }, []);
 
-  const handleUndo = useCallback(async () => {
-    try {
-      const user = await getSessionUser();
-      if (!user) {
-        setToast({ message: 'Debes iniciar sesión para deshacer cambios.', type: 'error' });
-        return;
-      }
-      const entry = await undoActionHistory(user.id);
-      if (!entry) return;
-      window.dispatchEvent(new CustomEvent('profea:history-applied', { detail: { direction: 'undo', label: entry.label } }));
-      setToast({ message: `Deshecho: ${entry.label}`, type: 'success' });
-    } catch (error) {
-      console.error('Error deshaciendo la operación:', error);
-      setToast({ message: 'No se pudo deshacer la última operación.', type: 'error' });
-    }
-  }, []);
-
-  const handleRedo = useCallback(async () => {
-    try {
-      const user = await getSessionUser();
-      if (!user) {
-        setToast({ message: 'Debes iniciar sesión para rehacer cambios.', type: 'error' });
-        return;
-      }
-      const entry = await redoActionHistory(user.id);
-      if (!entry) return;
-      window.dispatchEvent(new CustomEvent('profea:history-applied', { detail: { direction: 'redo', label: entry.label } }));
-      setToast({ message: `Rehecho: ${entry.label}`, type: 'success' });
-    } catch (error) {
-      console.error('Error rehaciendo la operación:', error);
-      setToast({ message: 'No se pudo rehacer la última operación.', type: 'error' });
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        if (e.shiftKey) {
-          e.preventDefault();
-          handleRedo();
-        } else {
-          e.preventDefault();
-          handleUndo();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -2260,10 +2182,6 @@ function App() {
             onMenuClick={() => setIsMobileMenuOpen(true)} 
             theme={theme} 
             onThemeToggle={handleThemeToggle} 
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            canUndo={canUndo}
-            canRedo={canRedo}
             onOpenNotificationManager={() => setIsNotificationModalOpen(true)}
             alertsCount={notificationAlertsCount}
             guidedMode={interfaceMode === 'guided'}
@@ -2381,10 +2299,6 @@ function App() {
                   googleToken={googleToken}
                   onGoogleLogin={handleGoogleLogin}
                   onToast={(message, type) => setToast({ message, type })}
-                  onUndo={handleUndo}
-                  onRedo={handleRedo}
-                  canUndo={canUndo}
-                  canRedo={canRedo}
                 />
                 </Suspense>
               </div>

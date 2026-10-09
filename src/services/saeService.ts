@@ -33,6 +33,7 @@ export type SaeReport = {
   needId: string;
   fileName: string;
   fileBase64: string;
+  storagePath?: string;
   extractedText: string;
   extractionSource: string;
   offerNumber: string;
@@ -264,18 +265,19 @@ export async function createSaeNeed(input: NeedInput): Promise<SaeNeed> {
       created_by: ownerId,
     },
   });
-  for (const category of input.categorias)
+  if (input.categorias.length) {
     await supabase.query("sae_need_categories", {
       method: "POST",
       prefer: "return=minimal",
-      body: {
+      body: input.categorias.map((category) => ({
         id: uuid(),
         need_id: id,
         category: category.categoria,
         requested_count: category.cantidad,
         created_by: ownerId,
-      },
+      })),
     });
+  }
   return {
     ...input,
     id,
@@ -302,18 +304,19 @@ export async function updateSaeNeed(
     prefer: "return=minimal",
     query: `need_id=eq.${encodeURIComponent(id)}`,
   });
-  for (const category of input.categorias)
+  if (input.categorias.length) {
     await supabase.query("sae_need_categories", {
       method: "POST",
       prefer: "return=minimal",
-      body: {
+      body: input.categorias.map((category) => ({
         id: uuid(),
         need_id: id,
         category: category.categoria,
         requested_count: category.cantidad,
         created_by: ownerId,
-      },
+      })),
     });
+  }
 }
 
 export async function deleteSaeNeed(id: string): Promise<void> {
@@ -445,60 +448,72 @@ export async function updateSaeReportStatus(
 
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
   await uid();
-  const reportQuery = `select=*${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}&order=created_at.desc`;
+  const reportQuery = `select=id,need_id,file_name,storage_path,raw_text,extraction_method,processing_status,detected_legend,created_at${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}&order=created_at.desc`;
   const [rows, candidateRows] = await Promise.all([
     supabase.query("sae_reports", { query: reportQuery }),
     supabase.query("sae_candidates", {
       query: `select=source_report_id,offer_number,work_name,work_code,hiring_month,fortnight,category${needId ? `&need_id=eq.${encodeURIComponent(needId)}` : ""}`,
     }),
   ]);
-  return await Promise.all(
-    (rows || []).map(async (r: any) => {
-      const sample =
-        (candidateRows || []).find((c: any) => c.source_report_id === r.id) ||
-        {};
-      return {
-        id: r.id,
-        needId: r.need_id,
-        fileName: r.file_name || "",
-        fileBase64: await downloadSaeFile(r.storage_path || ""),
-        extractedText: r.raw_text || "",
-        extractionSource: r.extraction_method || "",
-        offerNumber: sample.offer_number || "",
-        obra: sample.work_name || "",
-        codigoObra: sample.work_code || "",
-        mes: monthLabel(Number(sample.hiring_month || 0)),
-        quincena: fortnightLabel(
-          sample.fortnight == null ? null : Number(sample.fortnight),
-        ),
-        categoria: sample.category || "",
-        status:
-          r.detected_legend?.__workflow_state === "finalized" ||
-          r.processing_status === "finalized"
-            ? "finalized"
-            : "review",
-        versions: Array.isArray(r.detected_legend?.__finalized_versions)
-          ? r.detected_legend.__finalized_versions
-              .map((version: any, index: number) => ({
-                version: Number(version?.version || index + 1),
-                finalizedAt: String(version?.finalizedAt || ""),
-                candidates: Array.isArray(version?.candidates)
-                  ? version.candidates.map((candidate: any) => ({
-                      id: String(candidate?.id || ""),
-                      orderNumber: Number(candidate?.orderNumber || 0),
-                      resultCode: String(candidate?.resultCode || ""),
-                      pageNumber: Math.max(1, Number(candidate?.pageNumber || 1)),
-                      overlayX: Number(candidate?.overlayX ?? 184),
-                      overlayY: Number(candidate?.overlayY ?? 50),
-                    }))
-                  : [],
-              }))
-              .filter((version: SaeReportVersion) => version.candidates.length > 0)
-          : [],
-        createdAt: r.created_at,
-      } as SaeReport;
-    }),
-  );
+  return (rows || []).map((r: any) => {
+    const sample =
+      (candidateRows || []).find((candidate: any) => candidate.source_report_id === r.id) ||
+      {};
+    return {
+      id: r.id,
+      needId: r.need_id,
+      fileName: r.file_name || "",
+      fileBase64: "",
+      storagePath: r.storage_path || "",
+      extractedText: r.raw_text || "",
+      extractionSource: r.extraction_method || "",
+      offerNumber: sample.offer_number || "",
+      obra: sample.work_name || "",
+      codigoObra: sample.work_code || "",
+      mes: monthLabel(Number(sample.hiring_month || 0)),
+      quincena: fortnightLabel(
+        sample.fortnight == null ? null : Number(sample.fortnight),
+      ),
+      categoria: sample.category || "",
+      status:
+        r.detected_legend?.__workflow_state === "finalized" ||
+        r.processing_status === "finalized"
+          ? "finalized"
+          : "review",
+      versions: Array.isArray(r.detected_legend?.__finalized_versions)
+        ? r.detected_legend.__finalized_versions
+            .map((version: any, index: number) => ({
+              version: Number(version?.version || index + 1),
+              finalizedAt: String(version?.finalizedAt || ""),
+              candidates: Array.isArray(version?.candidates)
+                ? version.candidates.map((candidate: any) => ({
+                    id: String(candidate?.id || ""),
+                    orderNumber: Number(candidate?.orderNumber || 0),
+                    resultCode: String(candidate?.resultCode || ""),
+                    pageNumber: Math.max(1, Number(candidate?.pageNumber || 1)),
+                    overlayX: Number(candidate?.overlayX ?? 184),
+                    overlayY: Number(candidate?.overlayY ?? 50),
+                  }))
+                : [],
+            }))
+            .filter((version: SaeReportVersion) => version.candidates.length > 0)
+        : [],
+      createdAt: r.created_at,
+    } as SaeReport;
+  });
+}
+
+export async function loadSaeReportFile(report: Pick<SaeReport, "id" | "storagePath" | "fileBase64">): Promise<string> {
+  if (report.fileBase64) return report.fileBase64;
+  let storagePath = String(report.storagePath || "");
+  if (!storagePath) {
+    const rows = await supabase.query("sae_reports", {
+      query: `select=storage_path&id=eq.${encodeURIComponent(report.id)}&limit=1`,
+    });
+    storagePath = String(rows?.[0]?.storage_path || "");
+  }
+  if (!storagePath) throw new Error("El informe SAE no tiene un archivo asociado.");
+  return downloadSaeFile(storagePath);
 }
 
 export async function createSaeReport(
@@ -549,48 +564,47 @@ export async function createSaeReport(
         updated_by: ownerId,
       },
     });
-    for (const c of candidates) {
-      const hiringMonth = monthNumber(c.mes || report.mes);
-      const fortnight = fortnightNumber(c.quincena || report.quincena);
+    if (candidates.length) {
+      const candidateRows = candidates.map((candidate) => ({
+        id: uuid(),
+        need_id: needId,
+        source_report_id: id,
+        owner_id: ownerId,
+        original_full_name: candidate.fullNameOriginal,
+        normalized_full_name: candidate.normalizedName,
+        first_name: candidate.nombre || null,
+        surnames: candidate.apellidos || null,
+        category: candidate.categoria || null,
+        offer_number: candidate.offerNumber || report.offerNumber || null,
+        work_name: candidate.obra || report.obra || null,
+        work_code: candidate.codigoObra || report.codigoObra || null,
+        hiring_month: monthNumber(candidate.mes || report.mes),
+        fortnight: fortnightNumber(candidate.quincena || report.quincena),
+        source_page: Math.max(1, Number(candidate.pageNumber || 1)),
+        source_row_text: `${candidate.orderNumber} ${candidate.fullNameOriginal}`.trim(),
+        source_position: {
+          orderNumber: candidate.orderNumber,
+          x: candidate.overlayX,
+          y: candidate.overlayY,
+        },
+        confidence: String(candidate.confidence || "Media").toLowerCase(),
+        evidence: [
+          {
+            type: "document-row",
+            page: candidate.pageNumber,
+            text: candidate.fullNameOriginal,
+          },
+        ],
+        status: "sin_asignar",
+        selected_for_hire: false,
+        result_code: null,
+        created_by: ownerId,
+        updated_by: ownerId,
+      }));
       await supabase.query("sae_candidates", {
         method: "POST",
         prefer: "return=minimal",
-        body: {
-          id: uuid(),
-          need_id: needId,
-          source_report_id: id,
-          owner_id: ownerId,
-          original_full_name: c.fullNameOriginal,
-          normalized_full_name: c.normalizedName,
-          first_name: c.nombre || null,
-          surnames: c.apellidos || null,
-          category: c.categoria || null,
-          offer_number: c.offerNumber || report.offerNumber || null,
-          work_name: c.obra || report.obra || null,
-          work_code: c.codigoObra || report.codigoObra || null,
-          hiring_month: hiringMonth,
-          fortnight,
-          source_page: Math.max(1, Number(c.pageNumber || 1)),
-          source_row_text: `${c.orderNumber} ${c.fullNameOriginal}`.trim(),
-          source_position: {
-            orderNumber: c.orderNumber,
-            x: c.overlayX,
-            y: c.overlayY,
-          },
-          confidence: String(c.confidence || "Media").toLowerCase(),
-          evidence: [
-            {
-              type: "document-row",
-              page: c.pageNumber,
-              text: c.fullNameOriginal,
-            },
-          ],
-          status: "sin_asignar",
-          selected_for_hire: false,
-          result_code: null,
-          created_by: ownerId,
-          updated_by: ownerId,
-        },
+        body: candidateRows,
       });
     }
   

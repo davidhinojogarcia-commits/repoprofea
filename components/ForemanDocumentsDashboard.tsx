@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
-import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, History, ListChecks, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, History, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { getSessionUser, supabase } from '../src/lib/supabase';
 import { ForemanDashboardLoader } from '../src/services/foremanDashboardLoader';
 import { claimMorningRefresh, FOREMAN_SCHEDULE_CHECK_MS } from '../src/services/foremanMorningRefresh';
@@ -24,7 +24,6 @@ type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; d
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
-type VersionRow = { id:string; obra:string; entity_type:string; entity_id:string; version_no:number; document_type?:string; work_date?:string; legacy_work_date?:string; created_at:string };
 
 const mandatoryDocumentLabel = (type:string) => ({
   inicio:'Inicio / incorporación',
@@ -47,8 +46,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [documents,setDocuments]=useState<DbDocument[]>([]);
   const [attendance,setAttendance]=useState<DbAttendance[]>([]);
   const [mandatory,setMandatory]=useState<DbMandatory[]>([]);
-  const [versions,setVersions]=useState<VersionRow[]>([]);
-  const [controlView,setControlView]=useState<'status'|'history'>('status');
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
@@ -104,7 +101,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setDocuments(nextDocuments);
       setAttendance(nextAttendance);
       setMandatory(nextMandatory);
-      setVersions(Array.isArray(results[3])?results[3]:[]);
       const completedIds=new Set(nextMandatory.filter((item:any)=>item.status==='completed').map((item:any)=>String(item.id)));
       if(completedBaselineRef.current===null){
         completedBaselineRef.current=completedIds;
@@ -770,13 +766,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const correctionCount=visibleMandatory.filter(i=>i.correction_pending).length+documents.filter(i=>i.correction_pending).length+attendance.filter(i=>i.correction_pending).length;
   const incompleteCount=visibleMandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
   const reviewCount=visibleMandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
-  const entityLabel=(row:VersionRow)=>{
-    const type=row.document_type;
-    if(type)return mandatoryDocumentLabel(String(type));
-    if(row.entity_type==='foreman_attendance_days')return 'Registro diario de jornada';
-    if(row.entity_type==='foreman_portal_access')return 'Acceso del encargado';
-    return 'Documento de obra';
-  };
   return <div className="space-y-5">
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
@@ -818,11 +807,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         {([['Inicio / Control',visibleMandatory.length],['Documentos normalizados',documents.length],['Jornadas',attendance.length],['Firmas E/S',signedEntries+signedExits]] as [string,number][]).map(([label,value])=><div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4"><div className="text-2xl font-black">{value}</div><div className="text-[11px] font-bold text-slate-500">{label}</div></div>)}
       </div>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      <button onClick={()=>setControlView('status')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='status'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><ListChecks className="w-4 h-4"/>Estado actual</button>
-      <button onClick={()=>setControlView('history')} className={`rounded-2xl border px-4 py-3 text-sm font-black flex items-center justify-center gap-2 ${controlView==='history'?'bg-[#00548E] text-white':'bg-white dark:bg-slate-900'}`}><History className="w-4 h-4"/>Historial / versiones ({versions.length})</button>
-    </div>
-
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div className={`rounded-2xl border p-4 ${correctionCount?'border-amber-300 bg-amber-50 dark:bg-amber-950/20':'bg-white dark:bg-slate-900'}`}>
         <div className="flex items-center gap-2"><RotateCcw className="w-4 h-4 text-amber-600"/><span className="text-xs font-black uppercase">Correcciones</span></div>
@@ -838,7 +822,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div>
 
-    {controlView==='status'&&<>
     <div className="lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 lg:items-start">
       <aside className="hidden lg:block rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-fit sticky top-5">
         <div className="flex items-center justify-between mb-3">
@@ -928,7 +911,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     </article>)}</div>}
       </div>
     </div>
-    </>}
 
     {traceabilityModal&&<MandatoryTraceabilityModal title={traceabilityModal.title} data={traceabilityModal.data} onClose={()=>setTraceabilityModal(null)}/>}
     {worksiteReview&&<MandatoryWorksiteReviewModal documentLabel={mandatoryDocumentLabel(worksiteReview.item.document_type)} filename={String(worksiteReview.item.source_attachment_name||'')} works={worksiteReview.works} busy={mailBusy} onCancel={()=>setWorksiteReview(null)} onConfirm={async obra=>{setMailBusy(true);try{const result:any=await confirmMandatoryWorksiteV2(worksiteReview.item.id,obra);if(result?.lifecycleStatus==='READY')await assignMandatoryDocumentV2(worksiteReview.item.id);setWorksiteReview(null);setMailMessage(result?.lifecycleStatus==='READY'?'Obra asignada. Documento preparado automáticamente para el encargado.':'Obra asignada. Revisa las personas o posiciones pendientes.');await refresh(true);}catch(error:any){setMailMessage(error?.message||'No se pudo asignar la obra.');}finally{setMailBusy(false);}}}/>}
@@ -1044,20 +1026,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         </div>
       </div>
     </div></ModalPortal>}
-
-    {controlView==='history'&&<div className="space-y-2">
-      {!versions.length&&<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-500">Todavía no hay versiones finalizadas guardadas.</div>}
-      {versions.map(version=><div key={version.id} className="rounded-2xl bg-white dark:bg-slate-900 border p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2"><History className="w-4 h-4 text-[#00548E]"/><span className="font-black">{entityLabel(version)}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black">Versión {version.version_no}</span></div>
-            <div className="mt-1 text-xs text-slate-500">{version.obra} · {String(version.work_date||version.legacy_work_date||'').slice(0,10)}</div>
-            <div className="mt-1 text-xs font-semibold text-slate-600">Copia inalterable del estado en el momento de finalizar.</div>
-          </div>
-          <time className="text-xs font-bold text-slate-500">{new Date(version.created_at).toLocaleString('es-ES')}</time>
-        </div>
-      </div>)}
-    </div>}
 
     {editingMandatory&&<ModalPortal label="Editar documento obligatorio"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-2xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">

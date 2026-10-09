@@ -274,40 +274,47 @@ async function syncSubcontrataChecklist(
   });
   const nextIds = new Set<string>();
 
-  for (let index = 0; index < checklist.length; index += 1) {
-    const item = checklist[index] || {};
+  const upsertRows = checklist.map((rawItem, index) => {
+    const item = rawItem || {};
     const sourceId = String(item.id || `item_${index + 1}`);
     const itemId = `${subcontrataId}:${sourceId}`;
     nextIds.add(itemId);
+    return {
+      id: itemId,
+      subcontrata_id: subcontrataId,
+      categoria: item.categoria || "empresa",
+      nombre: item.nombre || "",
+      descripcion: item.descripcion || "",
+      normativa: item.normativa || "",
+      obligatorio: item.obligatorio !== false,
+      estado: item.estado || "pendiente",
+      fecha_entrega: dateOrNull(item.fechaEntrega),
+      fecha_caducidad: dateOrNull(item.fechaCaducidad),
+      observaciones: item.observaciones || "",
+      documento_nombre: item.documentoNombre || "",
+      data: clean(item),
+    };
+  });
+
+  if (upsertRows.length) {
     await supabase.query("subcontrata_documentos", {
       method: "POST",
       prefer: "resolution=merge-duplicates,return=minimal",
-      body: {
-        id: itemId,
-        subcontrata_id: subcontrataId,
-        categoria: item.categoria || "empresa",
-        nombre: item.nombre || "",
-        descripcion: item.descripcion || "",
-        normativa: item.normativa || "",
-        obligatorio: item.obligatorio !== false,
-        estado: item.estado || "pendiente",
-        fecha_entrega: dateOrNull(item.fechaEntrega),
-        fecha_caducidad: dateOrNull(item.fechaCaducidad),
-        observaciones: item.observaciones || "",
-        documento_nombre: item.documentoNombre || "",
-        data: clean(item),
-      },
+      body: upsertRows,
     });
   }
 
-  for (const row of existing || []) {
-    if (!nextIds.has(String(row.id))) {
-      await supabase.query("subcontrata_documentos", {
-        method: "DELETE",
-        prefer: "return=minimal",
-        query: `id=eq.${encodeURIComponent(String(row.id))}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
-      });
-    }
+  const deletedIds = (existing || [])
+    .map((row: any) => String(row.id))
+    .filter((id: string) => !nextIds.has(id));
+
+  if (deletedIds.length) {
+    const values = deletedIds.map((id: string) => JSON.stringify(id)).join(",");
+    await supabase.query("subcontrata_documentos", {
+      method: "DELETE",
+      prefer: "return=minimal",
+      query: `id=in.${encodeURIComponent(`(${values})`)}&subcontrata_id=eq.${encodeURIComponent(subcontrataId)}`,
+    });
   }
 }
 
@@ -539,7 +546,7 @@ export function subscribeToDocuments<T = DatabaseRecord>(
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
       void run(true);
-    }, table === "trabajadores" ? 280 : 120);
+    }, table === "trabajadores" ? 1_000 : 600);
   };
 
   const handleResume = () => {
