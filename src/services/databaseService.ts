@@ -546,7 +546,7 @@ export function subscribeToDocuments<T = DatabaseRecord>(
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
       void run(true);
-    }, table === "trabajadores" ? 280 : 120);
+    }, table === "trabajadores" ? 1_000 : 600);
   };
 
   const handleResume = () => {
