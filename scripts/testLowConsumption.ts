@@ -14,29 +14,26 @@ const query=async(table:string,{query}:{query:string})=>{
 };
 const loader=new ForemanDashboardLoader(query,'owner-A');
 const first=await loader.load();
-assert.equal(calls.length,4);
+assert.equal(calls.length,3);
 assert(calls.every(c=>c.query.includes('owner_id=eq.owner-A')));
 assert(!calls.some(c=>c.table==='foreman_activity_log'),'activity is never queried');
-const versionQuery=calls.find(c=>c.table==='foreman_document_versions')!.query;
-assert(!versionQuery.includes('select=*'));
-assert(versionQuery.includes('document_type:snapshot->>document_type'));
-assert(versionQuery.includes('legacy_work_date:snapshot->>workDate'));
+assert(!calls.some(c=>c.table==='foreman_document_versions'),'obsolete document version collection is never queried');
 calls.length=0;
 const unchanged=await loader.load(true);
-assert.equal(calls.length,4);
+assert.equal(calls.length,3);
 assert(calls.every(c=>c.query.startsWith('select=id,')));
 assert.equal(unchanged[0],first[0]);
 calls.length=0;
 records.foreman_mandatory_documents=[{id:'new',updated_at:'2',signatures:{worker:'data:image/png;base64,new'}}];
 const changed=await loader.load(true);
-assert.equal(calls.length,5,'one changed collection, only one payload reload');
+assert.equal(calls.length,4,'one changed collection, only one payload reload');
 assert.equal(changed[2][0].signatures.worker,'data:image/png;base64,new');
 assert.equal(changed[0],first[0]);
 records.foreman_mandatory_documents=[];
 assert.equal((await loader.load(true))[2].length,0,'external deletions removed from cache');
 calls.length=0;
 await loader.load(false);
-assert.equal(calls.length,4,'manual/after-save refresh bypasses revisions');
+assert.equal(calls.length,3,'manual/after-save refresh bypasses revisions');
 
 let deltaRows=Array.from({length:200},(_,i)=>({id:String(i),updated_at:'1',signatures:{worker:`signature-${i}`}}));
 const deltaCalls:{table:string;query:string;count:number}[]=[];
@@ -66,7 +63,7 @@ assert(!deltaCalls.some(call=>call.query.includes('&id=in.')),'deletion requires
 let fail=true;
 const recovery=new ForemanDashboardLoader(async()=>{if(fail)throw new Error('network');return [];},'owner-B');
 await assert.rejects(recovery.load());fail=false;
-assert.equal((await recovery.load()).length,4,'transient failure remains recoverable');
+assert.equal((await recovery.load()).length,3,'transient failure remains recoverable');
 let attempts=0;
 const blocked=new ForemanDashboardLoader(async()=>{attempts++;throw Object.assign(new Error('restricted'),{status:402});},'owner-B');
 await assert.rejects(blocked.load());const before=attempts;
@@ -100,8 +97,8 @@ const readHeld=new Promise<void>(resolve=>{finishRead=resolve;});let revisionRea
 const concurrent=new ForemanDashboardLoader(async()=>{revisionReads++;await readHeld;return [];},'owner');
 const background=concurrent.load(true);
 const afterSave=concurrent.load(false);
-assert.equal(revisionReads,4);finishRead();await Promise.all([background,afterSave]);
-assert.equal(revisionReads,8,'post-save refresh runs after the pending read, never lost');
+assert.equal(revisionReads,3);finishRead();await Promise.all([background,afterSave]);
+assert.equal(revisionReads,6,'post-save refresh runs after the pending read, never lost');
 console.log('Low-consumption regressions passed: revision checks, changes, deletion, signature preservation, isolation, deduplication and quota stop.');
 
 // Madrid windows follow daylight-saving time and survive screen remounts.
@@ -121,3 +118,4 @@ assert(claimMorningRefresh('other','documents',new Date('2026-10-08T06:00:00Z'))
 assert(claimMorningRefresh('owner','mail',new Date('2026-10-08T06:00:00Z')));
 assert(claimMorningRefresh('owner','documents',new Date('2026-10-09T06:00:00Z')));
 console.log('Morning schedule passed: three windows, Madrid DST, per-owner and channel limits, next-day reset.');
+

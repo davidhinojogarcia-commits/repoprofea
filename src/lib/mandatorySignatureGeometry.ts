@@ -99,9 +99,9 @@ export const validateMandatorySignaturePlacement=(anchors:SignatureAnchorGeometr
       issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'UNRESOLVED',message:'No se ha localizado con seguridad el nombre del trabajador en el PDF original.'});
       continue;
     }
-    if(!page)continue;
+    if(!page){issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'OUT_OF_PAGE',message:'La página de esta firma no existe en el PDF original.'});continue;}
     const sig={x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)};
-    if(sig.x<0||sig.y<0||sig.x+sig.width>page.width||sig.y+sig.height>page.height){
+    if(![sig.x,sig.y,sig.width,sig.height].every(Number.isFinite)||sig.width<=0||sig.height<=0||sig.x<0||sig.y<0||sig.x+sig.width>page.width||sig.y+sig.height>page.height){
       issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'OUT_OF_PAGE',message:'La firma quedaría fuera de los límites de la página.'});
     }
 
@@ -145,7 +145,12 @@ export const validateMandatorySignaturePlacement=(anchors:SignatureAnchorGeometr
         height:Number(other.nameHeight||other.rowHeight||10),
       };
       const otherDistance=distanceBetweenBoxes(sig,otherName);
-      if(otherDistance+1<ownDistance){
+      // A fixed signature column can be horizontally closer to a longer surname.
+      // Association is determined by its row, not by the length of adjacent names.
+      const sigCenter=sig.y+sig.height/2;
+      const ownRowDistance=Math.abs(sigCenter-(ownName.y+ownName.height/2));
+      const otherRowDistance=Math.abs(sigCenter-(otherName.y+otherName.height/2));
+      if(otherDistance+1<ownDistance&&otherRowDistance+1<ownRowDistance){
         issues.push({workerId:anchor.workerId,workerName:anchor.workerName,code:'CLOSER_TO_OTHER_WORKER',message:`La firma quedaría visualmente más cerca de ${other.workerName} que de su propio nombre.`});
         break;
       }
@@ -246,3 +251,38 @@ export const fitSignatureInsideBox=(input:{
   }
   return {width,height};
 };
+
+
+// Suggest only changes contained in the worker's existing row and signature column.
+// Uncertain names and layouts remain available for manual correction.
+export function suggestSafeMandatorySignaturePositions<T extends SignatureAnchorGeometry>(anchors:T[], pages:SignaturePageGeometry[]):T[] {
+  const result=anchors.map(anchor=>({...anchor}));
+  const issues=validateMandatorySignaturePlacement(result,pages).issues;
+  for(const id of new Set(issues.map(issue=>issue.workerId))) {
+    const index=result.findIndex(anchor=>anchor.workerId===id);
+    const own=result[index];const page=pages.find(page=>page.page===own.page);
+    if(!page||own.nameX==null||own.nameY==null||!Number(own.nameHeight||own.rowHeight)||!own.resolved)continue;
+    const center=Number(own.nameY)+Number(own.nameHeight||own.rowHeight)/2;
+    const peers=result.filter(peer=>peer.workerId!==id&&peer.page===own.page&&peer.nameY!=null);
+    const centers=peers.map(peer=>Number(peer.nameY)+Number(peer.nameHeight||peer.rowHeight||10)/2);
+    // Midpoints delimit the same worker's row; never cross them.
+    const below=centers.filter(y=>y<center).sort((a,b)=>b-a)[0];
+    const above=centers.filter(y=>y>center).sort((a,b)=>a-b)[0];
+    const bottom=below==null?Math.max(2,center-Number(own.rowHeight||18)):((below+center)/2)+2;
+    const top=above==null?Math.min(page.height-2,center+Number(own.rowHeight||18)):((above+center)/2)-2;
+    const height=Math.min(Number(own.signatureHeight||16),2*Math.min(center-bottom,top-center));
+    const nameRight=Number(own.nameX)+Number(own.nameWidth||Math.max(1,Number(own.nameRightX||own.nameX)-Number(own.nameX)));
+    const x=Math.max(Number(own.signatureX??(nameRight+6)),nameRight+6);
+    const width=Math.min(Number(own.signatureWidth||72),page.width-x-4);
+    if(height<8||width<28)continue;
+    result[index]={...own,signatureX:x,signatureY:center-height/2,signatureWidth:width,signatureHeight:height};
+  }
+  // Never apply a suggestion that creates or leaves an unsafe placement for that worker.
+  for(let pass=0;pass<result.length;pass+=1){
+    const invalid=new Set(validateMandatorySignaturePlacement(result,pages).issues.map(issue=>issue.workerId));
+    let reverted=false;
+    result.forEach((anchor,index)=>{if(invalid.has(anchor.workerId)&&JSON.stringify(anchor)!==JSON.stringify(anchors[index])){result[index]={...anchors[index]};reverted=true;}});
+    if(!reverted)break;
+  }
+  return result;
+}

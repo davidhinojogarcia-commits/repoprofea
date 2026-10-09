@@ -1,40 +1,16 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.19.0';
-export const APP_RELEASE_DATE = '03/10/2026';
+export const APP_VERSION = '1.20.0';
+export const APP_RELEASE_DATE = '09/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
-  'Trazabilidad V2 para Inicio y Control de presencia: identidad documental estable, revisión de falsos positivos y posiciones congeladas.',
-  'El PDF firmado se guarda y envía de forma atómica; el supervisor descarga exactamente los mismos bytes y nunca reconstruye el documento.',
-  'Los reenvíos tras corrección quedan versionados con SHA-256 y el historial completo permanece disponible.',
-  'Inicio y Control de presencia: cada PDF importado se clasifica por la obra escrita en el propio documento.',
-  'La obra seleccionada en pantalla ya no fuerza la clasificación de varios archivos; si no se identifica con seguridad, el documento no se importa en una obra incorrecta.',
-  'Documentación de encargados: la descarga de Inicio/Control comprueba que el archivo recuperado sea realmente el PDF firmado.',
-  'Control de presencia: los nombres y apellidos se leen directamente del PDF importado, sin depender del Directorio de trabajadores.',
-  'Se refuerza la lectura de formatos APELLIDOS, NOMBRE con comas, espacios amplios, numeración de fila y saltos de línea.',
-  'Revisión global de capas: modales de la app y del portal de encargados se mantienen siempre por delante del contenido.',
-  'Confirmaciones del escáner y checklist pasan al sistema global de diálogos de la aplicación.',
-  'El código QR de acceso del encargado queda centrado en la pantalla del móvil y mantiene un tamaño cómodo para escanear.',
-  'Se refuerza globalmente la jerarquía de ventanas: cada modal nuevo queda siempre por encima del anterior, tanto en la app como en el portal de encargados.',
-  'Todos los overlays a pantalla completa quedan auditados para salir del stacking context local mediante la capa global de modales.',
-  'Los diálogos de la aplicación mantienen una capa superior reservada y el fondo queda bloqueado mientras haya una ventana abierta.',
-  'Auditoría global de modales y overlays en toda la app y en el portal de encargados.',
-  'Los modales de edición, PDF, QR, escáner, informes, configuración, SAE, CAE, papelera e inventario se renderizan en una capa global sobre document.body.',
-  'Se añade una regresión automática que impide introducir nuevos overlays de pantalla completa fuera del sistema global de modales.',
-  'El envío de Inicio/Control acepta posiciones de firma confirmadas manualmente por el supervisor aunque el PDF escaneado no permita recuperar la geometría del nombre.',
-  'Los errores de envío se muestran en la propia pantalla y ya no abren una ventana modal bloqueante.',
-  'Revisión de contraste diurno/nocturno en Documentación de encargados, portal móvil y Ajustar firmas.',
-  'Avisos, estados, buscadores, tarjetas y botones secundarios reciben variantes oscuras legibles.',
-  'Modales y editores de Documentación de encargados pasan a una capa global sobre document.body.',
-  'Ajustar firmas permite eliminar directamente trabajadores falsamente detectados, sin confirmación.',
-  'Se refuerza la detección para descartar calles, obras, localidades y textos institucionales como si fueran trabajadores.',
-  'Se eliminan diálogos nativos del navegador en los flujos de encargado y supervisor afectados.',
-  'Botón Trabajadores visible en Documentación de encargados para gestionar detecciones erróneas desde supervisor.',
-  'Eliminación de trabajadores detectados erróneamente en Inicio y Control de presencia.',
-  'Envío al supervisor permitido aunque falten firmas, identificado claramente como incompleto.',
-  'Conservación del PDF original y de las firmas válidas durante el flujo.',
-  'Mejoras en descarga de PDF firmados y firmas transparentes.',
+  'Documentos de encargados: los originales importados quedan en borrador hasta que el supervisor pulse Enviar al portal de encargados.',
+  'Botón Ver trazabilidad retirado de Documentación de encargados.',
+  'Revocar firma y volver a firmar permite repetir únicamente la firma seleccionada antes del envío al supervisor.',
+  'Retirar del portal para corregir permite revisar trabajadores y posiciones sin perder las firmas que conservan su identidad.',
+  'Ajuste automático propuesto dentro de la fila de cada trabajador, con validación de límites, nombres y solapamientos antes de guardar y enviar.',
+  'Las firmas mantienen sus proporciones dentro del espacio reservado. El envío requiere todas las firmas obligatorias.',
 ] as const;
