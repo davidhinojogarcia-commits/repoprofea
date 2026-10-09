@@ -46,6 +46,7 @@ try {
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009200007_atomic_mandatory_draft_positions.sql',import.meta.url),'utf8'));
  // Running the migration again must not change documents or add events.
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009201210_allow_mandatory_signature_overlap.sql',import.meta.url),'utf8'));
  await query("insert into foreman_portal_access(owner_id,obra,foreman_name,token_hash,active) values($1,'Obra A','Encargado',encode(extensions.digest($2,'sha256'),'hex'),true)",[owner,token]);
  await query("insert into foreman_mandatory_documents(id,owner_id,obra,status,lifecycle_status) values($1,$2,'Obra A','pending','READY')",[doc,owner]);
  await query("insert into foreman_mandatory_pdf_files(document_id,owner_id,original_pdf,original_sha256,page_meta) values($1,$2,convert_to('original','UTF8'),encode(extensions.digest('original','sha256'),'hex'),$3)",[doc,owner,[{page:1,width:595,height:842}]]);
@@ -64,11 +65,13 @@ try {
  assert.ok(savedDraft.details.draftSaveHash,'overlapping draft persists');
  const draftRetry=await rpc('save_mandatory_positions_draft_v2',[doc,conflicting,revision]);
  assert.equal(draftRetry.updated_at,savedDraft.updated_at,'same payload retry is idempotent');
- await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/colision|solap|firma/i,'publication still blocks overlaps');
+ await db.exec('reset role');await rpc('mandatory_v2_validate_signature_geometry',[doc]);await asUser(owner);
  await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520)],'2000-01-01T00:00:00Z']),/Otro cambio/,'stale editor cannot overwrite');
  const before=await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]);
  await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520),draftWorker(id(999),2,470)],savedDraft.updated_at]),/identidad documental/);
  assert.deepEqual(await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]),before,'late failure rolls back earlier changes');
+ await rpc('assign_mandatory_document_v2',[doc]);await rpc('withdraw_mandatory_document_v2',[doc]);
+ savedDraft.updated_at=(await query('select updated_at from foreman_mandatory_documents where id=$1',[doc]))[0].updated_at;
  const pending={...draftWorker(id(13),3,440),create:true,resolved:false,signatureBox:null};
  const pendingSaved=await rpc('save_mandatory_positions_draft_v2',[doc,[pending],savedDraft.updated_at]);
  assert.equal((await query('select position_status from mandatory_document_workers_v2 where id=$1',[id(13)]))[0].position_status,'PENDING','new worker can be saved before positioning');
@@ -101,9 +104,9 @@ try {
  await asUser(owner);
  await rpc('update_mandatory_document_worker_geometry_v2',[doc,w2,{x:60,y:472,width:260,height:10},box(472),1,2]);
  await assert.rejects(rpc('update_mandatory_document_worker_geometry_v2',[doc,w2,{x:60,y:472,width:260,height:10},box(472),2,2]),/Revoca su firma/);
- // Published geometry must fail atomically when boxes overlap.
+ // A signature on another worker's row still fails even when overlap is allowed.
  await rpc('update_mandatory_document_worker_geometry_v2',[doc,w1,{x:60,y:502,width:120,height:10},box(472),1,1]);
- await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/solapa/);
+ await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/más cercana/);
  await db.exec('reset role');assert.equal((await query('select lifecycle_status from foreman_mandatory_documents'))[0].lifecycle_status,'READY');
  await asUser(owner);await rpc('update_mandatory_document_worker_geometry_v2',[doc,w1,{x:60,y:502,width:120,height:10},box(500),1,1]);
  await rpc('assign_mandatory_document_v2',[doc]);

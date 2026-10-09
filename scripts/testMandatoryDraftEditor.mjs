@@ -21,7 +21,7 @@ try{
  const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
  const mount=async anchors=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(React.createElement(MandatoryPdfAnchorEditor,{documentId:'doc',title:'Control',obra:'A',documentType:'control_presencia',anchors,onCancel(){},onSave(a){saved=structuredClone(a);},async onRemoveWorker(id){if(rejectRemoval)throw Error('No se pudo eliminar');removed.push(id);}})));};
  await mount(workers);
- assert(document.body.textContent.includes('Revisar esta firma antes de enviar'));
+ assert(document.body.textContent.includes('Avisos de esta firma'));
  assert(!button('Guardar borrador').disabled,'overlap must not disable saving');
  await action(()=>button('Guardar borrador').click());assert.equal(saved.length,2,'conflicting positions remain saved for correction');
  await action(()=>button('Eliminar trabajador del documento').click());assert.deepEqual(removed,[1]);

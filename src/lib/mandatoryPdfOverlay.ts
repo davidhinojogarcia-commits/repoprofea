@@ -6,7 +6,7 @@ import {
   fitSignatureInsideBox,
   mandatoryNameTokenMatch,
   scoreMandatoryWorkerNameText,
-  validateMandatorySignaturePlacement,
+  blockingMandatorySignatureIssues, validateMandatorySignaturePlacement,
   type MandatorySignaturePlacementIssue,
 } from './mandatorySignatureGeometry';
 
@@ -407,7 +407,7 @@ export async function analyzeMandatoryOriginalPdf(
   const placement=validateMandatorySignaturePlacement(preliminary,pages);
   if(!placement.ok){
     const byWorker=new Map<number,MandatorySignaturePlacementIssue[]>();
-    for(const issue of placement.issues){
+    for(const issue of blockingMandatorySignatureIssues(placement.issues)){
       if(!byWorker.has(issue.workerId))byWorker.set(issue.workerId,[]);
       byWorker.get(issue.workerId)!.push(issue);
     }
@@ -702,7 +702,7 @@ export async function resolveMandatoryAnchorsWithOcrRows(
   }
 
   const validation=validateMandatorySignaturePlacement(merged,analysis.pages);
-  const invalidIds=new Set(validation.issues.map(issue=>Number(issue.workerId)));
+  const invalidIds=new Set(blockingMandatorySignatureIssues(validation.issues).map(issue=>Number(issue.workerId)));
   for(const anchor of merged){
     if(!invalidIds.has(Number(anchor.workerId)))continue;
     anchor.resolved=false;
@@ -806,8 +806,8 @@ export async function buildSignedMandatoryPdf(input: {
     }),
   );
   if(!placement.ok){
-    const first=placement.issues[0];
-    throw new Error(first?.message||'La colocación de una firma no supera la validación geométrica.');
+    const first=blockingMandatorySignatureIssues(placement.issues)[0];
+    if(first)throw new Error(first?.message||'La colocación de una firma no supera la validación geométrica.');
   }
 
   for (const [anchorIndex,anchor] of input.anchors.entries()) {

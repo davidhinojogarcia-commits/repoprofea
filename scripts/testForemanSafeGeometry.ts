@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {suggestSafeMandatorySignaturePositions,validateMandatorySignaturePlacement,fitSignatureInsideBox} from '../src/lib/mandatorySignatureGeometry';
+import {suggestSafeMandatorySignaturePositions,validateMandatorySignaturePlacement,fitSignatureInsideBox,blockingMandatorySignatureIssues} from '../src/lib/mandatorySignatureGeometry';
 const pages=[{page:1,width:595,height:842}];
 const anchor=(id:number,y:number,nameWidth:number)=>({workerId:id,workerName:'Persona '+id,page:1,resolved:true,nameX:60,nameY:y,nameWidth,nameHeight:10,rowHeight:20,signatureX:350,signatureY:y-2,signatureWidth:70,signatureHeight:14});
 const correct=[anchor(1,500,100),anchor(2,470,270)];
@@ -16,3 +16,10 @@ assert.equal(validateMandatorySignaturePlacement([{...correct[0],page:2}],pages)
 assert.equal(validateMandatorySignaturePlacement([{...correct[0],signatureWidth:NaN}],pages).ok,false,'nonfinite coordinates must fail');
 const dimensions=fitSignatureInsideBox({imageWidth:300,imageHeight:100,boxWidth:70,boxHeight:14});assert.equal(dimensions.width/dimensions.height,3);assert(dimensions.height<=14&&dimensions.width<=70);
 console.log('PASS: false nearest-name regression, safe same-row corrections, uncertainty, bounds, invalid numbers and aspect ratio.');
+
+const overlapping=[anchor(1,500,100),anchor(2,500,100)];
+const overlapIssues=validateMandatorySignaturePlacement(overlapping,pages).issues;
+assert(overlapIssues.some(issue=>issue.code==='OVERLAP_SIGNATURE'));
+assert.equal(blockingMandatorySignatureIssues(overlapIssues).length,0,'signature overlap is advisory');
+assert(blockingMandatorySignatureIssues(validateMandatorySignaturePlacement([{...overlapping[0],signatureX:580}],pages).issues).length,'bounds still block');
+console.log('PASS: signature-to-signature overlap is advisory; out-of-page positions still block.');

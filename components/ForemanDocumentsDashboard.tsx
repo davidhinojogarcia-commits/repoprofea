@@ -1,3 +1,4 @@
+import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, Send, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
@@ -675,6 +676,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     if(editBusy)return;
     setEditBusy(true);
     try {
+      const current=await loadCurrentMandatoryDocument(item);
+      const anchors=Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[];
+      if(hasOverlappingMandatorySignatures(anchors)&&!await appConfirm('Algunas firmas se solapan porque las filas del original están muy juntas. El PDF original se conservará. ¿Quieres enviar el documento con estas posiciones?',{title:'Confirmar firmas solapadas',confirmLabel:'Enviar con solapamiento'}))return;
       await assignMandatoryDocumentV2(item.id);
       setMailMessage('Documento enviado al portal de encargados. Ya pueden recoger las firmas.');
       await refresh(true);

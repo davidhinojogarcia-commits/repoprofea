@@ -1,5 +1,5 @@
 {
-  "name": "sistema-contrataci\u00f3n-profea_dhg",
+  "name": "sistema-contratación-profea_dhg",
   "private": true,
   "version": "1.20.1",
   "type": "module",
@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
-    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs",
+    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs",
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
     "test:relation-ordering": "tsx scripts/testRelationExportOrdering.ts",
     "test:mandatory-worker-detection": "tsx scripts/testMandatoryWorkerDetection.ts",
@@ -57,10 +57,9 @@
     "@vitejs/plugin-react": "^5.0.0",
     "esbuild": "^0.28.1",
     "jsdom": "26.1.0",
+    "pdf-lib": "1.17.1",
     "tsx": "^4.22.4",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
 }
-
-
