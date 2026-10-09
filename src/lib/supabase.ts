@@ -321,18 +321,23 @@ async function prepareRestHistory(
   query: string,
   body: any,
   prefer: string,
+  knownBeforeRows?: any[],
 ): Promise<RestHistoryContext | null> {
   const upper = method.toUpperCase();
   if (isReplayingActionHistory() || !['POST', 'PATCH', 'DELETE'].includes(upper)) return null;
   const user = await getSessionUser();
   if (!user) return null;
 
-  let beforeRows: any[] = [];
-  if (upper === 'PATCH' || upper === 'DELETE') {
-    beforeRows = await readHistoryRows(table, query);
-  } else {
-    const rows = Array.isArray(body) ? body : body && typeof body === 'object' ? [body] : [];
-    beforeRows = await readRowsByIds(table, rows.map((row: any) => row?.id));
+  let beforeRows: any[] = Array.isArray(knownBeforeRows)
+    ? cloneHistoryValue(knownBeforeRows)
+    : [];
+  if (!Array.isArray(knownBeforeRows)) {
+    if (upper === 'PATCH' || upper === 'DELETE') {
+      beforeRows = await readHistoryRows(table, query);
+    } else {
+      const rows = Array.isArray(body) ? body : body && typeof body === 'object' ? [body] : [];
+      beforeRows = await readRowsByIds(table, rows.map((row: any) => row?.id));
+    }
   }
 
   return {
@@ -758,7 +763,7 @@ export const supabase = {
   removeChannel(channel: ReturnType<typeof client.channel>) {
     return client.removeChannel(channel);
   },
-  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean } = {}) {
+  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean; historyBeforeRows?: any[] } = {}) {
     const headers: Record<string, string> = {};
     if (options.prefer) headers.Prefer = options.prefer;
     const method = options.method || 'GET';
@@ -772,6 +777,7 @@ export const supabase = {
           options.query || '',
           options.body,
           options.prefer || 'return=minimal',
+          options.historyBeforeRows,
         );
       } catch (error) {
         console.warn('No se pudo preparar el historial reversible de la operación:', error);
