@@ -29,7 +29,8 @@
     "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs",
     "test:admin-audit": "node scripts/testAdminAuditUi.mjs",
     "test:consumption-cache": "node scripts/testConsumptionCache.mjs",
-    "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs"
+    "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs",
+    "test:tutor-agent": "tsx scripts/testProfeaTutorAgent.ts"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
