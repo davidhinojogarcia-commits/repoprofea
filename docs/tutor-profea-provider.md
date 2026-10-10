@@ -1,6 +1,6 @@
 # Tutor PROFEA — agente local
 
-Revisión: 10 de octubre de 2026.
+Revisión: 10 de octubre de 2026. Agente 2026.10.10.2.
 
 ## Arquitectura
 
@@ -22,7 +22,7 @@ Las funciones de análisis documental que ya existan en otros módulos de Gestio
 
 ## Consumo
 
-El agente no realiza polling. Solo consulta Supabase cuando una orden requiere una herramienta de datos. Las respuestas de ayuda que no necesitan datos se resuelven localmente sin llamadas a Supabase.
+El agente no realiza polling. Solo consulta Supabase cuando una orden requiere una herramienta de datos. Cada petición valida sesión y perfil activo en Supabase. La ayuda se compone localmente; solo las órdenes de datos añaden consultas o RPCs. No hay consultas periódicas.
 
 ## Funcionamiento degradado
 
@@ -31,3 +31,4 @@ Si una consulta de datos falla, el Tutor no simula el resultado. Informa del err
 ## Privacidad
 
 Las consultas de herramientas minimizan los campos recuperados y evitan enviar o mostrar DNI, IBAN, NUSS o información médica detallada cuando no es necesaria.
+

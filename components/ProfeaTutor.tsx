@@ -8,6 +8,7 @@ import {
   type ProfeaTutorView,
 } from '../src/lib/profeaTutorKnowledge';
 import { supabase } from '../src/lib/supabase';
+import { PREVENTION_CATEGORIES, preventionToday } from '../src/lib/prevention';
 
 type TutorMessage = {
   id: string;
@@ -20,6 +21,8 @@ type TutorMessage = {
   checkQuestion?: string;
   checkOptions?: string[];
   verified?: boolean;
+  incidentForm?: boolean;
+  incidentDefaults?: Record<string, string>;
   toolSummaries?: string[];
   pendingConfirmation?: {
     token: string;
@@ -99,6 +102,18 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       return EMPTY_TASK;
     }
   });
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user?.id || '';
+      const previous = sessionStorage.getItem('profea:tutor:user');
+      if (previous !== userId) {
+        sessionStorage.removeItem(TUTOR_SESSION_KEY);
+        setMessages([]); setTaskState(EMPTY_TASK);
+      }
+      sessionStorage.setItem('profea:tutor:user', userId);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -172,7 +187,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
-      if (!accessToken) throw new Error('Sesión no disponible');
+      if (!accessToken) throw Object.assign(new Error('Tu sesión no está disponible. Vuelve a iniciar sesión antes de ejecutar operaciones.'), { sessionError: true });
       const requestId = makeId();
       const response = await fetch('/api/profea-tutor', {
         method: 'POST',
@@ -204,9 +219,14 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         }),
       });
 
-      if (!response.ok) throw new Error('Tutor no disponible');
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        throw Object.assign(new Error(failure.error || 'El Tutor no pudo completar la operación. Comprueba el estado del módulo antes de repetirla.'), { sessionError: response.status === 401 || response.status === 403 });
+      }
 
       const data = await response.json();
+      if (confirmationToken) setMessages(current => current.map(item => ({ ...item, pendingConfirmation: undefined })));
+
       const clientActions = Array.isArray(data?.clientActions) ? data.clientActions : [];
       for (const action of clientActions) {
         if (action?.type === 'navigate' && action?.view) {
@@ -263,14 +283,22 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         checkQuestion: checkQuestion || undefined,
         checkOptions,
         verified: Boolean(data?.verified),
+        incidentForm: Boolean(data?.incidentForm),
+        incidentDefaults: data?.incidentDefaults || {},
         toolSummaries: Array.isArray(data?.toolResults)
           ? data.toolResults.map((result: any) => String(result?.summary || '').trim()).filter(Boolean).slice(0, 4)
           : [],
         pendingConfirmation: data?.pendingConfirmation?.token ? data.pendingConfirmation : undefined,
         resultCards,
       }]);
-    } catch (error) {
-      console.warn('Tutor PROFEA: usando ayuda local de respaldo.', error);
+    } catch (error: any) {
+      const operationRequested = /^(?:por favor[, ]+)?(?:registra|registrar|crea|crear|anota|anotar|guarda|guardar|borra|borrar|elimina|eliminar|aplica|aplicar|filtra|filtrar)\b/i.test(question.trim());
+      if (error?.sessionError || operationRequested || confirmationToken) {
+        setTaskState(current => ({ ...current, status: 'diagnostic' }));
+        setMessages(current => [...current, { id: makeId(), role: 'assistant', text: error?.sessionError ? error.message : 'No se ha podido confirmar el resultado. Comprueba el estado del módulo antes de repetir la operación.', verified: false }]);
+        return;
+      }
+      console.warn('Tutor PROFEA: usando ayuda local de respaldo.');
       const fallback = getLocalTutorFallback(question, activeView);
       if (taskState.status === 'idle') {
         setTaskState({
@@ -422,6 +450,40 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                         : 'border border-slate-200/80 bg-white/68 text-slate-800 rounded-bl-md dark:border-slate-700 dark:bg-slate-900/65 dark:text-slate-100'
                     }`}>
                       <div className="whitespace-pre-wrap">{message.text}</div>
+                      {message.role === 'assistant' && message.id === lastAssistantId && message.incidentForm && (
+                        <form className="mt-3 grid min-w-0 gap-3" onSubmit={event => {
+                          event.preventDefault();
+                          const values = new FormData(event.currentTarget);
+                          const fields = ['obra', 'fecha', 'categoría', 'prioridad', 'título', 'tarea', 'descripción', 'medidas', 'responsable', 'plazo'];
+                          const command = 'Registra una incidencia;\n' + fields.map(key => `${key}: ${String(values.get(key) || '').trim().replace(/[;\r\n]+/g, ', ')}`).join('\n');
+                          void ask(command);
+                        }}>
+                          <p className="text-xs font-semibold">Se guardará al pulsar Registrar incidencia. Revisa la obra y los datos.</p>
+                          {(['obra', 'fecha', 'título', 'tarea', 'descripción', 'medidas', 'responsable', 'plazo'] as const).map(field => (
+                            <label key={field} className="grid min-w-0 gap-1 text-xs font-bold">
+                              {field.charAt(0).toUpperCase() + field.slice(1)}
+                              {field === 'descripción' || field === 'medidas' ? (
+                                <textarea name={field} required={field === 'descripción'} rows={3} maxLength={1800} defaultValue={message.incidentDefaults?.[field.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] || ''} className="w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" />
+                              ) : (
+                                <input name={field} required={!['medidas', 'responsable', 'plazo'].includes(field)} type={field === 'fecha' || field === 'plazo' ? 'date' : 'text'} defaultValue={message.incidentDefaults?.[field.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] || (field === 'obra' ? activeObra : '')} max={field === 'fecha' ? preventionToday() : undefined} maxLength={field === 'título' || field === 'responsable' ? 200 : 300} className="min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" />
+                              )}
+                            </label>
+                          ))}
+                          <label className="grid gap-1 text-xs font-bold">Categoría
+                            <select name="categoría" required defaultValue={PREVENTION_CATEGORIES.find(category => category.toLocaleLowerCase() === String(message.incidentDefaults?.categoria || '').toLocaleLowerCase()) || ''} className="min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
+                              <option value="" disabled>Selecciona una categoría</option>
+                              {PREVENTION_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                            </select>
+                          </label>
+                          <label className="grid gap-1 text-xs font-bold">Prioridad
+                            <select name="prioridad" required defaultValue={['Baja', 'Media', 'Alta'].find(priority => priority.toLocaleLowerCase() === String(message.incidentDefaults?.prioridad || '').toLocaleLowerCase()) || ''} className="min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
+                              <option value="" disabled>Selecciona la prioridad</option>
+                              {['Baja', 'Media', 'Alta'].map(priority => <option key={priority} value={priority}>{priority}</option>)}
+                            </select>
+                          </label>
+                          <button disabled={busy} type="submit" className="min-h-11 rounded-xl bg-[#00548E] px-3 py-2 font-bold text-white disabled:opacity-50">Registrar incidencia</button>
+                        </form>
+                      )}
                       {message.role === 'assistant' && message.verified && (
                         <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
                           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -608,3 +670,4 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
     </>
   );
 };
+
