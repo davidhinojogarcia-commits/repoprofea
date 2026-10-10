@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { executeTutorConfirmation, executeTutorTools, normalizeTutorContext, toolCatalogForPrompt, TUTOR_AGENT_VERSION } from "../src/server/profeaTutorAgent";
+import { executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorLocally, synthesizeTutorLocally, toolCatalogForPrompt, TUTOR_AGENT_VERSION } from "../src/server/profeaTutorAgent";
 import { getTutorKnowledgeSlice } from "../src/lib/profeaTutorKnowledge";
 
 const context = normalizeTutorContext({
@@ -34,7 +34,16 @@ assert.ok(TUTOR_AGENT_VERSION.length > 0);
 assert.equal(names.includes("sql"), false);
 assert.equal(names.includes("delete_documents"), false);
 
-console.log("Tutor PROFEA agent policy tests: OK");
+const localPlan = planTutorLocally("Lista las obras", context, {});
+assert.equal(localPlan.toolCalls[0]?.name, "list_works");
+const localDelete = planTutorLocally("Borra todos los documentos de esta obra", context, {});
+assert.equal(localDelete.toolCalls[0]?.name, "prepare_delete_mandatory_documents");
+const localHelp = planTutorLocally("Explícame esta pantalla", context, {});
+assert.equal(localHelp.toolCalls.length, 0);
+const synthesized = synthesizeTutorLocally(localPlan, [{ name: "list_works", ok: true, verified: true, summary: "1 obra visible." }]);
+assert.match(synthesized.answer, /^Verificado:/);
+
+console.log("Tutor PROFEA local planner and policy tests: OK");
 
 const preventionKnowledge = getTutorKnowledgeSlice("Registra una incidencia en esta obra", "prevencion");
 assert.match(preventionKnowledge, /PREVENCIÓN E INCIDENCIAS/);
