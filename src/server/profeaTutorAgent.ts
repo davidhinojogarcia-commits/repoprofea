@@ -162,7 +162,7 @@ type ConfirmationPayload = {
 };
 
 function confirmationSecret() {
-  const value = process.env.TUTOR_CONFIRMATION_SECRET || process.env.GEMINI_API_KEY || "";
+  const value = process.env.TUTOR_CONFIRMATION_SECRET || "";
   if (!value) throw new Error("Las confirmaciones sensibles no están configuradas en el servidor.");
   return value;
 }
@@ -480,5 +480,265 @@ export async function executeTutorConfirmation(input: {
     verified: true,
     summary: `${count} documentos de ${payload.obra} borrados y confirmados por la base de datos.`,
     data: { deleted: count, obra: payload.obra },
+  };
+}
+
+
+export type LocalTutorTaskState = {
+  title?: string;
+  currentStep?: number;
+  totalSteps?: number;
+  status?: "idle" | "active" | "diagnostic" | "completed";
+  nextAction?: string;
+};
+
+export type LocalTutorPlan = {
+  answer: string;
+  toolCalls: TutorToolCall[];
+  suggestedView: string;
+  suggestedLabel: string;
+  followUps: string[];
+  progressHint: string;
+  taskTitle: string;
+  currentStep: number;
+  totalSteps: number;
+  taskStatus: "idle" | "active" | "diagnostic" | "completed";
+  nextAction: string;
+  checkQuestion: string;
+  checkOptions: string[];
+};
+
+const normalizeIntent = (value: string) =>
+  String(value || "")
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const viewFromQuestion = (q: string) => {
+  const pairs: Array<[RegExp,string]> = [
+    [/\b(sae|seleccion|candidato|contratacion)\b/, "sae"],
+    [/\b(directorio|trabajador|ficha)\b/, "directorio"],
+    [/\b(reconocimiento|medico|cita|aptitud)\b/, "citas"],
+    [/documentacion de encargados|portal del encargado|control de presencia|\binicio\b/, "documentacion_encargados"],
+    [/documentacion de obra|epis|formacion|control horario/, "documentacion_obra"],
+    [/\b(cae|subcontrata|subcontratas)\b/, "subcontratas"],
+    [/\b(prevencion|incidencia|riesgo|hidratacion|lluvia)\b/, "prevencion"],
+    [/\b(inventario|maquinaria|herramienta|averia|averiada|reparacion)\b/, "inventario"],
+    [/\b(configuracion|responsable|destinatario)\b/, "configuracion"],
+    [/\b(papelera|restaurar)\b/, "papelera"],
+    [/\b(administracion|usuarios|auditoria)\b/, "administracion"],
+    [/\b(resumen|menu inicial|inicio de la app)\b/, "dashboard"],
+  ];
+  return pairs.find(([pattern]) => pattern.test(q))?.[1] || "";
+};
+
+const extractNamedValue = (question: string, keys: string[]) => {
+  for (const key of keys) {
+    const re = new RegExp("(?:^|[;,.])\\s*" + key + "\\s*[:=]\\s*([^;,.]+)", "i");
+    const m = question.match(re);
+    if (m?.[1]) return m[1].trim();
+  }
+  return "";
+};
+
+export function planTutorLocally(
+  question: string,
+  context: TutorContext,
+  taskState: LocalTutorTaskState = {},
+): LocalTutorPlan {
+  const raw = String(question || "").trim();
+  const q = normalizeIntent(raw);
+  const view = viewFromQuestion(q);
+  const base: LocalTutorPlan = {
+    answer: "",
+    toolCalls: [],
+    suggestedView: "",
+    suggestedLabel: "",
+    followUps: ["¿Cuál es el siguiente paso?", "Explícame qué debo comprobar ahora"],
+    progressHint: "",
+    taskTitle: String(taskState.title || ""),
+    currentStep: Math.max(0, Number(taskState.currentStep) || 0),
+    totalSteps: Math.max(0, Number(taskState.totalSteps) || 0),
+    taskStatus: (taskState.status || "idle") as LocalTutorPlan["taskStatus"],
+    nextAction: String(taskState.nextAction || ""),
+    checkQuestion: "",
+    checkOptions: [],
+  };
+
+  if (/\b(lista|listar|muestra|mostrar|que obras|cuales son las obras)\b/.test(q) && /\bobras?\b/.test(q)) {
+    return { ...base, answer: "Voy a consultar las obras que tienes autorizadas.", toolCalls: [{ name: "list_works" }], taskTitle: "Consultar obras", taskStatus: "active", nextAction: "Revisar la relación devuelta por la base de datos." };
+  }
+
+  if (/\b(busca|buscar|localiza|localizar|encuentra|encontrar)\b/.test(q) && /\btrabajador/.test(q)) {
+    let name = raw.replace(/^.*?\b(?:trabajador(?:a)?|persona)\b\s*/i, "").trim();
+    name = name.replace(/\b(?:en|de)\s+(?:la\s+)?obra\b.*$/i, "").trim();
+    if (/^(un|una|el|la)?\s*$/i.test(name)) name = "";
+    return {
+      ...base,
+      answer: "Voy a buscar en el Directorio respetando la obra y el periodo activos.",
+      toolCalls: [{ name: "search_workers", arguments: { name, obra: context.obra || "", periodo: context.periodo || "" } }],
+      suggestedView: "directorio",
+      taskTitle: "Buscar trabajador",
+      taskStatus: "active",
+      nextAction: "Abrir la ficha correcta desde el resultado.",
+    };
+  }
+
+  if (/reconocimiento/.test(q) && /(pendiente|faltan|sin cita|por citar)/.test(q)) {
+    if (!context.periodo) {
+      return { ...base, answer: "Para comprobar reconocimientos pendientes necesito que selecciones primero un periodo o quincena.", suggestedView: "citas", taskTitle: "Revisar reconocimientos pendientes", taskStatus: "diagnostic", nextAction: "Seleccionar el periodo que quieres revisar." };
+    }
+    return {
+      ...base,
+      answer: "Voy a comprobar los trabajadores con reconocimiento pendiente en el periodo activo.",
+      toolCalls: [{ name: "list_pending_medical", arguments: { obra: context.obra || "", periodo: context.periodo } }],
+      suggestedView: "citas",
+      taskTitle: "Revisar reconocimientos pendientes",
+      taskStatus: "active",
+      nextAction: "Revisar los trabajadores pendientes y preparar sus citas.",
+    };
+  }
+
+  if (/(documentos?|inicio|control de presencia)/.test(q) && /(encargad|firm|pendiente|estado|lista|muestra|consulta)/.test(q)) {
+    return {
+      ...base,
+      answer: "Voy a consultar los documentos obligatorios visibles con los filtros actuales.",
+      toolCalls: [{ name: "list_mandatory_documents", arguments: { obra: context.obra || "", periodo: context.periodo || "" } }],
+      suggestedView: "documentacion_encargados",
+      taskTitle: "Revisar documentación de encargados",
+      taskStatus: "active",
+      nextAction: "Revisar el estado de Inicio y Control de presencia.",
+    };
+  }
+
+  if (/(averia|averiada|reparacion|fuera de servicio)/.test(q) && /(maquinaria|herramienta|inventario|equipo)/.test(q)) {
+    return {
+      ...base,
+      answer: "Voy a preparar un resumen verificado de maquinaria y herramientas con avería o reparación.",
+      toolCalls: [{ name: "prepare_inventory_fault_report" }],
+      suggestedView: "inventario",
+      taskTitle: "Revisar averías de inventario",
+      taskStatus: "active",
+      nextAction: "Revisar los elementos detectados.",
+    };
+  }
+
+  if (/(borra|borrar|elimina|eliminar)/.test(q) && /document/.test(q) && /(obra|esta obra)/.test(q)) {
+    if (!context.obra) {
+      return { ...base, answer: "Para preparar un borrado masivo necesito que selecciones primero la obra. No he borrado nada.", suggestedView: "documentacion_encargados", taskTitle: "Borrar documentos por obra", taskStatus: "diagnostic", nextAction: "Seleccionar la obra exacta." };
+    }
+    return {
+      ...base,
+      answer: "Voy a calcular el alcance exacto. No se borrará nada hasta que confirmes después de ver cuántos documentos están afectados.",
+      toolCalls: [{ name: "prepare_delete_mandatory_documents", arguments: { obra: context.obra } }],
+      suggestedView: "documentacion_encargados",
+      taskTitle: "Borrar documentos por obra",
+      taskStatus: "active",
+      nextAction: "Revisar el alcance y confirmar solo si es correcto.",
+    };
+  }
+
+  if (/(registra|registrar|crea|crear|anota|anotar|guarda|guardar).{0,50}(incidencia|riesgo)|incidencia.{0,50}(registra|crea|anota|guarda)/.test(q)) {
+    const workDate = extractNamedValue(raw, ["fecha", "dia"]);
+    const category = extractNamedValue(raw, ["categoria", "tipo"]);
+    const severityRaw = normalizeIntent(extractNamedValue(raw, ["prioridad", "severidad", "nivel"]));
+    const severity = severityRaw.startsWith("alt") ? "high" : severityRaw.startsWith("baj") ? "low" : severityRaw.startsWith("med") ? "medium" : "";
+    const title = extractNamedValue(raw, ["titulo", "asunto"]);
+    const task = extractNamedValue(raw, ["tarea", "trabajo"]);
+    const description = extractNamedValue(raw, ["descripcion", "detalle", "riesgo"]);
+    const measures = extractNamedValue(raw, ["medidas", "accion"]);
+    const responsible = extractNamedValue(raw, ["responsable"]);
+    const deadline = extractNamedValue(raw, ["plazo", "fecha limite"]);
+    const missing = [
+      !context.obra && "obra",
+      !workDate && "fecha",
+      !category && "categoría",
+      !severity && "prioridad",
+      !title && "título",
+      !task && "tarea",
+      !description && "descripción",
+    ].filter(Boolean);
+    if (missing.length) {
+      return {
+        ...base,
+        answer: "Puedo registrarla, pero faltan estos datos: " + missing.join(", ") + ". Puedes escribirlos como «fecha: AAAA-MM-DD; categoría: ...; prioridad: alta/media/baja; título: ...; tarea: ...; descripción: ...».",
+        suggestedView: "prevencion",
+        taskTitle: "Registrar incidencia preventiva",
+        taskStatus: "diagnostic",
+        nextAction: "Completar los campos obligatorios antes de guardar.",
+      };
+    }
+    return {
+      ...base,
+      answer: "Los datos obligatorios están completos. Voy a registrar la incidencia mediante el flujo real de Prevención.",
+      toolCalls: [{ name: "create_prevention_incident", arguments: { obra: context.obra, workDate, category, severity, title, task, description, measures, responsible, deadline } }],
+      suggestedView: "prevencion",
+      taskTitle: "Registrar incidencia preventiva",
+      taskStatus: "active",
+      nextAction: "Comprobar la confirmación de la base de datos.",
+    };
+  }
+
+  if (/(filtra|filtrar|selecciona|seleccionar)/.test(q) && /(obra|periodo|quincena)/.test(q)) {
+    const obra = extractNamedValue(raw, ["obra"]) || context.obra || "";
+    const periodo = extractNamedValue(raw, ["periodo", "quincena"]) || context.periodo || "";
+    return {
+      ...base,
+      answer: "Voy a aplicar los filtros indicados en la interfaz.",
+      toolCalls: [{ name: "apply_filters", arguments: { obra, periodo } }],
+      taskTitle: "Aplicar filtros",
+      taskStatus: "active",
+      nextAction: "Continuar con la pantalla ya filtrada.",
+    };
+  }
+
+  if (/\b(abre|abrir|entra|entrar|ve|ir|lleva|llevame)\b/.test(q) && view) {
+    return {
+      ...base,
+      answer: "Voy a abrir el módulo correspondiente.",
+      toolCalls: [{ name: "navigate", arguments: { view } }],
+      suggestedView: view,
+      taskTitle: "Navegar por GestionProfea",
+      taskStatus: "active",
+      nextAction: "Continuar desde la pantalla abierta.",
+    };
+  }
+
+  return {
+    ...base,
+    answer: "Puedo guiarte en esta pantalla y ejecutar las acciones autorizadas de GestionProfea. Dime la tarea concreta; si requiere datos reales, los consultaré con tu sesión y permisos.",
+    suggestedView: view || context.currentView || "",
+    taskTitle: taskState.title || "Ayuda en GestionProfea",
+    taskStatus: taskState.status === "completed" ? "idle" : (taskState.status || "active"),
+    nextAction: "Indica la acción concreta que quieres realizar.",
+  };
+}
+
+export function synthesizeTutorLocally(plan: LocalTutorPlan, results: TutorToolResult[]): LocalTutorPlan {
+  if (!results.length) return plan;
+  const failed = results.filter(result => !result.ok);
+  const confirmation = results.find(result => result.confirmation)?.confirmation;
+  let answer = "";
+  if (failed.length) {
+    answer = failed.map(result => result.summary || result.error || "La operación no se pudo completar.").join(" ");
+  } else if (confirmation) {
+    answer = results.map(result => result.summary).join(" ") + " Revisa el alcance y usa la confirmación mostrada para continuar.";
+  } else {
+    answer = results.map(result => result.summary).join(" ");
+    if (results.every(result => result.verified)) answer = "Verificado: " + answer;
+  }
+  return {
+    ...plan,
+    answer,
+    taskStatus: failed.length ? "diagnostic" : confirmation ? "active" : "completed",
+    nextAction: failed.length
+      ? "Corregir el dato o contexto indicado y volver a intentarlo."
+      : confirmation
+        ? "Confirmar la operación únicamente si el alcance es correcto."
+        : "La consulta o acción ha terminado.",
+    checkQuestion: failed.length ? "¿Quieres que te ayude a corregirlo?" : "",
+    checkOptions: failed.length ? ["Sí, ayúdame", "Volver a intentarlo"] : [],
   };
 }
