@@ -40,5 +40,12 @@ try{
  await ask('Aplica filtros; obra: A; periodo: P1');assert.deepEqual(filters.at(-1),{obra:'A',periodo:'P1'});assert.equal(nav.at(-1),'sae');
  token='';await ask('Registra una incidencia');assert.match(document.body.textContent,/Vuelve a iniciar sesión/);
  await act(async()=>{authCallback('SIGNED_OUT',null)});assert.ok(!document.body.textContent.includes('Falta protección'));assert.equal(JSON.parse(sessionStorage.getItem('profea:tutor:conversation:v2')).messages.length,0);
- console.log('PASS Tutor UI: formulario, envío explícito, filtros, navegación, aviso de sesión y limpieza entre usuarios.');
+ token='token';await act(async()=>{authCallback('SIGNED_IN',{user:{id:'second'}})});
+ let resolveDelayed;
+ globalThis.fetch=()=>new Promise(resolve=>{resolveDelayed=resolve});
+ await ask('Muéstrame mis obras');
+ await act(async()=>{authCallback('SIGNED_IN',{user:{id:'third'}})});
+ await act(async()=>{resolveDelayed(new Response(JSON.stringify({answer:'DATOS USUARIO ANTERIOR',verified:true})));await Promise.resolve()});
+ assert.ok(!document.body.textContent.includes('DATOS USUARIO ANTERIOR'));
+ console.log('PASS Tutor UI: formulario, envío explícito, filtros, navegación, aviso de sesión y limpieza entre usuarios y respuesta tardía tras cambiar de sesión.');
 }finally{await act(async()=>root.unmount());globalThis.fetch=originalFetch;await fs.unlink(output.pathname).catch(()=>{});dom.window.close()}

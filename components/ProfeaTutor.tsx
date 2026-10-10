@@ -102,11 +102,13 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       return EMPTY_TASK;
     }
   });
+  const sessionGeneration = useRef(0);
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       const userId = session?.user?.id || '';
       const previous = sessionStorage.getItem('profea:tutor:user');
       if (previous !== userId) {
+        sessionGeneration.current += 1;
         sessionStorage.removeItem(TUTOR_SESSION_KEY);
         setMessages([]); setTaskState(EMPTY_TASK);
       }
@@ -178,6 +180,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
     const question = String(rawQuestion ?? input).trim();
     if (!question || busy) return;
 
+    const requestGeneration = sessionGeneration.current;
     const userMessage: TutorMessage = { id: makeId(), role: 'user', text: question };
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
@@ -225,6 +228,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
       }
 
       const data = await response.json();
+      if (requestGeneration !== sessionGeneration.current) return;
       if (confirmationToken) setMessages(current => current.map(item => ({ ...item, pendingConfirmation: undefined })));
 
       const clientActions = Array.isArray(data?.clientActions) ? data.clientActions : [];
@@ -292,6 +296,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
         resultCards,
       }]);
     } catch (error: any) {
+      if (requestGeneration !== sessionGeneration.current) return;
       const operationRequested = /^(?:por favor[, ]+)?(?:registra|registrar|crea|crear|anota|anotar|guarda|guardar|borra|borrar|elimina|eliminar|aplica|aplicar|filtra|filtrar)\b/i.test(question.trim());
       if (error?.sessionError || operationRequested || confirmationToken) {
         setTaskState(current => ({ ...current, status: 'diagnostic' }));

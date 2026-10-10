@@ -176,8 +176,9 @@ function signConfirmation(payload: ConfirmationPayload) {
 }
 
 function readConfirmation(token: string): ConfirmationPayload {
-  const [encoded, supplied] = String(token || "").split(".");
-  if (!encoded || !supplied) throw new Error("Confirmación no válida.");
+  const parts = String(token || "").split(".");
+  const [encoded, supplied] = parts;
+  if (parts.length !== 2 || !encoded || !supplied) throw new Error("Confirmación no válida.");
   const expected = createHmac("sha256", confirmationSecret()).update(encoded).digest("base64url");
   const a = Buffer.from(supplied);
   const b = Buffer.from(expected);
