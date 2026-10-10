@@ -35,6 +35,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [fitWidth,setFitWidth]=useState(true);
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const viewportRef=useRef<any>(null);
+  const renderTaskRef=useRef<any>(null);
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
   const currentIdentityLocked=Boolean(current&&signedIds.has(Number(current.workerId)));
@@ -87,7 +88,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         if(!pdfjs.GlobalWorkerOptions.workerSrc)pdfjs.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
         const loaded=await pdfjs.getDocument({data:base64ToBytes(source.base64),useSystemFonts:true}).promise;
         const geometry=await Promise.all(Array.from({length:loaded.numPages},async(_,i)=>{const page=await loaded.getPage(i+1);const box=page.view;return {page:i+1,width:Number(box[2])-Number(box[0]),height:Number(box[3])-Number(box[1])};}));
-        if(!cancelled){setPdf(loaded);setPages(geometry);setDraft(list=>suggestSafeMandatorySignaturePositions(list,geometry,true));}
+        if(!cancelled){setPdf(loaded);setPages(geometry);}
       }catch(e:any){
         if(!cancelled)setError(e?.message||'No se pudo abrir el PDF original.');
       }finally{
@@ -103,8 +104,14 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   useEffect(()=>{
     if(!pdf||!current||!canvasRef.current)return;
     let cancelled=false;
+    let renderTask:any=null;
     (async()=>{
+      // PDF.js owns the canvas until the previous render has finished cancelling.
+      const previous=renderTaskRef.current;
+      if(previous)await previous.promise.catch(()=>{});
+      if(cancelled)return;
       const page=await pdf.getPage(Math.min(currentPage,pdf.numPages));
+      if(cancelled||!canvasRef.current)return;
       const base=page.getViewport({scale:1});
       const availableWidth=Math.max(280,Math.min(1100,(window.innerWidth>=1024?window.innerWidth-380:window.innerWidth-24)));
       const baseFit=Math.max(0.35,Math.min(1.8,availableWidth/base.width));
@@ -116,7 +123,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       canvas.height=Math.ceil(viewport.height);
       const ctx=canvas.getContext('2d');
       if(!ctx)return;
-      await page.render({canvas,canvasContext:ctx,viewport}).promise;
+      renderTask=page.render({canvas,canvasContext:ctx,viewport});
+      renderTaskRef.current=renderTask;
+      try{await renderTask.promise;}finally{if(renderTaskRef.current===renderTask)renderTaskRef.current=null;}
       if(cancelled)return;
 
       for(const anchor of draft.filter(anchor=>anchor.page===currentPage&&anchor.resolved&&anchor.signatureX!=null&&anchor.signatureY!=null)){
@@ -140,8 +149,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         ctx.fillRect(left,top,width,height);
         ctx.restore();
       }
-    })().catch(e=>setError(e?.message||'No se pudo representar la página.'));
-    return()=>{cancelled=true;};
+    })().catch(e=>{if(!cancelled&&e?.name!=='RenderingCancelledException')setError(e?.message||'No se pudo representar la página.');});
+    return()=>{cancelled=true;renderTask?.cancel();};
   },[pdf,current,draft,currentPage,zoom,fitWidth]);
 
   const readPageGeometry=async()=>{
@@ -171,12 +180,13 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
 
   const selectPage=(value:number)=>{
-    if(!current)return;
+    if(!current||saving||removing||loading)return;
     if(currentIdentityLocked){setError('Revoca la firma antes de cambiar la página del trabajador.');return;}
     setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,page:Math.max(1,Math.min(pageCount,value)),resolved:false}:anchor));
   };
 
   const assignCurrentWorker=(workerId:number)=>{
+    if(saving||removing||loading)return;
     if(currentIdentityLocked){
       setError('Este trabajador ya ha firmado y su identidad no puede cambiarse.');
       return;
@@ -201,6 +211,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   const addManualWorker=()=>{
+    if(saving||removing||loading)return;
     const name=manualName.replace(/\s+/g,' ').trim();
     if(name.length<3){
       setError('Escribe el nombre y apellidos tal como aparecen en el PDF.');
@@ -241,7 +252,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   const removeCurrentWorker=async()=>{
-    if(!current||!onRemoveWorker||removing)return;
+    if(!current||!onRemoveWorker||removing||saving||loading)return;
     setRemoving(true);
     setError('');setFeedback('');
     try{
@@ -261,17 +272,17 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   const handleCanvasClick=(event:React.MouseEvent<HTMLCanvasElement>)=>{
-    if(!current||!viewportRef.current||!canvasRef.current)return;
+    if(!current||!viewportRef.current||!canvasRef.current||saving||removing||loading)return;
     const canvas=canvasRef.current;
     const rect=canvas.getBoundingClientRect();
     const x=(event.clientX-rect.left)*(canvas.width/rect.width);
     const y=(event.clientY-rect.top)*(canvas.height/rect.height);
     const [pdfX,pdfY]=pdfPointFromViewport(viewportRef.current,x,y);
-    const boxWidth=Math.min(92,Number(current.signatureWidth||90));
-    const boxHeight=Math.min(Number(current.signatureHeight||12),Math.max(8,Number(current.nameHeight||current.rowHeight||12)));
     const viewBox=viewportRef.current.viewBox||[0,0,595,842];
     const pageWidth=Math.abs(Number(viewBox[2]||595)-Number(viewBox[0]||0));
     const pageHeight=Math.abs(Number(viewBox[3]||842)-Number(viewBox[1]||0));
+    const boxWidth=Math.min(pageWidth-8,Number(current.signatureWidth||90));
+    const boxHeight=Math.min(pageHeight-8,Number(current.signatureHeight||12));
     const signatureX=Math.max(4,Math.min(pageWidth-boxWidth-4,pdfX-boxWidth/2));
     const signatureY=Math.max(4,Math.min(pageHeight-boxHeight-4,pdfY-boxHeight/2));
     setDraft(list=>list.map((anchor,i)=>i===index?{
@@ -402,4 +413,5 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 };
 
 export default MandatoryPdfAnchorEditor;
+
 

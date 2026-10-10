@@ -6,7 +6,10 @@ const output=new URL('./.mandatory-draft-editor.mjs',import.meta.url);
 const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://local-validation.invalid/'});
 Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,IS_REACT_ACT_ENVIRONMENT:true});
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
-window.HTMLCanvasElement.prototype.getContext=()=>null;
+window.HTMLCanvasElement.prototype.getContext=()=>({save(){},restore(){},setLineDash(){},strokeRect(){},fillRect(){}});
+window.HTMLCanvasElement.prototype.getBoundingClientRect=()=>({left:0,top:0,width:595,height:842});
+globalThis.__activePdfRenders=0;
+globalThis.__pdfRenderCollisions=0;
 const workers=[1,2].map(i=>({workerId:i,documentWorkerId:'worker-'+i,workerName:'Persona '+i,dni:'',page:1,order:i,nameX:60,nameY:500,nameWidth:100,nameHeight:10,rowHeight:10,signatureX:350,signatureY:500,signatureWidth:90,signatureHeight:32,confidence:1,resolved:true}));
 let saved,removed=[],rejectRemoval=false,root;
 try{
@@ -14,16 +17,28 @@ try{
  b.onResolve({filter:/foremanPortalService$/},()=>({path:'portal',namespace:'mock'}));
  b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'supabase',namespace:'mock'}));
  b.onResolve({filter:/pdfjs-dist/},()=>({path:'pdf',namespace:'mock'}));
- b.onLoad({filter:/.*/,namespace:'mock'},({path})=>({contents:path==='portal'?"export const getSupervisorMandatoryPdf=async()=>({base64:'AAAA'});":path==='supabase'?"export const supabase={query:async()=>[]};":"export default '';export const GlobalWorkerOptions={};export const getDocument=()=>({promise:Promise.resolve({numPages:1,getPage:async()=>({view:[0,0,595,842],getViewport:()=>({width:595,height:842,transform:[1,0,0,-1,0,842]})})})});"}));
+ b.onLoad({filter:/.*/,namespace:'mock'},({path})=>({contents:path==='portal'?"export const getSupervisorMandatoryPdf=async()=>({base64:'AAAA'});":path==='supabase'?"export const supabase={query:async()=>[]};":`export default '';export const GlobalWorkerOptions={};export const getDocument=()=>({promise:Promise.resolve({numPages:1,destroy(){},getPage:async()=>({view:[0,0,595,842],getViewport:()=>({width:595,height:842,transform:[1,0,0,-1,0,842]}),render(){if(globalThis.__activePdfRenders){globalThis.__pdfRenderCollisions++;throw Error('Cannot use the same canvas during multiple render operations');}globalThis.__activePdfRenders++;let timer,reject,done=false;const finish=()=>{if(done)return;done=true;globalThis.__activePdfRenders--;};const promise=new Promise((resolve,r)=>{reject=r;timer=setTimeout(()=>{finish();resolve();},80);});return {promise,cancel(){clearTimeout(timer);finish();const e=Error('cancelled');e.name='RenderingCancelledException';reject(e);}};}})})});`}));
  }}]});
  const React=await import('react');const {createRoot}=await import('react-dom/client');const {MandatoryPdfAnchorEditor}=await import(output.href);
  const action=async(fn)=>React.act(async()=>{await fn();await new Promise(r=>setTimeout(r,25));});
  const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
  const mount=async anchors=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(React.createElement(MandatoryPdfAnchorEditor,{documentId:'doc',title:'Control',obra:'A',documentType:'control_presencia',anchors,onCancel(){},onSave(a){saved=structuredClone(a);},async onRemoveWorker(id){if(rejectRemoval)throw Error('No se pudo eliminar');removed.push(id);}})));};
  await mount(workers);
+ await action(()=>button('Siguiente').click());
+ await action(()=>button('Anterior').click());
+ assert.equal(globalThis.__pdfRenderCollisions,0,'rapid worker selection cancels the previous render');
+ assert(!document.body.textContent.includes('Cannot use the same canvas'),'render cancellation is not shown as an error');
  assert(document.body.textContent.includes('Avisos de esta firma'));
  assert(!button('Guardar borrador').disabled,'overlap must not disable saving');
  await action(()=>button('Guardar borrador').click());assert.equal(saved.length,2,'conflicting positions remain saved for correction');
+ assert.equal(saved[0].signatureY,workers[0].signatureY,'opening the editor preserves the saved coordinates');
+ assert.equal(saved[0].signatureHeight,workers[0].signatureHeight,'opening the editor preserves the saved dimensions');
+ await mount([{...workers[0],signatureWidth:120,signatureHeight:30}]);
+ await action(()=>document.querySelector('canvas').dispatchEvent(new window.MouseEvent('click',{bubbles:true,clientX:410,clientY:337})));
+ await action(()=>button('Guardar borrador').click());
+ assert.equal(saved[0].signatureWidth,120,'manual placement respects the chosen width');
+ assert.equal(saved[0].signatureHeight,30,'manual placement respects the chosen height');
+ await mount(workers);
  await action(()=>button('Eliminar trabajador del documento').click());assert.deepEqual(removed,[1]);
  const success=[...document.querySelectorAll('[role="status"]')].find(el=>el.textContent.includes('eliminado'));
  assert(success);assert(!success.className.includes('rose'),'success is not shown as red error');
@@ -34,5 +49,6 @@ try{
  rejectRemoval=false;
  await mount([{...workers[0],workerId:-1,documentWorkerId:'new-identity',draftNew:true}]);
  await action(()=>button('Eliminar trabajador del documento').click());assert.deepEqual(removed,[1],'unsaved worker deletion requires no server mutation');
- console.log('PASS: rendered editor saves overlapping/incomplete drafts; verified deletion success is green; failed removal preserves worker; unsaved removal is local.');
+ console.log('PASS: saved coordinates and dimensions survive reopening; rapid worker selection cancels PDF renders; manual placement preserves the chosen size; overlapping/incomplete drafts and deletion regressions.');
 }finally{if(root){const React=await import('react');await React.act(()=>root.unmount());}await fs.rm(output,{force:true});dom.window.close();}
+
