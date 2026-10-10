@@ -1,9 +1,9 @@
 # Tutor PROFEA — mapa de capacidades verificadas
 
-Versión de conocimiento: 2026.10.06.1
+Versión del agente: 2026.10.10.2
 
 ## Fuente de verdad
-Este mapa se deriva del código de `main` en el commit `1bf90c6fa15bdef35a2158869ed712457b3242d2`. Las conversaciones previas y la documentación funcional no se consideran prueba de una capacidad si no existe implementación en el repositorio.
+Este mapa incluye las correcciones realizadas sobre `main` aa7059cb7421847a0efff9a6197a385042882eb8. Las pruebas con respuestas simuladas no certifican funcionamiento de producción. Las conversaciones previas y la documentación funcional no se consideran prueba de una capacidad si no existe implementación en el repositorio.
 
 ## Estado previo encontrado
 - `components/ProfeaTutor.tsx`: chat flotante, continuidad en `sessionStorage`, navegación por vista, estados de tarea y respaldo local.
@@ -84,3 +84,27 @@ Cuando se añada o cambie un módulo:
 | `prepare_delete_mandatory_documents` | preparación sensible | sí, antes de borrar | calcula conjunto exacto, no modifica |
 
 La ejecución posterior del borrado no se solicita al modelo: el servidor valida una confirmación firmada, usuario, caducidad, obra activa y que el conjunto de documentos no haya cambiado antes de llamar al RPC real.
+
+
+## Correcciones del 10 de octubre
+
+- Endpoint único compartido por Express local y api/profea-tutor.ts en Vercel.
+- Planificador conectado a filtros etiquetados y registro de incidencias con datos explícitos. Si faltan campos ofrece un formulario en el chat, sin asignar fecha, categoría o prioridad por defecto.
+- Registro de incidencia exige respuesta RPC válida y lectura posterior del mismo ID y datos; respuestas vacías, parciales o ausencia de fila producen error sin etiqueta Verificado.
+- Consultas paginadas de trabajadores, obras, documentos e inventario, con orden estable y techo de seguridad explícito de 10.000 filas. JSON legado recuperado mediante proyecciones concretas, sin data completo.
+- Pendientes médicos incluye vencimiento de fechas ISO y excluye aptos vigentes aunque conserven un indicador antiguo de necesidad; no interpreta limitaciones ni emite decisiones médicas.
+- Confirmación de borrado vuelve a consultar todos los documentos visibles de la obra y rechaza adiciones o pérdidas respecto del conjunto preparado. El RPC recibe solo los IDs firmados; un documento añadido tras la última lectura no queda incluido. La comprobación de alcance y borrado son dos peticiones separadas.
+- Se valida perfil activo; navegación a Administración exige rol admin. RLS/RPC siguen siendo la autoridad para datos.
+- Errores no se marcan verificados, ni se oculta un fallo de sesión con instrucciones genéricas. La conversación se limpia al cambiar o cerrar sesión.
+
+## Evidencia de validación
+
+Pruebas de política existentes, 27 regresiones del agente/handler y prueba React con JSDOM del formulario, envío, navegación, filtros, errores de sesión y limpieza entre cuentas. Prevención se valida además con Postgres/PGlite local. Tipos y compilación completos comprobados. La validación contra sesiones reales en producción sigue siendo una comprobación distinta; no se certifica a partir de mocks.
+
+Ejemplos de órdenes:
+
+- `Aplica filtros; obra: nombre exacto; periodo: periodo exacto`
+- `Registra una incidencia` abre el formulario de datos obligatorios.
+- `Registra una incidencia; obra: nombre exacto; fecha: AAAA-MM-DD; categoría: Otros; prioridad: Media; título: título; tarea: tarea; descripción: descripción`
+
+Si se solicita un borrado, revisar el alcance mostrado antes de Confirmar. Cancelar no ejecuta el RPC.

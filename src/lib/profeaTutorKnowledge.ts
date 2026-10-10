@@ -18,7 +18,7 @@ export const PROFEA_TUTOR_VIEW_LABELS = {
 
 export type ProfeaTutorView = keyof typeof PROFEA_TUTOR_VIEW_LABELS;
 
-export const PROFEA_TUTOR_KNOWLEDGE_VERSION = '2026.10.06.1';
+export const PROFEA_TUTOR_KNOWLEDGE_VERSION = '2026.10.10.2';
 
 export const PROFEA_TUTOR_KNOWLEDGE = `
 GESTIONPROFEA / PROFEA — GUÍA DE USO PARA SUPERVISORES
@@ -274,3 +274,4 @@ export function getTutorKnowledgeSlice(question: string, currentView?: string) {
     .filter(Boolean)
     .join('\n\n');
 }
+

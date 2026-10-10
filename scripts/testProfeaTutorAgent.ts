@@ -85,7 +85,11 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(JSON.stringify([{ id: "o1", codigo: "001", nombre: "OBRA A", municipio: "X" }]), { status: 200 });
   }
   if (url.includes("/rest/v1/rpc/save_prevention_record")) {
-    return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", obra: "OBRA A", status: "pending", updated_at: "2026-10-06T20:00:00Z" }), { status: 200 });
+    (globalThis as any).__tutorSaved = { ...body.p_data, id: body.p_id, status: "pending", updated_at: "2026-10-06T20:00:00Z" };
+    return new Response(JSON.stringify((globalThis as any).__tutorSaved), { status: 200 });
+  }
+  if (url.includes("/rest/v1/prevention_records?")) {
+    return new Response(JSON.stringify([(globalThis as any).__tutorSaved]), { status: 200 });
   }
   if (url.includes("/rest/v1/foreman_mandatory_documents?select=id,obra,period_key")) {
     return new Response(JSON.stringify([
@@ -93,7 +97,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", obra: "OBRA A", period_key: "P1", work_date: "2026-10-01", document_type: "control_presencia", category: "", status: "pending" },
     ]), { status: 200 });
   }
-  if (url.includes("/rest/v1/foreman_mandatory_documents?select=id,obra&id=in.")) {
+  if (url.includes("/rest/v1/foreman_mandatory_documents?select=id,obra&obra=eq.")) {
     return new Response(JSON.stringify([
       { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", obra: "OBRA A" },
       { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", obra: "OBRA A" },
@@ -121,7 +125,7 @@ try {
     arguments: { obra: "OBRA A", workDate: "2026-10-06", category: "Otros", severity: "medium", title: "Protección", task: "Trabajo", description: "Falta protección" },
   }], context, "token", "r3", "Registra una incidencia por falta de protección", "user-1");
   assert.equal(created[0].ok, true);
-  assert.match(created[0].summary, /confirmada por la base de datos/);
+  assert.match(created[0].summary, /recuperada de la base de datos/);
 
   const prepared = await executeTutorTools([{
     name: "prepare_delete_mandatory_documents",
@@ -153,3 +157,4 @@ try {
 }
 
 console.log("Tutor PROFEA tool execution and confirmation tests: OK");
+

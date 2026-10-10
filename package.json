@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.20.1",
+  "version": "1.20.2",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -30,7 +30,7 @@
     "test:admin-audit": "node scripts/testAdminAuditUi.mjs",
     "test:consumption-cache": "node scripts/testConsumptionCache.mjs",
     "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs",
-    "test:tutor-agent": "tsx scripts/testProfeaTutorAgent.ts"
+    "test:tutor-agent": "node --import tsx scripts/testProfeaTutorAgent.ts && node --import tsx scripts/testProfeaTutorRegression.ts && node scripts/testProfeaTutorUi.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
