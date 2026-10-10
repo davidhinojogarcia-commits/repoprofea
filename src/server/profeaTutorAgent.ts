@@ -1,6 +1,6 @@
-import { PREVENTION_CATEGORIES, preventionToday } from "../lib/prevention";
+import { PREVENTION_CATEGORIES, preventionToday } from "../lib/prevention.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { getLocalTutorFallback, PROFEA_TUTOR_VIEW_LABELS } from "../lib/profeaTutorKnowledge";
+import { getLocalTutorFallback, PROFEA_TUTOR_VIEW_LABELS } from "../lib/profeaTutorKnowledge.js";
 
 export type TutorContext = {
   currentView?: string;
