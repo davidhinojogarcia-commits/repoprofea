@@ -27,6 +27,7 @@
     "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
     "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs",
     "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs",
+    "test:admin-audit": "node scripts/testAdminAuditUi.mjs",
     "test:consumption-cache": "node scripts/testConsumptionCache.mjs",
     "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs"
   },
@@ -62,5 +63,6 @@
     "vite": "^6.2.0"
   }
 }
+
 
 
