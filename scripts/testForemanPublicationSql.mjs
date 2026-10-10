@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
+import {build} from 'esbuild';
+const serviceOutput=new URL('./.mandatory-draft-sql-service.mjs',import.meta.url);
 const db=new PGlite();
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const owner=id(1),other=id(2),doc=id(10),w1=id(11),w2=id(12),token='local-only-token';
@@ -42,8 +44,11 @@ try {
  const projection=fs.readFileSync(new URL('../supabase/migrations/20261009181601_preserve_active_mandatory_worker_snapshot.sql',import.meta.url),'utf8');
  await db.exec(projection.slice(0,projection.indexOf('CREATE OR REPLACE FUNCTION public.review_mandatory_document_worker_v2')));
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009200007_atomic_mandatory_draft_positions.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009200007_atomic_mandatory_draft_positions.sql',import.meta.url),'utf8'));
  // Running the migration again must not change documents or add events.
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261009201210_allow_mandatory_signature_overlap.sql',import.meta.url),'utf8'));
  await query("insert into foreman_portal_access(owner_id,obra,foreman_name,token_hash,active) values($1,'Obra A','Encargado',encode(extensions.digest($2,'sha256'),'hex'),true)",[owner,token]);
  await query("insert into foreman_mandatory_documents(id,owner_id,obra,status,lifecycle_status) values($1,$2,'Obra A','pending','READY')",[doc,owner]);
  await query("insert into foreman_mandatory_pdf_files(document_id,owner_id,original_pdf,original_sha256,page_meta) values($1,$2,convert_to('original','UTF8'),encode(extensions.digest('original','sha256'),'hex'),$3)",[doc,owner,[{page:1,width:595,height:842}]]);
@@ -53,7 +58,30 @@ try {
  await asUser(other);await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/Documento no válido/);
  await assert.rejects(rpc('withdraw_mandatory_document_v2',[doc]),/Documento no válido/);
  await asUser(null);assert.equal((await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.length,0,'draft invisible');
- await asUser(owner);await rpc('assign_mandatory_document_v2',[doc]);
+ await db.exec('reset role');await db.exec('grant select on foreman_mandatory_documents,mandatory_document_workers_v2 to authenticated');
+ await asUser(owner);
+ const draftWorker=(worker,number,y)=>({documentWorkerId:worker,printedName:'Persona '+number,page:1,rowIndex:number,nameBox:{x:60,y:y+2,width:120,height:10},signatureBox:box(y),resolved:true});
+ const conflicting=[draftWorker(w1,1,500),draftWorker(w2,2,500)];
+ const revision=(await query('select updated_at from foreman_mandatory_documents where id=$1',[doc]))[0].updated_at;
+ const savedDraft=await rpc('save_mandatory_positions_draft_v2',[doc,conflicting,revision]);
+ assert.ok(savedDraft.details.draftSaveHash,'overlapping draft persists');
+ const draftRetry=await rpc('save_mandatory_positions_draft_v2',[doc,conflicting,revision]);
+ assert.equal(draftRetry.updated_at,savedDraft.updated_at,'same payload retry is idempotent');
+ await db.exec('reset role');await rpc('mandatory_v2_validate_signature_geometry',[doc]);await asUser(owner);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520)],'2000-01-01T00:00:00Z']),/Otro cambio/,'stale editor cannot overwrite');
+ const before=await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520),draftWorker(id(999),2,470)],savedDraft.updated_at]),/identidad documental/);
+ assert.deepEqual(await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]),before,'late failure rolls back earlier changes');
+ await rpc('assign_mandatory_document_v2',[doc]);await rpc('withdraw_mandatory_document_v2',[doc]);
+ savedDraft.updated_at=(await query('select updated_at from foreman_mandatory_documents where id=$1',[doc]))[0].updated_at;
+ const pending={...draftWorker(id(13),3,440),create:true,resolved:false,signatureBox:null};
+ const pendingSaved=await rpc('save_mandatory_positions_draft_v2',[doc,[pending],savedDraft.updated_at]);
+ assert.equal((await query('select position_status from mandatory_document_workers_v2 where id=$1',[id(13)]))[0].position_status,'PENDING','new worker can be saved before positioning');
+ await db.exec('reset role');await query("update mandatory_document_workers_v2 set detection_status='REJECTED' where id=$1",[id(13)]);await query('update foreman_mandatory_documents set updated_at=now() where id=$1',[doc]);await asUser(owner);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[pending],null]),/ya fue eliminado/,'stale save never resurrects deleted workers');
+ await rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,500),draftWorker(w2,2,470)],null]);
+ await rpc('assign_mandatory_document_v2',[doc]);
+ await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,conflicting,null]),/Retira primero/,'published document locked');
  await asUser(null);assert.equal((await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.length,1,'explicitly published document visible');
  const signature='data:image/png;base64,'+'A'.repeat(40);
  await asUser(null);await rpc('sign_mandatory_document_worker_v2',[token,doc,w1,signature]);
@@ -78,9 +106,9 @@ try {
  await asUser(owner);
  await rpc('update_mandatory_document_worker_geometry_v2',[doc,w2,{x:60,y:472,width:260,height:10},box(472),1,2]);
  await assert.rejects(rpc('update_mandatory_document_worker_geometry_v2',[doc,w2,{x:60,y:472,width:260,height:10},box(472),2,2]),/Revoca su firma/);
- // Published geometry must fail atomically when boxes overlap.
+ // A signature on another worker's row still fails even when overlap is allowed.
  await rpc('update_mandatory_document_worker_geometry_v2',[doc,w1,{x:60,y:502,width:120,height:10},box(472),1,1]);
- await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/solapa/);
+ await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/más cercana/);
  await db.exec('reset role');assert.equal((await query('select lifecycle_status from foreman_mandatory_documents'))[0].lifecycle_status,'READY');
  await asUser(owner);await rpc('update_mandatory_document_worker_geometry_v2',[doc,w1,{x:60,y:502,width:120,height:10},box(500),1,1]);
  await rpc('assign_mandatory_document_v2',[doc]);
@@ -90,5 +118,44 @@ try {
  await asUser(owner);await assert.rejects(rpc('withdraw_mandatory_document_v2',[doc]),/no está disponible/);
  await db.exec('reset role');
  const events=await query('select metadata from mandatory_document_events_v2');assert(!JSON.stringify(events).includes('data:image'),'events never duplicate signature images');
- console.log('PASS: real PostgreSQL RPCs; explicit publication, ownership, geometry validation, selective revocation/retry, withdrawal, retained signatures, identity lock, complete submission and closed-document protections.');
-} finally {await db.close();}
+ // Exercise the real editor service against PostgreSQL, starting from an old
+ // document snapshot with no documentary UUID and incorrect copied geometry.
+ await db.exec('reset role');
+ const legacyDoc=id(30),legacyWorker=id(31);
+ await query("insert into foreman_mandatory_documents(id,owner_id,obra,status,lifecycle_status) values($1,$2,'Obra A','pending','READY')",[legacyDoc,owner]);
+ await query("insert into foreman_mandatory_pdf_files(document_id,owner_id,original_pdf,original_sha256,page_meta) values($1,$2,convert_to('original','UTF8'),encode(extensions.digest('original','sha256'),'hex'),$3)",[legacyDoc,owner,[{page:1,width:595,height:842}]]);
+ await query("insert into mandatory_document_workers_v2(id,document_id,owner_id,legacy_worker_id,printed_name,page,row_index,detection_status,position_status,position_source,name_box,signature_box) values($1,$2,$3,31,'Persona Antigua',1,0,'CONFIRMED','RESOLVED','MANUAL',$4,$5)",[legacyWorker,legacyDoc,owner,{x:60,y:502,width:120,height:10},box(500)]);
+ await rpc('mandatory_v2_refresh_legacy_worker_snapshot',[legacyDoc]);
+ await query("update foreman_mandatory_documents set details=jsonb_set(details,'{workerAnchors}',(select jsonb_agg((a-'documentWorkerId')||jsonb_build_object('signatureX',999)) from jsonb_array_elements(details->'workerAnchors') a)) where id=$1",[legacyDoc]);
+ await asUser(owner);
+ globalThis.__draftSqlApi={
+   async query(table,options){
+     assert.equal(table,'foreman_mandatory_documents');assert.equal(options.networkOnly,true);assert(options.query.includes('documentWorkers:mandatory_document_workers_v2('));
+     const requested=new URLSearchParams(options.query).get('id').slice(3);
+     return (await query("select to_jsonb(d)||jsonb_build_object('documentWorkers',(select coalesce(jsonb_agg(to_jsonb(w)),'[]'::jsonb) from mandatory_document_workers_v2 w where w.document_id=d.id)) as data from foreman_mandatory_documents d where d.id=$1",[requested])).map(row=>row.data);
+   },
+   async rpc(name,args){assert.equal(name,'save_mandatory_positions_draft_v2');return rpc(name,[args.p_document_id,args.p_workers,args.p_expected_updated_at]);},
+ };
+ await build({stdin:{contents:"export {loadSupervisorMandatoryEditorDocument,saveSupervisorMandatoryDraft} from './src/services/foremanPortalService';",resolveDir:new URL('../',import.meta.url).pathname},outfile:serviceOutput.pathname,bundle:true,format:'esm',platform:'node',plugins:[{name:'postgres-service-boundary',setup(b){b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'api',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const supabase=globalThis.__draftSqlApi;'}));}}]});
+ const {loadSupervisorMandatoryEditorDocument,saveSupervisorMandatoryDraft}=await import(serviceOutput.href);
+ const recovered=await loadSupervisorMandatoryEditorDocument(legacyDoc);
+ assert.equal(recovered.details.workerAnchors[0].documentWorkerId,legacyWorker);
+ assert.equal(recovered.details.workerAnchors[0].signatureX,350);
+ const edited=recovered.details.workerAnchors.map(a=>({...a,signatureX:365,signatureWidth:80,signatureHeight:18}));
+ await saveSupervisorMandatoryDraft(legacyDoc,edited,recovered.updated_at);
+ const reopened=await loadSupervisorMandatoryEditorDocument(legacyDoc);
+ assert.deepEqual(['signatureX','signatureY','signatureWidth','signatureHeight'].map(k=>reopened.details.workerAnchors[0][k]),[365,500,80,18]);
+ await saveSupervisorMandatoryDraft(legacyDoc,edited,recovered.updated_at);
+ const extra={...reopened.details.workerAnchors[0],workerId:-123,documentWorkerId:id(32),draftNew:true,workerName:'Persona Añadida',nameX:null,nameY:null,nameWidth:null,nameHeight:null,nameRightX:null,rowHeight:null};
+ await saveSupervisorMandatoryDraft(legacyDoc,[...reopened.details.workerAnchors,extra],reopened.updated_at);
+ const withExtra=await loadSupervisorMandatoryEditorDocument(legacyDoc);
+ assert.equal(withExtra.details.workerAnchors.length,2,'added worker persists even with an overlapping signature');
+ assert.equal(withExtra.details.workerAnchors[1].workerName,'Persona Añadida');
+ assert.deepEqual(['signatureX','signatureY','signatureWidth','signatureHeight'].map(k=>withExtra.details.workerAnchors[1][k]),[365,500,80,18],'added worker keeps the exact overlapping position after reopening');
+ await db.exec('reset role');await rpc('mandatory_v2_validate_signature_geometry',[legacyDoc]);await asUser(owner);
+ await saveSupervisorMandatoryDraft(legacyDoc,[...reopened.details.workerAnchors,extra],reopened.updated_at);
+ await db.exec('reset role');
+ assert.equal((await query("select count(*)::int n from mandatory_document_events_v2 where document_id=$1 and event_type='POSITIONS_DRAFT_SAVED'",[legacyDoc]))[0].n,2,'retries do not duplicate either save or the newly added worker');
+ console.log('PASS: real PostgreSQL RPCs, legacy UUID recovery, exact coordinates after reopening, added workers with overlapping signatures and idempotent retries.');
+} finally {delete globalThis.__draftSqlApi;if(fs.existsSync(serviceOutput))fs.unlinkSync(serviceOutput);await db.close();}
+
