@@ -245,6 +245,9 @@ export async function applyRestMutationToCachedReads(input: {
 
 export async function getOfflineSyncState(): Promise<OfflineSyncState> {
   const pending = (await listOfflineOperations()).length;
+  // Un error de sincronización solo tiene sentido mientras exista trabajo
+  // pendiente. Si la cola ya está vacía, no mantengas un aviso rojo residual.
+  if (pending === 0 && lastError) lastError = '';
   return {
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     pending,
