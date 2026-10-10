@@ -11,7 +11,8 @@ window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener()
 window.HTMLElement.prototype.scrollIntoView=()=>{};
 const workers=[{id:1,apellidosNombre:'Persona Uno',categoria:'PEON'},{id:2,apellidosNombre:'Persona Dos',categoria:'PEON'}];
 const doc={id:'doc',owner_id:'owner',obra:'Obra A',work_date:'2026-10-09',period_key:'2026-10',document_type:'control_presencia',category:'',status:'pending',lifecycle_status:'READY',workers:[],signatures:{'1':'signed','2':'signed'},details:{sourceFilename:'control.pdf',originalPdfMode:'overlay',importedWorkerIds:[1,2],importedWorkers:workers,workerAnchors:workers.map(w=>({workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id})),documentWorkersV2:workers.map(w=>({id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED'}))}};
-let calls=[];
+let calls=[],confirmResult=true,confirmMessages=[];
+globalThis.__confirm=async(message)=>{confirmMessages.push(message);return confirmResult;};
 const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,details:doc.details,signatures:doc.signatures,workers:doc.workers});
 globalThis.__foremanUi={
  async resolveForemanPortal(){return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
@@ -34,7 +35,7 @@ try {
  b.onResolve({filter:/mandatoryEmailIntake$/},()=>({path:'intake',namespace:'mock'}));
  b.onResolve({filter:/PreventionSection$/},()=>({path:'prevention',namespace:'mock'}));
  b.onResolve({filter:/\?url$/},()=>({path:'url',namespace:'mock'}));
- b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=async()=>true;export const appAlert=async()=>{};export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
+ b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async()=>{};export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
  }}]});
  const React=await import('react');const {createRoot}=await import('react-dom/client');const {ForemanMobilePortal,ForemanDocumentsDashboard}=await import(output.href);
  const action=async callback=>{await React.act(async()=>{await callback();await new Promise(resolve=>setTimeout(resolve,30));});};
@@ -44,6 +45,12 @@ try {
  assert(!document.body.textContent.includes('Ver trazabilidad'));
  assert(find('Enviar al portal de encargados'),'explicit publication button');
  assert.equal(calls.length,0,'opening supervisor dashboard must not publish');
+ doc.details.workerAnchors.forEach(a=>Object.assign(a,{page:1,nameX:null,nameY:null,rowHeight:null,signatureX:350,signatureY:500,signatureWidth:70,signatureHeight:14}));
+ confirmResult=false;
+ await action(()=>find('Enviar al portal de encargados').click());
+ assert.equal(calls.length,0,'cancelled overlap confirmation never publishes');
+ assert(confirmMessages.at(-1).includes('se solapan'),'supervisor sees overlap warning');
+ confirmResult=true;
  await action(()=>find('Enviar al portal de encargados').click());
  assert.equal(calls[0].name,'assign_mandatory_document_v2');assert(find('Retirar del portal para corregir'));
  await action(()=>find('Retirar del portal para corregir').click());assert.equal(doc.lifecycle_status,'READY');assert.equal(Object.keys(doc.signatures).length,2);
