@@ -35,6 +35,8 @@ jobs:
           fi
       - name: Validate prevention persistence and permissions
         run: npm run test:prevention
+      - name: Validate Tutor PROFEA local agent
+        run: npm run test:tutor-agent
       - name: Validate auth session architecture
         run: |
           grep -q '"@supabase/supabase-js"' package.json
