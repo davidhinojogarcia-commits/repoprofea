@@ -8,6 +8,7 @@ export const PROFEA_TUTOR_VIEW_LABELS = {
   documentacion_obra: 'Documentación de obra',
   documentacion_encargados: 'Documentación de encargados',
   subcontratas: 'CAE',
+  prevencion: 'Prevención e incidencias',
   inventario: 'Herramientas y maquinaria',
   configuracion: 'Configuración',
   papelera: 'Papelera',
@@ -16,6 +17,8 @@ export const PROFEA_TUTOR_VIEW_LABELS = {
 } as const;
 
 export type ProfeaTutorView = keyof typeof PROFEA_TUTOR_VIEW_LABELS;
+
+export const PROFEA_TUTOR_KNOWLEDGE_VERSION = '2026.10.06.1';
 
 export const PROFEA_TUTOR_KNOWLEDGE = `
 GESTIONPROFEA / PROFEA — GUÍA DE USO PARA SUPERVISORES
@@ -26,7 +29,7 @@ REGLAS DEL TUTOR
 - Si una función no está documentada, indícalo y orienta al usuario hacia el módulo más cercano.
 - Prioriza instrucciones cortas, numeradas y concretas.
 - No pidas DNI, datos médicos ni otra información personal para explicar cómo usar la aplicación.
-- No realices cambios en nombre del usuario: el tutor guía y puede llevar a un módulo, pero no debe modificar registros.
+- Las acciones operativas solo pueden ejecutarse mediante herramientas autorizadas del servidor. Nunca afirmes una modificación sin un resultado verificado de herramienta.
 - Si el usuario pregunta "qué hago ahora", usa el CONTEXTO DE PANTALLA ACTUAL.
 - Cuando existan dos flujos parecidos, aclara la diferencia.
 
@@ -97,6 +100,11 @@ CAE / SUBCONTRATAS
 - Incluye control del Libro de Subcontratación y revisión de documentación.
 - La previsualización permite revisar antes de validar.
 
+PREVENCIÓN E INCIDENCIAS
+- Gestiona incidencias preventivas, comprobaciones previas y seguimiento.
+- La creación y seguimiento usan RPCs con validación de obra, idempotencia y control de concurrencia.
+- El Tutor puede preparar y crear una incidencia cuando están todos los campos obligatorios, pero no determina aptitud médica ni sustituye decisiones preventivas profesionales.
+
 HERRAMIENTAS Y MAQUINARIA
 - Permite consultar inventario, asignaciones, estado y trazabilidad.
 - Los informes de situación deben incluir todas las herramientas/maquinaria y un resumen por obra.
@@ -119,10 +127,11 @@ CONSEJOS DE USO
 `;
 
 export const PROFEA_TUTOR_QUICK_QUESTIONS = [
-  '¿Cómo empiezo una contratación en SAE?',
-  '¿Cómo envío una cita de reconocimiento médico?',
-  '¿Cómo genero un documento de obra?',
-  '¿Cómo reviso la documentación de encargados?',
+  'Explícame esta pantalla',
+  '¿Qué me falta por completar?',
+  'Busca un trabajador',
+  'Prepara un informe',
+  'Ayúdame paso a paso',
 ] as const;
 
 const normalize = (value: string) =>
@@ -161,6 +170,11 @@ const LOCAL_TUTOR_ANSWERS: Array<{ words: string[]; answer: string; view?: Profe
     view: 'directorio',
   },
   {
+    words: ['prevencion','incidencia','riesgo','proteccion'],
+    answer: 'En Prevención puedes registrar incidencias y comprobaciones previas por obra. El Tutor puede ayudarte a localizar la obra activa y preparar una incidencia con los campos obligatorios.',
+    view: 'prevencion',
+  },
+  {
     words: ['cae','subcontrata','subcontratas'],
     answer: 'En CAE puedes revisar empresas, trabajadores de subcontratas, documentación, autorizados/no autorizados y el estado del Libro de Subcontratación.',
     view: 'subcontratas',
@@ -186,4 +200,77 @@ export function getLocalTutorFallback(question: string, currentView?: string) {
       : 'Dime qué tarea quieres realizar en GestionProfea y te indicaré el módulo y los pasos exactos.',
     view: currentView as ProfeaTutorView | undefined,
   };
+}
+
+
+const KNOWLEDGE_HEADINGS = [
+  'REGLAS DEL TUTOR',
+  'RESUMEN / MENÚ INICIAL',
+  'SAE / SELECCIÓN',
+  'DIRECTORIO',
+  'RECONOCIMIENTOS MÉDICOS',
+  'DOCUMENTACIÓN DE OBRA',
+  'DOCUMENTACIÓN DE ENCARGADOS',
+  'PORTAL DEL ENCARGADO',
+  'CAE / SUBCONTRATAS',
+  'PREVENCIÓN E INCIDENCIAS',
+  'HERRAMIENTAS Y MAQUINARIA',
+  'CONFIGURACIÓN',
+  'PAPELERA',
+  'CONSEJOS DE USO',
+] as const;
+
+const VIEW_HEADING: Partial<Record<ProfeaTutorView, typeof KNOWLEDGE_HEADINGS[number]>> = {
+  dashboard: 'RESUMEN / MENÚ INICIAL',
+  sae: 'SAE / SELECCIÓN',
+  directorio: 'DIRECTORIO',
+  citas: 'RECONOCIMIENTOS MÉDICOS',
+  documentacion_obra: 'DOCUMENTACIÓN DE OBRA',
+  documentacion_encargados: 'DOCUMENTACIÓN DE ENCARGADOS',
+  subcontratas: 'CAE / SUBCONTRATAS',
+  prevencion: 'PREVENCIÓN E INCIDENCIAS',
+  inventario: 'HERRAMIENTAS Y MAQUINARIA',
+  configuracion: 'CONFIGURACIÓN',
+  papelera: 'PAPELERA',
+};
+
+function extractKnowledgeSection(heading: string) {
+  const marker = `\n${heading}\n`;
+  const start = PROFEA_TUTOR_KNOWLEDGE.indexOf(marker);
+  if (start < 0) return '';
+  const contentStart = start + marker.length;
+  const nextStarts = KNOWLEDGE_HEADINGS
+    .map(next => PROFEA_TUTOR_KNOWLEDGE.indexOf(`\n${next}\n`, contentStart))
+    .filter(index => index >= 0);
+  const end = nextStarts.length ? Math.min(...nextStarts) : PROFEA_TUTOR_KNOWLEDGE.length;
+  return `${heading}\n${PROFEA_TUTOR_KNOWLEDGE.slice(contentStart, end).trim()}`;
+}
+
+export function getTutorKnowledgeSlice(question: string, currentView?: string) {
+  const q = normalize(question);
+  const headings = new Set<string>(['REGLAS DEL TUTOR', 'CONSEJOS DE USO']);
+  const activeHeading = VIEW_HEADING[currentView as ProfeaTutorView];
+  if (activeHeading) headings.add(activeHeading);
+
+  const matches: Array<[RegExp, typeof KNOWLEDGE_HEADINGS[number]]> = [
+    [/\bsae\b|contrataci|candidat|oferta/, 'SAE / SELECCIÓN'],
+    [/directorio|trabajador|ficha/, 'DIRECTORIO'],
+    [/reconocimiento|medic|cita|aptitud/, 'RECONOCIMIENTOS MÉDICOS'],
+    [/documentacion de obra|epis|formacion|control horario/, 'DOCUMENTACIÓN DE OBRA'],
+    [/encargad|inicio|control de presencia|firma/, 'DOCUMENTACIÓN DE ENCARGADOS'],
+    [/portal/, 'PORTAL DEL ENCARGADO'],
+    [/cae|subcontrat/, 'CAE / SUBCONTRATAS'],
+    [/prevencion|incidencia|riesgo|proteccion|hidratacion|lluvia/, 'PREVENCIÓN E INCIDENCIAS'],
+    [/maquinaria|herramienta|inventario|averiad/, 'HERRAMIENTAS Y MAQUINARIA'],
+    [/configuracion|responsable|destinatario/, 'CONFIGURACIÓN'],
+    [/papelera|restaurar|borrado/, 'PAPELERA'],
+  ];
+  for (const [pattern, heading] of matches) {
+    if (pattern.test(q)) headings.add(heading);
+  }
+
+  return Array.from(headings)
+    .map(extractKnowledgeSection)
+    .filter(Boolean)
+    .join('\n\n');
 }
