@@ -17,7 +17,7 @@ Este mapa se deriva del código de `main` en el commit `1bf90c6fa15bdef35a215886
 ## Capacidades habilitadas en esta rama
 1. Ayuda contextual y navegación.
 2. Consulta de obras visibles.
-3. Búsqueda de trabajadores visibles sin enviar DNI al modelo.
+3. Búsqueda de trabajadores visibles con minimización de datos.
 4. Consulta de pendientes de reconocimiento médico por obra/periodo.
 5. Aplicación de filtros de obra/periodo en la interfaz.
 6. Creación de incidencias preventivas mediante el RPC existente, con verificación de respuesta de base de datos.
@@ -27,11 +27,11 @@ Este mapa se deriva del código de `main` en el commit `1bf90c6fa15bdef35a215886
 
 ## Límites deliberados
 - No SQL arbitrario.
-- No service-role en navegador ni para decisiones del modelo.
+- No service-role en navegador ni para decisiones del Tutor.
 - Los borrados de documentos obligatorios solo se ejecutan tras una confirmación exacta firmada; otros cambios masivos, envíos a terceros y cierres definitivos siguen deshabilitados.
 - No firmas por trabajadores.
-- No se envían DNI, IBAN, NUSS ni detalles médicos al proveedor del modelo.
-- El contenido de documentos importados no forma parte del prompt de sistema y nunca se interpreta como instrucciones.
+- No se exponen DNI, IBAN, NUSS ni detalles médicos innecesarios al planificador local.
+- El contenido de documentos importados se trata como datos y nunca como instrucciones ejecutables.
 
 ## Actualización del conocimiento
 Cuando se añada o cambie un módulo:
@@ -83,4 +83,11 @@ Cuando se añada o cambie un módulo:
 | `create_prevention_incident` | escritura | orden explícita | RPC, idempotencia, eventos |
 | `prepare_delete_mandatory_documents` | preparación sensible | sí, antes de borrar | calcula conjunto exacto, no modifica |
 
-La ejecución posterior del borrado no se solicita al modelo: el servidor valida una confirmación firmada, usuario, caducidad, obra activa y que el conjunto de documentos no haya cambiado antes de llamar al RPC real.
+La ejecución posterior del borrado no depende de ningún modelo externo: el servidor valida una confirmación firmada, usuario, caducidad, obra activa y que el conjunto de documentos no haya cambiado antes de llamar al RPC real.
+
+
+## Motor del Tutor
+- Tutor PROFEA usa un planificador determinista local ejecutado en el servidor de GestionProfea.
+- No llama a Gemini ni a otro proveedor de modelo para interpretar órdenes o sintetizar resultados.
+- Las herramientas permitidas están en un catálogo cerrado y siguen usando la sesión y los permisos RLS/RPC del usuario.
+- Gemini puede seguir existiendo en otros flujos independientes de análisis documental de la aplicación; no forma parte de Tutor PROFEA.
