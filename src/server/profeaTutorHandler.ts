@@ -1,5 +1,5 @@
-import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION } from "../lib/profeaTutorKnowledge";
-import { authenticateTutorRequest, composeTutorResponseLocal, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorRequestLocal, TUTOR_AGENT_VERSION } from "./profeaTutorAgent";
+import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION } from "../lib/profeaTutorKnowledge.js";
+import { authenticateTutorRequest, composeTutorResponseLocal, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorRequestLocal, TUTOR_AGENT_VERSION } from "./profeaTutorAgent.js";
 
 export async function profeaTutorHandler(req: any, res: any) {
   res.setHeader("Cache-Control", "no-store");

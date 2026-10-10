@@ -30,7 +30,7 @@
     "test:admin-audit": "node scripts/testAdminAuditUi.mjs",
     "test:consumption-cache": "node scripts/testConsumptionCache.mjs",
     "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs",
-    "test:tutor-agent": "node --import tsx scripts/testProfeaTutorAgent.ts && node --import tsx scripts/testProfeaTutorRegression.ts && node scripts/testProfeaTutorUi.mjs"
+    "test:tutor-agent": "node --import tsx scripts/testProfeaTutorAgent.ts && node --import tsx scripts/testProfeaTutorRegression.ts && node scripts/testProfeaTutorUi.mjs && node scripts/testProfeaTutorServerless.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
