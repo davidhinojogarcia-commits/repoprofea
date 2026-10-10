@@ -2165,9 +2165,20 @@ function App() {
       <ProfeaTutor
         activeView={activeView}
         guidedMode={interfaceMode === 'guided'}
+        activeObra={selectedObraFilter.length === 1 && selectedObraFilter[0] !== 'Todas' ? selectedObraFilter[0] : ''}
+        activePeriod={selectedQuincenaFilter.length === 1 && selectedQuincenaFilter[0] !== 'Todas' ? selectedQuincenaFilter[0] : ''}
         onNavigate={(view) => {
           setActiveView(view);
           window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view } }));
+        }}
+        onApplyFilters={({ obra, periodo }) => {
+          if (obra) setSelectedObraFilter([obra]);
+          if (periodo) setSelectedQuincenaFilter([periodo]);
+        }}
+        onOpenWorker={({ name }) => {
+          setSearchTerm(name);
+          setActiveView('directorio');
+          window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'directorio' } }));
         }}
       />
 
