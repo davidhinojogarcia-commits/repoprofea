@@ -8,6 +8,9 @@ Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLEle
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 window.HTMLCanvasElement.prototype.getContext=()=>({save(){},restore(){},setLineDash(){},strokeRect(){},fillRect(){}});
 window.HTMLCanvasElement.prototype.getBoundingClientRect=()=>({left:0,top:0,width:595,height:842});
+let measuredPanelWidth=595;
+const clientWidthDescriptor=Object.getOwnPropertyDescriptor(window.HTMLElement.prototype,'clientWidth');
+Object.defineProperty(window.HTMLElement.prototype,'clientWidth',{configurable:true,get(){return this.classList.contains('mandatory-editor-pdf-scroll')?measuredPanelWidth:clientWidthDescriptor?.get?.call(this)||0;}});
 globalThis.__activePdfRenders=0;
 globalThis.__pdfRenderCollisions=0;
 const workers=[1,2].map(i=>({workerId:i,documentWorkerId:'worker-'+i,workerName:'Persona '+i,dni:'',page:1,order:i,nameX:60,nameY:500,nameWidth:100,nameHeight:10,rowHeight:10,signatureX:350,signatureY:500,signatureWidth:90,signatureHeight:32,confidence:1,resolved:true}));
@@ -17,13 +20,17 @@ try{
  b.onResolve({filter:/foremanPortalService$/},()=>({path:'portal',namespace:'mock'}));
  b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'supabase',namespace:'mock'}));
  b.onResolve({filter:/pdfjs-dist/},()=>({path:'pdf',namespace:'mock'}));
- b.onLoad({filter:/.*/,namespace:'mock'},({path})=>({contents:path==='portal'?"export const getSupervisorMandatoryPdf=async()=>({base64:'AAAA'});":path==='supabase'?"export const supabase={query:async()=>[]};":`export default '';export const GlobalWorkerOptions={};export const getDocument=()=>({promise:Promise.resolve({numPages:1,destroy(){},getPage:async()=>({view:[0,0,595,842],getViewport:()=>({width:595,height:842,transform:[1,0,0,-1,0,842]}),render(){if(globalThis.__activePdfRenders){globalThis.__pdfRenderCollisions++;throw Error('Cannot use the same canvas during multiple render operations');}globalThis.__activePdfRenders++;let timer,reject,done=false;const finish=()=>{if(done)return;done=true;globalThis.__activePdfRenders--;};const promise=new Promise((resolve,r)=>{reject=r;timer=setTimeout(()=>{finish();resolve();},80);});return {promise,cancel(){clearTimeout(timer);finish();const e=Error('cancelled');e.name='RenderingCancelledException';reject(e);}};}})})});`}));
+ b.onLoad({filter:/.*/,namespace:'mock'},({path})=>({contents:path==='portal'?"export const getSupervisorMandatoryPdf=async()=>({base64:'AAAA'});":path==='supabase'?"export const supabase={query:async()=>[]};":`export default '';export const GlobalWorkerOptions={};export const getDocument=()=>({promise:Promise.resolve({numPages:1,destroy(){},getPage:async()=>({view:[0,0,595,842],getViewport:({scale})=>({width:595*scale,height:842*scale,transform:[scale,0,0,-scale,0,842*scale]}),render(){if(globalThis.__activePdfRenders){globalThis.__pdfRenderCollisions++;throw Error('Cannot use the same canvas during multiple render operations');}globalThis.__activePdfRenders++;let timer,reject,done=false;const finish=()=>{if(done)return;done=true;globalThis.__activePdfRenders--;};const promise=new Promise((resolve,r)=>{reject=r;timer=setTimeout(()=>{finish();resolve();},80);});return {promise,cancel(){clearTimeout(timer);finish();const e=Error('cancelled');e.name='RenderingCancelledException';reject(e);}};}})})});`}));
  }}]});
  const React=await import('react');const {createRoot}=await import('react-dom/client');const {MandatoryPdfAnchorEditor}=await import(output.href);
  const action=async(fn)=>React.act(async()=>{await fn();await new Promise(r=>setTimeout(r,25));});
  const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
  const mount=async anchors=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(React.createElement(MandatoryPdfAnchorEditor,{documentId:'doc',title:'Control',obra:'A',documentType:'control_presencia',anchors,onCancel(){},onSave(a){saved=structuredClone(a);},async onRemoveWorker(id){if(rejectRemoval)throw Error('No se pudo eliminar');removed.push(id);}})));};
  await mount(workers);
+ await action(()=>button('PDF y posición de firma').click());
+ assert.equal(document.querySelector('.mandatory-anchor-editor').dataset.mobilePanel,'pdf');
+ await action(()=>button('Trabajador y ajustes').click());
+ assert.equal(document.querySelector('.mandatory-anchor-editor').dataset.mobilePanel,'controls');
  await action(()=>button('Siguiente').click());
  await action(()=>button('Anterior').click());
  assert.equal(globalThis.__pdfRenderCollisions,0,'rapid worker selection cancels the previous render');
@@ -50,6 +57,12 @@ try{
  rejectRemoval=false;
  await mount([{...workers[0],workerId:-1,documentWorkerId:'new-identity',draftNew:true}]);
  await action(()=>button('Eliminar trabajador del documento').click());assert.deepEqual(removed,[1],'unsaved worker deletion requires no server mutation');
+ await mount(workers);
+ measuredPanelWidth=320;
+ await action(()=>window.dispatchEvent(new window.Event('resize')));
+ await action(()=>new Promise(r=>setTimeout(r,100)));
+ assert.equal(document.querySelector('canvas').width,320,'PDF fit uses the measured panel width after resizing');
+ assert.equal(globalThis.__pdfRenderCollisions,0,'resize does not overlap PDF render tasks');
  console.log('PASS: saved coordinates and dimensions survive reopening; rapid worker selection cancels PDF renders; manual placement preserves the chosen size; overlapping/incomplete drafts and deletion regressions.');
 }finally{if(root){const React=await import('react');await React.act(()=>root.unmount());}await fs.rm(output,{force:true});dom.window.close();}
 
