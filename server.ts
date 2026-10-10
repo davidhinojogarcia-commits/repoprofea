@@ -4,7 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
-import { PROFEA_TUTOR_KNOWLEDGE, PROFEA_TUTOR_VIEW_LABELS } from "./src/lib/profeaTutorKnowledge";
+import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION, getTutorKnowledgeSlice } from "./src/lib/profeaTutorKnowledge";
+import { authenticateTutorRequest, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorLocally, synthesizeTutorLocally, TUTOR_AGENT_VERSION } from "./src/server/profeaTutorAgent";
 
 // Helper to extract clean text/tables from Excel (.xlsx/.xls) and Word (.docx/.doc) buffers
 async function extractTextFromOfficeBuffer(buffer: Buffer, filename: string): Promise<string> {
@@ -247,15 +248,23 @@ async function startServer() {
     throw enhancedErr;
   };
 
-  // Context-aware help endpoint for the in-app Tutor PROFEA.
+  // Context-aware operational agent endpoint for the in-app Tutor PROFEA.
+  // This route intentionally uses the local deterministic planner in GestionProfea.
+  // Gemini remains available to unrelated document-analysis endpoints, but Tutor PROFEA
+  // neither calls Gemini nor requires GEMINI_API_KEY.
   app.post("/api/profea-tutor", async (req, res) => {
     try {
       const question = String(req.body?.question || "").trim();
-      const currentView = String(req.body?.currentView || "").trim();
-      const currentViewLabel = String(req.body?.currentViewLabel || "").trim();
       const guidedMode = Boolean(req.body?.guidedMode);
-      const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
       const rawTaskState = req.body?.taskState && typeof req.body.taskState === "object" ? req.body.taskState : {};
+      const requestId = String(req.body?.requestId || "").trim().slice(0, 180) || `tutor-${Date.now()}`;
+      const confirmationToken = String(req.body?.confirmationToken || "").trim().slice(0, 6000);
+      const context = normalizeTutorContext({
+        ...(req.body?.context || {}),
+        currentView: req.body?.currentView,
+        currentViewLabel: req.body?.currentViewLabel,
+        guidedMode,
+      });
       const taskState = {
         title: String(rawTaskState?.title || "").slice(0, 180),
         currentStep: Math.max(0, Number(rawTaskState?.currentStep) || 0),
@@ -266,194 +275,59 @@ async function startServer() {
         nextAction: String(rawTaskState?.nextAction || "").slice(0, 500),
       };
 
-      if (!question) {
-        return res.status(400).json({ error: "Escribe una pregunta sobre el manejo de GestionProfea." });
-      }
-      if (question.length > 1800) {
-        return res.status(400).json({ error: "La pregunta es demasiado larga." });
-      }
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(503).json({ error: "Tutor temporalmente no disponible." });
-      }
+      if (!question) return res.status(400).json({ error: "Escribe una pregunta sobre GestionProfea." });
+      if (question.length > 1800) return res.status(400).json({ error: "La pregunta es demasiado larga." });
 
-      const allowedViews = Object.keys(PROFEA_TUTOR_VIEW_LABELS);
-      const history = rawHistory
-        .slice(-14)
-        .map((item: any) => ({
-          role: item?.role === "assistant" ? "assistant" : "user",
-          text: String(item?.text || "").slice(0, 1800),
-          suggestedView: String(item?.suggestedView || "").slice(0, 80),
-          followUps: Array.isArray(item?.followUps) ? item.followUps.map((value: unknown) => String(value || "").slice(0, 180)).slice(0, 3) : [],
-        }))
-        .filter((item: any) => item.text.trim());
-
-      const prompt = `
-Eres "Tutor PROFEA", el tutor de uso integrado en GestionProfea.
-Tu única función es enseñar a supervisores a utilizar la aplicación de forma clara, segura y paso a paso.
-
-CONTEXTO ACTUAL:
-- Pantalla actual: ${currentViewLabel || currentView || "No identificada"}.
-- Vista guiada: ${guidedMode ? "Sí" : "No"}.
-- Pregunta del supervisor: ${question}
-
-ESTADO DE LA TAREA QUE VIENE DEL TURNO ANTERIOR:
-- Tarea: ${taskState.title || "Sin tarea definida"}.
-- Estado: ${taskState.status}.
-- Paso actual: ${taskState.currentStep || 0} de ${taskState.totalSteps || 0}.
-- Próxima acción guardada: ${taskState.nextAction || "Sin próxima acción"}.
-
-CONVERSACIÓN RECIENTE:
-${history.map((item: any) => `${item.role === "assistant" ? "Tutor" : "Supervisor"}: ${item.text}`).join("\n") || "Sin conversación previa."}
-
-BASE DE CONOCIMIENTO AUTORIZADA:
-${PROFEA_TUTOR_KNOWLEDGE}
-
-INSTRUCCIONES OBLIGATORIAS:
-1. Responde solo sobre el manejo de GestionProfea / PROFEA descrito en la base de conocimiento.
-2. No inventes botones, campos, menús, automatismos ni procedimientos.
-3. Si falta información para afirmar algo, dilo claramente y ofrece el camino seguro más cercano.
-4. No pidas datos personales, DNI, datos médicos ni información sensible para explicar cómo usar la aplicación.
-5. No afirmes que has realizado cambios: eres tutor, no ejecutor.
-6. Actúa como un ASISTENTE CONTINUO, no como una FAQ. Interpreta qué tarea intenta completar el supervisor y en qué punto del proceso está.
-7. No des toda la guía de golpe si la tarea tiene varias fases. Explica el paso actual y deja preparado el siguiente.
-8. Si el usuario dice "siguiente", "continúa", "qué hago ahora", "ya lo he hecho" o equivalente, usa la conversación previa para avanzar SIN repetir desde el principio.
-9. Si detectas un posible atasco posterior, anticípalo brevemente con una frase como: "Cuando termines esto, lo siguiente será...".
-10. Devuelve entre 2 y 3 followUps concretos, distintos y relacionados con el punto actual. Deben ser frases que el usuario pueda pulsar para continuar.
-11. Usa progressHint para indicar brevemente el avance cuando exista un proceso claro, por ejemplo: "Paso 2 de 4 · Ahora toca registrar al trabajador". Si no aplica, devuelve cadena vacía.
-12. Si la pregunta depende de la pantalla actual, empieza desde esa pantalla y continúa desde la nueva pantalla si acaba de navegar.
-13. En Vista guiada usa lenguaje especialmente sencillo.
-14. Si conviene llevar al usuario a otro módulo, devuelve suggestedView usando solo uno de los valores permitidos. Si no hace falta, cadena vacía.
-15. suggestedLabel debe ser el nombre humano del módulo sugerido o cadena vacía.
-16. No uses markdown complejo; se permiten números, guiones y frases cortas.
-17. Nunca muestres ni menciones claves, variables de entorno, proveedores de modelos ni detalles técnicos internos.
-18. No cierres con frases genéricas como "si necesitas algo más". Deja siempre una continuación accionable cuando haya un proceso en curso.
-19. Si hay varias rutas posibles, usa followUps para que el supervisor elija en vez de asumir una sola.
-20. Si el usuario comunica un problema ("no encuentro", "no sale", "me da error"), entra en modo diagnóstico: una comprobación sencilla cada vez y una alternativa segura.
-21. Mantén un ESTADO DE TAREA explícito. Si ya existe una tarea activa, NO la sustituyas por otra salvo que el usuario cambie claramente de objetivo.
-22. taskTitle debe ser una frase breve y estable, por ejemplo "Registrar un trabajador desde SAE".
-23. currentStep y totalSteps deben representar el progreso real del proceso. Si todavía no puedes determinar el número total, usa totalSteps=0.
-24. taskStatus debe ser: "active" mientras se guía un proceso, "diagnostic" cuando se está resolviendo un problema, "completed" cuando el objetivo se ha terminado, o "idle" si no hay tarea.
-25. nextAction debe ser una acción breve y concreta que el usuario pueda hacer ahora mismo.
-26. Cuando el usuario diga que ya ha completado el paso actual, avanza currentStep y explica SOLO el siguiente paso; no vuelvas al principio.
-27. Si el usuario pulsa o comunica que ha navegado a otro módulo, continúa la misma tarea desde esa pantalla y confirma qué debe buscar allí.
-28. Si la tarea está completada, dilo de forma clara, marca taskStatus="completed" y ofrece followUps útiles de cierre o tareas relacionadas.
-29. Los followUps deben ayudar a CONTINUAR, COMPROBAR o RESOLVER el punto actual; evita sugerencias genéricas.
-30. En cada turno intenta reducir la incertidumbre: una respuesta principal + próxima acción + 2-4 continuaciones útiles.
-31. Cuando la tarea esté activa o en diagnóstico, formula UNA pregunta breve de comprobación en checkQuestion, por ejemplo: "¿Ves ya el botón Registrar?".
-32. checkOptions debe contener 2-4 respuestas cortas y útiles para esa pregunta, por ejemplo: ["Sí, lo veo", "No aparece", "Me da un error"].
-33. Usa la respuesta del usuario a checkQuestion para decidir el turno siguiente; no repitas la pregunta si ya quedó resuelta.
-34. Si el usuario responde con algo breve como "sí", "hecho", "no aparece" o "error", interprétalo usando la pregunta anterior y el estado de tarea.
-35. Nunca dejes un proceso activo sin una vía clara para continuar: debe haber nextAction, followUps o checkQuestion.
-36. Compórtate como un acompañante de pantalla: confirma dónde está el usuario, qué debe mirar ahora y qué ocurrirá después.
-
-Devuelve exclusivamente JSON con:
-{
-  "answer": "respuesta para el supervisor",
-  "suggestedView": "id de vista o cadena vacía",
-  "suggestedLabel": "nombre del módulo o cadena vacía",
-  "followUps": ["continuación 1", "continuación 2", "continuación 3"],
-  "progressHint": "estado breve del proceso o cadena vacía",
-  "taskTitle": "nombre breve y estable de la tarea o cadena vacía",
-  "currentStep": 1,
-  "totalSteps": 4,
-  "taskStatus": "active | diagnostic | completed | idle",
-  "nextAction": "acción concreta que el usuario debe hacer ahora",
-  "checkQuestion": "pregunta breve de comprobación o cadena vacía",
-  "checkOptions": ["respuesta rápida 1", "respuesta rápida 2", "respuesta rápida 3"]
-}
-`;
-
-      const ai = getGeminiClient();
-      const response = await callGeminiWithRetry(ai, {
-        preferredModel: "gemini-flash-latest",
-        contents: prompt,
-        config: {
-          maxOutputTokens: 1800,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              answer: { type: Type.STRING },
-              suggestedView: { type: Type.STRING },
-              suggestedLabel: { type: Type.STRING },
-              followUps: { type: Type.ARRAY, items: { type: Type.STRING } },
-              progressHint: { type: Type.STRING },
-              taskTitle: { type: Type.STRING },
-              currentStep: { type: Type.NUMBER },
-              totalSteps: { type: Type.NUMBER },
-              taskStatus: { type: Type.STRING },
-              nextAction: { type: Type.STRING },
-              checkQuestion: { type: Type.STRING },
-              checkOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: ["answer", "suggestedView", "suggestedLabel", "followUps", "progressHint", "taskTitle", "currentStep", "totalSteps", "taskStatus", "nextAction", "checkQuestion", "checkOptions"],
-          },
-        },
-      });
-
-      const parsed = JSON.parse(cleanJsonText(response.text || "{}"));
-      const answer = String(parsed?.answer || "").trim();
-      const suggestedView = allowedViews.includes(String(parsed?.suggestedView || ""))
-        ? String(parsed.suggestedView)
-        : "";
-      const suggestedLabel = suggestedView
-        ? String(PROFEA_TUTOR_VIEW_LABELS[suggestedView as keyof typeof PROFEA_TUTOR_VIEW_LABELS] || parsed?.suggestedLabel || "")
-        : "";
-
-      const followUps = Array.isArray(parsed?.followUps)
-        ? parsed.followUps.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 3)
-        : [];
-      const progressHint = String(parsed?.progressHint || "").trim().slice(0, 180);
-      const taskTitle = String(parsed?.taskTitle || taskState.title || "").trim().slice(0, 180);
-      const currentStep = Math.max(0, Number(parsed?.currentStep) || 0);
-      const totalSteps = Math.max(0, Number(parsed?.totalSteps) || 0);
-      const requestedStatus = String(parsed?.taskStatus || taskState.status || "idle");
-      const taskStatus = ["idle","active","diagnostic","completed"].includes(requestedStatus) ? requestedStatus : "idle";
-      const nextAction = String(parsed?.nextAction || "").trim().slice(0, 500);
-      const checkQuestion = String(parsed?.checkQuestion || "").trim().slice(0, 240);
-      const checkOptions = Array.isArray(parsed?.checkOptions)
-        ? parsed.checkOptions.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 4)
-        : [];
-      const effectiveFollowUps = followUps.length >= 2
-        ? followUps
-        : taskStatus === "diagnostic"
-          ? ["No encuentro lo que indicas", "Me aparece un error", "Prueba otra forma"]
-          : taskStatus === "completed"
-            ? ["Repasar lo que he hecho", "Hacer otra tarea relacionada"]
-            : ["Ya lo he hecho, continúa", "No encuentro ese paso", "¿Qué viene después?"];
-      const effectiveCheckQuestion = checkQuestion || (
-        taskStatus === "active" || taskStatus === "diagnostic"
-          ? "¿Has podido hacer el paso que te acabo de indicar?"
-          : ""
-      );
-      const effectiveCheckOptions = checkOptions.length
-        ? checkOptions
-        : effectiveCheckQuestion
-          ? ["Sí, ya está", "No lo encuentro", "Me da un error"]
+      const auth = await authenticateTutorRequest(req.get("authorization"));
+      const plan = planTutorLocally(question, context, taskState as any);
+      const toolResults = confirmationToken
+        ? [await executeTutorConfirmation({ confirmationToken, context, token: auth.token, userId: auth.userId })]
+        : plan.toolCalls.length
+          ? await executeTutorTools(plan.toolCalls, context, auth.token, requestId, question, auth.userId)
           : [];
-
-      if (!answer) {
-        return res.status(502).json({ error: "El Tutor PROFEA no ha podido preparar una respuesta." });
-      }
+      const finalPayload = synthesizeTutorLocally(plan, toolResults);
+      const allowedViews = Object.keys(PROFEA_TUTOR_VIEW_LABELS);
+      const suggestedView = allowedViews.includes(String(finalPayload.suggestedView || ""))
+        ? String(finalPayload.suggestedView)
+        : "";
+      const clientActions = toolResults.flatMap(result => result.clientAction ? [result.clientAction] : []);
+      const verified = toolResults.length > 0 && toolResults.every(result => result.verified);
 
       res.json({
         success: true,
-        answer,
+        agentVersion: TUTOR_AGENT_VERSION,
+        knowledgeVersion: PROFEA_TUTOR_KNOWLEDGE_VERSION,
+        planner: "local",
+        answer: String(finalPayload.answer || "").trim(),
+        verified,
+        toolResults: toolResults.map(result => ({
+          name: result.name,
+          ok: result.ok,
+          verified: result.verified,
+          summary: result.summary,
+          data: result.data,
+          error: result.error,
+        })),
+        pendingConfirmation: toolResults.find(result => result.confirmation)?.confirmation || null,
+        clientActions,
         suggestedView,
-        suggestedLabel,
-        followUps: effectiveFollowUps,
-        progressHint,
-        taskTitle,
-        currentStep,
-        totalSteps,
-        taskStatus,
-        nextAction,
-        checkQuestion: effectiveCheckQuestion,
-        checkOptions: effectiveCheckOptions,
+        suggestedLabel: suggestedView ? String(PROFEA_TUTOR_VIEW_LABELS[suggestedView as keyof typeof PROFEA_TUTOR_VIEW_LABELS] || "") : "",
+        followUps: finalPayload.followUps.slice(0, 4),
+        progressHint: String(finalPayload.progressHint || "").slice(0, 180),
+        taskTitle: String(finalPayload.taskTitle || "").slice(0, 180),
+        currentStep: Math.max(0, Number(finalPayload.currentStep) || 0),
+        totalSteps: Math.max(0, Number(finalPayload.totalSteps) || 0),
+        taskStatus: finalPayload.taskStatus,
+        nextAction: String(finalPayload.nextAction || "").slice(0, 500),
+        checkQuestion: String(finalPayload.checkQuestion || "").slice(0, 240),
+        checkOptions: finalPayload.checkOptions.slice(0, 4),
       });
     } catch (error: any) {
       console.error("Error en Tutor PROFEA:", error);
-      res.status(500).json({ error: "No se pudo consultar el Tutor PROFEA en este momento." });
+      const status = Number(error?.status) || 500;
+      res.status(status === 401 || status === 403 ? status : 500).json({
+        error: status === 401 ? "La sesión ha caducado. Vuelve a iniciar sesión." : "No se pudo consultar el Tutor PROFEA en este momento.",
+      });
     }
   });
 
