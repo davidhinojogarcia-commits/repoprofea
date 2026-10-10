@@ -27,8 +27,7 @@
       "local/reduce-supabase-requests-phase2-20261007": false,
       "feat/consumption-cache-temporary-documents": false,
       "local/remove-activity-morning-refresh-20261007": false,
-      "local/manual-foreman-publication-20261009": false,
-      "local/fix-admin-audit-freshness-races-20261010": false
+      "local/manual-foreman-publication-20261009": false
     }
   }
 }
