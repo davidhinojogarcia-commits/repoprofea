@@ -123,6 +123,7 @@ try {
  await db.exec('reset role');
  const legacyDoc=id(30),legacyWorker=id(31);
  await query("insert into foreman_mandatory_documents(id,owner_id,obra,status,lifecycle_status) values($1,$2,'Obra A','pending','READY')",[legacyDoc,owner]);
+ await query("insert into foreman_mandatory_pdf_files(document_id,owner_id,original_pdf,original_sha256,page_meta) values($1,$2,convert_to('original','UTF8'),encode(extensions.digest('original','sha256'),'hex'),$3)",[legacyDoc,owner,[{page:1,width:595,height:842}]]);
  await query("insert into mandatory_document_workers_v2(id,document_id,owner_id,legacy_worker_id,printed_name,page,row_index,detection_status,position_status,position_source,name_box,signature_box) values($1,$2,$3,31,'Persona Antigua',1,0,'CONFIRMED','RESOLVED','MANUAL',$4,$5)",[legacyWorker,legacyDoc,owner,{x:60,y:502,width:120,height:10},box(500)]);
  await rpc('mandatory_v2_refresh_legacy_worker_snapshot',[legacyDoc]);
  await query("update foreman_mandatory_documents set details=jsonb_set(details,'{workerAnchors}',(select jsonb_agg((a-'documentWorkerId')||jsonb_build_object('signatureX',999)) from jsonb_array_elements(details->'workerAnchors') a)) where id=$1",[legacyDoc]);
@@ -145,8 +146,16 @@ try {
  const reopened=await loadSupervisorMandatoryEditorDocument(legacyDoc);
  assert.deepEqual(['signatureX','signatureY','signatureWidth','signatureHeight'].map(k=>reopened.details.workerAnchors[0][k]),[365,500,80,18]);
  await saveSupervisorMandatoryDraft(legacyDoc,edited,recovered.updated_at);
+ const extra={...reopened.details.workerAnchors[0],workerId:-123,documentWorkerId:id(32),draftNew:true,workerName:'Persona Añadida',nameX:null,nameY:null,nameWidth:null,nameHeight:null,nameRightX:null,rowHeight:null};
+ await saveSupervisorMandatoryDraft(legacyDoc,[...reopened.details.workerAnchors,extra],reopened.updated_at);
+ const withExtra=await loadSupervisorMandatoryEditorDocument(legacyDoc);
+ assert.equal(withExtra.details.workerAnchors.length,2,'added worker persists even with an overlapping signature');
+ assert.equal(withExtra.details.workerAnchors[1].workerName,'Persona Añadida');
+ assert.deepEqual(['signatureX','signatureY','signatureWidth','signatureHeight'].map(k=>withExtra.details.workerAnchors[1][k]),[365,500,80,18],'added worker keeps the exact overlapping position after reopening');
+ await db.exec('reset role');await rpc('mandatory_v2_validate_signature_geometry',[legacyDoc]);await asUser(owner);
+ await saveSupervisorMandatoryDraft(legacyDoc,[...reopened.details.workerAnchors,extra],reopened.updated_at);
  await db.exec('reset role');
- assert.equal((await query("select count(*)::int n from mandatory_document_events_v2 where document_id=$1 and event_type='POSITIONS_DRAFT_SAVED'",[legacyDoc]))[0].n,1,'retry after reopening does not duplicate the save');
- console.log('PASS: real PostgreSQL RPCs, legacy UUID recovery, canonical coordinates, atomic save, exact positions/dimensions after reopening and idempotent retry.');
+ assert.equal((await query("select count(*)::int n from mandatory_document_events_v2 where document_id=$1 and event_type='POSITIONS_DRAFT_SAVED'",[legacyDoc]))[0].n,2,'retries do not duplicate either save or the newly added worker');
+ console.log('PASS: real PostgreSQL RPCs, legacy UUID recovery, exact coordinates after reopening, added workers with overlapping signatures and idempotent retries.');
 } finally {delete globalThis.__draftSqlApi;if(fs.existsSync(serviceOutput))fs.unlinkSync(serviceOutput);await db.close();}
 

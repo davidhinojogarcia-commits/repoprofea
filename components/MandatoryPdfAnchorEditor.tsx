@@ -175,6 +175,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const validation=useMemo(()=>pages.length?validateMandatorySignaturePlacement(draft,pages):{ok:false,issues:[]},[draft,pages]);
   const blockingIssues=blockingMandatorySignatureIssues(validation.issues);
   const currentIssues=validation.issues.filter(issue=>issue.workerId===current?.workerId);
+  const currentOverlapIssues=currentIssues.filter(issue=>issue.code==='OVERLAP_SIGNATURE');
+  const currentReviewIssues=currentIssues.filter(issue=>issue.code!=='OVERLAP_SIGNATURE');
   const conflictIds=new Set(validation.issues.map(issue=>issue.workerId));
   const nextConflict=()=>{const candidates=draft.map((_,i)=>(index+i+1)%draft.length);const next=candidates.find(i=>conflictIds.has(draft[i].workerId));if(next!=null)setIndex(next);};
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
@@ -364,7 +366,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             El recuadro azul marca dónde se colocará la firma. Colócalo en la misma línea del trabajador, inmediatamente a la derecha de su nombre. El PDF original no se mueve ni se rediseña.
           </div>
           {feedback&&<div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{feedback}</div>}
-          {currentIssues.length>0&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>Avisos de esta firma</strong><ul className="mt-2 list-disc pl-4">{currentIssues.map((issue,i)=><li key={i}>{issue.message}</li>)}</ul><p className="mt-2">El solapamiento entre firmas permite enviar con tu confirmación. Puedes guardar el borrador en cualquier momento.</p></div>}
+          {currentOverlapIssues.length>0&&<div role="status" className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100"><strong>Solapamiento entre firmas · Informativo</strong><p className="mt-2">Puedes guardar los trabajadores añadidos y las posiciones tal como están. Este aviso no bloquea el guardado ni pide confirmación.</p></div>}
+          {currentReviewIssues.length>0&&<div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>Avisos de esta firma</strong><ul className="mt-2 list-disc pl-4">{currentReviewIssues.map((issue,i)=><li key={i}>{issue.message}</li>)}</ul><p className="mt-2">Puedes guardar el borrador y continuar la revisión antes de enviarlo al portal.</p></div>}
           {conflictIds.size>0&&<button type="button" onClick={nextConflict} className="mt-2 min-h-[44px] w-full rounded-xl border border-amber-400 px-3 text-sm font-bold">Ir al siguiente trabajador pendiente ({conflictIds.size})</button>}
           {error&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/70 dark:text-rose-100">{error}</div>}
         </aside>
@@ -400,13 +403,13 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       </div>
 
       <div className="shrink-0 flex flex-col gap-2 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4 sm:flex-row sm:items-center sm:justify-between" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
-        <div className={`text-sm font-black ${unresolved||blockingIssues.length?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : blockingIssues.length?'Hay posiciones que revisar antes de enviar':validation.ok?'Posiciones comprobadas: sin conflictos':'Solapamiento permitido con confirmación al enviar'}</div>
+        <div className={`text-sm font-black ${unresolved||blockingIssues.length?'text-amber-700':'text-emerald-700'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : blockingIssues.length?'Hay posiciones que revisar antes de enviar':validation.ok?'Posiciones comprobadas: sin conflictos':'Solapamiento informativo: puedes guardar'}</div>
         <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] disabled:opacity-50">Ajustar automáticamente dentro de cada fila</button>
         <button type="button" disabled={loading||saving||removing} onClick={async()=>{
           setSaving(true);setError('');
           try{await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
           finally{setSaving(false);}
-        }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar borrador'}</button>
+        }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar trabajadores y posiciones'}</button>
       </div>
     </div>
   </div></ModalPortal>;

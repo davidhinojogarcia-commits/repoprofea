@@ -975,7 +975,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       }}
       onSave={async(anchors)=>{
         await saveSupervisorMandatoryDraft(positioningMandatory.id,anchors,positioningMandatory.updated_at);
-        setMailMessage('Borrador guardado y verificado. Puedes seguir corrigiendo las posiciones pendientes antes de enviarlo al portal.');
+        setMailMessage('Trabajadores y posiciones guardados y verificados. El solapamiento entre firmas es informativo y no impide guardar la revisión.');
         setPositioningMandatory(null);
         await refresh(true);
       }}
