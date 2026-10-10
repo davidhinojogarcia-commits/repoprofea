@@ -78,7 +78,10 @@ export async function profeaTutorHandler(req: any, res: any) {
       });
     } catch (error: any) {
       const status = Number(error?.status) || 500;
-      if (status >= 500) console.error("Tutor PROFEA: operación no completada.");
+      if (status >= 500) console.error("Tutor PROFEA: operación no completada.", {
+        code: ["CONFIG_MISSING", "UPSTREAM_NETWORK", "UPSTREAM_HTTP"].includes(error?.tutorDiagnostic) ? error.tutorDiagnostic : "INTERNAL",
+        upstreamStatus: Number.isInteger(Number(error?.status)) ? Number(error.status) : null,
+      });
       res.status(status === 401 || status === 403 ? status : 500).json({
         error: status === 401 ? "La sesión ha caducado. Vuelve a iniciar sesión." : status === 403 ? "Tu cuenta no tiene acceso a esta operación. Comprueba sus permisos." : "No se pudo completar la operación del Tutor. Comprueba el módulo antes de repetirla.",
       });
