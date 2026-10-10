@@ -11,7 +11,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft, loadSupervisorMandatoryEditorDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
@@ -709,7 +709,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const openMandatoryAnchorEditor = async (item: DbMandatory) => {
     if(editBusy)return;
     setEditBusy(true);
-    try{const current=await loadCurrentMandatoryDocument(item);if(['ASSIGNED','IN_SIGNATURE','SUBMITTED','RECEIVED','REVIEWED'].includes(String(current.lifecycle_status)))throw new Error('Retira primero el documento del portal para corregir sus posiciones.');setPositioningMandatory(current);}
+    try{const current={...item,...await loadSupervisorMandatoryEditorDocument(item.id)};if(['ASSIGNED','IN_SIGNATURE','SUBMITTED','RECEIVED','REVIEWED','RETURNED_FOR_CORRECTION'].includes(String(current.lifecycle_status)))throw new Error('Retira primero el documento del portal para corregir sus posiciones.');setPositioningMandatory(current);}
     catch(error:any){setMailMessage(error?.message||'No se pudieron cargar las posiciones guardadas.');}
     finally{setEditBusy(false);}
   };
@@ -968,7 +968,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       onCancel={()=>setPositioningMandatory(null)}
       onRemoveWorker={async(workerId)=>{
         await removeSupervisorMandatoryWorker(positioningMandatory.id,workerId);
-        const persisted=await loadCurrentMandatoryDocument(positioningMandatory);
+        const persisted={...positioningMandatory,...await loadSupervisorMandatoryEditorDocument(positioningMandatory.id)};
         setPositioningMandatory(persisted);
         setMailMessage('Trabajador eliminado del documento. Ya no cuenta como firma pendiente.');
         await refresh(true);
@@ -1134,4 +1134,5 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     </div></ModalPortal>}
   </div>;
 };
+
 

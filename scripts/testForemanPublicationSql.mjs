@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
+import {build} from 'esbuild';
+const serviceOutput=new URL('./.mandatory-draft-sql-service.mjs',import.meta.url);
 const db=new PGlite();
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const owner=id(1),other=id(2),doc=id(10),w1=id(11),w2=id(12),token='local-only-token';
@@ -116,5 +118,35 @@ try {
  await asUser(owner);await assert.rejects(rpc('withdraw_mandatory_document_v2',[doc]),/no está disponible/);
  await db.exec('reset role');
  const events=await query('select metadata from mandatory_document_events_v2');assert(!JSON.stringify(events).includes('data:image'),'events never duplicate signature images');
- console.log('PASS: real PostgreSQL RPCs; explicit publication, ownership, geometry validation, selective revocation/retry, withdrawal, retained signatures, identity lock, complete submission and closed-document protections.');
-} finally {await db.close();}
+ // Exercise the real editor service against PostgreSQL, starting from an old
+ // document snapshot with no documentary UUID and incorrect copied geometry.
+ await db.exec('reset role');
+ const legacyDoc=id(30),legacyWorker=id(31);
+ await query("insert into foreman_mandatory_documents(id,owner_id,obra,status,lifecycle_status) values($1,$2,'Obra A','pending','READY')",[legacyDoc,owner]);
+ await query("insert into mandatory_document_workers_v2(id,document_id,owner_id,legacy_worker_id,printed_name,page,row_index,detection_status,position_status,position_source,name_box,signature_box) values($1,$2,$3,31,'Persona Antigua',1,0,'CONFIRMED','RESOLVED','MANUAL',$4,$5)",[legacyWorker,legacyDoc,owner,{x:60,y:502,width:120,height:10},box(500)]);
+ await rpc('mandatory_v2_refresh_legacy_worker_snapshot',[legacyDoc]);
+ await query("update foreman_mandatory_documents set details=jsonb_set(details,'{workerAnchors}',(select jsonb_agg((a-'documentWorkerId')||jsonb_build_object('signatureX',999)) from jsonb_array_elements(details->'workerAnchors') a)) where id=$1",[legacyDoc]);
+ await asUser(owner);
+ globalThis.__draftSqlApi={
+   async query(table,options){
+     assert.equal(table,'foreman_mandatory_documents');assert.equal(options.networkOnly,true);assert(options.query.includes('documentWorkers:mandatory_document_workers_v2('));
+     const requested=new URLSearchParams(options.query).get('id').slice(3);
+     return (await query("select to_jsonb(d)||jsonb_build_object('documentWorkers',(select coalesce(jsonb_agg(to_jsonb(w)),'[]'::jsonb) from mandatory_document_workers_v2 w where w.document_id=d.id)) as data from foreman_mandatory_documents d where d.id=$1",[requested])).map(row=>row.data);
+   },
+   async rpc(name,args){assert.equal(name,'save_mandatory_positions_draft_v2');return rpc(name,[args.p_document_id,args.p_workers,args.p_expected_updated_at]);},
+ };
+ await build({stdin:{contents:"export {loadSupervisorMandatoryEditorDocument,saveSupervisorMandatoryDraft} from './src/services/foremanPortalService';",resolveDir:new URL('../',import.meta.url).pathname},outfile:serviceOutput.pathname,bundle:true,format:'esm',platform:'node',plugins:[{name:'postgres-service-boundary',setup(b){b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'api',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const supabase=globalThis.__draftSqlApi;'}));}}]});
+ const {loadSupervisorMandatoryEditorDocument,saveSupervisorMandatoryDraft}=await import(serviceOutput.href);
+ const recovered=await loadSupervisorMandatoryEditorDocument(legacyDoc);
+ assert.equal(recovered.details.workerAnchors[0].documentWorkerId,legacyWorker);
+ assert.equal(recovered.details.workerAnchors[0].signatureX,350);
+ const edited=recovered.details.workerAnchors.map(a=>({...a,signatureX:365,signatureWidth:80,signatureHeight:18}));
+ await saveSupervisorMandatoryDraft(legacyDoc,edited,recovered.updated_at);
+ const reopened=await loadSupervisorMandatoryEditorDocument(legacyDoc);
+ assert.deepEqual(['signatureX','signatureY','signatureWidth','signatureHeight'].map(k=>reopened.details.workerAnchors[0][k]),[365,500,80,18]);
+ await saveSupervisorMandatoryDraft(legacyDoc,edited,recovered.updated_at);
+ await db.exec('reset role');
+ assert.equal((await query("select count(*)::int n from mandatory_document_events_v2 where document_id=$1 and event_type='POSITIONS_DRAFT_SAVED'",[legacyDoc]))[0].n,1,'retry after reopening does not duplicate the save');
+ console.log('PASS: real PostgreSQL RPCs, legacy UUID recovery, canonical coordinates, atomic save, exact positions/dimensions after reopening and idempotent retry.');
+} finally {delete globalThis.__draftSqlApi;if(fs.existsSync(serviceOutput))fs.unlinkSync(serviceOutput);await db.close();}
+

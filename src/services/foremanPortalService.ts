@@ -767,6 +767,38 @@ export async function restoreForemanMandatoryGmailSource(gmailMessageId: string,
 }
 
 
+export async function loadSupervisorMandatoryEditorDocument(documentId:string){
+  // Read the document and its authoritative geometry in one database snapshot.
+  // Older imported documents can have missing UUIDs or stale positions in details.
+  const rows=await supabase.query('foreman_mandatory_documents',{
+    query:`id=eq.${encodeURIComponent(documentId)}&select=id,details,workers,signatures,work_date,category,lifecycle_status,status,updated_at,v2_initialized_at,documentWorkers:mandatory_document_workers_v2(id,legacy_worker_id,printed_name,detection_status,position_status,position_source,detection_confidence,page,row_index,name_box,signature_box,created_at)&limit=1`,
+    networkOnly:true,
+  });
+  const document=Array.isArray(rows)?rows[0]:null;
+  if(!document||!Array.isArray(document.documentWorkers))throw new Error('No se pudieron recuperar las posiciones guardadas del documento.');
+  const previous=Array.isArray(document.details?.workerAnchors)?document.details.workerAnchors:[];
+  const ordered=[...document.documentWorkers].sort((a,b)=>Number(a.row_index??Number.MAX_SAFE_INTEGER)-Number(b.row_index??Number.MAX_SAFE_INTEGER)||String(a.created_at||'').localeCompare(String(b.created_at||''))||String(a.id).localeCompare(String(b.id)));
+  const confirmed=ordered.filter(row=>row.detection_status==='CONFIRMED');
+  const used=new Set(confirmed.filter(row=>row.legacy_worker_id!=null).map(row=>Number(row.legacy_worker_id)));
+  const workerAnchors=confirmed.map((row,index)=>{
+    const old=previous.find((anchor:any)=>String(anchor.documentWorkerId||'')===String(row.id))||
+      (row.legacy_worker_id!=null?previous.find((anchor:any)=>Number(anchor.workerId)===Number(row.legacy_worker_id)):null)||{};
+    let workerId=row.legacy_worker_id!=null?Number(row.legacy_worker_id):-(index+1);
+    while(row.legacy_worker_id==null&&used.has(workerId))workerId--;
+    used.add(workerId);
+    const value=(box:any,key:string)=>box?.[key]!=null?Number(box[key]):null;
+    return {...old,documentWorkerId:String(row.id),draftNew:false,workerId,workerName:String(row.printed_name),
+      page:Number(row.page||1),order:row.row_index,resolved:row.position_status==='RESOLVED',
+      confidence:row.position_source==='MANUAL'?1:Number(row.detection_confidence||0),positionSource:row.position_source,
+      reason:row.position_source==='MANUAL'?'Posición confirmada manualmente por el supervisor.':undefined,
+      nameX:value(row.name_box,'x'),nameY:value(row.name_box,'y'),nameWidth:value(row.name_box,'width'),nameHeight:value(row.name_box,'height'),
+      rowHeight:value(row.name_box,'height'),nameRightX:row.name_box?Number(row.name_box.x)+Number(row.name_box.width):null,
+      signatureX:value(row.signature_box,'x'),signatureY:value(row.signature_box,'y'),signatureWidth:value(row.signature_box,'width'),signatureHeight:value(row.signature_box,'height')};
+  });
+  return {...document,details:{...(document.details||{}),workerAnchors,
+    documentWorkersV2:ordered.map(row=>({id:row.id,legacyWorkerId:row.legacy_worker_id,printedName:row.printed_name,detectionStatus:row.detection_status,positionStatus:row.position_status,positionSource:row.position_source,page:row.page,rowIndex:row.row_index}))}};
+}
+
 export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any[],expectedUpdatedAt?:string|null){
   const toBox=(anchor:any,prefix:string)=>{
     const values=prefix==='name'?[anchor.nameX,anchor.nameY,anchor.nameWidth??(anchor.nameRightX!=null&&anchor.nameX!=null?anchor.nameRightX-anchor.nameX:null),anchor.nameHeight??anchor.rowHeight]:['X','Y','Width','Height'].map(key=>anchor[prefix+key]);
@@ -782,8 +814,17 @@ export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any
       nameBox:toBox(anchor,'name'),signatureBox:toBox(anchor,'signature')};
   });
   const saved:any=await supabase.rpc('save_mandatory_positions_draft_v2',{p_document_id:documentId,p_workers:workers,p_expected_updated_at:expectedUpdatedAt||null});
-  const rows=await supabase.query('foreman_mandatory_documents',{query:`id=eq.${encodeURIComponent(documentId)}&select=id,details,lifecycle_status,status,updated_at&limit=1`,networkOnly:true});
-  const verified=Array.isArray(rows)?rows[0]:null;
+  const verified=await loadSupervisorMandatoryEditorDocument(documentId);
   if(!saved?.details?.draftSaveHash||!verified||verified.details?.draftSaveHash!==saved.details.draftSaveHash||verified.updated_at!==saved.updated_at)throw new Error('No se pudo verificar el borrador guardado. Reabre el documento para consultar su estado.');
+  for(const worker of workers){
+    const row=verified.documentWorkers.find((row:any)=>String(row.id)===worker.documentWorkerId);
+    const boxMatches=(actual:any,expected:any)=>expected==null?actual==null:actual!=null&&['x','y','width','height'].every(key=>Number(actual[key])===expected[key]);
+    if(!row||row.detection_status!=='CONFIRMED'||row.position_status!==(worker.resolved&&worker.signatureBox?'RESOLVED':'PENDING')||
+       Number(row.page)!==worker.page||Number(row.row_index)!==worker.rowIndex||
+       !boxMatches(row.name_box,worker.nameBox)||!boxMatches(row.signature_box,worker.signatureBox)){
+      throw new Error(`No se pudo verificar la posición guardada de ${worker.printedName}. El editor conserva tus ajustes para reintentar.`);
+    }
+  }
   return verified;
 }
+
