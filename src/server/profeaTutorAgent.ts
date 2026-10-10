@@ -268,6 +268,7 @@ async function readAllRows(path: string, token: string, maxRows = 10000): Promis
   throw new Error("No se pudo comprobar el listado completo.");
 }
 
+// Quoting is for values inside logical and/or expressions, not a simple eq query.
 function postgrestValue(value: string) {
   return encodeURIComponent('"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"');
 }
@@ -426,7 +427,7 @@ async function executeDataTool(call: TutorToolCall, context: TutorContext, token
         return { name: call.name, ok: false, verified: false, summary: "La obra indicada ya no coincide con la obra activa.", error: "STALE_CONTEXT" };
       }
       const rows = await readAllRows(
-        `/rest/v1/foreman_mandatory_documents?select=id,obra,period_key,work_date,document_type,category,status&obra=eq.${postgrestValue(obra)}`,
+        `/rest/v1/foreman_mandatory_documents?select=id,obra,period_key,work_date,document_type,category,status&obra=eq.${encodeURIComponent(obra)}`,
         token,
       );
       const ids = (Array.isArray(rows) ? rows : []).map((row: any) => String(row.id || "")).filter(Boolean);
@@ -509,7 +510,7 @@ export async function executeTutorConfirmation(input: {
   }
 
   const rows = await readAllRows(
-    `/rest/v1/foreman_mandatory_documents?select=id,obra&obra=eq.${postgrestValue(payload.obra)}`,
+    `/rest/v1/foreman_mandatory_documents?select=id,obra&obra=eq.${encodeURIComponent(payload.obra)}`,
     input.token,
   );
   const visibleIds = new Set((Array.isArray(rows) ? rows : []).filter((row: any) =>
