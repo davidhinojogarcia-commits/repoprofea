@@ -194,7 +194,7 @@ function readConfirmation(token: string): ConfirmationPayload {
 function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://oanurwzoymkmwmxoyzqi.supabase.co";
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "";
-  if (!url || !key) throw new Error("Supabase no está configurado para Tutor PROFEA en el servidor.");
+  if (!url || !key) throw Object.assign(new Error("Supabase no está configurado para Tutor PROFEA en el servidor."), { tutorDiagnostic: "CONFIG_MISSING" });
   return { url: url.replace(/\/$/, ""), key };
 }
 
@@ -204,7 +204,9 @@ async function supabaseRequest(path: string, token: string, init: RequestInit = 
   headers.set("apikey", key);
   headers.set("Authorization", `Bearer ${token}`);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const response = await fetch(`${url}${path}`, { ...init, headers });
+  let response: Response;
+  try { response = await fetch(`${url}${path}`, { ...init, headers }); }
+  catch { throw Object.assign(new Error("Supabase no está disponible."), { tutorDiagnostic: "UPSTREAM_NETWORK" }); }
   const text = await response.text();
   let data: any = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
@@ -212,6 +214,7 @@ async function supabaseRequest(path: string, token: string, init: RequestInit = 
     const message = data?.message || data?.error_description || data?.error || `Supabase HTTP ${response.status}`;
     const error: any = new Error(String(message));
     error.status = response.status;
+    error.tutorDiagnostic = "UPSTREAM_HTTP";
     throw error;
   }
   return data;
