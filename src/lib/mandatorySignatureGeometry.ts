@@ -255,7 +255,7 @@ export const fitSignatureInsideBox=(input:{
 
 // Suggest only changes contained in the worker's existing row and signature column.
 // Uncertain names and layouts remain available for manual correction.
-export function suggestSafeMandatorySignaturePositions<T extends SignatureAnchorGeometry>(anchors:T[], pages:SignaturePageGeometry[]):T[] {
+export function suggestSafeMandatorySignaturePositions<T extends SignatureAnchorGeometry>(anchors:T[], pages:SignaturePageGeometry[], allowSignatureOverlap=false):T[] {
   const result=anchors.map(anchor=>({...anchor}));
   const issues=validateMandatorySignaturePlacement(result,pages).issues;
   for(const id of new Set(issues.map(issue=>issue.workerId))) {
@@ -279,10 +279,20 @@ export function suggestSafeMandatorySignaturePositions<T extends SignatureAnchor
   }
   // Never apply a suggestion that creates or leaves an unsafe placement for that worker.
   for(let pass=0;pass<result.length;pass+=1){
-    const invalid=new Set(validateMandatorySignaturePlacement(result,pages).issues.map(issue=>issue.workerId));
+    const validation=validateMandatorySignaturePlacement(result,pages);
+    const invalid=new Set((allowSignatureOverlap?blockingMandatorySignatureIssues(validation.issues):validation.issues).map(issue=>issue.workerId));
     let reverted=false;
     result.forEach((anchor,index)=>{if(invalid.has(anchor.workerId)&&JSON.stringify(anchor)!==JSON.stringify(anchors[index])){result[index]={...anchors[index]};reverted=true;}});
     if(!reverted)break;
   }
   return result;
 }
+
+
+// Compact original lists may have overlapping signature images. Keep diagnostics,
+// but only other issues invalidate publication or the final PDF.
+export const blockingMandatorySignatureIssues=(issues:MandatorySignaturePlacementIssue[])=>
+  issues.filter(issue=>issue.code!=='OVERLAP_SIGNATURE');
+
+export const hasOverlappingMandatorySignatures=(anchors:SignatureAnchorGeometry[])=>
+  validateMandatorySignaturePlacement(anchors,[]).issues.some(issue=>issue.code==='OVERLAP_SIGNATURE');

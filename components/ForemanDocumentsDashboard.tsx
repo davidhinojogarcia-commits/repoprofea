@@ -1,3 +1,4 @@
+import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, Send, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
@@ -10,7 +11,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, updateSupervisorMandatoryAnchors } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft, loadSupervisorMandatoryEditorDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
@@ -675,6 +676,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     if(editBusy)return;
     setEditBusy(true);
     try {
+      const current=await loadCurrentMandatoryDocument(item);
+      const anchors=Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[];
+      if(hasOverlappingMandatorySignatures(anchors)&&!await appConfirm('Algunas firmas se solapan porque las filas del original están muy juntas. El PDF original se conservará. ¿Quieres enviar el documento con estas posiciones?',{title:'Confirmar firmas solapadas',confirmLabel:'Enviar con solapamiento'}))return;
       await assignMandatoryDocumentV2(item.id);
       setMailMessage('Documento enviado al portal de encargados. Ya pueden recoger las firmas.');
       await refresh(true);
@@ -695,7 +699,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   const loadCurrentMandatoryDocument = async (item: DbMandatory): Promise<DbMandatory> => {
     const rows=await supabase.query('foreman_mandatory_documents',{
-      query:`id=eq.${encodeURIComponent(item.id)}&select=id,details,workers,signatures,work_date,category,lifecycle_status,status&limit=1`,
+      query:`id=eq.${encodeURIComponent(item.id)}&select=id,details,workers,signatures,work_date,category,lifecycle_status,status,updated_at&limit=1`,
       networkOnly:true,
     });
     if(!Array.isArray(rows)||!rows[0])throw new Error('Documento no encontrado. Actualiza la documentación.');
@@ -705,7 +709,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const openMandatoryAnchorEditor = async (item: DbMandatory) => {
     if(editBusy)return;
     setEditBusy(true);
-    try{const current=await loadCurrentMandatoryDocument(item);if(['ASSIGNED','IN_SIGNATURE','SUBMITTED','RECEIVED','REVIEWED'].includes(String(current.lifecycle_status)))throw new Error('Retira primero el documento del portal para corregir sus posiciones.');setPositioningMandatory(current);}
+    try{const current={...item,...await loadSupervisorMandatoryEditorDocument(item.id)};if(['ASSIGNED','IN_SIGNATURE','SUBMITTED','RECEIVED','REVIEWED','RETURNED_FOR_CORRECTION'].includes(String(current.lifecycle_status)))throw new Error('Retira primero el documento del portal para corregir sus posiciones.');setPositioningMandatory(current);}
     catch(error:any){setMailMessage(error?.message||'No se pudieron cargar las posiciones guardadas.');}
     finally{setEditBusy(false);}
   };
@@ -804,7 +808,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const correctionCount=visibleMandatory.filter(i=>i.correction_pending).length+documents.filter(i=>i.correction_pending).length+attendance.filter(i=>i.correction_pending).length;
   const incompleteCount=visibleMandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
   const reviewCount=visibleMandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
-  return <div className="space-y-5">
+  return <div className="foreman-documents-dashboard min-w-0 space-y-5">
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento documental</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Hasta tres comprobaciones automáticas al día entre las 08:00 y las 14:00 (hora de España), solo con esta pantalla visible. Pulsa Actualizar para consultar cambios a cualquier hora.</p></div>
@@ -917,7 +921,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
           <div className="mt-1 text-[11px]">El documento no se bloquea: podrán firmar porque aparecen en el PDF importado.</div>
         </div>}{card.item.correction_pending&&<p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
-        <div className="flex w-full min-w-0 flex-wrap content-start items-start gap-2 2xl:w-auto 2xl:max-w-[55%]">
+        <div className="foreman-document-actions flex w-full min-w-0 flex-wrap content-start items-start gap-2 2xl:w-auto 2xl:max-w-[55%]">
           <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
             <button onClick={()=>{if(card.item.details?.originalPdfPurged){restoreOriginalTargetRef.current=card.id;restoreOriginalInputRef.current?.click();}else void downloadStoredMandatoryPdf(card.item as DbMandatory,'original');}} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><FileSignature className="w-4 h-4"/>{card.item.details?.originalPdfPurged?'Reimportar original':'Original'}</button>
@@ -964,24 +968,14 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       onCancel={()=>setPositioningMandatory(null)}
       onRemoveWorker={async(workerId)=>{
         await removeSupervisorMandatoryWorker(positioningMandatory.id,workerId);
-        setPositioningMandatory(current=>current&&current.id===positioningMandatory.id
-          ? {
-              ...current,
-              signatures:Object.fromEntries(Object.entries(current.signatures||{}).filter(([id])=>Number(id)!==Number(workerId))),
-              details:{
-                ...(current.details||{}),
-                importedWorkerIds:(Array.isArray(current.details?.importedWorkerIds)?current.details.importedWorkerIds:[]).filter((id:any)=>Number(id)!==Number(workerId)),
-                importedWorkers:(Array.isArray(current.details?.importedWorkers)?current.details.importedWorkers:[]).filter((worker:any)=>Number(worker.id)!==Number(workerId)),
-                workerAnchors:(Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[]).filter((anchor:any)=>Number(anchor.workerId)!==Number(workerId)),
-              },
-            }
-          : current);
+        const persisted={...positioningMandatory,...await loadSupervisorMandatoryEditorDocument(positioningMandatory.id)};
+        setPositioningMandatory(persisted);
         setMailMessage('Trabajador eliminado del documento. Ya no cuenta como firma pendiente.');
         await refresh(true);
       }}
       onSave={async(anchors)=>{
-        const saved=await updateSupervisorMandatoryAnchors(positioningMandatory.id,anchors);
-        setMailMessage('Posiciones y trabajadores guardados y verificados. Pulsa Enviar al portal de encargados cuando esté listo.');
+        await saveSupervisorMandatoryDraft(positioningMandatory.id,anchors,positioningMandatory.updated_at);
+        setMailMessage('Trabajadores y posiciones guardados y verificados. El solapamiento entre firmas es informativo y no impide guardar la revisión.');
         setPositioningMandatory(null);
         await refresh(true);
       }}
@@ -1123,8 +1117,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                 })
                 .map((worker:any)=><div key={worker.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                  <input type="checkbox" checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 rounded border-slate-300"/>
-                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span>{(worker.legacyWorkerId==null||Number(worker.legacyWorkerId)<0)&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">Leído del PDF · identidad documental · firma permitida</span>}</span>
+                  <input type="checkbox" checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 shrink-0 rounded border-slate-300"/>
+                  <span className="min-w-0 flex-1"><span className="block break-words text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span>{(worker.legacyWorkerId==null||Number(worker.legacyWorkerId)<0)&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">Leído del PDF · identidad documental · firma permitida</span>}</span>
                 </label>
                 {editingMandatory.signatures?.[String(worker.id)]&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Firmado</span>}
               </div>)}
@@ -1134,7 +1128,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         </div>
         <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 shadow-[0_-10px_25px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
           <button type="button" disabled={editBusy} onClick={()=>void removeMandatoryDocument(editingMandatory)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
-          <div className="flex gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
+          <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
         </div>
       </div>
     </div></ModalPortal>}

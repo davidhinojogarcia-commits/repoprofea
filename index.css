@@ -474,3 +474,81 @@ body.profea-dialog-open #root {
   }
 }
 
+
+/* Signature review: measured PDF width, fluid controls and usable tablet panes. */
+.mandatory-anchor-editor *,
+.mandatory-anchor-editor *::before,
+.mandatory-anchor-editor *::after { box-sizing: border-box; }
+.mandatory-anchor-editor { padding-top: env(safe-area-inset-top); }
+.mandatory-anchor-editor .mandatory-editor-shell { min-width: 0; }
+.mandatory-anchor-editor .mandatory-editor-header { flex-shrink: 0; }
+.mandatory-anchor-editor h2,
+.mandatory-anchor-editor p,
+.mandatory-anchor-editor label,
+.mandatory-anchor-editor [role="status"],
+.mandatory-anchor-editor button,
+.mandatory-anchor-editor .mandatory-editor-controls div {
+  overflow-wrap: anywhere;
+}
+.mandatory-anchor-editor button { white-space: normal; line-height: 1.35; min-width: 0; }
+.mandatory-anchor-editor input,
+.mandatory-anchor-editor select { min-width: 0; max-width: 100%; font-size: 16px; }
+.mandatory-anchor-editor .mandatory-editor-header > button { flex-shrink: 0; }
+.mandatory-editor-main {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+}
+.mandatory-editor-controls { min-width: 0; flex-shrink: 0; }
+.mandatory-editor-preview { min-width: 0; flex-shrink: 0; height: 72dvh; min-height: 320px; }
+.mandatory-editor-toolbar { min-width: 0; }
+.mandatory-editor-pages { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 8px; width: 100%; }
+.mandatory-editor-pages > button { min-height: 44px; }
+.mandatory-editor-zoom { justify-content: center; width: 100%; }
+.mandatory-editor-zoom > button { min-height: 44px; height: auto; }
+.mandatory-editor-pdf-scroll { min-width: 0; overscroll-behavior: contain; }
+.mandatory-editor-pdf-hint { width: 100%; max-width: min(100%, 560px); overflow-wrap: anywhere; }
+.mandatory-editor-footer { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
+.mandatory-editor-footer > div { grid-column: 1 / -1; min-width: 0; }
+.mandatory-anchor-editor .mandatory-editor-footer > button { min-width: 0; padding: 10px; font-size: 13px; }
+@media (min-width: 768px), (min-width: 700px) and (max-height: 600px) {
+  .mandatory-editor-main { display: grid; grid-template-columns: clamp(260px, 32vw, 340px) minmax(0,1fr); overflow: hidden; }
+  .mandatory-editor-controls { overflow-y: auto; border-bottom: 0; border-right: 1px solid #94a3b8; overscroll-behavior: contain; }
+  .mandatory-editor-preview { height: auto; min-height: 0; }
+  .mandatory-editor-pages { gap: 6px; }
+  .mandatory-anchor-editor .mandatory-editor-pages > button { padding: 8px; font-size: 12px; }
+  .mandatory-editor-footer { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .mandatory-anchor-editor .mandatory-editor-footer > button { font-size: 14px; }
+}
+@media (min-width: 1200px) {
+  .mandatory-editor-footer { grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); align-items: center; }
+  .mandatory-editor-footer > div { grid-column: auto; }
+}
+@media (max-height: 600px) {
+  .mandatory-anchor-editor .mandatory-editor-header { padding: 8px 12px; }
+  .mandatory-anchor-editor .mandatory-editor-header p { font-size: 12px; line-height: 1.35; }
+  .mandatory-anchor-editor .mandatory-editor-header h2 { font-size: 16px; }
+  .mandatory-anchor-editor .mandatory-editor-footer { padding-top: 6px; padding-bottom: max(6px,env(safe-area-inset-bottom)) !important; gap: 4px; }
+  .mandatory-anchor-editor .mandatory-editor-footer > div { font-size: 12px; }
+  .mandatory-anchor-editor .mandatory-editor-footer > button { min-height: 44px; padding: 6px; font-size: 12px; }
+}
+
+/* Document cards and worker selection retain readable widths on touch screens. */
+.foreman-documents-dashboard article { min-width: 0; overflow-wrap: anywhere; }
+.foreman-documents-dashboard article button { min-height: 44px; max-width: 100%; white-space: normal; }
+.foreman-documents-dashboard article button svg { flex-shrink: 0; }
+@media (max-width: 767px) {
+  .foreman-documents-dashboard article .foreman-document-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: 100%; }
+  .foreman-documents-dashboard article .foreman-document-actions button { justify-content: center; min-width: 0; overflow-wrap: anywhere; }
+}
+.mandatory-editor-dimensions > label { display: flex; flex-direction: column; justify-content: flex-end; }
+.mandatory-editor-mobile-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); flex-shrink: 0; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #94a3b8; }
+.mandatory-editor-mobile-tabs > button { min-height: 44px; padding: 8px; border: 1px solid #94a3b8; border-radius: 12px; font-size: 13px; font-weight: 800; }
+.mandatory-editor-mobile-tabs > button[aria-pressed="true"] { background: #00548e; color: white; border-color: #00548e; }
+@media (max-width: 767px) and (min-height: 601px), (max-width: 699px) {
+  .mandatory-anchor-editor[data-mobile-panel="controls"] .mandatory-editor-preview { display: none; }
+  .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-controls { display: none; }
+  .mandatory-editor-preview { height: 100%; min-height: 0; flex: 1; }
+}
+@media (min-width: 768px), (min-width: 700px) and (max-height: 600px) {
+  .mandatory-editor-mobile-tabs { display: none; }
+}
