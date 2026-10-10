@@ -72,7 +72,7 @@ const emptyForm = (): UserForm => ({
   password: "",
   role: "user",
 });
-const dateValue = (v: any) => (v ? new Date(v).toLocaleString("es-ES") : "—");
+const dateValue = (v: any) => (v ? new Date(v).toLocaleString("es-ES") : "Sin acceso registrado");
 const auditActionOptions = [
   ["CREATE", "Crear"],
   ["INSERT", "Insertar"],
@@ -153,15 +153,19 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         `timestamp=lte.${encodeURIComponent(new Date(`${auditDateTo}T23:59:59.999`).toISOString())}`,
       );
     const rows = await supabase.query("audit_logs", {
-      query: `select=id,user_id,user_email,action,resource_type,resource_id,timestamp,details${f.length ? `&${f.join("&")}` : ""}&order=timestamp.desc&limit=300`,
+      query: `select=id,user_id,user_email,action,resource_type,resource_id,timestamp,details${f.length ? `&${f.join("&")}` : ""}&order=timestamp.desc&limit=100`,
     });
     setAuditLogs(rows || []);
   };
   useEffect(() => {
-    if (tab === "audit")
+    if (tab !== "audit") return;
+    // Evita una consulta por cada cambio rápido en los filtros.
+    const timer = window.setTimeout(() => {
       loadAudit().catch((e) =>
         setError(e?.message || "No se pudo cargar la auditoría."),
       );
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [
     tab,
     auditUserFilter,
@@ -319,7 +323,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                   </button>
                 </div>
               </div>
-              <div className="hidden md:block overflow-x-auto rounded-xl border">
+              <div className="hidden xl:block overflow-x-auto rounded-xl border">
                 <table className="w-full min-w-[1040px] text-sm">
                   <thead className="bg-slate-50 dark:bg-slate-800/60">
                     <tr>
@@ -357,7 +361,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                           {u.active === false ? "Inactivo" : "Activo"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          {dateValue(u.created_at)}
+                          {u.created_at ? dateValue(u.created_at) : '—'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {dateValue(u.last_access_at)}
@@ -449,7 +453,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                   </tbody>
                 </table>
               </div>
-              <div className="md:hidden space-y-3">
+              <div className="xl:hidden space-y-3">
                 {users.map((u) => (
                   <article
                     key={u.id}
@@ -491,7 +495,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                         <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Creación
                         </dt>
-                        <dd className="mt-1">{dateValue(u.created_at)}</dd>
+                        <dd className="mt-1">{u.created_at ? dateValue(u.created_at) : '—'}</dd>
                       </div>
                       <div>
                         <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">

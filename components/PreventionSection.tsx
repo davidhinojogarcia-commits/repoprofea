@@ -255,9 +255,9 @@ export function PreventionSection({ savedObras, token, foremanName, supervisorNa
       </div>
       {!savedObras.length && <p className="mt-3">Añade una obra en Configuración para registrar incidencias.</p>}
     </header>
-    {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-900">{error}</p>}
+    {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-900 dark:border-red-700 dark:bg-red-950/70 dark:text-red-100">{error}</p>}
     {feedback && <p role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">{feedback}</p>}
-    {urgent.length > 0 && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 font-bold text-amber-950"><AlertTriangle className="mr-2 inline h-5 w-5" aria-hidden="true" />{urgent.length} registros con prioridad alta o plazo vencido en las obras seleccionadas.</p>}
+    {urgent.length > 0 && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 font-bold text-amber-950 dark:border-amber-600 dark:bg-amber-950/80 dark:text-amber-100"><AlertTriangle className="mr-2 inline h-5 w-5" aria-hidden="true" />{urgent.length} registros con prioridad alta o plazo vencido en las obras seleccionadas.</p>}
     <aside className="ui-surface rounded-xl p-4 text-sm">
       <b>Avisos meteorológicos:</b> consulta manual en <a className="underline" href="https://www.aemet.es/es/eltiempo/prediccion/avisos" target="_blank" rel="noopener noreferrer">AEMET</a>. La consulta automática y los recordatorios de hidratación quedan para la siguiente fase. La ausencia de avisos no garantiza seguridad.
     </aside>

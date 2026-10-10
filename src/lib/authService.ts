@@ -56,15 +56,11 @@ export async function signInWithEmail(email: string, password: string): Promise<
     );
   }
 
-  // El registro de último acceso es trazabilidad auxiliar: nunca debe invalidar
-  // una autenticación ya verificada si la columna/política no está disponible.
-  await supabase.query('profiles', {
-    method: 'PATCH',
-    prefer: 'return=minimal',
-    query: `id=eq.${encodeURIComponent(user.id)}`,
-    body: { last_access_at: new Date().toISOString() },
-  }).catch((error) => {
-    console.warn('No se pudo registrar last_access_at; se mantiene la sesión autenticada.', error);
+  // Una sola escritura por login confirmado. La RPC únicamente puede actualizar
+  // last_access_at del usuario autenticado, sin exponer otros campos del perfil.
+  // Si la migración todavía no está aplicada, el acceso continúa funcionando.
+  await supabase.rpc('mark_own_last_access').catch((error) => {
+    console.warn('No se pudo registrar el último acceso; comprueba la migración de Supabase.', error);
   });
 
   await supabase.query('audit_logs', {
