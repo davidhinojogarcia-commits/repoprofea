@@ -220,7 +220,13 @@ async function supabaseRequest(path: string, token: string, init: RequestInit = 
 export async function authenticateTutorRequest(authorizationHeader: string | undefined) {
   const token = /^Bearer\s+(.+)$/i.exec(String(authorizationHeader || ""))?.[1]?.trim() || "";
   if (!token) throw Object.assign(new Error("Sesión no disponible."), { status: 401 });
-  const user = await supabaseRequest("/auth/v1/user", token);
+  let user: any;
+  try { user = await supabaseRequest("/auth/v1/user", token); }
+  catch (error: any) {
+    // GoTrue may return 400 for malformed JWTs, not only 401 for expired tokens.
+    if ([400, 401, 403, 422].includes(Number(error?.status))) throw Object.assign(new Error("Sesión no válida."), { status: 401 });
+    throw error;
+  }
   if (!user?.id) throw Object.assign(new Error("Sesión no válida."), { status: 401 });
   const profiles = await supabaseRequest(`/rest/v1/profiles?select=id,active,role&id=eq.${encodeURIComponent(user.id)}&limit=1`, token);
   if (!Array.isArray(profiles) || profiles.length !== 1 || profiles[0].active !== true) throw Object.assign(new Error("Cuenta no activa o no autorizada."), { status: 403 });
