@@ -248,8 +248,8 @@ export function PreventionSection({ savedObras, token, foremanName, supervisorNa
       <p className="mt-2 text-sm sm:text-base">Registra situaciones peligrosas, revisa la tarea y deja constancia de las medidas.</p>
       <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">Apoyo a la gestión preventiva. Aplica la evaluación de riesgos y los protocolos aprobados de la obra.</p>
       <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-        <button className={`${primaryClass} w-full sm:w-auto`} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('incident')}><Plus className="h-5 w-5 shrink-0" aria-hidden="true" /><span>Incidencia</span></button>
-        <button className={`${buttonClass} w-full sm:w-auto`} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('precheck')}><ClipboardCheck className="h-5 w-5 shrink-0" aria-hidden="true" /><span className="sm:hidden">Comprobación</span><span className="hidden sm:inline">Comprobación antes de empezar</span></button>
+        <button className={`${primaryClass} w-full sm:w-auto`} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('incident')}><Plus className="h-5 w-5 shrink-0" aria-hidden="true" /><span>Comunicar incidencia</span></button>
+        <button className={`${buttonClass} w-full sm:w-auto`} disabled={busy || loading || Boolean(draft) || !savedObras.length} onClick={() => begin('precheck')}><ClipboardCheck className="h-5 w-5 shrink-0" aria-hidden="true" /><span>Comprobación antes de empezar</span></button>
         <button className={`${buttonClass} w-full sm:w-auto`} disabled={busy || loading} onClick={() => void reload()}><RefreshCw className="h-5 w-5 shrink-0" aria-hidden="true" />Actualizar</button>
         <button className={`${buttonClass} w-full sm:w-auto`} disabled={busy || loading || actBusy || !filtered.length} onClick={() => void sharePreventiveAct()}><Share2 className="h-5 w-5 shrink-0" aria-hidden="true" /><span>{actBusy ? 'Preparando…' : 'Compartir PDF'}</span></button>
       </div>
