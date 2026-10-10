@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
 import {
@@ -111,6 +111,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     [auditResourceFilter, setAuditResourceFilter] = useState(""),
     [auditDateFrom, setAuditDateFrom] = useState(""),
     [auditDateTo, setAuditDateTo] = useState("");
+  const auditRequestId = useRef(0);
+  const auditTimer = useRef<number | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
   const selectedUser = users.find((u) => u.id === selectedUid);
   const load = async () => {
     setError("");
@@ -136,36 +139,60 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       setError(e?.message || "No se pudieron cargar los usuarios."),
     );
   }, []);
-  const loadAudit = async () => {
-    const f: string[] = [];
-    if (auditUserFilter)
-      f.push(`user_id=eq.${encodeURIComponent(auditUserFilter)}`);
-    if (auditActionFilter)
-      f.push(`action=eq.${encodeURIComponent(auditActionFilter)}`);
-    if (auditResourceFilter)
-      f.push(`resource_type=eq.${encodeURIComponent(auditResourceFilter)}`);
-    if (auditDateFrom)
-      f.push(
-        `timestamp=gte.${encodeURIComponent(new Date(`${auditDateFrom}T00:00:00`).toISOString())}`,
-      );
-    if (auditDateTo)
-      f.push(
-        `timestamp=lte.${encodeURIComponent(new Date(`${auditDateTo}T23:59:59.999`).toISOString())}`,
-      );
-    const rows = await supabase.query("audit_logs", {
-      query: `select=id,user_id,user_email,action,resource_type,resource_id,timestamp,details${f.length ? `&${f.join("&")}` : ""}&order=timestamp.desc&limit=100`,
-    });
-    setAuditLogs(rows || []);
+  const loadAudit = async (networkOnly = false) => {
+    const requestId = ++auditRequestId.current;
+    if (auditTimer.current !== null) {
+      window.clearTimeout(auditTimer.current);
+      auditTimer.current = null;
+    }
+    setAuditLoading(true);
+    setError("");
+    try {
+      const f: string[] = [];
+      if (auditUserFilter)
+        f.push(`user_id=eq.${encodeURIComponent(auditUserFilter)}`);
+      if (auditActionFilter)
+        f.push(`action=eq.${encodeURIComponent(auditActionFilter)}`);
+      if (auditResourceFilter)
+        f.push(`resource_type=eq.${encodeURIComponent(auditResourceFilter)}`);
+      if (auditDateFrom)
+        f.push(
+          `timestamp=gte.${encodeURIComponent(new Date(`${auditDateFrom}T00:00:00`).toISOString())}`,
+        );
+      if (auditDateTo)
+        f.push(
+          `timestamp=lte.${encodeURIComponent(new Date(`${auditDateTo}T23:59:59.999`).toISOString())}`,
+        );
+      const rows = await supabase.query("audit_logs", {
+        query: `select=id,user_id,user_email,action,resource_type,resource_id,timestamp,details${f.length ? `&${f.join("&")}` : ""}&order=timestamp.desc&limit=100`,
+        // La actualización manual debe confirmar datos de servidor, sin caché offline.
+        networkOnly,
+      });
+      if (requestId === auditRequestId.current) setAuditLogs(rows || []);
+    } catch (e: any) {
+      if (requestId === auditRequestId.current) {
+        setAuditLogs([]);
+        setError(e?.message || "No se pudo cargar la auditoría.");
+      }
+    } finally {
+      if (requestId === auditRequestId.current) setAuditLoading(false);
+    }
   };
   useEffect(() => {
     if (tab !== "audit") return;
+    setAuditLogs([]);
+    setAuditLoading(true);
     // Evita una consulta por cada cambio rápido en los filtros.
-    const timer = window.setTimeout(() => {
-      loadAudit().catch((e) =>
-        setError(e?.message || "No se pudo cargar la auditoría."),
-      );
+    auditTimer.current = window.setTimeout(() => {
+      auditTimer.current = null;
+      void loadAudit();
     }, 400);
-    return () => window.clearTimeout(timer);
+    return () => {
+      if (auditTimer.current !== null) window.clearTimeout(auditTimer.current);
+      auditTimer.current = null;
+      // Invalida también las consultas iniciadas, incluso durante el debounce.
+      ++auditRequestId.current;
+    };
   }, [
     tab,
     auditUserFilter,
@@ -699,7 +726,10 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                     </p>
                   </div>
                   <button
-                    onClick={loadAudit}
+                    type="button"
+                    aria-label="Actualizar auditoría"
+                    disabled={auditLoading}
+                    onClick={() => void loadAudit(true)}
                     className="p-2.5 rounded-lg border"
                   >
                     <RefreshCw size={17} />
@@ -799,7 +829,11 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 )}
               </div>
               <div className="min-w-0 space-y-2">
-                {auditLogs.length === 0 ? (
+                {auditLoading ? (
+                  <div role="status" className="py-12 text-center text-sm text-slate-500">
+                    Cargando auditoría…
+                  </div>
+                ) : auditLogs.length === 0 ? (
                   <div className="py-12 text-center text-sm text-slate-500">
                     No hay eventos para estos filtros.
                   </div>
@@ -936,3 +970,4 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     </section>
   );
 }
+

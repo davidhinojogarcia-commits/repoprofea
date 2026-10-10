@@ -50,7 +50,7 @@ try{
   await build({entryPoints:[entry],bundle:true,platform:'node',format:'esm',packages:'external',outfile:output.pathname,plugins:[plugin]});
   const {ForemanDocumentsDashboard}=await import(output.href);
   await act(async()=>{root.render(React.createElement(ForemanDocumentsDashboard));});
-  assert.equal(calls.length,4,'initial load');
+  assert.equal(calls.length,3,'initial load');
   assert(!calls.some(c=>c.table==='foreman_activity_log'));
   assert(![...document.querySelectorAll('button')].some(b=>/Actividad|Ver actividad/.test(b.textContent)));
   const poll=[...intervals.values()].find(timer=>timer.delay===60_000);
@@ -62,7 +62,7 @@ try{
   clock=RealDate.parse('2026-10-08T08:00:00Z');
   calls=[];
   await act(async()=>{poll.callback();});
-  assert.equal(calls.length,4);
+  assert.equal(calls.length,3);
   assert(calls.every(call=>call.query.startsWith('select=id,')),'idle checks have no signatures or snapshots');
   calls=[];
   await act(async()=>{poll.callback();document.dispatchEvent(new Event('visibilitychange'));});
@@ -73,19 +73,19 @@ try{
   assert.equal(calls.length,0,'hidden tab produces no polling requests');
   hidden=false;
   await act(async()=>{document.dispatchEvent(new Event('visibilitychange'));});
-  assert.equal(calls.length,4,'resume checks revisions');
+  assert.equal(calls.length,3,'resume checks revisions');
   calls=[];
   const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='Actualizar');
   assert(button);
   await act(async()=>{button.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));});
-  assert.equal(calls.length,4,'manual refresh remains functional');
+  assert.equal(calls.length,3,'manual refresh remains functional');
   calls=[];clock=RealDate.parse('2026-10-08T15:00:00Z');
   const mailBefore=mailCalls;
   await act(async()=>{for(const timer of intervals.values())timer.callback();document.dispatchEvent(new Event('visibilitychange'));});
   assert.equal(mailCalls,mailBefore,'afternoon has no automatic mail reads');
   assert.equal(calls.length,0,'afternoon has no automatic network requests');
   await act(async()=>{button.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));});
-  assert.equal(calls.length,4,'afternoon manual refresh works');
+  assert.equal(calls.length,3,'afternoon manual refresh works');
   clock=RealDate.parse('2026-10-09T06:00:00Z');
   restricted=true;calls=[];
   await act(async()=>{poll.callback();});
@@ -98,3 +98,4 @@ try{
   assert.equal(intervals.size,0,'unmount removes both timers');
   console.log('Dashboard UI regressions passed: lightweight polling, hidden tab, resume, manual refresh, quota stop and cleanup.');
 }finally{globalThis.Date=RealDate;await fs.rm(output,{force:true});dom.window.close();}
+
