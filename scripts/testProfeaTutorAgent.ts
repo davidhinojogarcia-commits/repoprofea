@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { executeTutorConfirmation, executeTutorTools, normalizeTutorContext, toolCatalogForPrompt, TUTOR_AGENT_VERSION } from "../src/server/profeaTutorAgent";
+import { composeTutorResponseLocal, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorRequestLocal, toolCatalogForPrompt, TUTOR_AGENT_VERSION } from "../src/server/profeaTutorAgent";
 import { getTutorKnowledgeSlice } from "../src/lib/profeaTutorKnowledge";
 
 const context = normalizeTutorContext({
@@ -35,6 +35,29 @@ assert.equal(names.includes("sql"), false);
 assert.equal(names.includes("delete_documents"), false);
 
 console.log("Tutor PROFEA agent policy tests: OK");
+
+
+const localWorksPlan = planTutorRequestLocal("Muéstrame mis obras", context);
+assert.equal(localWorksPlan.toolCalls[0]?.name, "list_works");
+
+const localNavigationPlan = planTutorRequestLocal("Abre prevención", context);
+assert.equal(localNavigationPlan.toolCalls[0]?.name, "navigate");
+assert.equal(localNavigationPlan.suggestedView, "prevencion");
+
+const localHelpPlan = planTutorRequestLocal("¿Cómo sigo con este candidato?", { currentView: "sae" });
+assert.equal(localHelpPlan.toolCalls.length, 0);
+assert.match(localHelpPlan.answer, /SAE|candidato|selección/i);
+
+const localComposed = composeTutorResponseLocal(localWorksPlan, [{
+  name: "list_works",
+  ok: true,
+  verified: true,
+  summary: "1 obra visible.",
+  data: [{ nombre: "OBRA A" }],
+}]);
+assert.match(localComposed.answer, /1 obra visible/);
+assert.equal(localComposed.taskStatus, "completed");
+
 
 const preventionKnowledge = getTutorKnowledgeSlice("Registra una incidencia en esta obra", "prevencion");
 assert.match(preventionKnowledge, /PREVENCIÓN E INCIDENCIAS/);
