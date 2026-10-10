@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { getLocalTutorFallback, PROFEA_TUTOR_VIEW_LABELS } from "../lib/profeaTutorKnowledge";
 
 export type TutorContext = {
   currentView?: string;
@@ -162,7 +163,7 @@ type ConfirmationPayload = {
 };
 
 function confirmationSecret() {
-  const value = process.env.TUTOR_CONFIRMATION_SECRET || process.env.GEMINI_API_KEY || "";
+  const value = process.env.TUTOR_CONFIRMATION_SECRET || "";
   if (!value) throw new Error("Las confirmaciones sensibles no están configuradas en el servidor.");
   return value;
 }
@@ -480,5 +481,223 @@ export async function executeTutorConfirmation(input: {
     verified: true,
     summary: `${count} documentos de ${payload.obra} borrados y confirmados por la base de datos.`,
     data: { deleted: count, obra: payload.obra },
+  };
+}
+
+
+export type TutorTaskStateInput = {
+  title?: string;
+  currentStep?: number;
+  totalSteps?: number;
+  status?: "idle" | "active" | "diagnostic" | "completed";
+  nextAction?: string;
+};
+
+export type TutorLocalPlan = {
+  answer: string;
+  toolCalls: TutorToolCall[];
+  suggestedView: string;
+  followUps: string[];
+  progressHint: string;
+  taskTitle: string;
+  currentStep: number;
+  totalSteps: number;
+  taskStatus: "idle" | "active" | "diagnostic" | "completed";
+  nextAction: string;
+  checkQuestion: string;
+  checkOptions: string[];
+};
+
+const normalizeIntent = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").trim();
+
+const viewFromQuestion = (question: string) => {
+  const q = normalizeIntent(question);
+  const entries: Array<[RegExp, string]> = [
+    [/\bsae\b|seleccion/, "sae"],
+    [/directorio|trabajador/, "directorio"],
+    [/reconocimiento|cita medica|aptitud/, "citas"],
+    [/documentacion de encargados|control de presencia|inicio|firmas?/, "documentacion_encargados"],
+    [/documentacion de obra|control horario|epis|formacion/, "documentacion_obra"],
+    [/cae|subcontrat/, "subcontratas"],
+    [/prevencion|incidencia|riesgo/, "prevencion"],
+    [/inventario|maquinaria|herramienta/, "inventario"],
+    [/configuracion/, "configuracion"],
+    [/papelera/, "papelera"],
+    [/administracion|auditoria/, "administracion"],
+    [/resumen|menu inicial|inicio de la app/, "dashboard"],
+  ];
+  return entries.find(([pattern]) => pattern.test(q))?.[1] || "";
+};
+
+export function planTutorRequestLocal(
+  question: string,
+  context: TutorContext,
+  taskState: TutorTaskStateInput = {},
+): TutorLocalPlan {
+  const q = normalizeIntent(question);
+  const fallback = getLocalTutorFallback(question, context.currentView);
+  const plan: TutorLocalPlan = {
+    answer: fallback.answer,
+    toolCalls: [],
+    suggestedView: fallback.view || "",
+    followUps: ["¿Cuál es el siguiente paso?", "Explícame qué debo comprobar ahora"],
+    progressHint: "",
+    taskTitle: String(taskState.title || ""),
+    currentStep: Math.max(0, Number(taskState.currentStep) || 0),
+    totalSteps: Math.max(0, Number(taskState.totalSteps) || 0),
+    taskStatus: taskState.status || "idle",
+    nextAction: String(taskState.nextAction || ""),
+    checkQuestion: "",
+    checkOptions: [],
+  };
+
+  if (/\b(lista|listar|muestra|mostrar|consulta|consultar|que obras|mis obras)\b/.test(q) && /obra/.test(q)) {
+    plan.toolCalls = [{ name: "list_works" }];
+    plan.answer = "Voy a consultar las obras que tienes visibles.";
+    plan.taskTitle = "Consultar obras";
+    plan.taskStatus = "active";
+    return plan;
+  }
+
+  if (/reconocimiento/.test(q) && /(pendiente|pendientes|sin cita|faltan)/.test(q)) {
+    plan.toolCalls = [{ name: "list_pending_medical", arguments: { obra: context.obra || "", periodo: context.periodo || "" } }];
+    plan.answer = context.periodo
+      ? "Voy a comprobar los reconocimientos pendientes del periodo activo."
+      : "Para consultar pendientes necesito que selecciones primero un periodo.";
+    plan.suggestedView = "citas";
+    plan.taskTitle = "Revisar reconocimientos pendientes";
+    plan.taskStatus = context.periodo ? "active" : "diagnostic";
+    plan.nextAction = context.periodo ? "Revisar el resultado de la consulta." : "Selecciona el periodo en la app.";
+    return plan;
+  }
+
+  if (/(busca|buscar|encuentra|localiza|consulta)/.test(q) && /trabajador/.test(q)) {
+    const name = question.match(/trabajador(?:a)?\s+(.+?)(?:\s+en\s+|$)/i)?.[1]?.trim() || "";
+    plan.toolCalls = [{ name: "search_workers", arguments: { name, obra: context.obra || "", periodo: context.periodo || "" } }];
+    plan.answer = "Voy a buscar trabajadores visibles con el contexto actual.";
+    plan.suggestedView = "directorio";
+    plan.taskTitle = "Buscar trabajador";
+    plan.taskStatus = "active";
+    return plan;
+  }
+
+  if (/(borra|borrar|elimina|eliminar)/.test(q) && /document/.test(q) && /(obra|esta obra)/.test(q)) {
+    if (!context.obra) {
+      plan.answer = "Antes de preparar el borrado debes seleccionar una obra concreta. No voy a adivinarla.";
+      plan.suggestedView = "documentacion_encargados";
+      plan.taskTitle = "Borrar documentos de una obra";
+      plan.taskStatus = "diagnostic";
+      plan.nextAction = "Selecciona la obra y vuelve a indicar el borrado.";
+      return plan;
+    }
+    plan.toolCalls = [{ name: "prepare_delete_mandatory_documents", arguments: { obra: context.obra } }];
+    plan.answer = "Voy a calcular el alcance exacto. Todavía no se borrará nada.";
+    plan.suggestedView = "documentacion_encargados";
+    plan.taskTitle = "Borrar documentos de una obra";
+    plan.taskStatus = "active";
+    return plan;
+  }
+
+  if (/document/.test(q) && /(inicio|control de presencia|encargad|obligatori)/.test(q) && /(lista|muestra|consulta|estado|pendiente)/.test(q)) {
+    plan.toolCalls = [{ name: "list_mandatory_documents", arguments: { obra: context.obra || "", periodo: context.periodo || "" } }];
+    plan.answer = "Voy a consultar el estado real de los documentos visibles.";
+    plan.suggestedView = "documentacion_encargados";
+    plan.taskTitle = "Consultar documentación de encargados";
+    plan.taskStatus = "active";
+    return plan;
+  }
+
+  if (/(maquinaria|herramienta|inventario)/.test(q) && /(averia|averiad|reparacion|taller|incidencia)/.test(q)) {
+    plan.toolCalls = [{ name: "prepare_inventory_fault_report" }];
+    plan.answer = "Voy a preparar el estado verificable de equipos con avería o reparación.";
+    plan.suggestedView = "inventario";
+    plan.taskTitle = "Revisar maquinaria averiada";
+    plan.taskStatus = "active";
+    return plan;
+  }
+
+  if (/^(abre|abrir|ve a|ir a|llevame|ll[eé]vame|entra en)/.test(q)) {
+    const view = viewFromQuestion(question);
+    if (view) {
+      plan.toolCalls = [{ name: "navigate", arguments: { view } }];
+      plan.answer = `Voy a abrir ${PROFEA_TUTOR_VIEW_LABELS[view as keyof typeof PROFEA_TUTOR_VIEW_LABELS] || view}.`;
+      plan.suggestedView = view;
+      plan.taskTitle = "Navegar por GestionProfea";
+      plan.taskStatus = "active";
+      return plan;
+    }
+  }
+
+  if (/(registra|crear|crea|anota|guardar|guarda).*(incidencia|riesgo)/.test(q)) {
+    plan.answer = "Puedo registrar la incidencia, pero no voy a inventar sus datos. Abre Prevención y completa obra, fecha, tipo de riesgo, prioridad, título, tarea y descripción; cuando estén definidos podré ejecutar el registro de forma segura.";
+    plan.suggestedView = "prevencion";
+    plan.toolCalls = [{ name: "navigate", arguments: { view: "prevencion" } }];
+    plan.taskTitle = "Registrar incidencia preventiva";
+    plan.taskStatus = "active";
+    plan.nextAction = "Completa los datos obligatorios de la incidencia.";
+    plan.checkQuestion = "¿Tienes ya definidos los datos de la incidencia?";
+    plan.checkOptions = ["Sí, ya están", "Me falta algún dato", "Abrir Prevención"];
+    return plan;
+  }
+
+  if (taskState.status === "active" && /^(siguiente|continua|continúa|ya esta|ya está|hecho)$/.test(q)) {
+    plan.taskStatus = "active";
+    plan.currentStep = Math.max(1, Number(taskState.currentStep) || 1) + 1;
+    plan.answer = "Continúo desde el punto en el que estabas. " + fallback.answer;
+  }
+  return plan;
+}
+
+export function composeTutorResponseLocal(
+  plan: TutorLocalPlan,
+  results: TutorToolResult[],
+): TutorLocalPlan {
+  if (!results.length) return plan;
+  const failed = results.find(result => !result.ok);
+  const confirmation = results.find(result => result.confirmation)?.confirmation;
+  const summaries = results.map(result => result.summary).filter(Boolean);
+
+  if (failed) {
+    return {
+      ...plan,
+      answer: failed.summary || "La operación no se pudo completar.",
+      taskStatus: "diagnostic",
+      nextAction: "Revisa el dato indicado y vuelve a intentarlo.",
+      checkQuestion: "¿Quieres que te guíe para corregirlo?",
+      checkOptions: ["Sí", "Volver al módulo", "Cancelar"],
+    };
+  }
+
+  if (confirmation) {
+    return {
+      ...plan,
+      answer: `${summaries.join(" ")} Revisa el alcance y confirma solo si quieres ejecutar el borrado.`,
+      taskStatus: "active",
+      nextAction: "Revisar y confirmar el alcance del borrado.",
+      checkQuestion: "¿Confirmas este alcance?",
+      checkOptions: ["Confirmar", "Cancelar"],
+    };
+  }
+
+  let detail = "";
+  const firstData = results[0]?.data;
+  if (Array.isArray(firstData) && firstData.length) {
+    detail = firstData.slice(0, 8).map((item: any) => {
+      if (item?.nombre) return item.obra ? `${item.nombre} · ${item.obra}` : String(item.nombre);
+      if (item?.codigo || item?.nombre) return [item.codigo, item.nombre, item.estado].filter(Boolean).join(" · ");
+      if (item?.tipo || item?.periodo) return [item.tipo, item.periodo, item.estado].filter(Boolean).join(" · ");
+      return "";
+    }).filter(Boolean).join("\n");
+  }
+
+  return {
+    ...plan,
+    answer: [summaries.join(" "), detail].filter(Boolean).join("\n"),
+    taskStatus: "completed",
+    nextAction: "",
+    checkQuestion: "",
+    checkOptions: [],
+    followUps: ["Abrir el módulo relacionado", "Hacer otra consulta"],
   };
 }
