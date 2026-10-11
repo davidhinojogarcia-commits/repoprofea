@@ -608,6 +608,9 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // The initial empty list is not authoritative until settings have loaded.
+    // Otherwise a reload overwrites the persisted work filter with "Todas".
+    if (!businessSettingsHydratedRef.current) return;
     const normalizedObras = new Set((savedObras || []).map(obra => String(obra || '').trim().toLocaleLowerCase('es-ES')).filter(Boolean));
 
     setStatsObraFilter(current => {
@@ -2626,3 +2629,4 @@ function App() {
 }
 
 export default App;
+

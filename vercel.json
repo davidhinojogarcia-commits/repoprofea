@@ -29,7 +29,8 @@
       "local/remove-activity-morning-refresh-20261007": false,
       "local/manual-foreman-publication-20261009": false,
       "fix/tutor-profea-validation-20261010": false,
-      "fix/tutor-vercel-esm-20261010": false
+      "fix/tutor-vercel-esm-20261010": false,
+      "fix/preserve-work-filter-20261011": false
     }
   }
 }
