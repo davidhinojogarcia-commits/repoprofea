@@ -29,6 +29,32 @@ try{
  await act(async()=>{root.render(React.createElement(ProfeaTutor,{activeView:'prevencion',activeObra:'A',activePeriod:'P1',onNavigate:v=>nav.push(v),onApplyFilters:f=>filters.push(f)}))});
  await act(async()=>{authCallback('SIGNED_IN',{user:{id:'u'}})});
  await click('Abrir Tutor PROFEA');
+ const viewport = new dom.window.EventTarget();
+ viewport.height=720; viewport.offsetTop=0;
+ Object.defineProperty(window,'visualViewport',{configurable:true,value:viewport});
+ Object.defineProperty(window,'innerWidth',{configurable:true,value:390});
+ await click('Cerrar Tutor PROFEA');
+ await click('Abrir Tutor PROFEA');
+ await act(async()=>window.dispatchEvent(new Event('resize')));
+ const panel=document.querySelector('section[aria-label="Tutor PROFEA"]');
+ assert.equal(panel.style.height,'704px');
+ assert.equal(panel.style.top,'8px');
+ assert.ok(panel.className.includes('flex-col'));
+ assert.ok(button('Enviar pregunta').textContent.includes('Enviar'));
+ viewport.height=360; viewport.offsetTop=50;
+ await act(async()=>viewport.dispatchEvent(new Event('resize')));
+ assert.equal(panel.style.height,'344px');
+ assert.equal(panel.style.top,'58px');
+ assert.equal(panel.style.bottom,'auto');
+ assert.ok(button('Enviar pregunta').closest('section')===panel);
+ await click('Cerrar Tutor PROFEA');
+ viewport.height=720; viewport.offsetTop=0;
+ await act(async()=>viewport.dispatchEvent(new Event('resize')));
+ await click('Abrir Tutor PROFEA');
+ assert.equal(document.querySelector('section[aria-label="Tutor PROFEA"]').style.height,'704px');
+ Object.defineProperty(window,'innerWidth',{configurable:true,value:1024});
+ await act(async()=>window.dispatchEvent(new Event('resize')));
+ assert.equal(document.querySelector('section[aria-label="Tutor PROFEA"]').style.top,'');
  await ask('Registra una incidencia');
  assert.ok(button('Registrar incidencia'));const f=button('Registrar incidencia').closest('form');
  const values={obra:'A',fecha:'2026-10-10','categoría':'Otros',prioridad:'Media','título':'Protección',tarea:'Trabajo','descripción':'Falta protección'};
@@ -49,3 +75,4 @@ try{
  assert.ok(!document.body.textContent.includes('DATOS USUARIO ANTERIOR'));
  console.log('PASS Tutor UI: formulario, envío explícito, filtros, navegación, aviso de sesión y limpieza entre usuarios y respuesta tardía tras cambiar de sesión.');
 }finally{await act(async()=>root.unmount());globalThis.fetch=originalFetch;await fs.unlink(output.pathname).catch(()=>{});dom.window.close()}
+

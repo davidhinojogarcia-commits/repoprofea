@@ -82,6 +82,27 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mobileViewport, setMobileViewport] = useState<{ top: number; height: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const viewport = window.visualViewport;
+    const update = () => {
+      setMobileViewport(window.innerWidth < 640 ? {
+        top: (viewport?.offsetTop || 0) + 8,
+        height: Math.max(0, (viewport?.height || window.innerHeight) - 16),
+      } : null);
+    };
+    update();
+    window.addEventListener('resize', update);
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+    };
+  }, [open]);
   const [messages, setMessages] = useState<TutorMessage[]>(() => {
     try {
       const saved = sessionStorage.getItem(TUTOR_SESSION_KEY);
@@ -355,11 +376,11 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
 
       {open && (
         <section
-          className="fixed z-[9900] inset-x-3 bottom-[max(.75rem,env(safe-area-inset-bottom))] sm:inset-x-auto sm:right-5 sm:bottom-5 w-auto sm:w-[390px] max-h-[min(76dvh,680px)] overflow-hidden rounded-[28px] border border-white/60 bg-white/82 shadow-[0_24px_70px_rgba(15,42,75,0.28)] backdrop-blur-2xl dark:border-white/15 dark:bg-slate-950/82"
-          style={{ WebkitBackdropFilter: 'blur(26px)', backdropFilter: 'blur(26px)' }}
+          className="fixed flex min-h-0 flex-col h-[min(76dvh,680px)] z-[9900] inset-x-3 bottom-[max(.75rem,env(safe-area-inset-bottom))] sm:inset-x-auto sm:right-5 sm:bottom-5 w-auto sm:w-[390px] max-h-[min(76dvh,680px)] overflow-hidden rounded-[28px] border border-white/60 bg-white/82 shadow-[0_24px_70px_rgba(15,42,75,0.28)] backdrop-blur-2xl dark:border-white/15 dark:bg-slate-950/82"
+          style={{ WebkitBackdropFilter: 'blur(26px)', backdropFilter: 'blur(26px)', ...(mobileViewport ? { top: mobileViewport.top, bottom: 'auto', height: mobileViewport.height, maxHeight: mobileViewport.height } : {}) }}
           aria-label="Tutor PROFEA"
         >
-          <header className="flex items-start justify-between gap-3 border-b border-slate-200/70 bg-gradient-to-r from-[#00548E]/10 via-white/35 to-white/20 px-4 py-3.5 dark:border-slate-700/70 dark:from-blue-500/10 dark:via-slate-900/25 dark:to-slate-900/10">
+          <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200/70 bg-gradient-to-r from-[#00548E]/10 via-white/35 to-white/20 px-4 py-3.5 dark:border-slate-700/70 dark:from-blue-500/10 dark:via-slate-900/25 dark:to-slate-900/10">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#00548E] text-white shadow-sm">
                 <LifeBuoy className="h-5 w-5" aria-hidden="true" />
@@ -392,7 +413,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
             </div>
           </header>
 
-          <div ref={scrollRef} className="max-h-[calc(min(76dvh,680px)-150px)] overflow-y-auto px-4 py-4">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
             {taskState.status !== 'idle' && taskState.title && (
               <div className="mb-3 rounded-2xl border border-blue-200/80 bg-blue-50/75 p-3 dark:border-blue-800/60 dark:bg-blue-950/30">
                 <div className="flex items-center justify-between gap-2">
@@ -640,7 +661,7 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
             )}
           </div>
 
-          <div className="border-t border-slate-200/70 bg-white/55 p-3 dark:border-slate-700/70 dark:bg-slate-950/45">
+          <div className="shrink-0 border-t border-slate-200/70 bg-white/55 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700/70 dark:bg-slate-950/45">
             <div className="flex items-end gap-2 rounded-2xl border border-slate-200/80 bg-white/75 p-2 shadow-inner dark:border-slate-700 dark:bg-slate-900/75">
               <textarea
                 ref={inputRef}
@@ -654,16 +675,17 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
                 }}
                 rows={1}
                 placeholder="Cuéntame qué ves o qué quieres hacer ahora…"
-                className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
+                className="max-h-28 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-base text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
               />
               <button
                 type="button"
                 onClick={() => void ask()}
                 disabled={busy || !input.trim()}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#00548E] text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Enviar pregunta"
               >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
+                <span>Enviar</span>
               </button>
             </div>
             <p className="mt-2 px-1 text-[10px] leading-4 text-slate-400">
@@ -675,4 +697,5 @@ export const ProfeaTutor: React.FC<ProfeaTutorProps> = ({
     </>
   );
 };
+
 
