@@ -16,6 +16,7 @@ try{
   await build({stdin:{contents:"export {assignMandatoryDocumentV2} from './src/services/mandatoryTraceabilityServiceV2';export {resolveForemanPortal} from './src/services/foremanPortalService';",resolveDir:new URL('../',import.meta.url).pathname},outfile:output.pathname,bundle:true,platform:'node',format:'esm',plugins:[{name:'api',setup(b){b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'api',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const supabase=globalThis.__publicationApi;'}));}}]});
   const {assignMandatoryDocumentV2,resolveForemanPortal}=await import(output.href);
   const receipt=await assignMandatoryDocumentV2('doc');
+  assert.equal(receipt.pushReceipt.status,'unconfirmed','push failure preserves verified publication receipt');
   assert.equal(receipt.activePortal,true);assert.equal(receipt.obra,'Obra A');assert.equal(receipt.periodKey,'2026-07');assert.equal(receipt.assignedAt,'2026-10-13T07:00:00Z');
   mode='wrong-work';assert.equal((await assignMandatoryDocumentV2('doc')).activePortal,false,'different worksite is not a valid destination');
   mode='access-failure';assert.equal((await assignMandatoryDocumentV2('doc')).activePortal,null,'access failure is reported separately from verified save');

@@ -8,7 +8,8 @@ Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLEle
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 window.HTMLCanvasElement.prototype.getContext=()=>null;
 window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
-window.HTMLElement.prototype.scrollIntoView=()=>{};
+let scrolledDocument='';
+window.HTMLElement.prototype.scrollIntoView=function(){scrolledDocument=this.id;};
 const workers=[{id:1,apellidosNombre:'Persona Uno',categoria:'PEON'},{id:2,apellidosNombre:'Persona Dos',categoria:'PEON'}];
 const doc={id:'doc',owner_id:'owner',obra:'Obra A',work_date:'2026-10-09',period_key:'2026-10',document_type:'control_presencia',category:'',status:'pending',lifecycle_status:'READY',workers:[],signatures:{'1':'signed','2':'signed'},details:{sourceFilename:'control.pdf',originalPdfMode:'overlay',importedWorkerIds:[1,2],importedWorkers:workers,workerAnchors:workers.map(w=>({workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id})),documentWorkersV2:workers.map(w=>({id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED'}))}};
 let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0,extraDocs=[];
@@ -82,6 +83,14 @@ try {
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'revocation survives reload');
+ window.history.replaceState({},'', '/encargados?document=doc');
+ await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
+ assert(document.getElementById('foreman-signing-doc').className.includes('ring-4'),'notification deep link highlights the scoped document');
+ assert(find('Finalizar y enviar al supervisor'),'notification opens signing document automatically');
+ assert(find('Activar avisos de mi obra'),'mobile notification activation is exposed in portal');
+ await action(()=>new Promise(resolve=>setTimeout(resolve,150)));
+ assert.equal(scrolledDocument,'foreman-signing-doc','deep link scrolls after the document renders');
+ window.history.replaceState({},'', '/encargados');
  doc.period_key='2026-10-2Q';
  extraDocs=[{...structuredClone(doc),id:'first-half',period_key:'2026-10-1Q',work_date:'2026-10-16',category:'FIRST_HALF'}, {...structuredClone(doc),id:'other-month',period_key:'2026-09-1Q',category:'OTHER_MONTH'}, {...structuredClone(doc),id:'other-work',obra:'Obra B',category:'OTHER_WORK'}];
  await mount(React.createElement(ForemanDocumentsDashboard));

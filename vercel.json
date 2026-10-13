@@ -34,7 +34,8 @@
       "fix/tutor-mobile-send-20261012": false,
       "local/foreman-publication-receipt-20261013": false,
       "local/fix-hidden-mandatory-review-20261013": false,
-      "local/advisory-row-proximity-20261013": false
+      "local/advisory-row-proximity-20261013": false,
+      "feat/foreman-mobile-push-20261013": false
     }
   }
 }

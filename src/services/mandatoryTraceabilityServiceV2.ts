@@ -1,3 +1,4 @@
+import { dispatchForemanDocumentPush } from './foremanPushService';
 import { supabase } from '../lib/supabase';
 
 export type MandatoryV2WorkerInput = {
@@ -158,7 +159,8 @@ export async function assignMandatoryDocumentV2(documentId: string) {
     });
     if (Array.isArray(access)) activePortal = access.some(row => String(row.obra).toLocaleLowerCase() === String(document.obra).toLocaleLowerCase());
   } catch { /* Preserve the verified receipt and show an explicit access warning. */ }
-  return { ...result, lifecycleStatus: document.lifecycle_status, documentId, obra: document.obra, periodKey: document.period_key, assignedAt: document.assigned_at, activePortal };
+  const pushReceipt = await dispatchForemanDocumentPush(documentId);
+  return { ...result, pushReceipt, lifecycleStatus: document.lifecycle_status, documentId, obra: document.obra, periodKey: document.period_key, assignedAt: document.assigned_at, activePortal };
 
 }
 
