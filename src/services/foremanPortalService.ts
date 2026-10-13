@@ -780,9 +780,9 @@ export async function loadSupervisorMandatoryEditorDocument(documentId:string){
   if(!document||!Array.isArray(document.documentWorkers))throw new Error('No se pudieron recuperar las posiciones guardadas del documento.');
   const previous=Array.isArray(document.details?.workerAnchors)?document.details.workerAnchors:[];
   const ordered=[...document.documentWorkers].sort((a,b)=>Number(a.row_index??Number.MAX_SAFE_INTEGER)-Number(b.row_index??Number.MAX_SAFE_INTEGER)||String(a.created_at||'').localeCompare(String(b.created_at||''))||String(a.id).localeCompare(String(b.id)));
-  const confirmed=ordered.filter(row=>row.detection_status==='CONFIRMED');
-  const used=new Set(confirmed.filter(row=>row.legacy_worker_id!=null).map(row=>Number(row.legacy_worker_id)));
-  const workerAnchors=confirmed.map((row,index)=>{
+  const active=ordered.filter(row=>row.detection_status!=='REJECTED');
+  const used=new Set(active.filter(row=>row.legacy_worker_id!=null).map(row=>Number(row.legacy_worker_id)));
+  const workerAnchors=active.map((row,index)=>{
     const old=previous.find((anchor:any)=>String(anchor.documentWorkerId||'')===String(row.id))||
       (row.legacy_worker_id!=null?previous.find((anchor:any)=>Number(anchor.workerId)===Number(row.legacy_worker_id)):null)||{};
     let workerId=row.legacy_worker_id!=null?Number(row.legacy_worker_id):-(index+1);
@@ -790,7 +790,7 @@ export async function loadSupervisorMandatoryEditorDocument(documentId:string){
     used.add(workerId);
     const value=(box:any,key:string)=>box?.[key]!=null?Number(box[key]):null;
     return {...old,documentWorkerId:String(row.id),draftNew:false,workerId,workerName:String(row.printed_name),
-      page:Number(row.page||1),order:row.row_index,resolved:row.position_status==='RESOLVED',
+      page:Number(row.page||1),order:row.row_index,detectionStatus:row.detection_status,resolved:row.detection_status==='CONFIRMED'&&row.position_status==='RESOLVED',
       confidence:row.position_source==='MANUAL'?1:Number(row.detection_confidence||0),positionSource:row.position_source,
       reason:row.position_source==='MANUAL'?'Posición confirmada manualmente por el supervisor.':undefined,
       nameX:value(row.name_box,'x'),nameY:value(row.name_box,'y'),nameWidth:value(row.name_box,'width'),nameHeight:value(row.name_box,'height'),
@@ -812,7 +812,7 @@ export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any
   const workers=anchors.map((anchor,index)=>{
     if(!anchor.documentWorkerId)throw new Error('Falta la identidad documental. Cierra y vuelve a abrir el editor.');
     return {documentWorkerId:anchor.documentWorkerId,create:Boolean(anchor.draftNew),printedName:String(anchor.workerName||'').trim(),
-      page:Math.max(1,Number(anchor.page||1)),rowIndex:index,resolved:Boolean(anchor.resolved),
+      page:Math.max(1,Number(anchor.page||1)),rowIndex:index,resolved:Boolean(anchor.resolved),expectedDetectionStatus:anchor.resolved?'CONFIRMED':String((anchor as any).detectionStatus||'CONFIRMED'),
       nameBox:toBox(anchor,'name'),signatureBox:toBox(anchor,'signature')};
   });
   const saved:any=await supabase.rpc('save_mandatory_positions_draft_v2',{p_document_id:documentId,p_workers:workers,p_expected_updated_at:expectedUpdatedAt||null});
@@ -821,7 +821,7 @@ export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any
   for(const worker of workers){
     const row=verified.documentWorkers.find((row:any)=>String(row.id)===worker.documentWorkerId);
     const boxMatches=(actual:any,expected:any)=>expected==null?actual==null:actual!=null&&['x','y','width','height'].every(key=>Number(actual[key])===expected[key]);
-    if(!row||row.detection_status!=='CONFIRMED'||row.position_status!==(worker.resolved&&worker.signatureBox?'RESOLVED':'PENDING')||
+    if(!row||row.detection_status!==worker.expectedDetectionStatus||row.position_status!==(worker.resolved&&worker.signatureBox?'RESOLVED':'PENDING')||
        Number(row.page)!==worker.page||Number(row.row_index)!==worker.rowIndex||
        !boxMatches(row.name_box,worker.nameBox)||!boxMatches(row.signature_box,worker.signatureBox)){
       throw new Error(`No se pudo verificar la posición guardada de ${worker.printedName}. El editor conserva tus ajustes para reintentar.`);

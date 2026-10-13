@@ -72,6 +72,13 @@ try {
  const before=await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]);
  await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,[draftWorker(w1,1,520),draftWorker(id(999),2,470)],savedDraft.updated_at]),/identidad documental/);
  assert.deepEqual(await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]),before,'late failure rolls back earlier changes');
+ await db.exec('reset role');
+ const explain=fs.readFileSync(new URL('../supabase/migrations/20261013082043_explain_mandatory_publication_review.sql',import.meta.url),'utf8');
+ await db.exec(explain);await db.exec(explain);
+ await query("insert into mandatory_document_workers_v2(id,document_id,owner_id,printed_name,page,row_index,detection_status,position_status,position_source) values ($1,$2,$3,'Persona pendiente',1,2,'DETECTED','PENDING','AUTO')",[id(9998),doc,owner]);
+ await asUser(owner);
+ await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/Revisa Trabajadores.*Persona pendiente/,'reports invisible pending identity even with all confirmed coordinates complete');
+ await db.exec('reset role');await query('delete from mandatory_document_workers_v2 where id=$1',[id(9998)]);await asUser(owner);
  await rpc('assign_mandatory_document_v2',[doc]);await rpc('withdraw_mandatory_document_v2',[doc]);
  savedDraft.updated_at=(await query('select updated_at from foreman_mandatory_documents where id=$1',[doc]))[0].updated_at;
  const pending={...draftWorker(id(13),3,440),create:true,resolved:false,signatureBox:null};
