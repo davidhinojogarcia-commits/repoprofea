@@ -7,13 +7,18 @@ const rpc=async(n,p)=>(await query(`select public.${n}(${p.map((_,i)=>'$'+(i+1))
 const user=async(n)=>{await db.exec('reset role');await query("select set_config('request.jwt.claim.sub',$1,false)",[n?id(n):'']);await db.exec(n?'set role authenticated':'set role anon');};
 const sub=n=>({endpoint:`https://fcm.googleapis.com/push/device-${n}`,keys:{p256dh:'A'.repeat(87),auth:'B'.repeat(22)}});
 try{
- await db.exec(`create role anon;create role authenticated;create schema auth;create schema extensions;
+ await db.exec(`create role anon;create role authenticated;alter default privileges in schema public grant execute on functions to anon, authenticated;create schema auth;create schema extensions;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create function extensions.digest(text,text) returns bytea language sql immutable as $$select sha256(convert_to($1,'UTF8'))$$;
  create table foreman_portal_access(id uuid primary key,owner_id uuid,obra text,active boolean,token_hash text);
  create table foreman_mandatory_documents(id uuid primary key,owner_id uuid,obra text,period_key text,document_type text,assigned_at timestamptz,lifecycle_status text);
  `);
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261013141555_foreman_mobile_push.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261013181818_restrict_foreman_push_dispatch_anon.sql',import.meta.url),'utf8'));
+ for (const fn of ['claim_foreman_document_push(uuid)','finish_foreman_document_push(uuid,uuid,integer)']) {
+  assert.equal((await query("select has_function_privilege('anon',$1,'EXECUTE') allowed", ['public.'+fn]))[0].allowed,false,'anon dispatch grant removed');
+  assert.equal((await query("select has_function_privilege('authenticated',$1,'EXECUTE') allowed", ['public.'+fn]))[0].allowed,true,'supervisor dispatch remains available');
+ }
  for(const [n,owner,obra,token] of [[10,1,'Obra A','a'],[11,1,'Obra B','b'],[12,2,'Obra A','c']])await query("insert into foreman_portal_access values($1,$2,$3,true,encode(extensions.digest($4,'sha256'),'hex'))",[id(n),id(owner),obra,token]);
  await query("insert into foreman_mandatory_documents values($1,$2,'obra a','2026-10-Q1','inicio',now(),'ASSIGNED')",[id(20),id(1)]);
  await user(null);
