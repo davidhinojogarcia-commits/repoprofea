@@ -11,7 +11,7 @@ window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener()
 window.HTMLElement.prototype.scrollIntoView=()=>{};
 const workers=[{id:1,apellidosNombre:'Persona Uno',categoria:'PEON'},{id:2,apellidosNombre:'Persona Dos',categoria:'PEON'}];
 const doc={id:'doc',owner_id:'owner',obra:'Obra A',work_date:'2026-10-09',period_key:'2026-10',document_type:'control_presencia',category:'',status:'pending',lifecycle_status:'READY',workers:[],signatures:{'1':'signed','2':'signed'},details:{sourceFilename:'control.pdf',originalPdfMode:'overlay',importedWorkerIds:[1,2],importedWorkers:workers,workerAnchors:workers.map(w=>({workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id})),documentWorkersV2:workers.map(w=>({id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED'}))}};
-let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0;
+let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0,extraDocs=[];
 globalThis.__alerts=alerts;
 globalThis.__confirm=async(message)=>{confirmMessages.push(message);return confirmResult;};
 const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,lifecycleStatus:doc.lifecycle_status,assignedAt:doc.assigned_at,details:{...doc.details,lifecycleStatus:'READY'},signatures:doc.signatures,workers:doc.workers});
@@ -21,7 +21,7 @@ globalThis.__foremanUi={
  async getSupervisorMandatorySignatures(){return {};},
 };
 globalThis.__foremanApi={
- async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc)]:[];},
+ async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc),...structuredClone(extraDocs)]:[];},
  async rpc(name,args){calls.push({name,args});if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
 };
 const serviceSource=await fs.readFile(new URL('../src/services/foremanPortalService.ts',import.meta.url),'utf8');
@@ -82,6 +82,22 @@ try {
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'revocation survives reload');
+ doc.period_key='2026-10-2Q';
+ extraDocs=[{...structuredClone(doc),id:'first-half',period_key:'2026-10-1Q',work_date:'2026-10-16',category:'FIRST_HALF'}, {...structuredClone(doc),id:'other-month',period_key:'2026-09-1Q',category:'OTHER_MONTH'}, {...structuredClone(doc),id:'other-work',obra:'Obra B',category:'OTHER_WORK'}];
+ await mount(React.createElement(ForemanDocumentsDashboard));
+ const headings=[...document.querySelectorAll('h3')].map(h=>h.textContent);
+ assert(headings.some(h=>h.includes('1ª quincena'))&&headings.some(h=>h.includes('2ª quincena')),'both quincenas grouped inside month');
+ assert.equal(document.querySelectorAll('article').length,2,'work and authoritative period month restrict documents');
+ const secondHalf=[...document.querySelectorAll('[aria-label="Filtrar por quincena"] button')].find(b=>b.textContent.startsWith('2ª quincena'));
+ await action(()=>secondHalf.click());
+ assert.equal(document.querySelectorAll('article').length,1,'second quincena filters documents');
+ assert(!document.querySelector('article').textContent.includes('FIRST_HALF'),'period key wins over work date');
+ await action(()=>find('Todas las quincenas').click());
+ assert.equal(document.querySelectorAll('article').length,2,'all quincenas restores documents without duplicates');
+ await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Septiembre 2026')).click());
+ assert.equal(document.querySelectorAll('article').length,1,'month change clears quincena filter');
+ assert(document.querySelector('article').textContent.includes('OTHER_MONTH'));
+ console.log('PASS: fortnight grouping, explicit period precedence, month/work isolation, filter and reset.');
  console.log('PASS: rendered React UI; traceability button absent, explicit publication/withdrawal, selective revocation, pending signer and send restriction after reload.');
  await action(()=>root.unmount());root=null;
 } catch(error) {console.error(error);process.exitCode=1;} finally {if(root)root.unmount();dom.window.close();await fs.rm(output,{force:true});}

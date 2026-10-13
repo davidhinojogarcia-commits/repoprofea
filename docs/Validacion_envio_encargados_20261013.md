@@ -46,3 +46,9 @@ Falta aplicar `20261013071157_foreman_publication_receipt_visibility.sql` y publ
 La rama `local/foreman-publication-receipt-20261013` tiene desactivados los despliegues automáticos en `vercel.json`.
 
 La revisión de Supabase conserva los controles de token, propietario y obra del resolver existente. Sus avisos sobre funciones SECURITY DEFINER son anteriores a este cambio; este endpoint necesita acceso por token y conserva la validación antes de consultar datos. Referencia del aviso: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable
+
+## Organización por quincenas
+
+Documentos de encargados se organiza por obra, mes y quincena. El periodo explícito importado tiene prioridad sobre la fecha del documento; si no hay quincena explícita se utiliza el día de una fecha válida del mismo mes. Si no se puede determinar, se conserva visible en Sin quincena. Todas las quincenas permite consultar ambas y cambiar de obra o mes restablece el filtro y la selección de borrado.
+
+Regresión adicional: días 1/15/16/31, fecha inválida, año bisiesto, periodo explícito diferente de la fecha, ausencia de fecha, agrupación visual, aislamiento por obra y mes, filtro de quincena y recuperación de todos los documentos sin duplicados.

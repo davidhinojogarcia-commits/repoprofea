@@ -1,3 +1,4 @@
+import { foremanDocumentPeriod, documentFortnightLabel, type DocumentFortnight } from '../src/lib/foremanDocumentPeriod';
 import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appAlert, appConfirm, appPrompt } from '../src/lib/appDialog';
@@ -51,6 +52,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
   const [selectedDocsWork,setSelectedDocsWork]=useState(()=>localStorage.getItem('profea:foreman-docs:last-work')||'');
   const [selectedDocsMonth,setSelectedDocsMonth]=useState(()=>localStorage.getItem('profea:foreman-docs:last-month')||'');
+  const [selectedDocsFortnight,setSelectedDocsFortnight]=useState<DocumentFortnight|''>('');
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
   const [importBusy,setImportBusy]=useState(false);
@@ -249,6 +251,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     const mandatoryCards=visibleMandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards]
+      .map(card=>({...card,...foremanDocumentPeriod(card.date,card.kind==='mandatory'?card.item.period_key:null)}))
       .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   },[attendance,visibleMandatory,documents]);
 
@@ -297,7 +300,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const monthDocumentGroups=useMemo(()=>{
     const map=new Map<string,{total:number;pending:number}>();
     allCards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork).forEach(card=>{
-      const key=String(card.date||'').slice(0,7)||'Sin fecha';
+      const key=card.month;
       const current=map.get(key)||{total:0,pending:0};
       current.total+=1;
       if(card.status!=='reviewed')current.pending+=1;
@@ -318,8 +321,16 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   const visibleCards=useMemo(()=>cards.filter(card=>
     String(card.obra||'Sin obra').trim()===selectedDocsWork &&
-    (String(card.date||'').slice(0,7)||'Sin fecha')===selectedDocsMonth
-  ),[cards,selectedDocsWork,selectedDocsMonth]);
+    card.month===selectedDocsMonth &&
+    (!selectedDocsFortnight||card.fortnight===selectedDocsFortnight)
+  ),[cards,selectedDocsWork,selectedDocsMonth,selectedDocsFortnight]);
+
+  useEffect(()=>{setSelectedDocsFortnight('');},[selectedDocsWork,selectedDocsMonth]);
+  const fortnightDocumentGroups=useMemo(()=>{
+    const inMonth=allCards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork&&card.month===selectedDocsMonth);
+    return (['1Q','2Q','unknown'] as DocumentFortnight[]).map(key=>({key,total:inMonth.filter(card=>card.fortnight===key).length})).filter(group=>group.total>0);
+  },[allCards,selectedDocsWork,selectedDocsMonth]);
+  const visibleFortnightGroups=useMemo(()=>(['1Q','2Q','unknown'] as DocumentFortnight[]).map(key=>({key,cards:visibleCards.filter(card=>card.fortnight===key)})).filter(group=>group.cards.length>0),[visibleCards]);
 
   const selectedWorkStats=useMemo(()=>{
     const group=workDocumentGroups.find(([work])=>work===selectedDocsWork);
@@ -410,7 +421,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   useEffect(()=>{
     setSelectedDeleteKeys(new Set());
-  },[selectedDocsWork,selectedDocsMonth]);
+  },[selectedDocsWork,selectedDocsMonth,selectedDocsFortnight]);
   const openPendingWorksiteReview=async(item:DbMandatory)=>{setMailBusy(true);try{const rows=await supabase.query('obras',{query:'select=nombre&order=nombre.asc&limit=500'});setWorksiteReview({item,works:(Array.isArray(rows)?rows:[]).map((row:any)=>String(row.nombre||'')).filter(Boolean)});}catch(error:any){setMailMessage(error?.message||'No se pudieron cargar las obras.');}finally{setMailBusy(false);}};
   const markMandatoryV2Reviewed=async(item:DbMandatory)=>{await reviewSubmittedMandatoryDocumentV2(item.id);await refresh(true);};
   const returnMandatoryV2ForCorrection=async(item:DbMandatory)=>{const reason=await appPrompt('Indica al encargado qué debe corregir:',{title:'Solicitar corrección',confirmLabel:'Enviar corrección',placeholder:'Describe qué debe corregirse…'});if(!reason?.trim())return;await returnMandatoryDocumentV2(item.id,reason.trim());await refresh(true);};
@@ -900,7 +911,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
         <div className="rounded-2xl border bg-white dark:bg-slate-900 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{selectedWorkStats.total} documento(s) en esta obra · {selectedWorkStats.pending} pendiente(s) de revisión. Organizados por meses.</p></div>
+            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{selectedWorkStats.total} documento(s) en esta obra · {selectedWorkStats.pending} pendiente(s) de revisión. Organizados por meses y quincenas.</p></div>
             {!!selectedDocsWork&&<div className="flex flex-wrap gap-2">
               <button type="button" disabled={bulkDeleteBusy} onClick={()=>{setBulkDeleteMode(value=>!value);setSelectedDeleteKeys(new Set())}} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">{bulkDeleteMode?'Cancelar selección':'Selección múltiple'}</button>
               <button type="button" disabled={bulkDeleteBusy} onClick={()=>void deleteSelectedWorkDocuments()} className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 disabled:opacity-50"><Trash2 className="mr-1.5 inline h-4 w-4"/>Borrar obra</button>
@@ -910,6 +921,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             {monthDocumentGroups.map(([month,stats])=><button key={month} type="button" onClick={()=>setSelectedDocsMonth(month)} className={`shrink-0 rounded-xl border px-3 py-2.5 ${selectedDocsMonth===month?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}><div className="flex items-center gap-2 text-xs font-black"><CalendarDays className="w-3.5 h-3.5"/>{month==='Sin fecha'?'Sin fecha':monthLabel(month)}{stats.pending>0&&<span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${selectedDocsMonth===month?'bg-white/20 text-white':'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100'}`}>{stats.pending}</span>}</div><div className={`mt-0.5 text-[10px] ${selectedDocsMonth===month?'text-blue-100':'text-slate-600 dark:text-slate-300'}`}>{stats.total} documento(s)</div></button>)}
           </div>
         </div>
+
+        {!!fortnightDocumentGroups.length&&<div aria-label="Filtrar por quincena" className="flex flex-wrap gap-2 rounded-2xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+          {[{key:'' as const,label:'Todas las quincenas'},...fortnightDocumentGroups.map(group=>({key:group.key,label:`${documentFortnightLabel(group.key)} · ${group.total}`}))].map(option=><button key={option.key||'all'} type="button" aria-pressed={selectedDocsFortnight===option.key} onClick={()=>setSelectedDocsFortnight(option.key)} className={`min-h-[44px] rounded-xl border px-3 py-2 text-xs font-black ${selectedDocsFortnight===option.key?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}>{option.label}</button>)}
+        </div>}
 
         <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border border-slate-300 pl-9 pr-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"/></div>
@@ -922,7 +937,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <button type="button" disabled={bulkDeleteBusy||selectedDeleteKeys.size===0} onClick={()=>void deleteSelectedDocuments()} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">{bulkDeleteBusy?'Eliminando…':`Borrar seleccionados (${selectedDeleteKeys.size})`}</button>
       </div>
     </div>}
-    {loading?<div className="rounded-2xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-slate-900"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra y mes con los filtros actuales.</div>:<div className="relative z-0 space-y-4">{visibleCards.map(card=><article key={card.kind+card.id} className={`relative isolate z-0 rounded-2xl bg-white dark:bg-slate-900 border p-4 shadow-sm ${bulkDeleteMode&&selectedDeleteKeys.has(deleteKey(card))?'border-rose-400 ring-2 ring-rose-100':'border-slate-200 dark:border-slate-800'}`}>
+    {loading?<div className="rounded-2xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-slate-900"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra, mes y quincena con los filtros actuales.</div>:<div className="relative z-0 space-y-4">{visibleFortnightGroups.map(group=><section key={group.key} className="space-y-3"><h3 className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-800 dark:bg-slate-800 dark:text-slate-100">{documentFortnightLabel(group.key)} · {group.cards.length} documento(s)</h3>{group.cards.map(card=><article key={card.kind+card.id} className={`relative isolate z-0 rounded-2xl bg-white dark:bg-slate-900 border p-4 shadow-sm ${bulkDeleteMode&&selectedDeleteKeys.has(deleteKey(card))?'border-rose-400 ring-2 ring-rose-100':'border-slate-200 dark:border-slate-800'}`}>
       {bulkDeleteMode&&<label className="mb-3 flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-black text-rose-900">
         <input type="checkbox" className="h-5 w-5 accent-rose-600" checked={selectedDeleteKeys.has(deleteKey(card))} onChange={()=>toggleDeleteSelection(card)}/>
         Seleccionar para borrar
@@ -967,7 +982,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           )}
         </div>
       </div>
-    </article>)}</div>}
+    </article>)}</section>)}</div>}
       </div>
     </div>
 
