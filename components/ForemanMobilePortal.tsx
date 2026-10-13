@@ -340,9 +340,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     if(!doc){setOperationFeedback('El documento del aviso no está disponible en esta obra. Puede haber sido retirado por el supervisor.');setPushDocumentId('');return;}
     setTab(['inicio','control_presencia'].includes(doc.documentType)?'mandatory':doc.documentType==='epis'?'epis':doc.documentType==='formacion'?'formacion':'maquinaria');
     setSelectedMandatoryPeriodKeys(new Set());setExpandedMandatoryDocuments(current=>new Set([...current,doc.id]));setFocusDocumentId(doc.id);setPushDocumentId('');
-    const timer=window.setTimeout(()=>document.getElementById('foreman-signing-'+doc.id)?.scrollIntoView?.({behavior:'smooth',block:'start'}),100);
-    return()=>window.clearTimeout(timer);
   },[data,pushDocumentId]);
+  useEffect(()=>{
+    if(!focusDocumentId)return;
+    const timer=window.setTimeout(()=>document.getElementById('foreman-signing-'+focusDocumentId)?.scrollIntoView?.({behavior:'smooth',block:'start'}),100);
+    return()=>window.clearTimeout(timer);
+  },[focusDocumentId,tab]);
 
   useEffect(()=>{
     const resume=()=>{
