@@ -21,7 +21,7 @@ const sources = [
     order:'work_date.desc',
     limit:300,
     revision:'updated_at',
-    select:'id,obra,period_key,work_date,document_type,category,workers,signatures,status,completed_at,updated_at,source_gmail_message_id,source_gmail_thread_id,source_rfc_message_id,source_email_from,source_email_subject,source_attachment_name,returned_gmail_message_id,returned_at,details,correction_pending,correction_reason,lifecycle_status',
+    select:'id,obra,period_key,work_date,document_type,category,workers,signatures,status,completed_at,updated_at,source_gmail_message_id,source_gmail_thread_id,source_rfc_message_id,source_email_from,source_email_subject,source_attachment_name,returned_gmail_message_id,returned_at,details,correction_pending,correction_reason,lifecycle_status,assigned_at',
   },
 ];
 const fingerprint = (rows: DashboardRows, revision: string) => JSON.stringify(
@@ -81,4 +81,5 @@ export class ForemanDashboardLoader {
     return results;
   }
 }
+
 

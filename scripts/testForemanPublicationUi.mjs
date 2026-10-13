@@ -11,17 +11,18 @@ window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener()
 window.HTMLElement.prototype.scrollIntoView=()=>{};
 const workers=[{id:1,apellidosNombre:'Persona Uno',categoria:'PEON'},{id:2,apellidosNombre:'Persona Dos',categoria:'PEON'}];
 const doc={id:'doc',owner_id:'owner',obra:'Obra A',work_date:'2026-10-09',period_key:'2026-10',document_type:'control_presencia',category:'',status:'pending',lifecycle_status:'READY',workers:[],signatures:{'1':'signed','2':'signed'},details:{sourceFilename:'control.pdf',originalPdfMode:'overlay',importedWorkerIds:[1,2],importedWorkers:workers,workerAnchors:workers.map(w=>({workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id})),documentWorkersV2:workers.map(w=>({id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED'}))}};
-let calls=[],confirmResult=true,confirmMessages=[];
+let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0;
+globalThis.__alerts=alerts;
 globalThis.__confirm=async(message)=>{confirmMessages.push(message);return confirmResult;};
-const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,details:doc.details,signatures:doc.signatures,workers:doc.workers});
+const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,lifecycleStatus:doc.lifecycle_status,assignedAt:doc.assigned_at,details:{...doc.details,lifecycleStatus:'READY'},signatures:doc.signatures,workers:doc.workers});
 globalThis.__foremanUi={
- async resolveForemanPortal(){return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
+ async resolveForemanPortal(){portalReads++;return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
  async getForemanMandatorySignatures(){return Object.fromEntries(Object.keys(doc.signatures).map(k=>[k,{signature:'data:image/png;base64,AAAA'}]));},
  async getSupervisorMandatorySignatures(){return {};},
 };
 globalThis.__foremanApi={
  async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc)]:[];},
- async rpc(name,args){calls.push({name,args});if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';return {ok:true};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
+ async rpc(name,args){calls.push({name,args});if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
 };
 const serviceSource=await fs.readFile(new URL('../src/services/foremanPortalService.ts',import.meta.url),'utf8');
 const exportNames=[...serviceSource.matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]);
@@ -35,7 +36,7 @@ try {
  b.onResolve({filter:/mandatoryEmailIntake$/},()=>({path:'intake',namespace:'mock'}));
  b.onResolve({filter:/PreventionSection$/},()=>({path:'prevention',namespace:'mock'}));
  b.onResolve({filter:/\?url$/},()=>({path:'url',namespace:'mock'}));
- b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async()=>{};export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
+ b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async(message,options)=>globalThis.__alerts.push({message,options});export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
  }}]});
  const React=await import('react');const {createRoot}=await import('react-dom/client');const {ForemanMobilePortal,ForemanDocumentsDashboard}=await import(output.href);
  const action=async callback=>{await React.act(async()=>{await callback();await new Promise(resolve=>setTimeout(resolve,30));});};
@@ -51,11 +52,26 @@ try {
  assert.equal(calls.length,0,'cancelled overlap confirmation never publishes');
  assert(confirmMessages.at(-1).includes('se solapan'),'supervisor sees overlap warning');
  confirmResult=true;
- await action(()=>find('Enviar al portal de encargados').click());
+ await action(()=>{const button=find('Enviar al portal de encargados');button.click();button.click();});
+ assert.equal(calls.length,1,'rapid double tap cannot publish twice');
  assert.equal(calls[0].name,'assign_mandatory_document_v2');assert(find('Retirar del portal para corregir'));
+ assert(alerts.at(-1).message.includes('Obra: Obra A'),'modal identifies destination');
+ assert(alerts.at(-1).message.includes('Periodo: 2026-10'),'modal identifies period');
+ assert.equal(alerts.at(-1).options.title,'Envío guardado · revisa el acceso','missing active portal warning');
+ assert(document.body.textContent.includes('Último envío guardado:'),'durable publication date');
  await action(()=>find('Retirar del portal para corregir').click());assert.equal(doc.lifecycle_status,'READY');assert.equal(Object.keys(doc.signatures).length,2);
  await action(()=>find('Enviar al portal de encargados').click());
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
+ assert(find('Actualizar documentos'),'manual refresh in Control inicios');
+ const beforeRefresh=portalReads;await action(()=>find('Actualizar documentos').click());
+ assert.equal(portalReads,beforeRefresh+1,'manual refresh queries portal');
+ const periodButton=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1'));
+ await action(()=>periodButton.click());
+ doc.period_key='2026-07';await action(()=>find('Actualizar documentos').click());
+ assert(document.body.textContent.includes('No hay documentos en los periodos seleccionados'),'filtered empty state explains hidden documents');
+ await action(()=>find('Todos').click());
+ assert([...document.querySelectorAll('button')].some(b=>b.textContent.includes('control.pdf')),'clear filters reveals new period');
+
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,false,'all signatures allow send');
  assert(document.body.textContent.includes('Trabajadores revisados y habilitados por el supervisor'));
@@ -71,3 +87,4 @@ try {
 } catch(error) {console.error(error);process.exitCode=1;} finally {if(root)root.unmount();dom.window.close();await fs.rm(output,{force:true});}
 
 process.exit(process.exitCode||0);
+

@@ -1,6 +1,6 @@
 import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { appConfirm, appPrompt } from '../src/lib/appDialog';
+import { appAlert, appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, Send, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { getSessionUser, supabase } from '../src/lib/supabase';
 import { ForemanDashboardLoader } from '../src/services/foremanDashboardLoader';
@@ -22,7 +22,7 @@ import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, withdrawMandator
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; assigned_at?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
 
 const mandatoryDocumentLabel = (type:string) => ({
@@ -63,6 +63,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [editSearch,setEditSearch]=useState('');
   const [editWorkerFilter,setEditWorkerFilter]=useState<'all'|'selected'|'unselected'|'document'|'unmatched'>('all');
   const [editBusy,setEditBusy]=useState(false);
+  const publicationInFlightRef=useRef(false);
   const [editingCard,setEditingCard]=useState<any|null>(null);
   const [genericEditDraft,setGenericEditDraft]=useState<any>({});
   const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
@@ -673,17 +674,30 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
 
   const sendMandatoryToPortal = async (item: DbMandatory) => {
-    if(editBusy)return;
+    if(editBusy||publicationInFlightRef.current)return;
+    publicationInFlightRef.current=true;
     setEditBusy(true);
     try {
       const current=await loadCurrentMandatoryDocument(item);
       const anchors=Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[];
       if(hasOverlappingMandatorySignatures(anchors)&&!await appConfirm('Algunas firmas se solapan porque las filas del original están muy juntas. El PDF original se conservará. ¿Quieres enviar el documento con estas posiciones?',{title:'Confirmar firmas solapadas',confirmLabel:'Enviar con solapamiento'}))return;
-      await assignMandatoryDocumentV2(item.id);
-      setMailMessage('Documento enviado al portal de encargados. Ya pueden recoger las firmas.');
+      const receipt = await assignMandatoryDocumentV2(item.id);
+      setMandatory(items=>items.map(doc=>doc.id===item.id?{...doc,lifecycle_status:receipt.lifecycleStatus,assigned_at:receipt.assignedAt,details:{...doc.details,lifecycleStatus:receipt.lifecycleStatus}}:doc));
+      const accessMessage=receipt.activePortal===true
+        ? 'Abre Control inicios en el portal de esta obra y pulsa Actualizar documentos. Si hay filtros activos, pulsa Todos.'
+        : receipt.activePortal===false
+          ? 'Esta obra no tiene un acceso activo de encargado. Genera o activa su acceso antes de abrir el portal.'
+          : 'No se pudo comprobar el acceso del encargado. Revisa que el acceso esté activo y corresponda a esta obra.';
+      const message=`${mandatoryDocumentLabel(item.document_type)}\nObra: ${receipt.obra}\nPeriodo: ${receipt.periodKey||item.work_date}\nEnvío guardado: ${new Date(receipt.assignedAt).toLocaleString('es-ES')}\n\n${accessMessage}`;
+      setMailMessage(`Envío guardado y verificado. ${accessMessage}`);
+      await appAlert(message,{title:receipt.activePortal===true?'Documento enviado al portal':'Envío guardado · revisa el acceso'});
       await refresh(true);
-    } catch(error:any) { setMailMessage(error?.message||'No se pudo enviar el documento al portal.'); }
-    finally { setEditBusy(false); }
+    } catch(error:any) {
+      const message=error?.message||'No se pudo enviar el documento al portal.';
+      setMailMessage(message);
+      await appAlert(message,{title:'No se ha confirmado el envío'});
+    }
+    finally { publicationInFlightRef.current=false;setEditBusy(false); }
   };
   const withdrawMandatoryFromPortal = async (item: DbMandatory) => {
     if(editBusy)return;
@@ -916,6 +930,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       <div className="flex flex-col 2xl:flex-row 2xl:items-start gap-4"><div className="w-full min-w-0 2xl:flex-1 break-words">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200 dark:border-blue-700 dark:bg-blue-950/70 dark:text-blue-100':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-100':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200 dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-100'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-100':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 dark:bg-blue-950/70 dark:text-blue-100':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 dark:bg-amber-950/70 dark:text-amber-100'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
         {card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&<p className="mt-2 text-xs font-black text-[#00548E] dark:text-blue-300">{['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))?'Disponible en el portal':card.status==='completed'||card.status==='reviewed'?'Enviado al supervisor':'Borrador del supervisor · pendiente de envío al portal'}</p>}
+        {card.kind==='mandatory'&&card.item.assigned_at&&<p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Último envío guardado: {new Date(card.item.assigned_at).toLocaleString('es-ES')} · Obra: {card.item.obra} · Periodo: {card.item.period_key||card.item.work_date}</p>}
         <h3 className="mt-2 font-black text-slate-900 dark:text-white break-words">{card.title}</h3><p className="text-xs text-slate-500 dark:text-slate-300">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500 dark:text-slate-300">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500 dark:text-slate-300">{Object.keys(card.item.signatures||{}).length}/{(Array.isArray(card.item.details?.importedWorkerIds)&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))?card.item.details.importedWorkerIds.length:(card.item.workers?.length||0)} firmas recogidas</p>}{card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&card.status==='completed'&&<div className={`mt-2 inline-flex rounded-full border px-3 py-1.5 text-[11px] font-black ${card.item.details?.submissionMode==='partial'?'border-amber-300 bg-amber-50 text-amber-900':'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{card.item.details?.submissionMode==='partial'?`Recibido incompleto · ${card.item.details?.submittedSignedCount||0}/${card.item.details?.submittedRequiredCount||card.item.details?.importedWorkerIds?.length||0} firmas`:'Documento recibido válido · PDF original + firmas'}</div>}{card.kind==='mandatory'&&importedWorkersMissingFromDirectory(card.item as DbMandatory).length>0&&<div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">
           <div className="font-black">No localizado(s) en Directorio</div>
           <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
@@ -1134,4 +1149,5 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     </div></ModalPortal>}
   </div>;
 };
+
 

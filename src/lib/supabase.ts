@@ -427,7 +427,7 @@ export const supabase = {
 
     return result;
   },
-  async rpc(name: string, body: any = {}) {
+  async rpc(name: string, body: any = {}, options: { fresh?: boolean } = {}) {
     if (isOffline()) throw new Error('Esta operación necesita conexión. Los movimientos y cambios de obra compatibles se guardan automáticamente para sincronizarse después.');
     const user = await getSessionUser();
     if (isReadOnlyRpc(name)) {
@@ -436,7 +436,7 @@ export const supabase = {
       return readResponseCache.read(
         JSON.stringify([scope, key]),
         () => requestLimiter.run(scope, key, true, () => runRpc(name, body)),
-        30_000,
+        options.fresh ? 0 : 30_000,
       );
     }
     invalidateReadCache();
@@ -461,4 +461,5 @@ export const supabase = {
 };
 
 export { SUPABASE_URL, SUPABASE_KEY, STORAGE_KEY };
+
 

@@ -83,6 +83,25 @@ try {
  await rpc('assign_mandatory_document_v2',[doc]);
  await assert.rejects(rpc('save_mandatory_positions_draft_v2',[doc,conflicting,null]),/Retira primero/,'published document locked');
  await asUser(null);assert.equal((await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.length,1,'explicitly published document visible');
+ await db.exec('reset role');
+ await query('update foreman_mandatory_documents set work_date=current_date-90 where id=$1',[doc]);
+ await asUser(null);
+ assert.equal((await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.length,0,'reproduces production: old assigned document hidden');
+ await db.exec('reset role');
+ const visibilityMigration=fs.readFileSync(new URL('../supabase/migrations/20261013071157_foreman_publication_receipt_visibility.sql',import.meta.url),'utf8');
+ await db.exec(visibilityMigration);await db.exec(visibilityMigration);
+ await asUser(null);
+ const receipt=(await rpc('resolve_foreman_portal',[token])).mandatoryDocuments;
+ assert.equal(receipt.length,1,'old assigned document remains visible after fix');
+ assert(receipt[0].assignedAt,'portal carries persisted publication date');
+ assert.equal((await rpc('resolve_foreman_portal',['bad-token'])).valid,false,'invalid token remains denied');
+ await db.exec('reset role');
+ await query('insert into foreman_portal_access(owner_id,obra,token_hash,active) values ($1,$2,$3,true)',[owner,'Obra B',crypto.createHash('sha256').update('other-work').digest('hex')]);
+ await query('insert into foreman_portal_access(owner_id,obra,token_hash,active) values ($1,$2,$3,true)',[other,'Obra A',crypto.createHash('sha256').update('other-owner').digest('hex')]);
+ await asUser(null);
+ assert.equal((await rpc('resolve_foreman_portal',['other-work'])).mandatoryDocuments.length,0,'other worksite cannot see document');
+ assert.equal((await rpc('resolve_foreman_portal',['other-owner'])).mandatoryDocuments.length,0,'other supervisor cannot see document');
+
  const signature='data:image/png;base64,'+'A'.repeat(40);
  await asUser(null);await rpc('sign_mandatory_document_worker_v2',[token,doc,w1,signature]);
  await assert.rejects(rpc('revoke_mandatory_signature_v2',['bad-token',doc,w1]),/revocado/);
@@ -158,4 +177,5 @@ try {
  assert.equal((await query("select count(*)::int n from mandatory_document_events_v2 where document_id=$1 and event_type='POSITIONS_DRAFT_SAVED'",[legacyDoc]))[0].n,2,'retries do not duplicate either save or the newly added worker');
  console.log('PASS: real PostgreSQL RPCs, legacy UUID recovery, exact coordinates after reopening, added workers with overlapping signatures and idempotent retries.');
 } finally {delete globalThis.__draftSqlApi;if(fs.existsSync(serviceOutput))fs.unlinkSync(serviceOutput);await db.close();}
+
 

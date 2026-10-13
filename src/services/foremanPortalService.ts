@@ -80,6 +80,8 @@ export type ForemanMandatoryDocument = {
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
   status: 'pending' | 'in_progress' | 'returned' | 'completed' | 'reviewed';
   completedAt?: string | null;
+  lifecycleStatus?: string | null;
+  assignedAt?: string | null;
   details?: Record<string, any>;
   correctionPending?: boolean;
   correctionReason?: string | null;
@@ -159,7 +161,7 @@ export async function revokeForemanPortalAccess(obra: string): Promise<void> {
 
 export async function resolveForemanPortal(token: string): Promise<ForemanPortalPayload> {
   const result = await withForemanTimeout(
-    supabase.rpc('resolve_foreman_portal', { p_token: token }),
+    supabase.rpc('resolve_foreman_portal', { p_token: token }, { fresh: true }),
     'La conexión con el portal está tardando demasiado. Comprueba la cobertura y pulsa Reintentar.',
   );
   return {
@@ -827,4 +829,5 @@ export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any
   }
   return verified;
 }
+
 

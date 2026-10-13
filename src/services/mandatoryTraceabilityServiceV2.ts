@@ -139,7 +139,27 @@ export async function addMissingMandatoryDocumentWorkerV2(input: {
 }
 
 export async function assignMandatoryDocumentV2(documentId: string) {
-  return supabase.rpc('assign_mandatory_document_v2', { p_document_id: documentId });
+  const result = await supabase.rpc('assign_mandatory_document_v2', { p_document_id: documentId });
+  if (result?.ok !== true) throw new Error('El servidor no confirmó el envío. Actualiza el estado antes de volver a enviarlo.');
+  const rows = await supabase.query('foreman_mandatory_documents', {
+    query: `id=eq.${encodeURIComponent(documentId)}&select=id,owner_id,obra,period_key,lifecycle_status,assigned_at&limit=1`,
+    networkOnly: true,
+  });
+  const document = Array.isArray(rows) ? rows[0] : null;
+  if (document?.id !== documentId || !document?.assigned_at || !['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION','SUBMITTED','RECEIVED','REVIEWED'].includes(document.lifecycle_status)) {
+    throw new Error('No se pudo verificar el envío guardado. Actualiza el estado antes de volver a enviarlo.');
+  }
+  // Access problems are distinct from a failed document publication.
+  let activePortal: boolean | null = null;
+  try {
+    const access = await supabase.query('foreman_portal_access', {
+      query: `owner_id=eq.${encodeURIComponent(document.owner_id)}&active=eq.true&select=obra`,
+      networkOnly: true,
+    });
+    if (Array.isArray(access)) activePortal = access.some(row => String(row.obra).toLocaleLowerCase() === String(document.obra).toLocaleLowerCase());
+  } catch { /* Preserve the verified receipt and show an explicit access warning. */ }
+  return { ...result, lifecycleStatus: document.lifecycle_status, documentId, obra: document.obra, periodKey: document.period_key, assignedAt: document.assigned_at, activePortal };
+
 }
 
 export async function confirmMandatoryWorksiteV2(documentId: string, obra: string) {
@@ -219,3 +239,4 @@ export async function revokeMandatorySignatureV2(input: { token: string; documen
     p_token: input.token, p_document_id: input.documentId, p_document_worker_id: input.documentWorkerId,
   });
 }
+
