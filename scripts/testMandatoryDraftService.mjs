@@ -17,6 +17,12 @@ try{
  assert.equal(recovered.details.workerAnchors[0].signatureX,350,'canonical coordinates override stale document snapshots');
  storedWorkers.push({...storedWorkers[0],id:'rejected',legacy_worker_id:2,detection_status:'REJECTED'});
  assert.equal((await loadSupervisorMandatoryEditorDocument('doc')).details.workerAnchors.length,1,'rejected workers never return to the editor');
+ storedWorkers.push({...storedWorkers[0],id:'pending',legacy_worker_id:3,printed_name:'Persona pendiente',detection_status:'DETECTED',position_status:'PENDING',signature_box:null,name_box:null});
+ const visible=await loadSupervisorMandatoryEditorDocument('doc');
+ assert.equal(visible.details.workerAnchors.length,2,'unconfirmed imported people must not be hidden from positioning');
+ assert.equal(visible.details.workerAnchors.find(a=>a.documentWorkerId==='pending').resolved,false,'pending identity is explicit');
+ assert.equal(visible.details.workerAnchors.find(a=>a.documentWorkerId==='worker').signatureX,350,'showing pending people preserves saved geometry');
+ storedWorkers=storedWorkers.filter(row=>row.id!=='pending');
  const adjusted={...recovered.details.workerAnchors[0],signatureX:365};
  await saveSupervisorMandatoryDraft('doc',[adjusted],'revision');
  assert.equal((await loadSupervisorMandatoryEditorDocument('doc')).details.workerAnchors[0].signatureX,365,'saved geometry survives reopening');
@@ -30,4 +36,5 @@ try{
  badRead=true;await assert.rejects(removeSupervisorMandatoryWorker('doc',1),/verificar/,'deletion requires persisted rejection');
  console.log('PASS: single draft RPC, revision forwarding, geometry preservation, live save and deletion verification.');
 }finally{await fs.rm(output,{force:true});}
+
 
