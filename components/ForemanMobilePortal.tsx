@@ -237,6 +237,9 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [mandatorySignatureImages,setMandatorySignatureImages]=useState<Record<string,Record<string,string>>>({});
   const [nameCorrection,setNameCorrection]=useState<{documentId:string;workerId:number;value:string}|null>(null);
 
+  const [refreshingDocuments,setRefreshingDocuments]=useState(false);
+  const [documentsUpdatedAt,setDocumentsUpdatedAt]=useState('');
+  const lastPortalRefreshRef=useRef(0);
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
   useEffect(()=>{hasDataRef.current=Boolean(data);},[data]);
@@ -290,14 +293,18 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const task=(async()=>{
       if(!hasDataRef.current)setLoading(true);
       setError('');
+      setRefreshingDocuments(true);
       try{
         const next=await resolveForemanPortal(token);
         if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');
         setData(next);
+        lastPortalRefreshRef.current=Date.now();
+        setDocumentsUpdatedAt(new Date().toLocaleTimeString('es-ES'));
       }catch(e:any){
         setError(e?.message||'No se pudo actualizar la documentación de la obra.');
       }finally{
         setLoading(false);
+        setRefreshingDocuments(false);
         refreshInFlightRef.current=null;
       }
     })();
@@ -305,6 +312,15 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     return task;
   },[token]);
   useEffect(()=>{void refresh();},[refresh]);
+  useEffect(()=>{
+    const resume=()=>{
+      if(document.visibilityState==='hidden'||navigator.onLine===false||Date.now()-lastPortalRefreshRef.current<30_000)return;
+      void refresh();
+    };
+    document.addEventListener('visibilitychange',resume);
+    window.addEventListener('online',resume);
+    return()=>{document.removeEventListener('visibilitychange',resume);window.removeEventListener('online',resume);};
+  },[refresh]);
 
   useEffect(()=>{
     if(!data)return;
@@ -677,7 +693,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
   const allAssignedMandatoryDocuments=(data?.mandatoryDocuments||[]).filter(document=>{
     if(!['inicio','control_presencia'].includes(String(document.documentType||'')))return false;
-    const lifecycle=String(document.details?.lifecycleStatus||'');
+    const lifecycle=String(document.lifecycleStatus||document.details?.lifecycleStatus||'');
     return !lifecycle || ['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION','SUBMITTED','RECEIVED','REVIEWED'].includes(lifecycle);
   });
 
@@ -1193,9 +1209,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
-          <h2 className="font-black">Control inicios</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-black">Control inicios</h2><button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"><RefreshCw className="w-4 h-4"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}</button></div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen los documentos importados de Inicio / Incorporación y Control de presencia. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
+        {documentsUpdatedAt&&<p role="status" className="px-1 text-xs text-slate-600 dark:text-slate-300">Última consulta: {documentsUpdatedAt} · {allAssignedMandatoryDocuments.length} documento(s) enviados a esta obra.</p>}
         <div className="rounded-2xl border bg-white p-2">
           <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:'touch'}}>
             <button type="button" onClick={()=>setSelectedMandatoryPeriodKeys(new Set())} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black ${selectedMandatoryPeriodKeys.size===0?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>Todos</button>
@@ -1218,7 +1235,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             {periodGroup.documents.map(doc=>renderSigningDocument(doc))}
           </div>)}
         </div>)}
-        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">No hay Inicio ni Control de presencia pendientes para esta obra.</div>}
+        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en los periodos seleccionados. Pulsa Todos para ver todos los documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
       </section>}
 
       {tab==='epis'&&<section className="space-y-3">
@@ -1454,4 +1471,5 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }} onCancel={()=>setMandatorySigning(null)}/>} 
   </div>;
 };
+
 

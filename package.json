@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
-    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs",
+    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs && node scripts/testForemanPublicationReceipt.mjs && node --import tsx scripts/testForemanDocumentPeriod.ts",
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
     "test:relation-ordering": "tsx scripts/testRelationExportOrdering.ts",
     "test:mandatory-worker-detection": "tsx scripts/testMandatoryWorkerDetection.ts",
@@ -65,4 +65,3 @@
     "pdf-lib": "1.17.1"
   }
 }
-

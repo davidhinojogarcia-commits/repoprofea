@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {foremanDocumentPeriod} from '../src/lib/foremanDocumentPeriod';
+assert.deepEqual(foremanDocumentPeriod('2026-10-16','2026-10-1Q'),{month:'2026-10',fortnight:'1Q'});
+assert.deepEqual(foremanDocumentPeriod('2026-10-01','2026-09-2Q'),{month:'2026-09',fortnight:'2Q'});
+for(const day of [1,15,16,31])assert.equal(foremanDocumentPeriod(`2026-10-${String(day).padStart(2,'0')}`).fortnight,day<=15?'1Q':'2Q');
+assert.deepEqual(foremanDocumentPeriod('2026-02-30'),{month:'Sin fecha',fortnight:'unknown'});
+assert.deepEqual(foremanDocumentPeriod('','2026-10'),{month:'2026-10',fortnight:'unknown'});
+assert.deepEqual(foremanDocumentPeriod('2026-09-03','2026-10'),{month:'2026-10',fortnight:'unknown'});
+assert.equal(foremanDocumentPeriod('2024-02-29T00:00:00Z').fortnight,'2Q');
+console.log('PASS: fortnight boundaries, imported period/month precedence, invalid and missing dates.');

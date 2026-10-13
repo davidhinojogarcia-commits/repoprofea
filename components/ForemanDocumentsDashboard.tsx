@@ -1,6 +1,7 @@
+import { foremanDocumentPeriod, documentFortnightLabel, type DocumentFortnight } from '../src/lib/foremanDocumentPeriod';
 import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { appConfirm, appPrompt } from '../src/lib/appDialog';
+import { appAlert, appConfirm, appPrompt } from '../src/lib/appDialog';
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2, Clock3, Download, FileSignature, FolderOpen, Send, Loader2, MailCheck, Pencil, RefreshCw, RotateCcw, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { getSessionUser, supabase } from '../src/lib/supabase';
 import { ForemanDashboardLoader } from '../src/services/foremanDashboardLoader';
@@ -22,7 +23,7 @@ import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, withdrawMandator
 
 type DbDocument = { id:string; owner_id:string; obra:string; work_date:string; document_type:string; worker_id?:number|null; worker_snapshot:any; answers:Record<string,string>; signatures:Record<string,string>; completed_by:string; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 type DbAttendance = { id:string; owner_id:string; obra:string; work_date:string; foreman_name:string; rows:any[]; status:'draft'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
-type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
+type DbMandatory = { id:string; owner_id:string; obra:string; period_key:string; work_date:string; document_type:'inicio'|'control_presencia'|'epis'|'formacion'|'maquinaria'|'autorizacion_uso_maquinaria'; category:string; workers:any[]; signatures:Record<string,any>; details?:Record<string,any>; lifecycle_status?:string|null; assigned_at?:string|null; status:'pending'|'in_progress'|'returned'|'completed'|'reviewed'; completed_at?:string|null; updated_at?:string|null; source_gmail_message_id?:string|null; source_gmail_thread_id?:string|null; source_rfc_message_id?:string|null; source_email_from?:string|null; source_email_subject?:string|null; source_attachment_name?:string|null; returned_gmail_message_id?:string|null; returned_at?:string|null; correction_pending?:boolean; correction_reason?:string|null; correction_requested_at?:string|null };
 
 
 const mandatoryDocumentLabel = (type:string) => ({
@@ -51,6 +52,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [filter,setFilter]=useState<'all'|'attendance'|'mandatory'|'documents'|'pending'>('all');
   const [selectedDocsWork,setSelectedDocsWork]=useState(()=>localStorage.getItem('profea:foreman-docs:last-work')||'');
   const [selectedDocsMonth,setSelectedDocsMonth]=useState(()=>localStorage.getItem('profea:foreman-docs:last-month')||'');
+  const [selectedDocsFortnight,setSelectedDocsFortnight]=useState<DocumentFortnight|''>('');
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
   const [importBusy,setImportBusy]=useState(false);
@@ -63,6 +65,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [editSearch,setEditSearch]=useState('');
   const [editWorkerFilter,setEditWorkerFilter]=useState<'all'|'selected'|'unselected'|'document'|'unmatched'>('all');
   const [editBusy,setEditBusy]=useState(false);
+  const publicationInFlightRef=useRef(false);
   const [editingCard,setEditingCard]=useState<any|null>(null);
   const [genericEditDraft,setGenericEditDraft]=useState<any>({});
   const mandatoryFileInputRef=useRef<HTMLInputElement>(null);
@@ -248,6 +251,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     const mandatoryCards=visibleMandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards]
+      .map(card=>({...card,...foremanDocumentPeriod(card.date,card.kind==='mandatory'?card.item.period_key:null)}))
       .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   },[attendance,visibleMandatory,documents]);
 
@@ -296,7 +300,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const monthDocumentGroups=useMemo(()=>{
     const map=new Map<string,{total:number;pending:number}>();
     allCards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork).forEach(card=>{
-      const key=String(card.date||'').slice(0,7)||'Sin fecha';
+      const key=card.month;
       const current=map.get(key)||{total:0,pending:0};
       current.total+=1;
       if(card.status!=='reviewed')current.pending+=1;
@@ -317,8 +321,16 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   const visibleCards=useMemo(()=>cards.filter(card=>
     String(card.obra||'Sin obra').trim()===selectedDocsWork &&
-    (String(card.date||'').slice(0,7)||'Sin fecha')===selectedDocsMonth
-  ),[cards,selectedDocsWork,selectedDocsMonth]);
+    card.month===selectedDocsMonth &&
+    (!selectedDocsFortnight||card.fortnight===selectedDocsFortnight)
+  ),[cards,selectedDocsWork,selectedDocsMonth,selectedDocsFortnight]);
+
+  useEffect(()=>{setSelectedDocsFortnight('');},[selectedDocsWork,selectedDocsMonth]);
+  const fortnightDocumentGroups=useMemo(()=>{
+    const inMonth=allCards.filter(card=>String(card.obra||'Sin obra').trim()===selectedDocsWork&&card.month===selectedDocsMonth);
+    return (['1Q','2Q','unknown'] as DocumentFortnight[]).map(key=>({key,total:inMonth.filter(card=>card.fortnight===key).length})).filter(group=>group.total>0);
+  },[allCards,selectedDocsWork,selectedDocsMonth]);
+  const visibleFortnightGroups=useMemo(()=>(['1Q','2Q','unknown'] as DocumentFortnight[]).map(key=>({key,cards:visibleCards.filter(card=>card.fortnight===key)})).filter(group=>group.cards.length>0),[visibleCards]);
 
   const selectedWorkStats=useMemo(()=>{
     const group=workDocumentGroups.find(([work])=>work===selectedDocsWork);
@@ -409,7 +421,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
   useEffect(()=>{
     setSelectedDeleteKeys(new Set());
-  },[selectedDocsWork,selectedDocsMonth]);
+  },[selectedDocsWork,selectedDocsMonth,selectedDocsFortnight]);
   const openPendingWorksiteReview=async(item:DbMandatory)=>{setMailBusy(true);try{const rows=await supabase.query('obras',{query:'select=nombre&order=nombre.asc&limit=500'});setWorksiteReview({item,works:(Array.isArray(rows)?rows:[]).map((row:any)=>String(row.nombre||'')).filter(Boolean)});}catch(error:any){setMailMessage(error?.message||'No se pudieron cargar las obras.');}finally{setMailBusy(false);}};
   const markMandatoryV2Reviewed=async(item:DbMandatory)=>{await reviewSubmittedMandatoryDocumentV2(item.id);await refresh(true);};
   const returnMandatoryV2ForCorrection=async(item:DbMandatory)=>{const reason=await appPrompt('Indica al encargado qué debe corregir:',{title:'Solicitar corrección',confirmLabel:'Enviar corrección',placeholder:'Describe qué debe corregirse…'});if(!reason?.trim())return;await returnMandatoryDocumentV2(item.id,reason.trim());await refresh(true);};
@@ -673,17 +685,30 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
 
   const sendMandatoryToPortal = async (item: DbMandatory) => {
-    if(editBusy)return;
+    if(editBusy||publicationInFlightRef.current)return;
+    publicationInFlightRef.current=true;
     setEditBusy(true);
     try {
       const current=await loadCurrentMandatoryDocument(item);
       const anchors=Array.isArray(current.details?.workerAnchors)?current.details.workerAnchors:[];
       if(hasOverlappingMandatorySignatures(anchors)&&!await appConfirm('Algunas firmas se solapan porque las filas del original están muy juntas. El PDF original se conservará. ¿Quieres enviar el documento con estas posiciones?',{title:'Confirmar firmas solapadas',confirmLabel:'Enviar con solapamiento'}))return;
-      await assignMandatoryDocumentV2(item.id);
-      setMailMessage('Documento enviado al portal de encargados. Ya pueden recoger las firmas.');
+      const receipt = await assignMandatoryDocumentV2(item.id);
+      setMandatory(items=>items.map(doc=>doc.id===item.id?{...doc,lifecycle_status:receipt.lifecycleStatus,assigned_at:receipt.assignedAt,details:{...doc.details,lifecycleStatus:receipt.lifecycleStatus}}:doc));
+      const accessMessage=receipt.activePortal===true
+        ? 'Abre Control inicios en el portal de esta obra y pulsa Actualizar documentos. Si hay filtros activos, pulsa Todos.'
+        : receipt.activePortal===false
+          ? 'Esta obra no tiene un acceso activo de encargado. Genera o activa su acceso antes de abrir el portal.'
+          : 'No se pudo comprobar el acceso del encargado. Revisa que el acceso esté activo y corresponda a esta obra.';
+      const message=`${mandatoryDocumentLabel(item.document_type)}\nObra: ${receipt.obra}\nPeriodo: ${receipt.periodKey||item.work_date}\nEnvío guardado: ${new Date(receipt.assignedAt).toLocaleString('es-ES')}\n\n${accessMessage}`;
+      setMailMessage(`Envío guardado y verificado. ${accessMessage}`);
+      await appAlert(message,{title:receipt.activePortal===true?'Documento enviado al portal':'Envío guardado · revisa el acceso'});
       await refresh(true);
-    } catch(error:any) { setMailMessage(error?.message||'No se pudo enviar el documento al portal.'); }
-    finally { setEditBusy(false); }
+    } catch(error:any) {
+      const message=error?.message||'No se pudo enviar el documento al portal.';
+      setMailMessage(message);
+      await appAlert(message,{title:'No se ha confirmado el envío'});
+    }
+    finally { publicationInFlightRef.current=false;setEditBusy(false); }
   };
   const withdrawMandatoryFromPortal = async (item: DbMandatory) => {
     if(editBusy)return;
@@ -886,7 +911,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
 
         <div className="rounded-2xl border bg-white dark:bg-slate-900 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{selectedWorkStats.total} documento(s) en esta obra · {selectedWorkStats.pending} pendiente(s) de revisión. Organizados por meses.</p></div>
+            <div><div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-[#00548E]"/><h2 className="font-black text-sm text-slate-900 dark:text-white">{selectedDocsWork||'Selecciona una obra'}</h2></div><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{selectedWorkStats.total} documento(s) en esta obra · {selectedWorkStats.pending} pendiente(s) de revisión. Organizados por meses y quincenas.</p></div>
             {!!selectedDocsWork&&<div className="flex flex-wrap gap-2">
               <button type="button" disabled={bulkDeleteBusy} onClick={()=>{setBulkDeleteMode(value=>!value);setSelectedDeleteKeys(new Set())}} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">{bulkDeleteMode?'Cancelar selección':'Selección múltiple'}</button>
               <button type="button" disabled={bulkDeleteBusy} onClick={()=>void deleteSelectedWorkDocuments()} className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 disabled:opacity-50"><Trash2 className="mr-1.5 inline h-4 w-4"/>Borrar obra</button>
@@ -896,6 +921,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             {monthDocumentGroups.map(([month,stats])=><button key={month} type="button" onClick={()=>setSelectedDocsMonth(month)} className={`shrink-0 rounded-xl border px-3 py-2.5 ${selectedDocsMonth===month?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}><div className="flex items-center gap-2 text-xs font-black"><CalendarDays className="w-3.5 h-3.5"/>{month==='Sin fecha'?'Sin fecha':monthLabel(month)}{stats.pending>0&&<span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${selectedDocsMonth===month?'bg-white/20 text-white':'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100'}`}>{stats.pending}</span>}</div><div className={`mt-0.5 text-[10px] ${selectedDocsMonth===month?'text-blue-100':'text-slate-600 dark:text-slate-300'}`}>{stats.total} documento(s)</div></button>)}
           </div>
         </div>
+
+        {!!fortnightDocumentGroups.length&&<div aria-label="Filtrar por quincena" className="flex flex-wrap gap-2 rounded-2xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+          {[{key:'' as const,label:'Todas las quincenas'},...fortnightDocumentGroups.map(group=>({key:group.key,label:`${documentFortnightLabel(group.key)} · ${group.total}`}))].map(option=><button key={option.key||'all'} type="button" aria-pressed={selectedDocsFortnight===option.key} onClick={()=>setSelectedDocsFortnight(option.key)} className={`min-h-[44px] rounded-xl border px-3 py-2 text-xs font-black ${selectedDocsFortnight===option.key?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}>{option.label}</button>)}
+        </div>}
 
         <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border border-slate-300 pl-9 pr-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"/></div>
@@ -908,7 +937,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         <button type="button" disabled={bulkDeleteBusy||selectedDeleteKeys.size===0} onClick={()=>void deleteSelectedDocuments()} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">{bulkDeleteBusy?'Eliminando…':`Borrar seleccionados (${selectedDeleteKeys.size})`}</button>
       </div>
     </div>}
-    {loading?<div className="rounded-2xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-slate-900"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra y mes con los filtros actuales.</div>:<div className="relative z-0 space-y-4">{visibleCards.map(card=><article key={card.kind+card.id} className={`relative isolate z-0 rounded-2xl bg-white dark:bg-slate-900 border p-4 shadow-sm ${bulkDeleteMode&&selectedDeleteKeys.has(deleteKey(card))?'border-rose-400 ring-2 ring-rose-100':'border-slate-200 dark:border-slate-800'}`}>
+    {loading?<div className="rounded-2xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-slate-900"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#00548E]"/></div>:cards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-10 text-center text-sm text-slate-600 dark:text-slate-300">Todavía no hay documentación enviada por encargados.</div>:visibleCards.length===0?<div className="rounded-2xl bg-white dark:bg-slate-900 border p-8 text-center text-sm text-slate-600 dark:text-slate-300">No hay documentos para esta obra, mes y quincena con los filtros actuales.</div>:<div className="relative z-0 space-y-4">{visibleFortnightGroups.map(group=><section key={group.key} className="space-y-3"><h3 className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-800 dark:bg-slate-800 dark:text-slate-100">{documentFortnightLabel(group.key)} · {group.cards.length} documento(s)</h3>{group.cards.map(card=><article key={card.kind+card.id} className={`relative isolate z-0 rounded-2xl bg-white dark:bg-slate-900 border p-4 shadow-sm ${bulkDeleteMode&&selectedDeleteKeys.has(deleteKey(card))?'border-rose-400 ring-2 ring-rose-100':'border-slate-200 dark:border-slate-800'}`}>
       {bulkDeleteMode&&<label className="mb-3 flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-black text-rose-900">
         <input type="checkbox" className="h-5 w-5 accent-rose-600" checked={selectedDeleteKeys.has(deleteKey(card))} onChange={()=>toggleDeleteSelection(card)}/>
         Seleccionar para borrar
@@ -916,6 +945,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       <div className="flex flex-col 2xl:flex-row 2xl:items-start gap-4"><div className="w-full min-w-0 2xl:flex-1 break-words">
         <div className="flex flex-wrap items-center gap-2"><span className={card.kind==='attendance'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200 dark:border-blue-700 dark:bg-blue-950/70 dark:text-blue-100':card.kind==='mandatory'?'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-100':'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black bg-violet-50 text-violet-800 border border-violet-200 dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-100'}>{card.kind==='attendance'?<Clock3 className="w-3 h-3"/>:<FileSignature className="w-3 h-3"/>}{card.kind==='attendance'?'Registro diario':card.kind==='mandatory'?'Obligatorio':'Documento'}</span><span className={card.status==='reviewed'?'rounded-full px-2 py-1 text-[10px] font-black bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100':card.status==='completed'?'rounded-full px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-100':card.status==='in_progress'?'rounded-full px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-800 dark:bg-blue-950/70 dark:text-blue-100':card.status==='returned'?'rounded-full px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-900':'rounded-full px-2 py-1 text-[10px] font-black bg-amber-50 text-amber-800 dark:bg-amber-950/70 dark:text-amber-100'}>{card.status==='reviewed'?'Enviado / revisado':card.status==='completed'?'Cumplimentado':card.status==='in_progress'?'En cumplimentación':card.status==='returned'?'Devuelto para corregir':'Pendiente de firma'}</span></div>
         {card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&<p className="mt-2 text-xs font-black text-[#00548E] dark:text-blue-300">{['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))?'Disponible en el portal':card.status==='completed'||card.status==='reviewed'?'Enviado al supervisor':'Borrador del supervisor · pendiente de envío al portal'}</p>}
+        {card.kind==='mandatory'&&card.item.assigned_at&&<p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Último envío guardado: {new Date(card.item.assigned_at).toLocaleString('es-ES')} · Obra: {card.item.obra} · Periodo: {card.item.period_key||card.item.work_date}</p>}
         <h3 className="mt-2 font-black text-slate-900 dark:text-white break-words">{card.title}</h3><p className="text-xs text-slate-500 dark:text-slate-300">{card.obra} · {String(card.date).slice(0,10)}{card.subtitle?' · '+card.subtitle:''}</p>{card.kind==='attendance'&&<p className="text-xs mt-1 text-slate-500 dark:text-slate-300">{card.item.rows?.filter((r:any)=>r.entrySignature).length||0} entradas · {card.item.rows?.filter((r:any)=>r.exitSignature).length||0} salidas firmadas</p>}{card.kind==='mandatory'&&<p className="text-xs mt-1 text-slate-500 dark:text-slate-300">{Object.keys(card.item.signatures||{}).length}/{(Array.isArray(card.item.details?.importedWorkerIds)&&['inicio','control_presencia'].includes(String(card.item.document_type||'')))?card.item.details.importedWorkerIds.length:(card.item.workers?.length||0)} firmas recogidas</p>}{card.kind==='mandatory'&&['inicio','control_presencia'].includes(String(card.item.document_type||''))&&card.status==='completed'&&<div className={`mt-2 inline-flex rounded-full border px-3 py-1.5 text-[11px] font-black ${card.item.details?.submissionMode==='partial'?'border-amber-300 bg-amber-50 text-amber-900':'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{card.item.details?.submissionMode==='partial'?`Recibido incompleto · ${card.item.details?.submittedSignedCount||0}/${card.item.details?.submittedRequiredCount||card.item.details?.importedWorkerIds?.length||0} firmas`:'Documento recibido válido · PDF original + firmas'}</div>}{card.kind==='mandatory'&&importedWorkersMissingFromDirectory(card.item as DbMandatory).length>0&&<div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">
           <div className="font-black">No localizado(s) en Directorio</div>
           <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
@@ -952,7 +982,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           )}
         </div>
       </div>
-    </article>)}</div>}
+    </article>)}</section>)}</div>}
       </div>
     </div>
 
@@ -1134,4 +1164,5 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     </div></ModalPortal>}
   </div>;
 };
+
 

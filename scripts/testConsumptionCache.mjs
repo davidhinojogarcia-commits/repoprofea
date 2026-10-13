@@ -7,6 +7,7 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 let user = { id: 'owner-A' };
 let calls = [];
 let revision = 1;
+let rpcReads=0;
 let authChanged;
 let channelChanged;
 globalThis.__cacheTest = {
@@ -15,7 +16,7 @@ globalThis.__cacheTest = {
       onAuthStateChange: callback => { authChanged = callback; } },
     channel: () => ({on(_event,_filter,callback){channelChanged=callback;return this;},subscribe(){return this;}}),
     removeChannel: async()=>{},
-    rpc: async () => ({data:null,error:null}),
+    rpc: async () => ({data:{revision:++rpcReads},error:null}),
     functions: {invoke:async()=>({data:null,error:null})},
   }),
 };
@@ -35,6 +36,11 @@ try {
         : 'export const offlineCacheKey=(...args)=>JSON.stringify(args); export const readOfflineCache=async()=>null; export const writeOfflineCache=async()=>{}; export const applyRestMutationToCachedReads=async()=>{}; export const enqueueOfflineOperation=async()=>{}; export const listOfflineOperations=async()=>[]; export const removeOfflineOperation=async()=>{}; export const setOfflineSyncActivity=async()=>{}; export const updateOfflineOperationFailure=async()=>{};'}));
     }}]});
   const {supabase,ReadResponseCache,getDocuments,subscribeToDocuments} = await import(out.href);
+  const rpcFirst=await supabase.rpc('resolve_foreman_portal',{p_token:'test'});
+  assert.deepEqual(await supabase.rpc('resolve_foreman_portal',{p_token:'test'}),rpcFirst,'normal RPC reads remain cached');
+  const freshRpc=await supabase.rpc('resolve_foreman_portal',{p_token:'test'},{fresh:true});
+  assert.notDeepEqual(freshRpc,rpcFirst,'portal refresh bypasses cached RPC payload');
+
   const options = {query:'select=id,name'};
   const first = await supabase.query('trabajadores',options);
   first[0].name = 'edited locally';
@@ -113,4 +119,5 @@ try {
   assert.deepEqual(await readPdf(compressed),await readPdf(plain),'compression preserves text and coordinates');
   console.log('PASS: scoped cache, freshness, invalidation, history batching, memory bounds and PDF fidelity');
 } finally { await unlink(out.pathname).catch(()=>{}); }
+
 
