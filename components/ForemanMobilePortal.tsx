@@ -1,3 +1,4 @@
+import { activateForemanPush, restoreForemanPush, disableForemanPush, foremanPushHelp } from '../src/services/foremanPushService';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { PreventionSection } from './PreventionSection';
@@ -232,6 +233,20 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string;notice?:string}|null>(null);
   const [operationFeedback,setOperationFeedback]=useState('');
   const [focusDocumentId,setFocusDocumentId]=useState('');
+  const [pushActive,setPushActive]=useState(false);
+  const [pushBusy,setPushBusy]=useState(false);
+  const [pushMessage,setPushMessage]=useState('');
+  const [pushDocumentId,setPushDocumentId]=useState(()=>new URLSearchParams(window.location.search).get('document')||'');
+  useEffect(()=>{let alive=true;void restoreForemanPush(token).then(active=>{if(alive)setPushActive(active);}).catch(()=>{if(alive)setPushMessage('No se pudieron comprobar los avisos. Pulsa Activar para volver a intentarlo.');});return()=>{alive=false;};},[token]);
+  const togglePush=async()=>{
+    if(pushBusy)return;
+    setPushBusy(true);setPushMessage('');
+    try{if(pushActive){await disableForemanPush(token);setPushActive(false);setPushMessage('Avisos desactivados en este dispositivo.');}
+    else{await activateForemanPush(token);setPushActive(true);setPushMessage('Recibirás un aviso cuando llegue un documento nuevo a tu obra.');}}
+    catch(error:any){setPushMessage(error?.message||'No se pudieron activar los avisos.');}
+    finally{setPushBusy(false);}
+  };
+
   const [selectedMandatoryPeriodKeys,setSelectedMandatoryPeriodKeys]=useState<Set<string>>(new Set());
   const [expandedMandatoryDocuments,setExpandedMandatoryDocuments]=useState<Set<string>>(new Set());
   const [mandatorySignatureImages,setMandatorySignatureImages]=useState<Record<string,Record<string,string>>>({});
@@ -283,6 +298,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       confirmLabel:'Desvincular',
     });
     if(!ok)return;
+    try{await disableForemanPush(token);}catch{await appAlert('No se pudieron desactivar los avisos. Comprueba la conexión y vuelve a intentarlo.',{title:'Dispositivo pendiente de desvincular'});return;}
     try{localStorage.removeItem(FOREMAN_DEVICE_TOKEN_KEY);}catch{}
     try{document.cookie=`${FOREMAN_DEVICE_TOKEN_KEY}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;}catch{}
     window.location.href='/';
@@ -312,6 +328,22 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     return task;
   },[token]);
   useEffect(()=>{void refresh();},[refresh]);
+  useEffect(()=>{
+    if(!('serviceWorker' in navigator))return;
+    const received=(event:MessageEvent)=>{if(event.data?.type!=='FOREMAN_DOCUMENT_AVAILABLE')return;void refresh();};
+    navigator.serviceWorker.addEventListener('message',received);
+    return()=>navigator.serviceWorker.removeEventListener('message',received);
+  },[refresh]);
+  useEffect(()=>{
+    if(!pushDocumentId||!data)return;
+    const doc=data.mandatoryDocuments.find(item=>item.id===pushDocumentId);
+    if(!doc){setOperationFeedback('El documento del aviso no está disponible en esta obra. Puede haber sido retirado por el supervisor.');setPushDocumentId('');return;}
+    setTab(['inicio','control_presencia'].includes(doc.documentType)?'mandatory':doc.documentType==='epis'?'epis':doc.documentType==='formacion'?'formacion':'maquinaria');
+    setSelectedMandatoryPeriodKeys(new Set());setExpandedMandatoryDocuments(current=>new Set([...current,doc.id]));setFocusDocumentId(doc.id);setPushDocumentId('');
+    const timer=window.setTimeout(()=>document.getElementById('foreman-signing-'+doc.id)?.scrollIntoView?.({behavior:'smooth',block:'start'}),100);
+    return()=>window.clearTimeout(timer);
+  },[data,pushDocumentId]);
+
   useEffect(()=>{
     const resume=()=>{
       if(document.visibilityState==='hidden'||navigator.onLine===false||Date.now()-lastPortalRefreshRef.current<30_000)return;
@@ -1111,6 +1143,14 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       </div>
     </header>
     <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-28 sm:pb-6 space-y-4">
+      <section className="rounded-3xl border bg-white dark:bg-slate-900 p-4 space-y-3" aria-label="Avisos móviles">
+        <h2 className="text-lg font-black">Avisos de mi obra</h2>
+        <p className="text-sm text-slate-600 dark:text-slate-300">{pushActive?`Avisos activos en este dispositivo para ${data.obra}.`:'Activa las notificaciones para saber cuándo el supervisor envía un documento nuevo a tu obra.'}</p>
+        {!pushActive&&foremanPushHelp()&&<p className="text-sm text-slate-600 dark:text-slate-300">{foremanPushHelp()}</p>}
+        <button type="button" disabled={pushBusy||(!pushActive&&Boolean(foremanPushHelp()))} onClick={()=>void togglePush()} className="min-h-[52px] rounded-2xl bg-[#00548E] px-4 py-3 font-black text-white disabled:opacity-50">{pushBusy?'Guardando…':pushActive?'Desactivar avisos en este dispositivo':'Activar avisos de mi obra'}</button>
+        {pushMessage&&<p role="status" className="text-sm text-slate-700 dark:text-slate-200">{pushMessage}</p>}
+      </section>
+
       {!installedStandalone&&<section className="rounded-3xl border-2 border-[#00548E]/20 bg-white p-4 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#00548E] text-white"><Smartphone className="h-6 w-6"/></div>

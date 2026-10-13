@@ -1,8 +1,8 @@
 // Service Worker para Sistema de Registro PROFEA - Diputación de Cádiz
 // Gestión de Caché Estático y Notificaciones Push (Citas Médicas y Contratos)
 
-const CACHE_NAME = 'profea-static-v15';
-const RUNTIME_CACHE = 'profea-runtime-v15';
+const CACHE_NAME = 'profea-static-v16';
+const RUNTIME_CACHE = 'profea-runtime-v16';
 const PDF_LIB_CDN = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
 const STATIC_ASSETS = ['/','/manifest.webmanifest','/manifest-encargados.webmanifest','/icons/profea-icon-v4-32.png','/icons/profea-icon-v4-180.png','/icons/profea-icon-v4-192.png','/icons/profea-icon-v4-512.png','/icons/profea-icon-v4-maskable-512.png','/logo-diputacion-profea.svg','/logo-diputacion-profea-dark.svg'];
 
@@ -112,7 +112,7 @@ self.addEventListener('fetch', (event) => {
 
 // 4. EVENTO PUSH: Manejar notificaciones enviadas desde el servidor o trigger push
 self.addEventListener('push', (event) => {
-  console.log('[Service Worker] Evento Push recibido:', event);
+
 
   let data = {
     title: 'Aviso PROFEA - Diputación de Cádiz',
@@ -137,10 +137,10 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/icons/profea-icon-v4-192.png',
     badge: data.badge || '/icons/profea-icon-v4-192.png',
     tag: data.tag || 'profea-alert',
-    renotify: true,
+    renotify: false,
     vibrate: [100, 50, 100],
     data: {
-      url: data.url || '/'
+      url: data.url || '/', documentId: data.documentId || null
     },
     actions: [
       { action: 'open', title: 'Ver en Sistema' },
@@ -149,24 +149,32 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    Promise.all([self.registration.showNotification(data.title, options),
+      data.kind==='FOREMAN_DOCUMENT_AVAILABLE' ? self.clients.matchAll({type:'window',includeUncontrolled:true}).then(windows=>{
+        for(const client of windows){const u=new URL(client.url);if(u.origin===self.location.origin&&u.pathname.replace(/\/$/,'')==='/encargados')client.postMessage({type:'FOREMAN_DOCUMENT_AVAILABLE',documentId:data.documentId});}
+      }) : Promise.resolve()])
   );
 });
 
 // 5. INTERACCIÓN CON LA NOTIFICACIÓN: Click en la alerta
 self.addEventListener('notificationclick', (event) => {
-  console.log('[Service Worker] Click en Notificación:', event.notification.tag);
+
   event.notification.close();
 
   if (event.action === 'close') return;
 
-  const targetUrl = event.notification.data?.url || '/';
+  let targetUrl='/';
+  try{const u=new URL(event.notification.data?.url||'/',self.location.origin);
+    if(u.origin===self.location.origin&&(u.pathname==='/'||u.pathname.replace(/\/$/,'')==='/encargados'))targetUrl=u.href;
+  }catch{}
+  const portalTarget=new URL(targetUrl,self.location.origin).pathname.replace(/\/$/,'')==='/encargados';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       // Si la aplicación ya está abierta en alguna pestaña, la enfocamos
       for (const client of windowClients) {
-        if (!client.url.includes(self.location.origin)) continue;
+        const clientUrl=new URL(client.url);
+        if(clientUrl.origin!==self.location.origin||(portalTarget&&clientUrl.pathname.replace(/\/$/,'')!=='/encargados'))continue;
         if ('navigate' in client && targetUrl) {
           return client.navigate(targetUrl).then((navigatedClient) =>
             navigatedClient && 'focus' in navigatedClient ? navigatedClient.focus() : client.focus()
@@ -203,4 +211,5 @@ self.addEventListener('message', (event) => {
     });
   }
 });
+
 

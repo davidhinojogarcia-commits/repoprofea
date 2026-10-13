@@ -82,6 +82,12 @@ try {
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'revocation survives reload');
+ window.history.replaceState({},'', '/encargados?document=doc');
+ await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
+ assert(document.getElementById('foreman-signing-doc').className.includes('ring-4'),'notification deep link highlights the scoped document');
+ assert(find('Finalizar y enviar al supervisor'),'notification opens signing document automatically');
+ assert(find('Activar avisos de mi obra'),'mobile notification activation is exposed in portal');
+ window.history.replaceState({},'', '/encargados');
  doc.period_key='2026-10-2Q';
  extraDocs=[{...structuredClone(doc),id:'first-half',period_key:'2026-10-1Q',work_date:'2026-10-16',category:'FIRST_HALF'}, {...structuredClone(doc),id:'other-month',period_key:'2026-09-1Q',category:'OTHER_MONTH'}, {...structuredClone(doc),id:'other-work',obra:'Obra B',category:'OTHER_WORK'}];
  await mount(React.createElement(ForemanDocumentsDashboard));
