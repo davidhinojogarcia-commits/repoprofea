@@ -23,3 +23,10 @@ assert(overlapIssues.some(issue=>issue.code==='OVERLAP_SIGNATURE'));
 assert.equal(blockingMandatorySignatureIssues(overlapIssues).length,0,'signature overlap is advisory');
 assert(blockingMandatorySignatureIssues(validateMandatorySignaturePlacement([{...overlapping[0],signatureX:580}],pages).issues).length,'bounds still block');
 console.log('PASS: signature-to-signature overlap is advisory; out-of-page positions still block.');
+
+
+const nearRows=[{...anchor(1,500,100),signatureY:470},anchor(2,470,270)];
+const nearIssues=validateMandatorySignaturePlacement(nearRows,pages).issues;
+assert(nearIssues.some(issue=>issue.code==='CLOSER_TO_OTHER_WORKER'),'row proximity remains detectable');
+assert.equal(blockingMandatorySignatureIssues(nearIssues).length,0,'supervisor row proximity validation permits publication');
+console.log('PASS: row proximity remains informative without blocking supervisor validation.');
