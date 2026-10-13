@@ -290,9 +290,10 @@ export function suggestSafeMandatorySignaturePositions<T extends SignatureAnchor
 
 
 // Compact original lists may have overlapping signature images. Keep diagnostics,
-// but only other issues invalidate publication or the final PDF.
+// Row proximity is also advisory: the supervisor validates the association.
 export const blockingMandatorySignatureIssues=(issues:MandatorySignaturePlacementIssue[])=>
-  issues.filter(issue=>issue.code!=='OVERLAP_SIGNATURE');
+  issues.filter(issue=>!['OVERLAP_SIGNATURE','CLOSER_TO_OTHER_WORKER'].includes(issue.code));
 
 export const hasOverlappingMandatorySignatures=(anchors:SignatureAnchorGeometry[])=>
   validateMandatorySignaturePlacement(anchors,[]).issues.some(issue=>issue.code==='OVERLAP_SIGNATURE');
+

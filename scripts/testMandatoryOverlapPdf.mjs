@@ -14,6 +14,12 @@ try{
  const signed=await buildSignedMandatoryPdf({originalPdfBase64,anchors,signatures:{'1':png,'2':png}});
  const loaded=await PDFDocument.load(signed);assert.equal(loaded.getPageCount(),1);assert.deepEqual(loaded.getPage(0).getSize(),{width:595,height:842});
  const raw=Buffer.from(signed).toString('latin1');assert.equal((raw.match(/\/Subtype \/Image/g)||[]).length,2,'both signature images are embedded');
+ const nearRows=[{...anchors[0],nameY:530},{...anchors[1],nameWidth:270}];
+ const snapshot=structuredClone(nearRows);
+ const nearPdf=await buildSignedMandatoryPdf({originalPdfBase64,anchors:nearRows,signatures:{'1':png,'2':png}});
+ assert.equal((Buffer.from(nearPdf).toString('latin1').match(/\/Subtype \/Image/g)||[]).length,2,'final PDF accepts row proximity with both signatures');
+ assert.deepEqual(nearRows,snapshot,'PDF generation preserves manually approved coordinates');
  await assert.rejects(buildSignedMandatoryPdf({originalPdfBase64,anchors:[{...anchors[0],signatureX:580}],signatures:{'1':png}}),/límites|fuera/);
  console.log('PASS: final signed PDF accepts overlapping signatures, embeds both images, preserves page dimensions and rejects out-of-page placement.');
 }finally{await fs.rm(output,{force:true});}
+

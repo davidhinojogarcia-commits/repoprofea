@@ -132,9 +132,14 @@ try {
  await asUser(owner);
  await rpc('update_mandatory_document_worker_geometry_v2',[doc,w2,{x:60,y:472,width:260,height:10},box(472),1,2]);
  await assert.rejects(rpc('update_mandatory_document_worker_geometry_v2',[doc,w2,{x:60,y:472,width:260,height:10},box(472),2,2]),/Revoca su firma/);
- // A signature on another worker's row still fails even when overlap is allowed.
+ // Reproduce the reported row-proximity error, then allow supervisor validation.
+ await db.exec('reset role');
+ const rowAdvisory=fs.readFileSync(new URL('../supabase/migrations/20261013092414_advisory_mandatory_row_proximity.sql',import.meta.url),'utf8');
+ await db.exec(rowAdvisory);await db.exec(rowAdvisory);await asUser(owner);
  await rpc('update_mandatory_document_worker_geometry_v2',[doc,w1,{x:60,y:502,width:120,height:10},box(472),1,1]);
- await assert.rejects(rpc('assign_mandatory_document_v2',[doc]),/más cercana/);
+ await rpc('assign_mandatory_document_v2',[doc]);
+ await db.exec('reset role');assert.deepEqual((await query('select signature_box from mandatory_document_workers_v2 where id=$1',[w1]))[0].signature_box,box(472),'publication preserves the supervisor chosen coordinates');await asUser(owner);
+ await rpc('withdraw_mandatory_document_v2',[doc]);
  await db.exec('reset role');assert.equal((await query('select lifecycle_status from foreman_mandatory_documents'))[0].lifecycle_status,'READY');
  await asUser(owner);await rpc('update_mandatory_document_worker_geometry_v2',[doc,w1,{x:60,y:502,width:120,height:10},box(500),1,1]);
  await rpc('assign_mandatory_document_v2',[doc]);

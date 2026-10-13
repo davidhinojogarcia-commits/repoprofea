@@ -63,6 +63,13 @@ try{
  await action(()=>new Promise(r=>setTimeout(r,100)));
  assert.equal(document.querySelector('canvas').width,320,'PDF fit uses the measured panel width after resizing');
  assert.equal(globalThis.__pdfRenderCollisions,0,'resize does not overlap PDF render tasks');
+ const nearRows=[{...workers[0],nameY:530,signatureY:500,signatureHeight:14},{...workers[1],nameWidth:270,signatureHeight:14}];
+ await mount(nearRows);
+ assert(document.body.textContent.includes('Proximidad a otra fila · Informativo'));
+ assert(!button('Guardar trabajadores y posiciones').disabled);
+ await action(()=>button('Guardar trabajadores y posiciones').click());
+ assert.equal(saved[0].signatureY,500,'advisory keeps supervisor chosen row position');
  console.log('PASS: saved coordinates and dimensions survive reopening; rapid worker selection cancels PDF renders; manual placement preserves the chosen size; overlapping/incomplete drafts and deletion regressions.');
 }finally{if(root){const React=await import('react');await React.act(()=>root.unmount());}await fs.rm(output,{force:true});dom.window.close();}
+
 
