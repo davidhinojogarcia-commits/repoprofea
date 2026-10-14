@@ -1,12 +1,13 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.21.0';
+export const APP_VERSION = '1.21.1';
 export const APP_RELEASE_DATE = '14/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Corrección de formularios SAE escaneados: trabajador separado de DNI/fecha y PDF visible al ajustar firmas aunque falte identificar la persona.',
   'Contratos y Prórrogas en Importar documento: original intacto, revisión del trabajador y zona de firma antes del envío manual.',
   'Firma del trabajador en el portal y devolución del mismo PDF firmado al supervisor, con aislamiento por obra y propietario.',
   'Los documentos con reconocimiento dudoso se conservan como borradores para revisión manual.',
