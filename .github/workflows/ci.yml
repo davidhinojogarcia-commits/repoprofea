@@ -83,6 +83,12 @@ jobs:
           grep -q "getSupervisorMandatoryPdf" components/ForemanDocumentsDashboard.tsx
           grep -q "get_foreman_mandatory_signatures" "$MIGRATION"
           grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
+      - name: Employment document recognition regression
+        run: npm run test:employment-documents
+      - name: Employment PDF and responsive browser regression
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:employment-browser
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
       - name: Supervisor signed PDF download regression
@@ -166,5 +172,6 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 

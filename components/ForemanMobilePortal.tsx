@@ -338,7 +338,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     if(!pushDocumentId||!data)return;
     const doc=data.mandatoryDocuments.find(item=>item.id===pushDocumentId);
     if(!doc){setOperationFeedback('El documento del aviso no está disponible en esta obra. Puede haber sido retirado por el supervisor.');setPushDocumentId('');return;}
-    setTab(['inicio','control_presencia'].includes(doc.documentType)?'mandatory':doc.documentType==='epis'?'epis':doc.documentType==='formacion'?'formacion':'maquinaria');
+    setTab(['inicio','control_presencia','contrato','prorroga'].includes(doc.documentType)?'mandatory':doc.documentType==='epis'?'epis':doc.documentType==='formacion'?'formacion':'maquinaria');
     setSelectedMandatoryPeriodKeys(new Set());setExpandedMandatoryDocuments(current=>new Set([...current,doc.id]));setFocusDocumentId(doc.id);setPushDocumentId('');
   },[data,pushDocumentId]);
   useEffect(()=>{
@@ -574,6 +574,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
   const mandatoryLabel=(type:string)=>({
     inicio:'Inicio / incorporación',
+    contrato:'Contrato de trabajo',
+    prorroga:'Prórroga de contrato',
     control_presencia:'Control de presencia',
     epis:'Entrega de EPIs',
     formacion:'Formación e información',
@@ -727,7 +729,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const allAssignedMandatoryDocuments=(data?.mandatoryDocuments||[]).filter(document=>{
-    if(!['inicio','control_presencia'].includes(String(document.documentType||'')))return false;
+    if(!['inicio','control_presencia','contrato','prorroga'].includes(String(document.documentType||'')))return false;
     const lifecycle=String(document.lifecycleStatus||document.details?.lifecycleStatus||'');
     return !lifecycle || ['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION','SUBMITTED','RECEIVED','REVIEWED'].includes(lifecycle);
   });
@@ -883,7 +885,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
-    const isImportedMandatory=['inicio','control_presencia'].includes(String(doc.documentType));
+    const isImportedMandatory=['inicio','control_presencia','contrato','prorroga'].includes(String(doc.documentType));
     const assignedWorkers=doc.workers||[];
     const allSignatureIds=new Set(Object.keys(doc.signatures||{}).map(Number));
     const importedIdsForCount=isImportedMandatory && Array.isArray(doc.details?.importedWorkerIds)
@@ -1253,7 +1255,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-black">Control inicios</h2><button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"><RefreshCw className="w-4 h-4"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}</button></div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen los documentos importados de Inicio / Incorporación y Control de presencia. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen Inicio, Control de presencia, Contratos y Prórrogas enviados por el supervisor. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
         {documentsUpdatedAt&&<p role="status" className="px-1 text-xs text-slate-600 dark:text-slate-300">Última consulta: {documentsUpdatedAt} · {allAssignedMandatoryDocuments.length} documento(s) enviados a esta obra.</p>}
         <div className="rounded-2xl border bg-white p-2">
@@ -1464,7 +1466,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       setSaving(true);
       try{
         const currentDoc=(data?.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
-        if(currentDoc&&['inicio','control_presencia'].includes(String(currentDoc.documentType))){
+        if(currentDoc&&['inicio','control_presencia','contrato','prorroga'].includes(String(currentDoc.documentType))){
           if(!current.documentWorkerId)throw new Error('No se ha podido identificar de forma estable a esta persona dentro del documento.');
           await signMandatoryDocumentWorkerV2({token,documentId:current.documentId,documentWorkerId:current.documentWorkerId,signature:img});
         }else{

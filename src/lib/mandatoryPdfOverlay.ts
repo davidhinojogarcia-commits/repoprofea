@@ -1,3 +1,4 @@
+import { suggestWorkerSignatureAnchor } from './employmentDocumentAnalysis.mjs';
 import { readPdfTextContent } from './clientDocumentText';
 import { createWorker } from 'tesseract.js';
 import type { Person } from '../../types';
@@ -229,6 +230,40 @@ const candidateNameSpansForWorker=(worker:Person,lines:any[]):WorkerNameSpan[]=>
   }
   return candidates.sort((a,b)=>b.score-a.score||a.width-b.width||b.y-a.y);
 };
+/** Employment PDFs use a signature below the printed name, not a attendance-table column. */
+export async function analyzeEmploymentOriginalPdf(file:File, workers:Person[], onProgress?:(message:string)=>void):Promise<MandatoryPdfAnalysis> {
+  const pdfjs=await setupPdfJs();
+  const loadingTask=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),useSystemFonts:true});
+  const pdf=await loadingTask.promise;
+  const round=(value:number)=>Math.round(value*100)/100;
+  const pages:MandatoryPdfPageMeta[]=[];
+  const textPages:any[]=[];
+  try {
+    for(let number=1;number<=pdf.numPages;number++) {
+      onProgress?.(`Revisando zona de firma · página ${number}/${pdf.numPages}…`);
+      const page=await pdf.getPage(number), view=page.view;
+      const width=Number(view[2])-Number(view[0]),height=Number(view[3])-Number(view[1]);
+      pages.push({page:number,width,height,rotation:Number(page.rotate||0)});
+      const content=await readPdfTextContent(page);
+      textPages.push({items:groupLines(content.items).map(line=>({text:line.text,x:(line.minX-view[0])/width,y:1-(line.y-view[1]+line.height)/height,width:(line.maxX-line.minX)/width,height:line.height/height}))});
+    }
+    const anchors:MandatoryWorkerAnchor[]=workers.map((worker,index)=>{
+      const suggestion=suggestWorkerSignatureAnchor(textPages,worker.apellidosNombre);
+      const found=suggestion.status==='SUGGESTED'?suggestion.anchor:null;
+      const meta=found?pages[found.page-1]:pages[0];
+      // Rotated/cropped pages stay manual: no guessing of coordinate systems.
+      const safe=found && meta.rotation===0;
+      return {workerId:Number(worker.id),workerName:worker.apellidosNombre,dni:worker.dni||'',page:safe?found.page:1,order:index,
+        nameX:safe?round(found.nameX*meta.width):null,nameY:safe?round((1-found.nameY-found.nameHeight)*meta.height):null,
+        nameWidth:safe?round(found.nameWidth*meta.width):null,nameHeight:safe?round(found.nameHeight*meta.height):null,rowHeight:null,
+        signatureX:safe?round(found.x*meta.width):null,signatureY:safe?round((1-found.y-found.height)*meta.height):null,
+        signatureWidth:safe?round(found.width*meta.width):null,signatureHeight:safe?round(found.height*meta.height):null,
+        confidence:safe?0.9:0,resolved:false,reason:safe?'Zona sugerida debajo del nombre. El supervisor debe revisarla y guardar la posición.':suggestion.reason||'Revisa y encuadra la firma manualmente.'};
+    });
+    return {pageCount:pages.length,pages,anchors,orderedWorkerIds:workers.map(w=>Number(w.id)),unresolvedWorkerIds:workers.map(w=>Number(w.id))};
+  } finally {await loadingTask.destroy();}
+}
+
 export async function analyzeMandatoryOriginalPdf(
   file: File,
   workers: Person[],

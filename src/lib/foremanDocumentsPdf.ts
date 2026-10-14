@@ -298,12 +298,14 @@ export function generateForemanMandatoryDocumentPdf(
     return generateMachineryAuthorizationPdf(record.workers || [], context);
   }
 
-  if (record.details?.originalPdfMode === 'overlay' && ['inicio','control_presencia'].includes(record.documentType)) {
+  if (['contrato','prorroga'].includes(record.documentType)) throw new Error('Los contratos y prórrogas deben abrirse desde el PDF original o firmado almacenado.');
+
+  if (record.details?.originalPdfMode === 'overlay' && ['inicio','control_presencia','contrato','prorroga'].includes(record.documentType)) {
     throw new Error('Este documento conserva el PDF original y no puede reconstruirse. Usa la copia Original/Firmado almacenada.');
   }
 
   if (
-    ['inicio','control_presencia'].includes(record.documentType) &&
+    ['inicio','control_presencia','contrato','prorroga'].includes(record.documentType) &&
     record.details?.originalPdfMode === 'overlay'
   ) {
     throw new Error('Este documento conserva el PDF original. Debe abrirse desde la copia Original/Firmado, no regenerarse.');
