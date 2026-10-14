@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {classifyEmploymentDocument,suggestWorkerSignatureAnchor,validateContractImport} from '../src/lib/employmentDocumentAnalysis.mjs';
+assert.equal(classifyEmploymentDocument('CONTRATO DE TRABAJO'),'contrato');
+assert.equal(classifyEmploymentDocument('PRÓRROGA DEL CONTRATO'),'prorroga');
+assert.equal(classifyEmploymentDocument('documentación general'),'null'==='null'?null:'');
+assert.equal(classifyEmploymentDocument('','prorroga.pdf'),'prorroga');
+const sample=[{items:[{text:'El trabajador',x:0.60,y:0.78},{text:'María López Ruiz',x:0.60,y:0.82}]}];
+const suggestion=suggestWorkerSignatureAnchor(sample,'María López Ruiz');
+assert.equal(suggestion.status,'SUGGESTED');
+assert.equal(suggestion.requiresSupervisorConfirmation,true);
+assert.equal(suggestWorkerSignatureAnchor(sample,'Persona desconocida').status,'REVIEW_REQUIRED');
+assert.equal(suggestWorkerSignatureAnchor([], 'María López').status,'REVIEW_REQUIRED');
+assert.equal(validateContractImport({documentType:'contrato',pages:3,workers:[{name:'María'}],anchorConfirmed:true}).valid,true);
+assert.equal(validateContractImport({documentType:'prorroga',pages:1,workers:[],anchorConfirmed:false}).valid,false);
+assert.equal(validateContractImport({documentType:'inicio',pages:3,workers:[{name:'María'}],anchorConfirmed:true}).valid,false);
+console.log('Employment document analysis: 9 assertions passed');
