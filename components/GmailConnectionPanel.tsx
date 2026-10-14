@@ -55,7 +55,7 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
             <h3 className="text-sm font-black text-slate-900 dark:text-white">Cuenta Gmail del supervisor</h3>
           </div>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-            Autoriza una vez la cuenta institucional. GestionProfea usará Gmail para enviar correos y, si lo autorizas, leer únicamente los mensajes necesarios para detectar automáticamente la documentación enviada por la administrativa.
+            Autoriza la cuenta institucional. GestionProfea usará Gmail para enviar correos y, si lo autorizas, leer únicamente los mensajes necesarios para detectar automáticamente la documentación enviada por la administrativa.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             {loading ? (
@@ -68,7 +68,7 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-black text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
-                Gmail sin conectar
+                {status.reconnectRequired ? 'Gmail necesita renovar el permiso' : 'Gmail sin conectar'}
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
@@ -92,16 +92,16 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
           {!status.connected ? (
             <button
               type="button"
-              disabled={busy || loading || !configuredEmail}
+              disabled={busy || loading || !(configuredEmail || status.email)}
               onClick={async () => {
-                if (!configuredEmail) {
+                if (!(configuredEmail || status.email)) {
                   setMessage('Guarda primero el correo profesional del supervisor.');
                   return;
                 }
                 setBusy(true);
                 setMessage('');
                 try {
-                  await beginGmailOAuth(configuredEmail);
+                  await beginGmailOAuth(configuredEmail || status.email);
                 } catch (error: any) {
                   setMessage(error?.message || 'No se pudo iniciar la conexión con Gmail.');
                   setBusy(false);
@@ -110,14 +110,14 @@ export const GmailConnectionPanel: React.FC<Props> = ({ email }) => {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-2.5 text-xs font-black text-white hover:bg-[#00436f] disabled:opacity-50"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-              Conectar con Gmail
+              {status.reconnectRequired ? 'Volver a autorizar Gmail' : 'Conectar con Gmail'}
             </button>
           ) : (
             <>
               {!status.canRead && (
                 <button
                   type="button"
-                  disabled={busy || loading || !configuredEmail}
+                  disabled={busy || loading || !(configuredEmail || status.email)}
                   onClick={async () => {
                     setBusy(true);
                     setMessage('');
