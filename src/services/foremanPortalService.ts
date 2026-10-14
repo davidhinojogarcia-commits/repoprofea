@@ -288,6 +288,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
   pageMeta?: any[];
   workerAnchors?: any[];
   obraHint?: string | null;
+  worksiteProposal?: import('../lib/employmentWorksiteAssignment').EmploymentWorksiteProposal;
 }) {
   const id = await supabase.rpc('prepare_foreman_mandatory_from_email', {
     p_document_type: input.documentType,
@@ -331,6 +332,7 @@ export async function prepareMandatoryDocumentFromEmail(input: {
           ...currentDetails,
           sourceText: input.sourceText || '',
           sourceFilename: input.attachmentName || '',
+          ...(input.worksiteProposal ? { worksiteAssignment: input.worksiteProposal } : {}),
           importedWorkerIds: Array.isArray(input.importedWorkers)
             ? input.importedWorkers.map(worker=>Number(worker.id)).filter(Number.isFinite)
             : (Array.isArray(currentDetails.importedWorkerIds) ? currentDetails.importedWorkerIds : input.workerIds),

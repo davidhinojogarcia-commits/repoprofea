@@ -30,7 +30,7 @@ try {
  `);
  await query('insert into auth.users values ($1),($2)',[owner,other]);
  await db.exec(base.slice(base.indexOf('create table if not exists public.mandatory_document_workers_v2'),base.indexOf('alter table public.mandatory_document_workers_v2 enable row level security')));
- for(const name of ['mandatory_v2_box_valid','mandatory_v2_resolve_preassignment_status','sign_mandatory_document_worker_v2','update_mandatory_document_worker_geometry_v2'])await db.exec(fn(name));
+ for(const name of ['mandatory_v2_box_valid','mandatory_v2_resolve_preassignment_status','sign_mandatory_document_worker_v2','update_mandatory_document_worker_geometry_v2','confirm_mandatory_document_worksite_v2'])await db.exec(fn(name));
  // The same guard used in production prevents unsafe direct lifecycle changes.
  await db.exec(fn('guard_mandatory_v2_lifecycle_transition'));
  await db.exec(`create trigger guard_lifecycle before update on public.foreman_mandatory_documents for each row execute function public.guard_mandatory_v2_lifecycle_transition();`);
@@ -64,7 +64,7 @@ try {
  await db.exec(employmentSql);await db.exec(employmentSql);
  for(const name of ['assign_mandatory_document_v2','initialize_mandatory_document_v2','save_foreman_mandatory_original_pdf','save_mandatory_positions_draft_v2']) {const rights=await query("select has_function_privilege('anon',oid,'EXECUTE') allowed from pg_proc where proname=$1",[name]);assert.equal(rights[0].allowed,false,name+' restricted to supervisor');}
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261013092414_advisory_mandatory_row_proximity.sql',import.meta.url),'utf8'));
- await query("insert into obras(owner_id,nombre) values($1,'Obra A')",[owner]);
+ await query("insert into obras(owner_id,nombre) values($1,'Obra A'),($1,'Obra B'),($2,'Obra ajena')",[owner,other]);
  await query("insert into foreman_portal_access(owner_id,obra,foreman_name,token_hash,active) values($1,'Obra A','Encargado',encode(extensions.digest($2,'sha256'),'hex'),true)",[owner,token]);
  await query("insert into foreman_portal_access(owner_id,obra,token_hash,active) values($1,'Obra B',encode(extensions.digest('other-work','sha256'),'hex'),true),($2,'Obra A',encode(extensions.digest('other-owner','sha256'),'hex'),true)",[owner,other]);
  await db.exec('grant select on foreman_mandatory_documents,mandatory_document_workers_v2,foreman_mandatory_pdf_files,mandatory_document_versions_v2 to authenticated');
@@ -109,6 +109,25 @@ try {
    assert.deepEqual(Buffer.from(persisted.original_pdf),bytes,'original bytes stay intact');assert.deepEqual(Buffer.from(persisted.signed_pdf),signed,'same signed bytes return to supervisor');
    assert.equal((await query('select count(*)::int n from mandatory_document_versions_v2 where document_id=$1',[document]))[0].n,1,'no duplicate submission');
  }
+ // Proposed worksite stays pending until the owner confirms it through the existing RPC.
+ await asUser(owner);
+ const pending=await rpc('prepare_foreman_mandatory_from_email',['contrato',[],'2026-10-14','','2026-10-1Q',null,null,null,null,null,'pending.pdf','__PENDING_WORKSITE__']);
+ const original=Buffer.from('%PDF private test original');
+ await rpc('save_foreman_mandatory_original_pdf',[pending,original.toString('base64'),'pending.pdf',crypto.createHash('sha256').update(original).digest('hex'),[{page:1,width:595,height:842}],[]]);
+ await rpc('initialize_mandatory_document_v2',[pending,[{legacyWorkerId:-901,printedName:'Persona de prueba',page:1,rowIndex:0,detectionStatus:'DETECTED',positionStatus:'PENDING',signatureBox:box(100)}],null,null]);
+ const pendingWorker=(await query('select id from mandatory_document_workers_v2 where document_id=$1',[pending]))[0];
+ await rpc('save_mandatory_positions_draft_v2',[pending,[{documentWorkerId:pendingWorker.id,printedName:'Persona de prueba',page:1,rowIndex:0,resolved:true,nameBox:null,signatureBox:box(100)}],null]);
+ const geometry=await query('select signature_box,page from mandatory_document_workers_v2 where document_id=$1',[pending]);
+ assert.equal((await query('select lifecycle_status from foreman_mandatory_documents where id=$1',[pending]))[0].lifecycle_status,'NEEDS_WORKSITE_REVIEW');
+ await assert.rejects(rpc('assign_mandatory_document_v2',[pending]),/obra|clasific|revisión/i);
+ await asUser(other);await assert.rejects(rpc('confirm_mandatory_document_worksite_v2',[pending,'Obra ajena']),/pendiente|clasific/i);
+ await asUser(owner);await assert.rejects(rpc('confirm_mandatory_document_worksite_v2',[pending,'Obra ajena']),/pertenece/);
+ await rpc('confirm_mandatory_document_worksite_v2',[pending,'Obra B']);
+ assert.equal((await query('select obra from foreman_mandatory_documents where id=$1',[pending]))[0].obra,'Obra B');
+ assert.deepEqual(await query('select signature_box,page from mandatory_document_workers_v2 where document_id=$1',[pending]),geometry);
+ assert.deepEqual(Buffer.from((await query('select original_pdf from foreman_mandatory_pdf_files where document_id=$1',[pending]))[0].original_pdf),original);
+ await asUser(null);assert(!(await rpc('resolve_foreman_portal',[token])).mandatoryDocuments.some(d=>d.id===pending),'confirming worksite never publishes');
+ console.log('PASS: pending worksite, owner/worksite isolation, confirmation persistence, original/geometry unchanged and no automatic publication.');
  // Invalid type and multiple signers must never publish a contract.
  await asUser(owner);await assert.rejects(rpc('prepare_foreman_mandatory_from_email',['unknown',[],'2026-10-14','','',null,null,null,null,null,'x.pdf','Obra A']),/Tipo/);
  const multi=await rpc('prepare_foreman_mandatory_from_email',['contrato',[],'2026-10-14','','',null,null,null,null,null,'x.pdf','Obra A']);

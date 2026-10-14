@@ -85,6 +85,8 @@ jobs:
           grep -q "getForemanMandatorySignatures" components/ForemanMobilePortal.tsx
       - name: Employment document recognition regression
         run: npm run test:employment-documents
+      - name: Employment worksite assignment regression
+        run: npm run test:employment-worksites
       - name: Employment PDF and responsive browser regression
         run: |
           npx playwright install --with-deps chromium
