@@ -12,18 +12,19 @@ let scrolledDocument='';
 window.HTMLElement.prototype.scrollIntoView=function(){scrolledDocument=this.id;};
 const workers=[{id:1,apellidosNombre:'Persona Uno',categoria:'PEON'},{id:2,apellidosNombre:'Persona Dos',categoria:'PEON'}];
 const doc={id:'doc',owner_id:'owner',obra:'Obra A',work_date:'2026-10-09',period_key:'2026-10',document_type:process.argv[2]||process.env.FOREMAN_TEST_DOCUMENT_TYPE||'control_presencia',category:'',status:'pending',lifecycle_status:'READY',workers:[],signatures:{'1':'signed','2':'signed'},details:{sourceFilename:'control.pdf',originalPdfMode:'overlay',importedWorkerIds:[1,2],importedWorkers:workers,workerAnchors:workers.map(w=>({workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id})),documentWorkersV2:workers.map(w=>({id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED'}))}};
+let signatureAttempts=0,failSignatureSave=true,signatureReads=0;
 let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0,extraDocs=[];
 globalThis.__alerts=alerts;
 globalThis.__confirm=async(message)=>{confirmMessages.push(message);return confirmResult;};
 const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,lifecycleStatus:doc.lifecycle_status,assignedAt:doc.assigned_at,details:{...doc.details,lifecycleStatus:'READY'},signatures:doc.signatures,workers:doc.workers});
 globalThis.__foremanUi={
  async resolveForemanPortal(){portalReads++;return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
- async getForemanMandatorySignatures(){return Object.fromEntries(Object.keys(doc.signatures).map(k=>[k,{signature:'data:image/png;base64,AAAA'}]));},
+ async getForemanMandatorySignatures(){signatureReads++;return Object.fromEntries(Object.keys(doc.signatures).map(k=>[k,{signature:'data:image/png;base64,AAAA'}]));},
  async getSupervisorMandatorySignatures(){return {};},
 };
 globalThis.__foremanApi={
  async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc),...structuredClone(extraDocs)]:[];},
- async rpc(name,args){calls.push({name,args});if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
+ async rpc(name,args){calls.push({name,args});if(name==='sign_mandatory_document_worker_v2'){signatureAttempts++;if(failSignatureSave)throw new Error('Conexión lenta o interrumpida');doc.signatures[args.p_document_worker_id.slice(1)]=args.p_signature;return {ok:true};}if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
 };
 const serviceSource=await fs.readFile(new URL('../src/services/foremanPortalService.ts',import.meta.url),'utf8');
 const exportNames=[...serviceSource.matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]);
@@ -31,13 +32,15 @@ let root;
 try {
  await build({stdin:{contents:"export {ForemanMobilePortal} from './components/ForemanMobilePortal'; export {ForemanDocumentsDashboard} from './components/ForemanDocumentsDashboard';",resolveDir:new URL('../',import.meta.url).pathname},bundle:true,platform:'node',format:'esm',packages:'external',define:{'import.meta.env':'{}'},outfile:output.pathname,
  plugins:[{name:'test-boundaries',setup(b){
+ b.onResolve({filter:/^react$/},()=>({path:'react',external:true}));
+ b.onResolve({filter:/useHandwrittenSignature$/},()=>({path:'signature-hook',namespace:'mock'}));
  b.onResolve({filter:/foremanPortalService$/},()=>({path:'portal',namespace:'mock'}));
  b.onResolve({filter:/(?:\/lib\/|\.\/)supabase$/},()=>({path:'supabase',namespace:'mock'}));
  b.onResolve({filter:/\/lib\/appDialog$/},()=>({path:'dialog',namespace:'mock'}));
  b.onResolve({filter:/mandatoryEmailIntake$/},()=>({path:'intake',namespace:'mock'}));
  b.onResolve({filter:/PreventionSection$/},()=>({path:'prevention',namespace:'mock'}));
  b.onResolve({filter:/\?url$/},()=>({path:'url',namespace:'mock'}));
- b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async(message,options)=>globalThis.__alerts.push({message,options});export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
+ b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='signature-hook'?"import {useRef} from 'react';export function useHandwrittenSignature(){return {ref:useRef(null),handlers:{},clear(){},exportPng(){return 'data:image/png;base64,AAAA';},hasInk:true,error:''};}":args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async(message,options)=>globalThis.__alerts.push({message,options});export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
  }}]});
  const React=await import('react');const {createRoot}=await import('react-dom/client');const {ForemanMobilePortal,ForemanDocumentsDashboard}=await import(output.href);
  const action=async callback=>{await React.act(async()=>{await callback();await new Promise(resolve=>setTimeout(resolve,30));});};
@@ -80,6 +83,18 @@ try {
  assert.equal(doc.signatures['1'],undefined);assert.equal(doc.signatures['2'],'signed');
  assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'revoked mandatory signature blocks submission');
  assert(find('Firmar esta persona'),'revoked person can sign again');
+ await action(()=>find('Firmar esta persona').click());
+ await action(()=>{const button=find('Guardar');button.click();button.click();});
+ assert.equal(signatureAttempts,1,'double save emits a single mutation');
+ assert(document.querySelector('canvas'),'failed save keeps the signature pad mounted');
+ assert(document.body.textContent.includes('Conexión lenta o interrumpida'),'save failure is visible');
+ failSignatureSave=false;
+ await action(()=>find('Guardar').click());
+ assert.equal(signatureAttempts,2,'explicit retry persists the retained image');
+ assert.equal(doc.signatures['1'],'data:image/png;base64,AAAA');
+ assert(!find('Guardar'),'pad closes only after verified persistence');
+ await action(()=>find('Revocar firma y volver a firmar').click());
+
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'revocation survives reload');
@@ -106,6 +121,13 @@ try {
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Septiembre 2026')).click());
  assert.equal(document.querySelectorAll('article').length,1,'month change clears quincena filter');
  assert(document.querySelector('article').textContent.includes('OTHER_MONTH'));
+ doc.signatures={};doc.lifecycle_status='ASSIGNED';doc.period_key='2026-10';doc.status='pending';
+ await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
+ await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1')).click());
+ const beforeUnsigned=signatureReads;
+ await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
+ assert.equal(signatureReads,beforeUnsigned,'unsigned document has no signature images to download');
+ console.log('PASS: unsigned expansion skips image RPC; duplicate save blocked; failed save retains pad and verified retry closes it.');
  console.log('PASS: fortnight grouping, explicit period precedence, month/work isolation, filter and reset.');
  console.log('PASS: rendered React UI; traceability button absent, explicit publication/withdrawal, selective revocation, pending signer and send restriction after reload.');
  await action(()=>root.unmount());root=null;

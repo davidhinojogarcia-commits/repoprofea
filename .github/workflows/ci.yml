@@ -89,6 +89,10 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:employment-browser
+      - name: Signature ink, capture, PDF and consumption regression
+        run: |
+          npm run test:signature-quality
+          npm run test:signature-browser
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
       - name: Supervisor signed PDF download regression

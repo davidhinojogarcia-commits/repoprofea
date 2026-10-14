@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.21.2",
+  "version": "1.21.3",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -34,7 +34,9 @@
     "test:foreman-push": "node scripts/testForemanPushSql.mjs && node --import tsx scripts/testForemanPush.ts && node scripts/testForemanPushBrowser.mjs",
     "test:employment-documents": "node scripts/testEmploymentDocumentAnalysis.mjs && node scripts/testEmploymentIntakeFallback.mjs && node scripts/testEmploymentDocumentsSql.mjs && node scripts/testForemanPublicationUi.mjs contrato && node scripts/testForemanPublicationUi.mjs prorroga",
     "test:employment-browser": "node scripts/testEmploymentDocumentsBrowser.mjs",
-    "test:gmail-authorization": "node --import tsx scripts/testGmailAuthorization.ts && node scripts/testGmailAuthorizationUi.mjs"
+    "test:gmail-authorization": "node --import tsx scripts/testGmailAuthorization.ts && node scripts/testGmailAuthorizationUi.mjs",
+    "test:signature-quality": "node --import tsx scripts/testSignatureQuality.ts",
+    "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

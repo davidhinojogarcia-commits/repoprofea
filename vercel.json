@@ -38,7 +38,8 @@
       "feat/foreman-mobile-push-20261013": false,
       "feat/foreman-contracts-extensions": false,
       "fix/employment-worker-preview": false,
-      "fix/gmail-authorization-recovery": false
+      "fix/gmail-authorization-recovery": false,
+      "feat/blue-signatures-quality": false
     }
   }
 }
