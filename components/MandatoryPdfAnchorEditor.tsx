@@ -39,6 +39,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const viewportRef=useRef<any>(null);
   const renderTaskRef=useRef<any>(null);
+  const employment=['contrato','prorroga'].includes(String(documentType));
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
   const currentIdentityLocked=Boolean(current&&signedIds.has(Number(current.workerId)));
@@ -179,6 +180,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }));
   };
   const suggestPositions=async()=>{
+    if(employment){setFeedback('Revisa la zona sugerida debajo del nombre o toca en el PDF para encuadrarla.');return;}
     setSaving(true);setError('');
     try {
       const pages=await readPageGeometry();
@@ -232,6 +234,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   };
 
   const addManualWorker=()=>{
+    if(employment && draft.length){setError('El contrato o prórroga corresponde a un único trabajador. Corrige o elimina la identidad existente antes de añadir otra.');return;}
     if(saving||removing||loading)return;
     const name=manualName.replace(/\s+/g,' ').trim();
     if(name.length<3){
@@ -325,7 +328,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         <div className="min-w-0">
           <div className="text-xs font-black uppercase tracking-wide text-[#00548E] dark:text-blue-200">Ajustar firmas manualmente</div>
           <h2 className="text-lg font-black">{title}</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-300">Selecciona un trabajador y toca justo a la derecha de su nombre y apellidos. Esa será la posición exacta de su firma.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">{employment?'Revisa el nombre del trabajador y encuadra su firma debajo del nombre, en la página correspondiente. Guarda la posición antes de enviar al portal.':'Selecciona un trabajador y toca justo a la derecha de su nombre y apellidos. Esa será la posición exacta de su firma.'}</p>
         </div>
         <button type="button" onClick={onCancel} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
       </div>
@@ -364,6 +367,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             </div>
           </label>
 
+          {employment&&current&&current.signatureX!=null&&current.signatureY!=null&&<button type="button" disabled={saving||loading||removing} onClick={()=>setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,resolved:true,confidence:1,reason:'Posición confirmada manualmente por el supervisor.'}:anchor))} className="mt-3 min-h-[48px] w-full rounded-xl border border-[#00548E] px-3 py-2 text-sm font-black">Confirmar zona de firma y trabajador</button>}
           {current&&<div className="mandatory-editor-dimensions mt-4 grid grid-cols-2 gap-2">{(['signatureWidth','signatureHeight'] as const).map((field,i)=><label key={field} className="text-sm font-bold">{i===0?'Ancho de firma':'Alto de firma'}<input type="number" min={i===0?28:8} max={i===0?160:40} value={current[field]|| (i===0?90:12)} onChange={event=>{const value=Number(event.target.value);if(!Number.isFinite(value)||value<(i===0?28:8)||value>(i===0?160:40))return;setDraft(list=>list.map((anchor,n)=>n===index?{...anchor,[field]:value}:anchor));}} className="mt-1 min-h-[44px] w-full rounded-xl border bg-white px-2 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/></label>)}</div>}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button type="button" disabled={index<=0} onClick={()=>setIndex(i=>Math.max(0,i-1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Anterior</button>
@@ -374,7 +378,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
               <input value={manualName} onChange={event=>setManualName(event.target.value)} placeholder="Nombre y apellidos exactamente como aparecen en el PDF" className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
             </label>
             <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador del PDF</button>
-            <div className="mt-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">Se añadirá solo a este documento. Después toca en el PDF, a la derecha de su nombre, para fijar la firma.</div>
+            <div className="mt-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">Se añadirá solo a este documento. {employment?'Después toca debajo de su nombre, en la zona de firma del PDF.':'Después toca en el PDF, a la derecha de su nombre, para fijar la firma.'}</div>
           </div>
           <button
             type="button"
@@ -428,7 +432,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 
       <div className="mandatory-editor-footer shrink-0 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
         <div className={`text-sm font-black ${unresolved||blockingIssues.length?'text-amber-700 dark:text-amber-300':'text-emerald-700 dark:text-emerald-300'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : blockingIssues.length?'Hay posiciones que revisar antes de enviar':validation.ok?'Posiciones comprobadas: sin conflictos':'Avisos informativos: puedes guardar y enviar'}</div>
-        <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] dark:text-blue-200 disabled:opacity-50">Ajustar automáticamente dentro de cada fila</button>
+        <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] dark:text-blue-200 disabled:opacity-50">{employment?'Revisar zona de firma':'Ajustar automáticamente dentro de cada fila'}</button>
         <button type="button" disabled={loading||saving||removing} onClick={async()=>{
           setSaving(true);setError('');
           try{await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}

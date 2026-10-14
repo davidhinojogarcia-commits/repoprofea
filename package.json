@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.20.2",
+  "version": "1.21.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -32,7 +32,8 @@
     "test:temporary-originals": "node scripts/testTemporaryOriginalsSql.mjs",
     "test:tutor-agent": "node --import tsx scripts/testProfeaTutorAgent.ts && node --import tsx scripts/testProfeaTutorRegression.ts && node scripts/testProfeaTutorUi.mjs && node scripts/testProfeaTutorServerless.mjs && node scripts/testAppFilterHydration.mjs",
     "test:foreman-push": "node scripts/testForemanPushSql.mjs && node --import tsx scripts/testForemanPush.ts && node scripts/testForemanPushBrowser.mjs",
-    "test:employment-documents": "node scripts/testEmploymentDocumentAnalysis.mjs"
+    "test:employment-documents": "node scripts/testEmploymentDocumentAnalysis.mjs && node scripts/testEmploymentIntakeFallback.mjs && node scripts/testEmploymentDocumentsSql.mjs && node scripts/testForemanPublicationUi.mjs contrato && node scripts/testForemanPublicationUi.mjs prorroga",
+    "test:employment-browser": "node scripts/testEmploymentDocumentsBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
@@ -64,6 +65,7 @@
     "esbuild": "^0.28.1",
     "jsdom": "26.1.0",
     "pdf-lib": "1.17.1",
+    "playwright": "1.56.1",
     "tsx": "^4.22.4",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

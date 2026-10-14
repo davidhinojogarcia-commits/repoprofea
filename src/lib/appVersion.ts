@@ -1,12 +1,15 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.20.2';
-export const APP_RELEASE_DATE = '10/10/2026';
+export const APP_VERSION = '1.21.0';
+export const APP_RELEASE_DATE = '14/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Contratos y Prórrogas en Importar documento: original intacto, revisión del trabajador y zona de firma antes del envío manual.',
+  'Firma del trabajador en el portal y devolución del mismo PDF firmado al supervisor, con aislamiento por obra y propietario.',
+  'Los documentos con reconocimiento dudoso se conservan como borradores para revisión manual.',
   'Tutor PROFEA: registro de incidencias con formulario, filtros operativos y verificación real de guardado.',
   'Tutor disponible en Vercel, consultas paginadas con datos mínimos y borrados con alcance revalidado.',
   'El solapamiento entre firmas se permite al enviar con confirmación del supervisor, manteniendo el original intacto.',

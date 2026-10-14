@@ -74,7 +74,7 @@ export type ForemanMandatoryDocument = {
   id: string;
   workDate: string;
   periodKey: string;
-  documentType: 'inicio' | 'control_presencia' | 'epis' | 'formacion' | 'maquinaria' | 'autorizacion_uso_maquinaria';
+  documentType: 'inicio' | 'control_presencia' | 'contrato' | 'prorroga' | 'epis' | 'formacion' | 'maquinaria' | 'autorizacion_uso_maquinaria';
   category: string;
   workers: Person[];
   signatures: Record<string, { signature: string; signedAt?: string } | string>;
@@ -270,7 +270,7 @@ export async function signMandatoryForemanDocument(
 
 
 export async function prepareMandatoryDocumentFromEmail(input: {
-  documentType: 'inicio' | 'control_presencia';
+  documentType: 'inicio' | 'control_presencia' | 'contrato' | 'prorroga';
   workerIds: number[];
   importedWorkers?: Person[];
   workDate: string;
@@ -376,9 +376,9 @@ export async function prepareMandatoryDocumentFromEmail(input: {
         printedName: String(worker.apellidosNombre || anchor?.workerName || '').trim(),
         page: anchor?.page != null ? Number(anchor.page) : null,
         rowIndex: anchor?.order != null ? Number(anchor.order) : index,
-        detectionStatus: confirmed ? 'CONFIRMED' : 'DETECTED',
+        detectionStatus: confirmed && !['contrato','prorroga'].includes(input.documentType) ? 'CONFIRMED' : 'DETECTED',
         detectionConfidence: confidence || null,
-        positionStatus: confirmed ? 'RESOLVED' : 'PENDING',
+        positionStatus: confirmed && !['contrato','prorroga'].includes(input.documentType) ? 'RESOLVED' : 'PENDING',
         positionSource: manualConfirmed && !hasNameBox ? 'MANUAL' : 'AUTO',
         nameBox: hasNameBox ? {x:Number(anchor.nameX),y:Number(anchor.nameY),width:Number(anchor.nameWidth||1),height:Number(anchor.nameHeight||anchor.rowHeight||1)} : null,
         signatureBox: hasSignatureBox ? {x:Number(anchor.signatureX),y:Number(anchor.signatureY),width:Number(anchor.signatureWidth),height:Number(anchor.signatureHeight)} : null,

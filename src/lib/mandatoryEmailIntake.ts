@@ -1,3 +1,4 @@
+import { classifyEmploymentDocument, recognizeEmploymentWorker } from './employmentDocumentAnalysis.mjs';
 import type { Person } from '../../types';
 import { extractClientDocumentText } from './clientDocumentText';
 import {
@@ -9,7 +10,7 @@ import {
 import { loadAppBusinessSettings } from '../services/appSettingsService';
 import { getDocuments } from '../services/databaseService';
 import { prepareMandatoryDocumentFromEmail, restoreForemanMandatoryGmailSource } from '../services/foremanPortalService';
-import { analyzeMandatoryOriginalPdf, fileToBase64, resolveMandatoryAnchorsWithOcrRows, sha256Hex } from './mandatoryPdfOverlay';
+import { analyzeMandatoryOriginalPdf, analyzeEmploymentOriginalPdf, fileToBase64, resolveMandatoryAnchorsWithOcrRows, sha256Hex } from './mandatoryPdfOverlay';
 import { extractPrintedWorkerNameCandidates } from './mandatoryWorkerDetection';
 import { resolveMandatoryWorksite } from './mandatoryWorksiteDetection';
 
@@ -41,9 +42,12 @@ const extractDate = (text: string, fallbackMs?: string) => {
   return new Date().toISOString().slice(0, 10);
 };
 
-const documentType = (filename: string, text: string): 'inicio' | 'control_presencia' | null => {
+const documentType = (filename: string, text: string): 'inicio' | 'control_presencia' | 'contrato' | 'prorroga' | null => {
   const probe = norm(`${filename}\n${text}`);
   if (/CONTROL\s+(DE\s+)?PRESENCIA/.test(probe)) return 'control_presencia';
+  if (/\bINICIO\b/.test(norm(filename))) return 'inicio';
+  const employment = classifyEmploymentDocument(text, filename);
+  if (employment) return employment;
   if (/\bINICIO\b|INCORPORACION\s+AL\s+CENTRO\s+DE\s+TRABAJO|ESTANDO\s+PREVISTA\s+SU\s+INCORPORACION/.test(probe)) return 'inicio';
   return null;
 };
@@ -169,8 +173,16 @@ const extractWorkersPrintedInPdf = (
   workers: Person[],
   category: string,
   obra: string,
-  type: 'inicio'|'control_presencia',
+  type: 'inicio'|'control_presencia'|'contrato'|'prorroga',
 ): Person[] => {
+  if (type==='contrato'||type==='prorroga') {
+    const recognized = recognizeEmploymentWorker(text);
+    if (!recognized.name) return [];
+    const identity=flexibleNameTokens(recognized.name).sort().join(' ');
+    const matches=workers.filter(worker=>flexibleNameTokens(worker.apellidosNombre||'').sort().join(' ')===identity);
+    const canonical=matches.length===1?matches[0]:null;
+    return [{...(canonical || {}), id:canonical?.id || sourceWorkerId(recognized.name), apellidosNombre:recognized.name, dni:canonical?.dni || '', categoria:category || canonical?.categoria || '', obra} as Person];
+  }
   const canonicalByName = new Map<string,Person>();
   if(type==='inicio'){
     for (const worker of workers) {
@@ -300,10 +312,19 @@ const matchMandatoryWorkersWithOcrRetry = async (
   file: File,
   workers: Person[],
   firstText: string,
-  type: 'inicio' | 'control_presencia',
+  type: 'inicio' | 'control_presencia' | 'contrato' | 'prorroga',
   onProgress?: (message: string) => void,
 ) => {
   let text = firstText;
+  if(type==='contrato'||type==='prorroga') {
+    if(!recognizeEmploymentWorker(text).name){
+      try {
+        const reinforced = await extractClientDocumentText(file,onProgress,{forceOcr:true,ocrScale:2.4});
+        text=reinforced.text || text;
+      } catch {onProgress?.('No se pudo reforzar la lectura. Se conserva el original para revisión manual.');}
+    }
+    return {text,category:'',matched:[] as Person[],printedNames:[] as string[]};
+  }
   let category = type === 'inicio' ? extractCategoryWithFilenameFallback(text, file.name) : '';
 
   // Control de presencia no depende del Directorio. Solo comprobamos si el
@@ -398,7 +419,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
         const category = recognition.category;
         const documentObra = extractWorksiteFromText(recognition.text, knownWorksites);
         const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra, type);
-        if (!listedWorkers.length) {
+        if (!listedWorkers.length && !['contrato','prorroga'].includes(type)) {
           warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
           skippedAttachments += 1;
           continue;
@@ -415,8 +436,8 @@ export async function processAdministrativeMandatoryInbox(options?: {
           });
         }
         const workDate = extractDate(extracted.text, message.internalDate);
-        let analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
-        if (analysis.unresolvedWorkerIds.length) {
+        let analysis = await (['contrato','prorroga'].includes(type) ? analyzeEmploymentOriginalPdf(file,selected,options?.onProgress) : analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text));
+        if (analysis.unresolvedWorkerIds.length && !['contrato','prorroga'].includes(type)) {
           analysis = await resolveMandatoryAnchorsWithOcrRows(file, selected, analysis, options?.onProgress);
         }
         const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
@@ -490,7 +511,7 @@ export async function processManualMandatoryFiles(
       const type = documentType(file.name, extracted.text);
       if (!type) {
         skippedFiles += 1;
-        warnings.push(`${file.name}: no se reconoce como Inicio ni Control de presencia.`);
+        warnings.push(`${file.name}: no se reconoce como Inicio, Control de presencia, Contrato ni Prórroga.`);
         continue;
       }
 
@@ -513,20 +534,21 @@ export async function processManualMandatoryFiles(
         warnings.push(`${file.name}: documento conservado pendiente de clasificar por obra.`);
       }
       const selected = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra || '', type);
+      if(['contrato','prorroga'].includes(type)&&!selected.length)warnings.push(`${file.name}: original conservado; revisa el trabajador en Ajustar firmas.`);
       if(type==='inicio'){
         selected.filter(worker=>Number(worker.id)<0).forEach(worker=>{
           const name=String(worker.apellidosNombre||'').trim();
           if(name)missingDirectoryWorkers.add(name);
         });
       }
-      if(!selected.length){
+      if(!selected.length && !['contrato','prorroga'].includes(type)){
         skippedFiles += 1;
         warnings.push(`${file.name}: no se han podido leer nombres de personas en el PDF.`);
         continue;
       }
       const workDate = extractDate(extracted.text);
-      let analysis = await analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text);
-        if (analysis.unresolvedWorkerIds.length) {
+      let analysis = await (['contrato','prorroga'].includes(type) ? analyzeEmploymentOriginalPdf(file,selected,options?.onProgress) : analyzeMandatoryOriginalPdf(file, selected, options?.onProgress, recognition.text));
+        if (analysis.unresolvedWorkerIds.length && !['contrato','prorroga'].includes(type)) {
           analysis = await resolveMandatoryAnchorsWithOcrRows(file, selected, analysis, options?.onProgress);
         }
       const selectedById = new Map(selected.map(worker => [Number(worker.id), worker]));
