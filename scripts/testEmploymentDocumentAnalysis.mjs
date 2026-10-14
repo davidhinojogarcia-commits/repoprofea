@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {classifyEmploymentDocument,suggestWorkerSignatureAnchor,validateContractImport} from '../src/lib/employmentDocumentAnalysis.mjs';
 assert.equal(classifyEmploymentDocument('CONTRATO DE TRABAJO'),'contrato');
 assert.equal(classifyEmploymentDocument('PRÓRROGA DEL CONTRATO'),'prorroga');
-assert.equal(classifyEmploymentDocument('documentación general'),'null'==='null'?null:'');
+assert.equal(classifyEmploymentDocument('documentación general'),null);
 assert.equal(classifyEmploymentDocument('','prorroga.pdf'),'prorroga');
 const sample=[{items:[{text:'El trabajador',x:0.60,y:0.78},{text:'María López Ruiz',x:0.60,y:0.82}]}];
 const suggestion=suggestWorkerSignatureAnchor(sample,'María López Ruiz');
