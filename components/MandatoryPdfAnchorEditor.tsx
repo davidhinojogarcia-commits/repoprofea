@@ -22,6 +22,7 @@ type Props = {
 export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, obra, documentType, anchors, signedWorkerIds = [], onCancel, onSave, onRemoveWorker }) => {
   const [draft,setDraft]=useState<MandatoryWorkerAnchor[]>(()=>anchors.map(anchor=>({...anchor})));
   const [index,setIndex]=useState(0);
+  const [previewPage,setPreviewPage]=useState(1);
   const [pdf,setPdf]=useState<any>(null);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
@@ -117,11 +118,11 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     return()=>{observer?.disconnect();window.removeEventListener('resize',measure);};
   },[]);
 
-  const currentPage=Math.max(1,Number(current?.page||1));
+  const currentPage=Math.max(1,Number(current?.page||previewPage));
   const pageCount=Number(pdf?.numPages||1);
 
   useEffect(()=>{
-    if(!pdf||!current||!canvasRef.current)return;
+    if(!pdf||loading||!canvasRef.current)return;
     let cancelled=false;
     let renderTask:any=null;
     (async()=>{
@@ -147,7 +148,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       try{await renderTask.promise;}finally{if(renderTaskRef.current===renderTask)renderTaskRef.current=null;}
       if(cancelled)return;
 
-      for(const anchor of draft.filter(anchor=>anchor.page===currentPage&&anchor.resolved&&anchor.signatureX!=null&&anchor.signatureY!=null)){
+      for(const anchor of draft.filter(anchor=>anchor.page===currentPage&&anchor.signatureX!=null&&anchor.signatureY!=null)){
         const selected=anchor===current;
         const p1=viewportPoint(viewport,Number(anchor.signatureX),Number(anchor.signatureY));
         const p2=viewportPoint(
@@ -160,7 +161,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         const width=Math.abs(p2[0]-p1[0]);
         const height=Math.abs(p2[1]-p1[1]);
         ctx.save();
-        ctx.strokeStyle=selected?'#00548E':'#64748b';
+        ctx.strokeStyle=anchor.resolved?(selected?'#00548E':'#64748b'):'#b45309';
         ctx.lineWidth=selected?3:1;
         ctx.setLineDash([8,5]);
         ctx.strokeRect(left,top,width,height);
@@ -170,7 +171,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       }
     })().catch(e=>{if(!cancelled&&e?.name!=='RenderingCancelledException')setError(e?.message||'No se pudo representar la página.');});
     return()=>{cancelled=true;renderTask?.cancel();};
-  },[pdf,current,draft,currentPage,zoom,fitWidth,pdfPanelWidth]);
+  },[pdf,loading,current,draft,currentPage,zoom,fitWidth,pdfPanelWidth]);
 
   const readPageGeometry=async()=>{
     if(!pdf)throw new Error('Espera a que se cargue el PDF original.');
@@ -203,7 +204,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
 
   const selectPage=(value:number)=>{
-    if(!current||saving||removing||loading)return;
+    if(saving||removing||loading)return;
+    if(!current){setPreviewPage(Math.max(1,Math.min(pageCount,value)));return;}
     if(currentIdentityLocked){setError('Revoca la firma antes de cambiar la página del trabajador.');return;}
     setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,page:Math.max(1,Math.min(pageCount,value)),resolved:false}:anchor));
   };
@@ -340,7 +342,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       <div className="mandatory-editor-main">
         <aside className="mandatory-editor-controls border-b p-4">
           <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-800">
-            <div className="text-xs font-black uppercase text-slate-500 dark:text-slate-300">Trabajador {index+1} de {draft.length}</div>
+            <div className="text-xs font-black uppercase text-slate-500 dark:text-slate-300">{draft.length?`Trabajador ${index+1} de ${draft.length}`:'Trabajador pendiente de identificar'}</div>
             <div className="mt-1 text-base font-black">{current?.workerName||'Sin identificar'}</div>
             <div className="text-sm text-slate-600 dark:text-slate-300">{current?.dni||''}</div>
             <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700 dark:text-emerald-300':'text-amber-700 dark:text-amber-300'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
@@ -431,7 +433,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       </div>
 
       <div className="mandatory-editor-footer shrink-0 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
-        <div className={`text-sm font-black ${unresolved||blockingIssues.length?'text-amber-700 dark:text-amber-300':'text-emerald-700 dark:text-emerald-300'}`}>{unresolved? `${unresolved} posición(es) pendiente(s)` : blockingIssues.length?'Hay posiciones que revisar antes de enviar':validation.ok?'Posiciones comprobadas: sin conflictos':'Avisos informativos: puedes guardar y enviar'}</div>
+        <div className={`text-sm font-black ${!draft.length||unresolved||blockingIssues.length?'text-amber-700 dark:text-amber-300':'text-emerald-700 dark:text-emerald-300'}`}>{!draft.length?'Falta identificar el trabajador del documento':unresolved? `${unresolved} posición(es) pendiente(s)` : blockingIssues.length?'Hay posiciones que revisar antes de enviar':validation.ok?'Posiciones comprobadas: sin conflictos':'Avisos informativos: puedes guardar y enviar'}</div>
         <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] dark:text-blue-200 disabled:opacity-50">{employment?'Revisar zona de firma':'Ajustar automáticamente dentro de cada fila'}</button>
         <button type="button" disabled={loading||saving||removing} onClick={async()=>{
           setSaving(true);setError('');

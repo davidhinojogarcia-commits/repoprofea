@@ -29,3 +29,12 @@ assert.equal(validateContractImport({documentType:'contrato',pages:4,workers:[{n
 console.log('PASS: employer exclusion, comma names, conflicting identities, column isolation, multiple-page ambiguity and page variations.');
 
 assert.equal(recognizeEmploymentWorker('DATOS DEL/DE LA TRABAJADOR/A\nMaría López Ruiz').name,'María López Ruiz');
+
+const official='DATOS DE LA EMPRESA\nD./DÑA. NIF/NIE\nREPRESENTANTE EMPRESA 12345678Z\nDATOS DELIDE LA TRABAJADOR/A\nD.IDÑA. NIF/NIE FECHA NACIMIENTO\nPÉREZ GÓMEZ, JUAN CARLOS 87654321X 06/08/1966\nNº AFILIACIÓN S.S. NIVEL FORMATIVO';
+assert.equal(recognizeEmploymentWorker(official).name,'PÉREZ GÓMEZ, JUAN CARLOS');
+assert.equal(recognizeEmploymentWorker('DATOS DEL/DE LA TRABAJADOR/A\nDÍAZ RUIZ, DAVID 87654321X 01/01/1980').name,'DÍAZ RUIZ, DAVID');
+const fields=[{items:[{text:'El/la trabajador/a',x:0.15,y:0.76,height:0.015},{text:'El/la representante de la Empresa',x:0.45,y:0.76,height:0.015}]}];
+assert.equal(suggestWorkerSignatureAnchor(fields,'PÉREZ GÓMEZ, JUAN CARLOS',true).status,'SUGGESTED');
+assert.equal(suggestWorkerSignatureAnchor(fields,'PÉREZ GÓMEZ, JUAN CARLOS').status,'REVIEW_REQUIRED');
+assert.equal(suggestWorkerSignatureAnchor([{items:[{text:'Datos del trabajador',x:0.15,y:0.6}]}],'PÉREZ GÓMEZ, JUAN CARLOS',true).status,'REVIEW_REQUIRED');
+console.log('PASS: official SAE field/table layout, OCR header, DNI/date separation and worker-only signing field.');

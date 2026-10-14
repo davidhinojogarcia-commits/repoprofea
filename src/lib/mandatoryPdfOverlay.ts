@@ -238,6 +238,7 @@ export async function analyzeEmploymentOriginalPdf(file:File, workers:Person[], 
   const round=(value:number)=>Math.round(value*100)/100;
   const pages:MandatoryPdfPageMeta[]=[];
   const textPages:any[]=[];
+  let employmentOcr:any=null;
   try {
     for(let number=1;number<=pdf.numPages;number++) {
       onProgress?.(`Revisando zona de firma · página ${number}/${pdf.numPages}…`);
@@ -245,23 +246,47 @@ export async function analyzeEmploymentOriginalPdf(file:File, workers:Person[], 
       const width=Number(view[2])-Number(view[0]),height=Number(view[3])-Number(view[1]);
       pages.push({page:number,width,height,rotation:Number(page.rotate||0)});
       const content=await readPdfTextContent(page);
-      textPages.push({items:groupLines(content.items).map(line=>({text:line.text,x:(line.minX-view[0])/width,y:1-(line.y-view[1]+line.height)/height,width:(line.maxX-line.minX)/width,height:line.height/height}))});
+      let items=groupLines(content.items).map(line=>({text:line.text,x:(line.minX-view[0])/width,y:1-(line.y-view[1]+line.height)/height,width:(line.maxX-line.minX)/width,height:line.height/height}));
+      // Include short native spans so worker/employer labels sharing one row are not merged.
+      for(const line of groupLines(content.items)) for(let start=0;start<line.items.length;start++) for(let count=1;count<=4&&start+count<=line.items.length;count++) {
+        const span=line.items.slice(start,start+count),boxes=span.map(itemBox);
+        const left=Math.min(...boxes.map(b=>b.x)),right=Math.max(...boxes.map(b=>b.x+b.width));
+        items.push({text:span.map(i=>String(i.str||'')).join(' '),x:(left-view[0])/width,y:1-(line.y-view[1]+line.height)/height,width:(right-left)/width,height:line.height/height});
+      }
+      if(!content.items.some((item:any)=>String(item.str||'').trim()) && workers.length===1 && Number(page.rotate||0)===0) {
+        try {
+          onProgress?.(`Localizando la zona de firma del formulario escaneado · página ${number}…`);
+          employmentOcr ||= await createWorker('spa');
+          const scale=2,viewport=page.getViewport({scale}),canvas=document.createElement('canvas');
+          canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+          const context=canvas.getContext('2d');if(!context)throw Error('Lienzo OCR no disponible');
+          await page.render({canvas,canvasContext:context,viewport}).promise;
+          const result=await employmentOcr.recognize(canvas,{}, {blocks:true,text:true});
+          const rows=collectTesseractLines(result.data,scale,height,number);
+          items=rows.map(row=>({text:row.text,x:row.x/width,y:1-(row.y+row.height)/height,width:row.width/width,height:row.height/height}));
+          for(const block of result.data.blocks||[])for(const paragraph of block.paragraphs||[])for(const line of paragraph.lines||[])for(let start=0;start<(line.words||[]).length;start++)for(let count=1;count<=4&&start+count<=line.words.length;count++) {
+            const words=line.words.slice(start,start+count),left=Math.min(...words.map((w:any)=>w.bbox.x0)),right=Math.max(...words.map((w:any)=>w.bbox.x1)),top=Math.min(...words.map((w:any)=>w.bbox.y0)),bottom=Math.max(...words.map((w:any)=>w.bbox.y1));
+            items.push({text:words.map((w:any)=>w.text).join(' '),x:left/scale/width,y:top/scale/height,width:(right-left)/scale/width,height:(bottom-top)/scale/height});
+          }
+        } catch {onProgress?.('Zona de firma pendiente de encuadrar manualmente. El PDF original se conserva.');}
+      }
+      textPages.push({manualOnly:Number(page.rotate||0)!==0||Number(view[0])!==0||Number(view[1])!==0,items});
     }
     const anchors:MandatoryWorkerAnchor[]=workers.map((worker,index)=>{
-      const suggestion=suggestWorkerSignatureAnchor(textPages,worker.apellidosNombre);
+      const suggestion=suggestWorkerSignatureAnchor(textPages,worker.apellidosNombre,workers.length===1);
       const found=suggestion.status==='SUGGESTED'?suggestion.anchor:null;
       const meta=found?pages[found.page-1]:pages[0];
       // Rotated/cropped pages stay manual: no guessing of coordinate systems.
-      const safe=found && meta.rotation===0;
+      const safe=found && !textPages[found.page-1].manualOnly;
       return {workerId:Number(worker.id),workerName:worker.apellidosNombre,dni:worker.dni||'',page:safe?found.page:1,order:index,
-        nameX:safe?round(found.nameX*meta.width):null,nameY:safe?round((1-found.nameY-found.nameHeight)*meta.height):null,
-        nameWidth:safe?round(found.nameWidth*meta.width):null,nameHeight:safe?round(found.nameHeight*meta.height):null,rowHeight:null,
+        nameX:safe&&found.nameX!=null?round(found.nameX*meta.width):null,nameY:safe&&found.nameY!=null?round((1-found.nameY-found.nameHeight)*meta.height):null,
+        nameWidth:safe&&found.nameWidth!=null?round(found.nameWidth*meta.width):null,nameHeight:safe&&found.nameHeight!=null?round(found.nameHeight*meta.height):null,rowHeight:null,
         signatureX:safe?round(found.x*meta.width):null,signatureY:safe?round((1-found.y-found.height)*meta.height):null,
         signatureWidth:safe?round(found.width*meta.width):null,signatureHeight:safe?round(found.height*meta.height):null,
         confidence:safe?0.9:0,resolved:false,reason:safe?'Zona sugerida debajo del nombre. El supervisor debe revisarla y guardar la posición.':suggestion.reason||'Revisa y encuadra la firma manualmente.'};
     });
     return {pageCount:pages.length,pages,anchors,orderedWorkerIds:workers.map(w=>Number(w.id)),unresolvedWorkerIds:workers.map(w=>Number(w.id))};
-  } finally {await loadingTask.destroy();}
+  } finally {await employmentOcr?.terminate();await loadingTask.destroy();}
 }
 
 export async function analyzeMandatoryOriginalPdf(
