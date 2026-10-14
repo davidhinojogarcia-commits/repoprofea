@@ -853,6 +853,15 @@ export async function buildSignedMandatoryPdf(input: {
   const PDFLib = await loadPdfLib();
   const originalBytes = base64ToBytes(input.originalPdfBase64);
   const pdfDoc = await PDFLib.PDFDocument.load(originalBytes, { updateMetadata: false });
+  // Refuse to rewrite a cryptographically signed original. Never flatten/recolour it.
+  for (const [, object] of pdfDoc.context.enumerateIndirectObjects()) {
+    if (typeof object?.get === 'function' && typeof object?.has === 'function' &&
+      (object.get(pdfDoc.context.obj('Type'))?.toString() === '/Sig' ||
+       (object.get(pdfDoc.context.obj('FT'))?.toString() === '/Sig' && object.has(pdfDoc.context.obj('V')) && object.get(pdfDoc.context.obj('V'))?.toString() !== 'null') ||
+       (object.has(pdfDoc.context.obj('ByteRange')) && object.has(pdfDoc.context.obj('Contents'))))) {
+      throw new Error('El original contiene una firma digital criptográfica. No se modificará el documento.');
+    }
+  }
   const pages = pdfDoc.getPages();
   const signedAnchors=input.anchors.filter(anchor=>{
     const raw=input.signatures[String(anchor.workerId)];
@@ -935,8 +944,12 @@ export async function verifyMandatoryPdfFidelity(
   anchors: MandatoryWorkerAnchor[],
 ): Promise<MandatoryFidelityReport> {
   const pdfjs = await setupPdfJs();
-  const original = await pdfjs.getDocument({ data: base64ToBytes(originalPdfBase64), useSystemFonts:true }).promise;
-  const signed = await pdfjs.getDocument({ data: signedBytes.slice(), useSystemFonts:true }).promise;
+  const originalTask = pdfjs.getDocument({ data: base64ToBytes(originalPdfBase64), useSystemFonts:true });
+  let signedTask: ReturnType<typeof pdfjs.getDocument> | undefined;
+  try {
+  const original = await originalTask.promise;
+  signedTask = pdfjs.getDocument({ data: signedBytes.slice(), useSystemFonts:true });
+  const signed = await signedTask.promise;
   const pageCountMatches = original.numPages === signed.numPages;
   let dimensionsMatch = pageCountMatches;
   let visualSamples = 0;
@@ -1028,6 +1041,9 @@ export async function verifyMandatoryPdfFidelity(
     visualMismatchRatio,
     checkedAt:new Date().toISOString(),
   };
+  } finally {
+    await Promise.allSettled([originalTask.destroy(), signedTask?.destroy()]);
+  }
 }
 
 export function pdfBlobFromBase64(value:string) {

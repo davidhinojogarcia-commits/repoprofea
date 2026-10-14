@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import {
   GOOGLE_CLIENT_ID,
   apiError,
@@ -142,7 +143,7 @@ export default async function handler(req: any, res: any) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           });
         } catch (error) {
-          console.warn('[gmail-disconnect] No se pudo revocar el token en Google; se elimina igualmente la conexión local.', error);
+          reportOperationalError('[gmail-disconnect] Revocación no completada', error, 'warn');
         }
       }
       await deleteConnection(user.id);
@@ -293,7 +294,7 @@ export default async function handler(req: any, res: any) {
       });
       const sent: any = await sendResponse.json().catch(() => ({}));
       if (!sendResponse.ok || !sent.id) {
-        console.error('[gmail-send] Google response:', sent);
+        reportOperationalError('[gmail-send] Google rechazó el envío', { status: sendResponse.status });
         throw new Error('Gmail no pudo enviar el correo. Revisa la autorización de la cuenta.');
       }
 

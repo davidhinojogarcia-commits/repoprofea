@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../lib/operationalLog.js';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
@@ -229,9 +230,9 @@ export function apiError(res: any, error: any, fallback = 'No se pudo completar 
   if (code === 'GMAIL_SERVER_NOT_CONFIGURED') {
     console.warn('[gmail-api] Módulo Gmail no configurado en este entorno.');
   } else if (status >= 500) {
-    console.error('[gmail-api]', error);
+    reportOperationalError('[gmail-api]', error);
   } else {
-    console.warn('[gmail-api]', error?.message || error);
+    reportOperationalError('[gmail-api]', error, 'warn');
   }
   return res.status(status >= 400 && status < 600 ? status : 500).json({
     ok: false,

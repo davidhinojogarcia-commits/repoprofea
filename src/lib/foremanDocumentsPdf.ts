@@ -1,3 +1,4 @@
+import { addSignatureImage } from './signaturePdf';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Person } from '../../types';
@@ -130,16 +131,12 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
       didDrawCell:(data:any)=>{
         if(data.section!=='body'||data.row.index!==0)return;
         if(data.column.index===3&&row.entrySignature){
-          try{
-            const pad=2;
-            doc.addImage(row.entrySignature,'PNG',data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4,undefined,'FAST');
-          }catch{}
+          const pad=2;
+          addSignatureImage(doc,row.entrySignature,data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4);
         }
         if(data.column.index===5&&row.exitSignature){
-          try{
-            const pad=2;
-            doc.addImage(row.exitSignature,'PNG',data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4,undefined,'FAST');
-          }catch{}
+          const pad=2;
+          addSignatureImage(doc,row.exitSignature,data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4);
         }
       },
     });
@@ -373,7 +370,7 @@ export function generateForemanMandatoryDocumentPdf(
 
       if (signature) {
         const signatureY = rowTop + 1.2;
-        try { doc.addImage(signature, 'PNG', 160, signatureY, signatureWidth, signatureHeight, undefined, 'FAST'); } catch {}
+        addSignatureImage(doc, signature, 160, signatureY, signatureWidth, signatureHeight);
       }
 
       y += rowHeight;
@@ -468,7 +465,7 @@ export function generateForemanMandatoryDocumentPdf(
 
     if (signature) {
       const signatureY = rowTop + 0.8;
-      try { doc.addImage(signature, 'PNG', 132, signatureY, inicioSignatureWidth, inicioSignatureHeight, undefined, 'FAST'); } catch {}
+      addSignatureImage(doc, signature, 132, signatureY, inicioSignatureWidth, inicioSignatureHeight);
     }
 
     // Sin línea horizontal bajo la firma ni separador largo de fila.

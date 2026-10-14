@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
@@ -91,7 +92,7 @@ export default async function handler(req: any, res: any) {
 
     return redirectWithResult(res, true, `Gmail conectado correctamente: ${googleEmail}.`);
   } catch (error: any) {
-    console.error('[gmail-oauth-callback]', error);
+    reportOperationalError('[gmail-oauth-callback]', error);
     return redirectWithResult(res, false, error?.message || 'No se pudo conectar Gmail.');
   }
 }

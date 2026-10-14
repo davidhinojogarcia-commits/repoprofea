@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleGenAI } from '@google/genai';
 import ExcelJS from 'exceljs';
@@ -217,7 +218,7 @@ async function extractNativeText(file: InputFile): Promise<string> {
       return (result.value || '').slice(0, MAX_NATIVE_TEXT);
     }
   } catch (error) {
-    console.warn(`[CAE] No se pudo extraer texto nativo de ${file.name}:`, error instanceof Error ? error.message : 'error');
+    reportOperationalError('[CAE] Extracción nativa no disponible', error, 'warn');
   }
   return '';
 }
@@ -326,7 +327,7 @@ async function runOcr(file: InputFile, nativeText: string): Promise<{ data: OcrD
       return { provider: 'vercel-ai-gateway', data: normalizeOcr(raw) };
     } catch (error) {
       gatewayError = error;
-      console.warn(`[CAE] OCR visual falló con ${model} para ${file.name}:`, error instanceof Error ? error.message : 'error');
+      reportOperationalError('[CAE] OCR visual no disponible', error, 'warn');
     }
   }
 
@@ -367,7 +368,7 @@ async function analyzeOcr(file: InputFile, ocr: OcrDocument, checklist: Checklis
       return { raw, provider: 'vercel-ai-gateway' };
     } catch (error) {
       gatewayError = error;
-      console.warn(`[CAE] Cotejo IA falló con ${model} para ${file.name}:`, error instanceof Error ? error.message : 'error');
+      reportOperationalError('[CAE] Cotejo no disponible', error, 'warn');
     }
   }
 
@@ -513,7 +514,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         ocr = ocrResult.data;
         providers.add(ocrResult.provider);
       } catch (error) {
-        console.warn(`[CAE] OCR no disponible para ${file.name}:`, error instanceof Error ? error.message : 'error');
+        reportOperationalError('[CAE] OCR no disponible', error, 'warn');
         const hasLocalText = normalizeText(nativeText).length >= 40;
         ocr = normalizeOcr({ legible: hasLocalText, quality: hasLocalText ? 'media' : 'baja', pageCount: 1, plainText: nativeText, observations: hasLocalText ? 'Texto recuperado localmente; el servicio de análisis visual no respondió.' : 'Servicio de análisis visual no disponible para este archivo. No se infiere que el documento sea borroso.', dates: [], identifiers: [], workers: [], signatures: [], stamps: [] });
         providers.add('deterministic');
@@ -526,7 +527,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         assessed = analysis.raw;
         providers.add(analysis.provider);
       } catch (error) {
-        console.warn(`[CAE] Se aplica cotejo determinista a ${file.name}:`, error instanceof Error ? error.message : 'error');
+        reportOperationalError('[CAE] Se aplica cotejo determinista', error, 'warn');
         assessed = deterministicAssessment(file, ocr, checklist);
         providers.add('deterministic');
       }

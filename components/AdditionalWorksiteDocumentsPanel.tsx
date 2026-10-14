@@ -1,3 +1,4 @@
+import { useHandwrittenSignature } from '../src/hooks/useHandwrittenSignature';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import {
@@ -57,78 +58,13 @@ const sameWork = (left: string, right: string) => {
 const DEFAULT_COMPANY = 'AEPSA (Diputación Provincial de Cádiz)';
 const DEFAULT_CIF = 'P1100000G';
 
-const SignaturePad: React.FC<{
+export const SignaturePad: React.FC<{
   label: string;
   name: string;
   value: string;
   onChange: (value: string) => void;
 }> = ({ label, name, value, onChange }) => {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const last = useRef<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const ratio = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = Math.max(1, Math.floor(rect.width * ratio));
-    canvas.height = Math.floor(165 * ratio);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, rect.width, 165);
-    ctx.strokeStyle = '#111827';
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-  }, []);
-
-  const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
-    return { x: event.clientX - box.left, y: event.clientY - box.top };
-  };
-
-  const down = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    drawing.current = true;
-    last.current = point(event);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-
-  const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current || !last.current) return;
-    event.preventDefault();
-    const ctx = event.currentTarget.getContext('2d');
-    if (!ctx) return;
-    const next = point(event);
-    ctx.beginPath();
-    ctx.moveTo(last.current.x, last.current.y);
-    ctx.lineTo(next.x, next.y);
-    ctx.stroke();
-    last.current = next;
-  };
-
-  const up = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current) return;
-    drawing.current = false;
-    last.current = null;
-    onChange(event.currentTarget.toDataURL('image/png'));
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  };
-
-  const clear = () => {
-    const canvas = ref.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-    onChange('');
-  };
+  const { ref, handlers, clear, error } = useHandwrittenSignature({ value, onChange });
 
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
@@ -146,12 +82,11 @@ const SignaturePad: React.FC<{
       </div>
       <canvas
         ref={ref}
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={up}
+        {...handlers}
+        aria-label={label}
         className="w-full h-[165px] rounded-xl border-2 border-slate-300 bg-white touch-none"
       />
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="mt-2 flex justify-between gap-2">
         <span className="text-xs text-slate-500">Firmar con el dedo o lápiz táctil</span>
         <button

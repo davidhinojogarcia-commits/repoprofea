@@ -32,6 +32,7 @@ export class ForemanDashboardLoader {
   private cache: DashboardRows[] | null = null;
   private inFlight: Promise<DashboardRows[]> | null = null;
   private blocked: unknown = null;
+  private followUp: Promise<DashboardRows[]> | null = null;
   constructor(private query: Query, private ownerId: string) {}
 
   async load(checkOnly = false): Promise<DashboardRows[]> {
@@ -40,8 +41,16 @@ export class ForemanDashboardLoader {
       const existing=this.inFlight;
       if(checkOnly)return existing;
       // A save may complete while a background read is underway: refresh after it.
-      await existing.catch(()=>undefined);
-      return this.load(false);
+      // Several callers waiting for the same read need one fresh follow-up,
+      // rather than one complete reload per click. A later mutation can queue
+      // another follow-up once this next read has actually started.
+      if (this.followUp) return this.followUp;
+      const queued = existing.catch(()=>undefined).then(() => {
+        if (this.followUp === queued) this.followUp = null;
+        return this.load(false);
+      });
+      this.followUp = queued;
+      return queued;
     }
     const task=this.read(checkOnly).catch(error=>{
       if([401,402,403].includes(Number(error?.status)))this.blocked=error;
