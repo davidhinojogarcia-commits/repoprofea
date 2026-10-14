@@ -3,7 +3,7 @@ export const CONTRACT_DOCUMENT_TYPES = Object.freeze(['contrato','prorroga']);
 const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').replace(/\s+/g,' ').trim();
 export function classifyEmploymentDocument(text, filename='') {
   const content=normalize(text), name=normalize(filename);
-  if (/pr[oó]rroga|prorroga/.test(content.slice(0,3000)) || /prorroga/.test(name)) return 'prorroga';
+  if (/\bprorroga\b/.test(content.slice(0,3000)) || /\bprorroga\b/.test(name)) return 'prorroga';
   if (/contrato\s+de\s+trabajo|contrato\s+laboral/.test(content.slice(0,3000)) || /contrato/.test(name)) return 'contrato';
   return null;
 }
