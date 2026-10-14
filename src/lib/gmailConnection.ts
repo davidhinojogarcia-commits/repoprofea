@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export type GmailConnectionStatus = {
   connected: boolean;
+  reconnectRequired?: boolean;
   email: string;
   connectedAt?: string | null;
   lastSentAt?: string | null;
@@ -37,6 +38,7 @@ export async function getGmailConnectionStatus(): Promise<GmailConnectionStatus>
   const result = await api<any>('/api/gmail?action=status', { method: 'GET' });
   return {
     connected: Boolean(result.connected),
+    reconnectRequired: Boolean(result.reconnectRequired),
     email: String(result.email || ''),
     connectedAt: result.connectedAt || null,
     lastSentAt: result.lastSentAt || null,
@@ -146,4 +148,8 @@ export function base64UrlAttachmentToFile(input: AdministrativeGmailAttachment):
   const bytes = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
   return new File([bytes], input.filename, { type: input.mimeType || 'application/octet-stream' });
+}
+
+export function needsGmailAuthorization(error: { code?: string } | null | undefined): boolean {
+  return ['GMAIL_RECONNECT_REQUIRED', 'GMAIL_NOT_CONNECTED', 'GMAIL_READ_PERMISSION_REQUIRED'].includes(String(error?.code || ''));
 }

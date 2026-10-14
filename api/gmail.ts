@@ -79,10 +79,20 @@ export default async function handler(req: any, res: any) {
         });
       }
       const connection = await getConnection(user.id);
+      let reconnectRequired = false;
+      if (connection?.refresh_token_encrypted) {
+        try {
+          await refreshGoogleAccessToken(decryptToken(connection.refresh_token_encrypted));
+        } catch (error: any) {
+          if (error?.code !== 'GMAIL_RECONNECT_REQUIRED') throw error;
+          reconnectRequired = true;
+        }
+      }
       return res.status(200).json({
         ok: true,
         configured: true,
-        connected: Boolean(connection),
+        connected: Boolean(connection?.refresh_token_encrypted) && !reconnectRequired,
+        reconnectRequired,
         email: connection?.email || '',
         connectedAt: connection?.connected_at || null,
         lastSentAt: connection?.last_sent_at || null,

@@ -206,7 +206,19 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
   });
   const data: any = await response.json().catch(() => ({}));
   if (!response.ok || !data.access_token) {
-    throw Object.assign(new Error('La autorización de Gmail ha caducado o fue revocada. Vuelve a conectar la cuenta.'), { status: 401 });
+    if (data.error === 'invalid_grant') {
+      throw Object.assign(new Error('Google ha caducado o revocado el permiso de Gmail. Pulsa «Volver a autorizar Gmail» para recuperarlo.'), {
+        status: 401, code: 'GMAIL_RECONNECT_REQUIRED',
+      });
+    }
+    if (data.error === 'invalid_client' || data.error === 'unauthorized_client') {
+      throw Object.assign(new Error('La configuración de Gmail del servidor necesita revisión. Inténtalo cuando se haya corregido.'), {
+        status: 503, code: 'GMAIL_OAUTH_CONFIG_ERROR',
+      });
+    }
+    throw Object.assign(new Error('Google no pudo renovar el acceso a Gmail en este momento. Inténtalo de nuevo.'), {
+      status: 503, code: 'GMAIL_TEMPORARILY_UNAVAILABLE',
+    });
   }
   return String(data.access_token);
 }

@@ -128,6 +128,8 @@ jobs:
         run: npm run test:global-modal-stack
       - name: Global full-screen modal audit
         run: npm run test:global-modal-audit
+      - name: Gmail authorization recovery regression
+        run: npm run test:gmail-authorization
       - name: TypeScript validation
         run: |
           set -o pipefail

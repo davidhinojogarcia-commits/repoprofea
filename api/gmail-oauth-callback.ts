@@ -4,6 +4,8 @@ import {
   apiError,
   encryptToken,
   getConnection,
+  decryptToken,
+  refreshGoogleAccessToken,
   oauthRedirectUri,
   upsertConnection,
   verifyOAuthState,
@@ -65,10 +67,19 @@ export default async function handler(req: any, res: any) {
     let refreshToken = String(tokenData.refresh_token || '').trim();
     if (!refreshToken) {
       const existing = await getConnection(state.uid);
-      if (!existing?.refresh_token_encrypted) {
+      if (!existing?.refresh_token_encrypted || String(existing.email).toLowerCase() !== googleEmail) {
         throw new Error('Google no devolvió permiso permanente. Desconecta el acceso de GestionProfea en tu cuenta Google y vuelve a autorizar.');
       }
-      return redirectWithResult(res, true, `Gmail ya estaba conectado como ${googleEmail}.`);
+      // Google can omit a new refresh token. Never report success for the old,
+      // revoked token or preserve stale scopes after granting read permission.
+      await refreshGoogleAccessToken(decryptToken(existing.refresh_token_encrypted));
+      await upsertConnection({
+        userId: state.uid,
+        email: googleEmail,
+        refreshTokenEncrypted: existing.refresh_token_encrypted,
+        scope: String(tokenData.scope || existing.scope || ''),
+      });
+      return redirectWithResult(res, true, `Gmail conectado correctamente: ${googleEmail}.`);
     }
 
     await upsertConnection({

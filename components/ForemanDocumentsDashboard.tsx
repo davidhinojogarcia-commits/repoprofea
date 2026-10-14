@@ -11,7 +11,7 @@ import { downloadPDF } from '../src/lib/exportUtils';
 import { ADDITIONAL_WORKSITE_DOCUMENTS, type AdditionalWorksiteDocumentType } from '../src/lib/worksiteAdditionalDocumentsPdf';
 import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, generateForemanMandatoryDocumentPdf } from '../src/lib/foremanDocumentsPdf';
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
-import { sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
+import { beginGmailOAuth, getGmailConnectionStatus, needsGmailAuthorization, sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft, loadSupervisorMandatoryEditorDocument } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
@@ -58,6 +58,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const [selectedDocsFortnight,setSelectedDocsFortnight]=useState<DocumentFortnight|''>('');
   const [mailBusy,setMailBusy]=useState(false);
   const [mailMessage,setMailMessage]=useState('');
+  const [gmailAuthorizationRequired,setGmailAuthorizationRequired]=useState(false);
+  const gmailScanBlockedRef=useRef(false);
   const [importBusy,setImportBusy]=useState(false);
   const [editingMandatory,setEditingMandatory]=useState<DbMandatory|null>(null);
   const [positioningMandatory,setPositioningMandatory]=useState<DbMandatory|null>(null);
@@ -145,7 +147,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   },[]);
   const mailScanInFlightRef=useRef(false);
   const scanAdministrativeMail = async (silent=false) => {
-    if (mailScanInFlightRef.current || (silent && (document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current))) return;
+    if (mailScanInFlightRef.current || (silent && (document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current||gmailScanBlockedRef.current))) return;
     mailScanInFlightRef.current=true;
     setMailBusy(true);
     if (!silent) setMailMessage('Comprobando Gmail de la administrativa…');
@@ -170,6 +172,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         restoreDeleted: !silent,
         onProgress: message => { if (!silent) setMailMessage(message); },
       });
+      setGmailAuthorizationRequired(false);
+      gmailScanBlockedRef.current=false;
       if (result.importedDocuments > 0) {
         const missing=result.missingDirectoryWorkers||[];
         setMailMessage(
@@ -183,10 +187,26 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         setMailMessage(result.warnings[0] || 'Gmail revisado. No hay nuevos documentos obligatorios.');
       }
     } catch (error:any) {
-      if([401,402,403].includes(Number(error?.status)))automaticRefreshBlockedRef.current=true;
+      if(needsGmailAuthorization(error)) {
+        setGmailAuthorizationRequired(true);
+        gmailScanBlockedRef.current=true;
+      } else if([401,402,403].includes(Number(error?.status)))automaticRefreshBlockedRef.current=true;
       setMailMessage(error?.message || 'No se pudo comprobar Gmail.');
     } finally {
       mailScanInFlightRef.current=false;
+      setMailBusy(false);
+    }
+  };
+  const reconnectGmail = async () => {
+    setMailBusy(true);
+    try {
+      const connection = await getGmailConnectionStatus();
+      const settings = await loadAppBusinessSettings();
+      const email = String(settings.supervisor?.email || connection.email || '').trim();
+      if (!email) throw new Error('Guarda primero el correo del supervisor en Configuración.');
+      await beginGmailOAuth(email);
+    } catch (error:any) {
+      setMailMessage(error?.message || 'No se pudo iniciar la autorización de Gmail.');
       setMailBusy(false);
     }
   };
@@ -194,7 +214,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   scanMailRef.current=scanAdministrativeMail;
   useEffect(()=>{
     const check=()=>{
-      if(document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current)return;
+      if(document.visibilityState==='hidden'||!navigator.onLine||automaticRefreshBlockedRef.current||gmailScanBlockedRef.current)return;
       const ownerId=loaderRef.current?.ownerId;
       if(!ownerId||!claimMorningRefresh(ownerId,'mail'))return;
       void scanMailRef.current(true);
@@ -862,6 +882,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
         </div>
       </div>
+      {gmailAuthorizationRequired&&<div role="alert" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"><p className="text-sm font-bold">Gmail necesita tu autorización para revisar los documentos.</p><p className="mt-1 text-xs">Pulsa el botón y acepta los permisos en Google. Después podrás volver a revisar Gmail.</p><button disabled={mailBusy} onClick={()=>void reconnectGmail()} className="mt-3 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-black text-white disabled:opacity-50">Volver a autorizar Gmail</button></div>}
       {mailMessage&&<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">{mailMessage}</div>}
       {completionNotice&&<div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"><span>{completionNotice}</span><button onClick={()=>setCompletionNotice('')} className="rounded-lg border border-emerald-300 px-2 py-1 text-[10px]">OK</button></div>}
       {directoryMismatchDocuments.length>0&&<div className="mt-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
