@@ -7,6 +7,7 @@ import {
 } from '../lib/supabase';
 import { listOfflineOperations } from '../lib/offlineStore';
 import { loadInventoryZona6Seed } from '../data/inventoryZona6Seed';
+import { inventoryIsInUse } from '../lib/inventoryUsage';
 
 export const INVENTORY_DEFAULT_PARK_NAME = 'Parque / nave logística';
 export const INVENTORY_DEFAULT_ZONE = 'Zona 1';
@@ -50,6 +51,7 @@ export type InventoryItem = {
 };
 
 export type InventoryMovement = {
+  responsableId?: string | null;
   id: string;
   parkId: string;
   itemId: string;
@@ -176,6 +178,7 @@ const mapItem = (row: any): InventoryItem => ({
 });
 
 const mapMovement = (row: any): InventoryMovement => ({
+  responsableId: row.responsable_id || null,
   id: row.id,
   parkId: row.park_id,
   itemId: row.item_id,
@@ -334,16 +337,19 @@ export async function seedInventoryIfEmpty(parkId: string) {
 export async function listInventoryItems(parkId: string): Promise<InventoryItem[]> {
   const rows = await supabase.query('inventory_items', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=categoria.asc,nombre.asc,codigo.asc` });
   const items = (rows || []).map(mapItem);
-  const userId = await currentUserId();
   const pending = await pendingInventoryOperations(parkId);
   for (const operation of pending) {
     const meta = operation.payload?.meta || {};
-    if (!['inventory_register_movement', 'inventory_update_movement'].includes(operation.payload?.name)) continue;
+    if (!['inventory_register_movement', 'inventory_register_usage_movement', 'inventory_update_movement'].includes(operation.payload?.name)) continue;
+    if (operation.payload?.name === 'inventory_update_movement' && meta.affectsCurrentState !== true) continue;
     const item = items.find(candidate => candidate.id === meta.itemId);
     if (!item) continue;
     if (meta.destino) item.ubicacionActual = meta.destino;
     if (meta.estadoNuevo) item.estado = meta.estadoNuevo;
-    item.responsableActual = userId;
+    if (!inventoryIsInUse(item.estado)) item.responsableActual = null;
+    else if (operation.payload?.name === 'inventory_register_usage_movement') item.responsableActual = meta.responsableId || null;
+    else if (operation.payload?.name === 'inventory_register_movement') item.responsableActual = operation.userId;
+    else if (operation.payload?.name === 'inventory_update_movement') item.responsableActual = meta.responsableId || null;
     item.updatedAt = new Date(operation.createdAt).toISOString();
   }
   return items;
@@ -394,7 +400,7 @@ export async function listInventoryMovements(parkId: string): Promise<InventoryM
   for (const operation of pending) {
     const name = operation.payload?.name;
     const meta = operation.payload?.meta || {};
-    if (name === 'inventory_register_movement') {
+    if (name === 'inventory_register_movement' || name === 'inventory_register_usage_movement') {
       movements = [
         {
           id: meta.movementId || `offline-${operation.id}`,
@@ -411,6 +417,7 @@ export async function listInventoryMovements(parkId: string): Promise<InventoryM
           longitud: meta.longitud ?? null,
           fotoPaths: meta.fotoPaths || [],
           createdBy: operation.userId,
+          responsableId: meta.responsableId || null,
           createdByName: meta.createdByName || 'Pendiente de sincronizar',
           createdAt: new Date(operation.createdAt).toISOString(),
         },
@@ -475,11 +482,15 @@ export async function uploadInventoryPhotos(parkId: string, itemId: string, file
 }
 
 export async function registerInventoryMovement(input: {
+  responsableId?: string | null; movementId?: string;
   itemId: string; parkId?: string; origen?: string; estadoAnterior?: string | null;
   tipo: string; destino: string; estadoNuevo: string; obraId?: string | null; observaciones?: string;
   latitud?: number | null; longitud?: number | null; fotoPaths?: string[];
 }) {
+  if (inventoryIsInUse(input.estadoNuevo) && !input.responsableId) throw new Error('Selecciona quién está usando el equipo.');
   const body = {
+    p_responsable_id: inventoryIsInUse(input.estadoNuevo) ? input.responsableId || null : null,
+    p_movement_id: input.movementId || crypto.randomUUID(),
     p_item_id: input.itemId,
     p_tipo: input.tipo,
     p_destino: input.destino,
@@ -491,9 +502,10 @@ export async function registerInventoryMovement(input: {
     p_foto_paths: input.fotoPaths || [],
   };
   if (offlineNow()) {
-    const movementId = crypto.randomUUID();
-    await queueOfflineRpc('inventory_register_movement', body, `Movimiento · ${input.destino}`, {
+    const movementId = body.p_movement_id;
+    await queueOfflineRpc('inventory_register_usage_movement', body, `Movimiento · ${input.destino}`, {
       movementId,
+      responsableId: body.p_responsable_id,
       parkId: input.parkId || '',
       itemId: input.itemId,
       tipo: input.tipo,
@@ -509,10 +521,11 @@ export async function registerInventoryMovement(input: {
     });
     return movementId;
   }
-  return supabase.rpc('inventory_register_movement', body);
+  return supabase.rpc('inventory_register_usage_movement', body);
 }
 
 export async function updateInventoryMovement(input: {
+  affectsCurrentState?: boolean; responsableId?: string | null;
   movementId: string;
   itemId?: string;
   parkId?: string;
@@ -536,6 +549,8 @@ export async function updateInventoryMovement(input: {
   };
   if (offlineNow()) {
     await queueOfflineRpc('inventory_update_movement', body, 'Corrección de movimiento', {
+      affectsCurrentState: input.affectsCurrentState === true,
+      responsableId: input.responsableId || null,
       parkId: input.parkId || '',
       itemId: input.itemId || '',
       movementId: input.movementId,

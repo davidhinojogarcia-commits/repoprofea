@@ -134,6 +134,10 @@ jobs:
         run: npm run test:inventory-invitations
       - name: Inventory invitation browser regression
         run: npm run test:inventory-invitations-browser
+      - name: Inventory usage and responsibility regression
+        run: npm run test:inventory-usage
+      - name: Inventory usage browser regression
+        run: npm run test:inventory-usage-browser
       - name: TypeScript validation
         run: |
           set -o pipefail

@@ -39,7 +39,8 @@
       "feat/foreman-contracts-extensions": false,
       "fix/employment-worker-preview": false,
       "fix/gmail-authorization-recovery": false,
-      "fix/inventory-invitation-sharing": false
+      "fix/inventory-invitation-sharing": false,
+      "feat/inventory-usage-identification": false
     }
   }
 }
