@@ -10,6 +10,15 @@ const park={id:'park-1',nombre:'Parque prueba',zona:'Zona 6',isOwned:true};
 const invitation={invitationId:'invite-1',parkId:park.id,parkName:park.nombre,parkZone:park.zona,inviterName:'Supervisor'};
 let pending=[], createCount=0,mailCount=0,responseCount=0,mailFailure=true,responseFailure=false,resolveCreate,resolveMail,resolveResponse;
 let holdCreate=false,holdMail=false,holdResponse=false;
+let gmailCalls=0,gmailFail=true,gmailInvalid=false,gmailNetworkFailed=false,holdGmail=false,resolveGmail;
+const nativeFetch=globalThis.fetch;
+globalThis.fetch=async(url,options)=>{
+ assert.equal(url,'/api/gmail?action=send-inventory-invite');assert.equal(options.headers.Authorization,'Bearer fixture-session');assert.deepEqual(JSON.parse(options.body),{invitationId:'invite-1'});
+ gmailCalls++;if(holdGmail)await new Promise(resolve=>{resolveGmail=resolve;});
+ if(gmailNetworkFailed)throw new TypeError('Network failure');
+ if(gmailInvalid)return Response.json({ok:true,delivery:'sent',provider:'gmail'});
+ return gmailFail?Response.json({code:'GMAIL_RECONNECT_REQUIRED',message:'Renueva Gmail en Configuración'},{status:401}):Response.json({ok:true,delivery:'sent',provider:'gmail',messageId:'test-message',from:'supervisor@example.com'});
+};
 const source=await fs.readFile(new URL('../src/services/inventoryService.ts',import.meta.url),'utf8');
 const names=[...source.matchAll(/export async function (\w+)/g)].map(match=>match[1]);
 globalThis.__inventory={
@@ -23,6 +32,8 @@ globalThis.__inventory={
 let root;
 try {
  await build({entryPoints:[new URL('../components/InventorySection.tsx',import.meta.url).pathname],bundle:true,platform:'node',format:'esm',packages:'external',outfile:output.pathname,define:{'import.meta.env':'{}'},plugins:[{name:'boundaries',setup(b){
+  b.onResolve({filter:/(?:\/lib\/|\.\/)supabase$/},()=>({path:'auth',namespace:'test-auth'}));
+  b.onLoad({filter:/.*/,namespace:'test-auth'},()=>({contents:"export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'fixture-session'}}})}};"}));
   b.onResolve({filter:/inventoryService$/},()=>({path:'service',namespace:'mock'}));
   b.onResolve({filter:/inventoryPdf$|inventoryExcelImport$/},()=>({path:'optional',namespace:'mock'}));
   b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='service'?names.map(name=>`export const ${name}=(...args)=>globalThis.__inventory.${name}?.(...args)??Promise.resolve([]);`).join('\n')+"\nexport const INVENTORY_ZONES=['Zona 6'];export const MACHINE_DOCUMENT_TYPES=[];export const parkBaseLocation=p=>p.nombre;":"export const exportInventoryStatusPdf=async()=>{};export const analyzeInventoryExcel=async()=>[];export const applyInventoryImportPlan=async()=>({});export const buildInventoryImportPlan=()=>({});"}));
@@ -44,6 +55,11 @@ try {
  assert.equal(mailCount,1,'one email attempt for double click');
  await action(()=>resolveMail());assert(document.body.textContent.includes('La invitación sigue pendiente'));
  holdMail=false;mailFailure=false;await action(()=>find('Reintentar correo').click());assert(document.body.textContent.includes('Correo enviado'));
+ holdGmail=true;await action(()=>{find('Enviar invitación por Gmail').click();find('Reintentar correo').click();});assert.equal(gmailCalls,1);assert.equal(mailCount,2,'Gmail and automatic mail cannot run together');
+ await action(()=>resolveGmail());assert(document.body.textContent.includes('Renueva Gmail en Configuración'));assert(link(),'OAuth failure preserves invitation/link');
+ holdGmail=false;gmailFail=false;gmailInvalid=true;await action(()=>find('Enviar invitación por Gmail').click());assert(document.body.textContent.includes('Gmail no confirmó el envío'));assert(!document.body.textContent.includes('Invitación enviada por Gmail desde'));
+ gmailInvalid=false;gmailNetworkFailed=true;await action(()=>find('Enviar invitación por Gmail').click());assert(document.body.textContent.includes('Comprueba Enviados antes de reintentarlo'));
+ gmailNetworkFailed=false;await action(()=>find('Enviar invitación por Gmail').click());assert(document.body.textContent.includes('Invitación enviada por Gmail desde supervisor@example.com'));assert.equal(createCount,0,'Gmail reuses the stored invitation');
  mailFailure=true;holdCreate=true;
  await action(()=>{
   const input=document.querySelector('input[placeholder="correo.corporativo@..."]');
@@ -59,5 +75,5 @@ try {
  await action(()=>{find('Aceptar y compartir').click();find('Rechazar').click();});assert.equal(responseCount,2,'only one in-flight answer after failed retry');
  await action(()=>resolveResponse());assert(document.body.textContent.includes('Has aceptado compartir'));assert(!find('Aceptar y compartir'));assert(!window.location.search.includes('inventoryInvite'));
  pending=[invitation];await mount();holdResponse=false;await action(()=>find('Rechazar').click());assert(document.body.textContent.includes('Has rechazado'));
- console.log('PASS inventory React UI: pending link recovery, secret-free URL, clipboard fallback, mail failure/retry, double submits, refresh, answer failure/retry, acceptance and rejection. Emulated DOM.');
-} finally {if(root)await (await import('react')).act(()=>root.unmount());dom.window.close();await fs.unlink(output).catch(()=>{});}
+ console.log('PASS inventory React UI: link recovery, clipboard, mail failure/retry, authenticated Gmail send, channel/double-click guard, expired OAuth, invalid success/network uncertainty, refresh, acceptance and rejection. Emulated DOM; no emails sent.');
+} finally {if(root)await (await import('react')).act(()=>root.unmount());dom.window.close();globalThis.fetch=nativeFetch;await fs.unlink(output).catch(()=>{});}
