@@ -23,5 +23,25 @@ try{
  captured.length=0;catalogReads=0;
  const mail=await api.processAdministrativeMandatoryInbox();assert.equal(mail.importedDocuments,2);assert.equal(mail.pendingWorksiteDocuments,2);assert.equal(catalogReads,1);
  assert.deepEqual(captured.map(x=>x.worksiteProposal.suggestedObra),['Acerados','Parque']);assert(captured.every(x=>x.obraHint==='__PENDING_WORKSITE__'));
- console.log('PASS: manual/Gmail multi-file proposals, complete catalog, no selected-worksite leakage, pending assignment, original bytes and one catalog read per batch.');
+ captured.length=0;catalogReads=0;
+ globalThis.__worksiteIntake.text=file=>`CONTRATO DE TRABAJO\nDATOS DEL/DE LA TRABAJADOR/A\nMaría López Ruiz\nCÓDIGO DE OBRA: ${file.name.includes('dudoso')?'11002ER':'11003EE'}`;
+ const nextFiles=[new File(['%PDF next batch valid'],'contrato-segundo.pdf',{type:'application/pdf'}),new File(['%PDF next batch doubtful'],'contrato-dudoso.pdf',{type:'application/pdf'})];
+ const nextBatch=await api.processManualMandatoryFiles(nextFiles,{obraHint:'Acerados'});
+ assert.equal(nextBatch.importedDocuments,2);assert.equal(nextBatch.pendingWorksiteDocuments,2);assert.equal(catalogReads,1);
+ assert.deepEqual(captured.map(x=>x.worksiteProposal.suggestedObra),['Parque',''],'no previous batch or selected worksite leaks into a doubtful document');
+ assert(captured.every(x=>x.obraHint==='__PENDING_WORKSITE__'));
+ for(let i=0;i<nextFiles.length;i++)assert.equal(captured[i].sourcePdfBase64,Buffer.from(await nextFiles[i].arrayBuffer()).toString('base64'));
+ captured.length=0;
+ globalThis.__worksiteIntake.text=()=>{throw Error('Initial OCR unavailable');};
+ const unreadable=await api.processManualMandatoryFiles(files,{obraHint:'Acerados'});
+ assert.equal(unreadable.importedDocuments,2);assert.equal(unreadable.pendingWorksiteDocuments,2);
+ assert(captured.every(x=>x.obraHint==='__PENDING_WORKSITE__' && x.worksiteProposal.suggestedObra==='' && x.importedWorkers.length===0 && x.workerAnchors.length===0));
+ for(let i=0;i<files.length;i++)assert.equal(captured[i].sourcePdfBase64,Buffer.from(await files[i].arrayBuffer()).toString('base64'));
+ captured.length=0;
+ const unreadableMail=await api.processAdministrativeMandatoryInbox();
+ assert.equal(unreadableMail.importedDocuments,2);assert.equal(unreadableMail.pendingWorksiteDocuments,2);
+ assert(captured.every(x=>x.worksiteProposal.suggestedObra==='' && x.importedWorkers.length===0 && x.workerAnchors.length===0));
+ const unrelated=await api.processManualMandatoryFiles([new File(['invalid'],'otro.pdf',{type:'application/pdf'})]);
+ assert.equal(unrelated.importedDocuments,0);assert.equal(unrelated.skippedFiles,1,'OCR errors in unrelated documents are not silently swallowed');
+ console.log('PASS: manual/Gmail multi-file proposals, independent batches, doubtful code and first OCR failure pending, no invented identities/positions, original bytes and one catalog read per batch.');
 }finally{delete globalThis.__worksiteIntake;await fs.rm(output,{force:true});}

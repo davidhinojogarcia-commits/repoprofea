@@ -18,3 +18,15 @@ assert.equal(propose('Código obra 11002',[...catalog,{nombre:'Otro programa',co
 assert.equal(propose('Referencia 11002GR',[{nombre:'11002 GR - Acerados'}]).suggestedObra,'11002 GR - Acerados');
 assert.equal(propose('Código obra 11OO2GR',catalog).suggestedObra,'','OCR ambiguity is not silently corrected');
 console.log('PASS: exact worksite codes, labelled numbers, accents/separators, unique match, conflicts, OCR uncertainty and no guessing.');
+
+for (const invalid of ['11002ER', '11002O', '11002GR7', '11002-GR7', '11002 ER', '11002 ERRORES', '11002GRXYZ', '11002GR 7', '11002GR/7', '11002GR.7']) {
+  const proposal = propose('Código de obra: ' + invalid, catalog);
+  assert.equal(proposal.suggestedObra, '', invalid + ' must not propose a numeric-prefix match');
+  assert.equal(proposal.status, 'pending');
+}
+for (const text of ['Código de obra: 11002\nDATOS DEL TRABAJADOR', 'Código de obra: 11002', 'Código de obra:\n11002 GR']) {
+  assert.equal(propose(text, catalog).suggestedObra, catalog[0].nombre, 'a complete isolated code remains valid');
+}
+assert.equal(propose('Referencia 11002GR\nCódigo de obra: 11002ER', catalog).suggestedObra, '', 'a valid reference cannot override an unknown labelled code');
+assert.equal(propose('OBRA: MEJORA DE ACERADOS\nCódigo de obra: 11002ER', catalog).suggestedObra, '', 'a label cannot override a doubtful code');
+console.log('PASS: complete doubtful tokens stay pending, isolated numbers and valid suffixes remain supported.');

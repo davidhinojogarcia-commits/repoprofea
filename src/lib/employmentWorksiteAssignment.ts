@@ -11,8 +11,13 @@ const normalize = (value: unknown) => String(value || '').normalize('NFD').repla
 const fullCodes = (text: string) => [...normalize(text).matchAll(/\b(\d{4,6})\s*(GR|EE)\b/g)].map(match => match[1] + match[2]);
 export function proposeEmploymentWorksite(text: string, catalog: WorksiteCandidate[]): EmploymentWorksiteProposal {
   const codes = fullCodes(text);
-  // A bare number is evidence only when explicitly labelled as the worksite code.
-  for (const match of normalize(text).matchAll(/\bCODIGO (?:DE )?OBRA\s+(\d{4,6})(?:\s*(GR|EE)\b)?/g)) codes.push(match[1] + (match[2] || ''));
+  // Read the complete labelled token, including unknown suffixes. Never let an
+  // optional suffix backtrack into a valid numeric prefix (11002ER -> 11002).
+  // Preserve line breaks so a genuinely bare code cannot consume the next field.
+  const labelledText = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9\n]+/g, ' ');
+  for (const match of labelledText.matchAll(/\bCODIGO (?:DE )?OBRA\s+([A-Z0-9]+)(?:[ \t]+([A-Z0-9]+))?/g)) {
+    codes.push(match[1] + (match[2] || ''));
+  }
   const detectedCodes = [...new Set(codes)];
   const result = (reason: EmploymentWorksiteProposal['reason'], suggestedObra = ''): EmploymentWorksiteProposal => ({ suggestedObra, detectedCodes, reason, status: 'pending' });
   const works = catalog.filter(work => String(work.nombre || '').trim());

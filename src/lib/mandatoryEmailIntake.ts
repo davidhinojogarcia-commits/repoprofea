@@ -309,6 +309,19 @@ const extractCategoryWithFilenameFallback = (text: string, filename: string) => 
   return probe;
 };
 
+const extractMandatoryTextSafely = async (file: File, warnings: string[], onProgress?: (message: string) => void) => {
+  try {
+    return await extractClientDocumentText(file, onProgress);
+  } catch (error) {
+    const type = documentType(file.name, '');
+    if (type !== 'contrato' && type !== 'prorroga') throw error;
+    warnings.push(`${file.name}: no se pudo completar la lectura. El original se conserva pendiente de revisión manual de obra, trabajador y firma.`);
+    // The PDF analyzer still validates the actual PDF and its pages below.
+    // Filename classification never supplies a worksite, identity or position.
+    return { text: '', source: 'none' as const };
+  }
+};
+
 const matchMandatoryWorkersWithOcrRetry = async (
   file: File,
   workers: Person[],
@@ -407,7 +420,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
       options?.onProgress?.(`Leyendo ${attachment.filename}…`);
       try {
         const file = base64UrlAttachmentToFile(attachment);
-        const extracted = await extractClientDocumentText(file, options?.onProgress);
+        const extracted = await extractMandatoryTextSafely(file, warnings, options?.onProgress);
         const type = documentType(attachment.filename, extracted.text);
         if (!type) {
           skippedAttachments += 1;
@@ -516,7 +529,7 @@ export async function processManualMandatoryFiles(
 
     options?.onProgress?.(`Analizando ${file.name}…`);
     try {
-      const extracted = await extractClientDocumentText(file, options?.onProgress);
+      const extracted = await extractMandatoryTextSafely(file, warnings, options?.onProgress);
       const type = documentType(file.name, extracted.text);
       if (!type) {
         skippedFiles += 1;
