@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
+import { InventoryInvitationLink } from './InventoryInvitationLink';
 import {
   AlertTriangle,
   Boxes,
@@ -165,6 +166,9 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [quickItemId, setQuickItemId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [shareBusy, setShareBusy] = useState(false);
+  const shareRequest = useRef(false);
+  const invitationRequest = useRef(false);
+  const [shareLink, setShareLink] = useState<{ parkId: string; invitationId: string; email: string } | null>(null);
   const [parkShares, setParkShares] = useState<InventoryParkShare[]>([]);
   const [incomingInvitations, setIncomingInvitations] = useState<InventoryParkInvitation[]>([]);
   const [invitationBusyId, setInvitationBusyId] = useState('');
@@ -307,11 +311,14 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
   const inviteSupervisor = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!park || !shareEmail.trim()) return;
+    if (!park || !shareEmail.trim() || shareRequest.current) return;
+    shareRequest.current = true;
     setShareBusy(true);
     setShareNotice(null);
+    setShareLink(null);
     try {
       const invitation = await createInventoryParkInvitation(park.id, shareEmail);
+      setShareLink({ parkId: park.id, invitationId: invitation.invitationId, email: invitation.email });
       setShareEmail('');
       try {
         await sendInventoryParkInvitationEmail(invitation.invitationId);
@@ -319,24 +326,32 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
           type: 'success',
           message: `Invitación enviada a ${invitation.email}. El parque se compartirá cuando el compañero la acepte.`,
         });
-      } catch (mailError: any) {
+      } catch {
         setShareNotice({
           type: 'warning',
-          message: `Invitación creada para ${invitation.email}. El acceso sigue pendiente, pero el correo automático no pudo enviarse: ${mailError?.message || 'servicio de correo no configurado'}.`,
+          message: `Invitación guardada para ${invitation.email}. No se pudo enviar el correo automático. Puedes compartir el enlace de abajo; el compañero también la verá al entrar en Herramientas y maquinaria con su cuenta.`,
         });
       }
       await loadParkData(park);
     } catch (err: any) {
       setShareNotice({ type: 'error', message: err?.message || 'No se pudo crear la invitación.' });
     } finally {
+      shareRequest.current = false;
       setShareBusy(false);
     }
   };
 
   const answerInvitation = async (invitation: InventoryParkInvitation, accept: boolean) => {
+    if (invitationRequest.current) return;
+    invitationRequest.current = true;
     setInvitationBusyId(invitation.invitationId);
     try {
       await respondInventoryParkInvitation(invitation.invitationId, accept);
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('inventoryInvite') === invitation.invitationId) {
+        url.searchParams.delete('inventoryInvite');
+        window.history.replaceState(null, '', url.toString());
+      }
       setShareNotice({
         type: 'success',
         message: accept
@@ -347,6 +362,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     } catch (err: any) {
       setShareNotice({ type: 'error', message: err?.message || 'No se pudo responder a la invitación.' });
     } finally {
+      invitationRequest.current = false;
       setInvitationBusyId('');
     }
   };
@@ -369,11 +385,16 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     catch (e: any) { alert(e?.message || 'No se pudo eliminar el movimiento.'); }
   };
 
+  const requestedInvitationId = new URLSearchParams(window.location.search).get('inventoryInvite');
   if (loading) return <div className="ui-surface p-10 flex items-center justify-center gap-3"><RefreshCw className="w-5 h-5 animate-spin" /> Cargando parque de maquinaria…</div>;
 
   return <div className="space-y-4 sm:space-y-6 pb-24 md:pb-10">
     <PageHeader eyebrow={`${park?.zona || 'Zona'} · ${park?.isOwned === false ? 'Parque compartido' : 'Parque propio'}`} title="Herramientas y maquinaria" description="Gestión rápida de equipos, documentación, mantenimiento y trazabilidad." icon={<Wrench className="h-5 w-5" />} />
     {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"><AlertTriangle className="inline w-4 h-4 mr-2" />{error}</div>}
+    <div className="flex flex-wrap items-center gap-3 text-xs">
+      <button type="button" onClick={() => void reload(park?.id)} className="rounded-xl border border-slate-300 px-3 py-2 font-bold">Actualizar invitaciones y parque</button>
+      {!error && requestedInvitationId && !incomingInvitations.some(invitation => invitation.invitationId === requestedInvitationId) && <p role="status">No hay una invitación pendiente de este enlace para tu cuenta. Comprueba que has iniciado sesión con el correo invitado; también puede haber sido respondida o revocada.</p>}
+    </div>
 
     {!!incomingInvitations.length && (
       <div className="space-y-2">
@@ -391,7 +412,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
             <div className="flex gap-2 shrink-0">
               <button
                 type="button"
-                disabled={invitationBusyId === invitation.invitationId}
+                disabled={!!invitationBusyId}
                 onClick={() => void answerInvitation(invitation, false)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-bold"
               >
@@ -399,7 +420,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
               </button>
               <button
                 type="button"
-                disabled={invitationBusyId === invitation.invitationId}
+                disabled={!!invitationBusyId}
                 onClick={() => void answerInvitation(invitation, true)}
                 className="rounded-xl bg-brand-primary text-white px-4 py-2.5 text-xs font-black"
               >
@@ -481,6 +502,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
         <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-200">
           La invitación no concede acceso automáticamente. El compañero debe aceptarla con su cuenta corporativa. Tras aceptarla, el parque queda compartido de forma permanente hasta revocación.
         </div>
+        {shareLink?.parkId === park?.id && shareLink && <InventoryInvitationLink key={shareLink.invitationId} invitationId={shareLink.invitationId} email={shareLink.email} disabled={shareBusy} />}
 
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
@@ -489,7 +511,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {parkShares.map(share => (
-              <div key={share.participantKey} className="px-4 py-3 flex items-center justify-between gap-3">
+              <div key={share.participantKey} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <span
                     className={`w-3 h-3 rounded-full shrink-0 ${share.status === 'pending' ? 'opacity-35' : ''}`}
@@ -500,7 +522,8 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
                     <div className="text-[11px] text-slate-500 truncate">{share.email}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                  {park && share.status === 'pending' && share.participantKey.startsWith('invite:') && <button type="button" onClick={() => setShareLink({ parkId: park.id, invitationId: share.participantKey.slice(7), email: share.email })} className="rounded-lg border border-blue-300 px-2.5 py-1.5 text-[10px] font-bold">Compartir invitación</button>}
                   <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
                     share.status === 'pending'
                       ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
