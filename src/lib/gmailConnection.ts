@@ -59,6 +59,18 @@ export async function disconnectGmail() {
   await api('/api/gmail?action=disconnect', { method: 'DELETE' });
 }
 
+export async function sendInventoryInvitationWithConnectedGmail(invitationId: string) {
+  let result: { ok: boolean; delivery: string; provider: string; messageId: string; from: string };
+  try {
+    result = await api<typeof result>('/api/gmail?action=send-inventory-invite', { method: 'POST', body: JSON.stringify({ invitationId }) });
+  } catch (error: any) {
+    if (error?.status) throw error;
+    throw new Error('No se pudo confirmar el envío por Gmail. Comprueba Enviados antes de reintentarlo.');
+  }
+  if (result.ok !== true || result.delivery !== 'sent' || result.provider !== 'gmail' || typeof result.messageId !== 'string' || !result.messageId.trim()) throw new Error('Gmail no confirmó el envío. Comprueba Enviados antes de reintentarlo.');
+  return result;
+}
+
 const fileToBase64 = async (file: File) => {
   const buffer = new Uint8Array(await file.arrayBuffer());
   let binary = '';
@@ -151,5 +163,5 @@ export function base64UrlAttachmentToFile(input: AdministrativeGmailAttachment):
 }
 
 export function needsGmailAuthorization(error: { code?: string } | null | undefined): boolean {
-  return ['GMAIL_RECONNECT_REQUIRED', 'GMAIL_NOT_CONNECTED', 'GMAIL_READ_PERMISSION_REQUIRED'].includes(String(error?.code || ''));
+  return ['GMAIL_RECONNECT_REQUIRED', 'GMAIL_NOT_CONNECTED', 'GMAIL_READ_PERMISSION_REQUIRED', 'GMAIL_SEND_PERMISSION_REQUIRED'].includes(String(error?.code || ''));
 }

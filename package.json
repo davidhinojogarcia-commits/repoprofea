@@ -38,7 +38,8 @@
     "test:inventory-invitations": "node scripts/testInventoryInvitationsSql.mjs && node scripts/testInventoryInvitationDelivery.mjs && node scripts/testInventoryInvitationsUi.mjs",
     "test:inventory-invitations-browser": "node scripts/testInventoryInvitationsBrowser.mjs",
     "test:inventory-usage": "node --import tsx scripts/testInventoryUsage.ts && node scripts/testInventoryUsageSql.mjs && node scripts/testInventoryUsageService.mjs && node scripts/testInventoryUsageUi.mjs",
-    "test:inventory-usage-browser": "node scripts/testInventoryUsageBrowser.mjs"
+    "test:inventory-usage-browser": "node scripts/testInventoryUsageBrowser.mjs",
+    "test:inventory-gmail": "node --import tsx scripts/testInventoryGmail.ts"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

@@ -12,6 +12,7 @@ import {
   requireServerConfig,
   touchSent,
 } from '../src/server/gmailOAuth.js';
+import { sendInventoryInvitationGmail } from '../src/server/inventoryInvitationGmail.js';
 
 const cleanHeader = (value: unknown) => String(value || '').replace(/[\r\n]+/g, ' ').trim();
 const encodeHeader = (value: string) => `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
@@ -101,6 +102,14 @@ export default async function handler(req: any, res: any) {
     }
 
     requireServerConfig();
+
+    if (action === 'send-inventory-invite' && req.method === 'POST') {
+      let body: any;
+      try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); }
+      catch { return res.status(400).json({ ok: false, message: 'La solicitud de invitación no es válida.' }); }
+      const result = await sendInventoryInvitationGmail(user, String(req.headers?.authorization || ''), String(body.invitationId || '').trim());
+      return res.status(200).json(result);
+    }
 
     if (action === 'start' && req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});

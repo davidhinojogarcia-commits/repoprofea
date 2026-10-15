@@ -132,6 +132,8 @@ jobs:
         run: npm run test:gmail-authorization
       - name: Inventory invitation sharing regression
         run: npm run test:inventory-invitations
+      - name: Inventory Gmail invitation regression
+        run: npm run test:inventory-gmail
       - name: Inventory invitation browser regression
         run: npm run test:inventory-invitations-browser
       - name: Inventory usage and responsibility regression
