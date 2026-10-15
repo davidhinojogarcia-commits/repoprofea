@@ -130,6 +130,10 @@ jobs:
         run: npm run test:global-modal-audit
       - name: Gmail authorization recovery regression
         run: npm run test:gmail-authorization
+      - name: Inventory invitation sharing regression
+        run: npm run test:inventory-invitations
+      - name: Inventory invitation browser regression
+        run: npm run test:inventory-invitations-browser
       - name: TypeScript validation
         run: |
           set -o pipefail

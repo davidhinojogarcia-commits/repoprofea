@@ -728,7 +728,11 @@ export async function createInventoryParkInvitation(
 }
 
 export async function sendInventoryParkInvitationEmail(invitationId: string) {
-  return supabase.edgeFunction('inventory-share-invite', { invitationId });
+  const result = await supabase.edgeFunction('inventory-share-invite', { invitationId });
+  if (result?.ok !== true || result?.delivery !== 'sent') {
+    throw new Error('No se pudo enviar el correo de invitación.');
+  }
+  return result;
 }
 
 export async function respondInventoryParkInvitation(invitationId: string, accept: boolean) {
