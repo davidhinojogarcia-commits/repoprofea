@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import ModalPortal from './ModalPortal';
 import { Share2, Users, X, Loader2, UserMinus, CheckCircle2, Eye, Pencil, Search } from 'lucide-react';
 import { getSessionUser, supabase } from '../src/lib/supabase';
 import { getRecordShares, listShareableProfiles, shareRecordWithUser, unshareRecordWithUser } from '../src/lib/functions';
@@ -156,8 +156,9 @@ export const ShareRecordButton: React.FC<Props> = ({
 
   if (!canManageShare) return null;
 
-  const modal = open && typeof document !== 'undefined' ? createPortal(
-    <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={() => setOpen(false)}>
+  const modal = open ? (
+    <ModalPortal label="Compartir registros">
+    <div className="fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={() => setOpen(false)}>
       <div className="w-full max-w-2xl max-h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3 min-w-0">
@@ -167,7 +168,7 @@ export const ShareRecordButton: React.FC<Props> = ({
               <p className="text-xs text-slate-500 truncate">Elige lectura o lectura + escritura para cada usuario</p>
             </div>
           </div>
-          <button type="button" onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+          <button type="button" aria-label="Cerrar ventana de compartir" onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
         </div>
 
         <div className="px-4 sm:px-5 pt-4">
@@ -219,8 +220,8 @@ export const ShareRecordButton: React.FC<Props> = ({
           <CheckCircle2 size={14} /> La eliminación no se comparte desde este control.
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
+    </ModalPortal>
   ) : null;
 
   return (

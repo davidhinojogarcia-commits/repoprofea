@@ -53,7 +53,8 @@
       "feat/worksite-visit-minutes": false,
       "fix/visit-minutes-native-esm": false,
       "fix/completed-native-pdf": false,
-      "fix/foreman-modal-pdf-layout": false
+      "fix/foreman-modal-pdf-layout": false,
+      "fix/global-dialog-stack-audit": false
     }
   }
 }

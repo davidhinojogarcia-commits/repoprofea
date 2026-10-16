@@ -16,6 +16,7 @@ export function AppDialogHost() {
   const [queue, setQueue] = useState<AppDialogRequest[]>([]);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const current = queue[0] || null;
 
@@ -23,6 +24,7 @@ export function AppDialogHost() {
     const handler = (event: Event) => {
       const request = (event as CustomEvent<AppDialogRequest>).detail;
       if (!request) return;
+      if (!dialogRef.current) previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setQueue((items) => [...items, request]);
     };
     window.addEventListener(APP_DIALOG_EVENT, handler as EventListener);
@@ -36,11 +38,15 @@ export function AppDialogHost() {
     document.body.style.overflow = 'hidden';
     document.body.classList.add('profea-dialog-open');
     playMessageSound(current.kind === 'error' || current.kind === 'warning' ? 'error' : 'success');
-    const id = window.setTimeout(() => inputRef.current?.focus(), 30);
+    const id = window.setTimeout(() => {
+      const target = current.kind === 'prompt' ? inputRef.current : dialogRef.current?.querySelector<HTMLButtonElement>('button');
+      target?.focus();
+    }, 30);
     return () => {
       window.clearTimeout(id);
       document.body.style.overflow = previousOverflow;
       document.body.classList.remove('profea-dialog-open');
+      previousFocusRef.current?.focus();
     };
   }, [current?.id]);
 
@@ -96,7 +102,7 @@ export function AppDialogHost() {
       return;
     }
     if (event.key === 'Enter' && !event.shiftKey) {
-      if (isPrompt && event.target instanceof HTMLTextAreaElement) return;
+      if (event.target instanceof HTMLButtonElement || (isPrompt && event.target instanceof HTMLTextAreaElement)) return;
       event.preventDefault();
       onConfirm();
     }
@@ -115,14 +121,16 @@ export function AppDialogHost() {
     <div
       className="profea-app-dialog-overlay fixed inset-0 z-[2147483600] isolate flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-6"
       role="presentation"
+      style={{position:'fixed',inset:0,zIndex:2147483600,isolation:'isolate'}}
       onKeyDown={onKeyDown}
     >
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        data-kind={current.kind}
         aria-labelledby="profea-dialog-title"
-        className={`w-full max-w-md overflow-hidden rounded-3xl border bg-white shadow-2xl dark:bg-slate-900 ${palette.ring}`}
+        className={`profea-app-dialog-panel w-full max-w-md overflow-hidden rounded-3xl border bg-white shadow-2xl dark:bg-slate-900 ${palette.ring}`}
       >
         <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white dark:border-slate-700">
           <div className="flex items-center gap-3">
