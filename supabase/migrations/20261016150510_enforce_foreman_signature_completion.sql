@@ -1,6 +1,6 @@
 -- Enforce required foreman ink at the database boundary, not only in the mobile UI.
 create or replace function public.enforce_required_foreman_document_signature()
-returns trigger language plpgsql security definer set search_path=public as $
+returns trigger language plpgsql security definer set search_path=public as $trigger_body$
 begin
  if coalesce((new.details#>>'{foremanSignatureTemplate,enabled}')::boolean,false)
     and coalesce((new.details#>>'{foremanSignatureTemplate,required}')::boolean,false)
@@ -12,7 +12,7 @@ begin
  then raise exception 'Falta la firma obligatoria del encargado. No se puede finalizar el documento';
  end if;
  return new;
-end $$;
+end $trigger_body$;
 drop trigger if exists foreman_required_signature_before_finalize on public.foreman_mandatory_documents;
 create trigger foreman_required_signature_before_finalize
 before update of lifecycle_status,status on public.foreman_mandatory_documents
