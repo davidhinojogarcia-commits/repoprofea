@@ -1,6 +1,6 @@
 -- Enforce required foreman ink at the database boundary, not only in the mobile UI.
 create or replace function public.enforce_required_foreman_document_signature()
-returns trigger language plpgsql set search_path=public as $$
+returns trigger language plpgsql security definer set search_path=public as $
 begin
  if coalesce((new.details#>>'{foremanSignatureTemplate,enabled}')::boolean,false)
     and coalesce((new.details#>>'{foremanSignatureTemplate,required}')::boolean,false)
