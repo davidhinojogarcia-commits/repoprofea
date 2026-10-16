@@ -833,3 +833,17 @@ export async function saveSupervisorMandatoryDraft(documentId:string,anchors:any
 }
 
 
+
+/** Supervisor-only model configuration and scoped foreman signature evidence. */
+export async function loadForemanSignatureTemplate(documentId:string,modelKey:string){
+  return supabase.rpc('get_foreman_signature_template',{p_document_id:documentId,p_model_key:modelKey});
+}
+export async function saveForemanSignatureTemplate(documentId:string,modelKey:string,layout:import('../lib/foremanSignatureTemplate').ForemanSignatureTemplate){
+  return supabase.rpc('save_foreman_signature_template',{p_document_id:documentId,p_model_key:modelKey,p_layout:layout});
+}
+export async function signImportedDocumentAsForeman(token:string,documentId:string,signature:string){
+  return withForemanTimeout(supabase.rpc('sign_foreman_document_as_foreman',{p_token:token,p_document_id:documentId,p_signature:signature}),'No se pudo guardar la firma del encargado.');
+}
+export async function getImportedForemanSignature(token:string,documentId:string):Promise<{signed:boolean;signature?:string;signedAt?:string}>{
+  return withForemanTimeout(supabase.rpc('get_foreman_document_signature',{p_token:token,p_document_id:documentId}),'No se pudo recuperar la firma del encargado.');
+}

@@ -3,7 +3,8 @@ import { Trash2 } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import MandatoryPdfViewport from './MandatoryPdfViewport';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-import { getSupervisorMandatoryPdf } from '../src/services/foremanPortalService';
+import { getSupervisorMandatoryPdf, loadForemanSignatureTemplate } from '../src/services/foremanPortalService';
+import { createForemanTemplate, repeatForemanSignature, type ForemanSignatureTemplate } from '../src/lib/foremanSignatureTemplate';
 import { blockingMandatorySignatureIssues, suggestSafeMandatorySignaturePositions, validateMandatorySignaturePlacement } from '../src/lib/mandatorySignatureGeometry';
 import { supabase } from '../src/lib/supabase';
 import { base64ToBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
@@ -16,7 +17,7 @@ type Props = {
   anchors: MandatoryWorkerAnchor[];
   signedWorkerIds?: number[];
   onCancel: () => void;
-  onSave: (anchors: MandatoryWorkerAnchor[]) => Promise<void> | void;
+  onSave: (anchors: MandatoryWorkerAnchor[], foremanTemplate?:ForemanSignatureTemplate) => Promise<void> | void;
   onRemoveWorker?: (workerId: number) => Promise<void> | void;
 };
 
@@ -32,6 +33,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [feedback,setFeedback]=useState('');
   const [pages,setPages]=useState<{page:number;width:number;height:number;rotation?:number}[]>([]);
   const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
+  const [modelKey,setModelKey]=useState(String(documentType||'documento')+':modelo-habitual');
+  const [foremanTemplate,setForemanTemplate]=useState<ForemanSignatureTemplate|null>(null);
+  const [foremanSelected,setForemanSelected]=useState(false);
   const [manualName,setManualName]=useState('');
   const [toolsHidden,setToolsHidden]=useState(false);
   const [pageRequest,setPageRequest]=useState<{page:number;sequence:number;focusSignature?:boolean}>({page:1,sequence:0});
@@ -83,6 +87,28 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   },[documentId]);
   const currentPage=previewPage;
   const pageCount=Number(pdf?.numPages||1);
+  useEffect(()=>{
+    let active=true;
+    void loadForemanSignatureTemplate(documentId,modelKey).then((value:any)=>{
+      if(!active)return;
+      if(value&&value.templateKey===modelKey){setForemanTemplate(value);setFeedback('Plantilla recuperada. Comprueba su posición en el PDF antes de guardar.');}
+      else setForemanTemplate(null);
+    }).catch((e:any)=>{if(active)setError(e?.message||'No se pudo recuperar la plantilla de firma del encargado.');});
+    return()=>{active=false;};
+  },[documentId,modelKey]);
+  const foremanBox=useMemo(()=>{
+    if(!foremanTemplate?.enabled||!pages.length)return null;
+    try{
+      const rectangle=repeatForemanSignature(foremanTemplate,pages.map(page=>({width:page.width,height:page.height})))[Math.max(0,previewPage-1)];
+      return rectangle||null;
+    }catch{return null;}
+  },[foremanTemplate,pages,previewPage]);
+  const foremanPreviewAnchor=foremanBox?{
+    workerId:-999999999,workerName:'ENCARGADO',dni:'',page:previewPage,order:draft.length,
+    nameX:null,nameY:null,rowHeight:null,
+    signatureX:foremanBox.x,signatureY:foremanBox.y,signatureWidth:foremanBox.width,signatureHeight:foremanBox.height,
+    resolved:true,confidence:1,reason:'Firma del encargado en todas las páginas',
+  } as MandatoryWorkerAnchor:null;
   useEffect(()=>{if(current){setPreviewPage(current.page);setPageRequest(p=>({page:current.page,sequence:p.sequence+1}));}},[index]);
 
   const readPageGeometry=async()=>{
@@ -123,6 +149,47 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     if(saving||removing||loading)return;
     setDraft(list=>list.map((anchor,i)=>i===target?{...anchor,...box,page,resolved:Number(anchor.workerId)!==0,
       confidence:Number(anchor.workerId)!==0?1:0,reason:'Posición confirmada manualmente por el supervisor.'}:anchor));
+  };
+  const detectForemanSignature=async()=>{
+    if(!pdf)return;
+    setSaving(true);setError('');
+    try{
+      const page=await pdf.getPage(1);
+      const meta=pages.find(p=>p.page===1);
+      if(!meta)throw new Error('No se han cargado las dimensiones de la primera hoja.');
+      const content=await page.getTextContent();
+      const lines=new Map<number,any[]>();
+      for(const item of content.items as any[]){
+        if(!item?.str||!Array.isArray(item.transform))continue;
+        const y=Math.round(Number(item.transform[5])/5)*5;
+        lines.set(y,[...(lines.get(y)||[]),item]);
+      }
+      const patterns=/firma\s+(?:del\s+)?encargad[oa]|el\s+encargad[oa]|fdo\.?\s*encargad[oa]|firma\s+del\s+responsable\s+de\s+obra/i;
+      const candidate=[...lines.entries()].sort((a,b)=>a[0]-b[0]).map(([y,items])=>({
+        y,items:items.sort((a,b)=>Number(a.transform[4])-Number(b.transform[4])),
+      })).find(line=>patterns.test(line.items.map(item=>String(item.str||'')).join(' ')));
+      if(!candidate){
+        setFeedback('No se ha localizado una referencia inequívoca al encargado. Sitúa el recuadro manualmente; tu corrección quedará guardada para las próximas veces.');
+        return;
+      }
+      const labelItem=candidate.items.find(item=>/encargad|responsable/i.test(String(item.str)))||candidate.items[0];
+      const x=Math.min(meta.width-145,Math.max(8,Number(labelItem.transform[4])-10));
+      const y=Math.min(meta.height-55,Math.max(6,candidate.y+14));
+      setForemanTemplate(createForemanTemplate(modelKey,{x,y,width:Math.min(145,meta.width-x),height:45},meta,foremanTemplate||undefined));
+      setPreviewPage(1);setForemanSelected(true);
+      setPageRequest(p=>({page:1,sequence:p.sequence+1,focusSignature:true}));
+      setMobilePanel('pdf');
+      setFeedback('Posición sugerida a partir de la referencia al encargado. Revisa y ajusta el recuadro antes de guardar.');
+    }catch(e:any){setError(e?.message||'No se pudo detectar la posición. Configúrala manualmente.');}
+    finally{setSaving(false);}
+  };
+  const setForemanBox=(box:{x:number;y:number;width:number;height:number},pageNumber=previewPage)=>{
+    const meta=pages.find(page=>page.page===pageNumber);
+    if(!meta)return;
+    try{
+      setForemanTemplate(createForemanTemplate(modelKey,box,meta,foremanTemplate||undefined));
+      setError('');
+    }catch(e:any){setError(e?.message||'Posición de firma no válida.');}
   };
   const changeDimension=(field:'signatureX'|'signatureY'|'signatureWidth'|'signatureHeight',value:number)=>{
     if(!current||saving||removing||loading)return;
@@ -269,6 +336,35 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           </label>
 
           {employment&&current&&current.signatureX!=null&&current.signatureY!=null&&<button type="button" disabled={saving||loading||removing} onClick={()=>setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,resolved:true,confidence:1,reason:'Posición confirmada manualmente por el supervisor.'}:anchor))} className="mt-3 min-h-[48px] w-full rounded-xl border border-[#00548E] px-3 py-2 text-sm font-black">Confirmar zona de firma y trabajador</button>}
+          <div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50 p-3 text-slate-900">
+            <div className="text-sm font-black">Firma propia del encargado · Todas las páginas</div>
+            <p className="mt-1 text-xs">Modelo reutilizable: ajusta una sola vez. El mismo recuadro se repetirá en todas las hojas con dimensiones compatibles.</p>
+            <label className="mt-2 block text-xs font-bold">Identificador del modelo
+              <input value={modelKey} onChange={e=>setModelKey(e.target.value)} maxLength={120} className="mt-1 min-h-11 w-full rounded-lg border bg-white p-2" />
+            </label>
+            <label className="mt-2 flex items-center gap-2 text-sm font-bold">
+              <input type="checkbox" checked={Boolean(foremanTemplate?.enabled)} onChange={e=>{
+                if(e.target.checked){
+                  if(foremanTemplate?.templateKey===modelKey){setForemanTemplate({...foremanTemplate,enabled:true});return;}
+                  const page=pages.find(p=>p.page===previewPage);
+                  if(page)setForemanTemplate(createForemanTemplate(modelKey,{x:page.width*0.65,y:page.height*0.08,width:page.width*0.27,height:page.height*0.07},page,foremanTemplate||undefined));
+                }else if(foremanTemplate)setForemanTemplate({...foremanTemplate,enabled:false,required:false});
+              }}/>Activar firma del encargado
+            </label>
+            {foremanTemplate?.enabled&&<>
+              <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={foremanTemplate.required} onChange={e=>setForemanTemplate(t=>t?{...t,required:e.target.checked}:t)}/>Obligatoria para devolver al supervisor</label>
+              <button type="button" disabled={saving||loading} onClick={()=>void detectForemanSignature()} className="mt-2 min-h-11 w-full rounded-lg border border-[#00548E] bg-white p-2 font-black text-[#00548E]">Detectar referencia al encargado en el PDF</button>
+              <button type="button" onClick={()=>{setForemanSelected(true);setMobilePanel('pdf');setPageRequest(p=>({page:previewPage,sequence:p.sequence+1,focusSignature:true}));}} className="mt-2 min-h-11 w-full rounded-lg bg-[#00548E] p-2 font-black text-white">Mover y dimensionar firma del encargado en el PDF</button>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(['x','y','width','height'] as const).map(field=><label key={field} className="text-xs font-bold">{field==='x'?'X':field==='y'?'Y':field==='width'?'Ancho':'Alto'}
+                  <input type="number" step="0.5" value={foremanBox?.[field]??0} onChange={e=>{
+                    if(!foremanBox)return;
+                    setForemanBox({...foremanBox,[field]:Number(e.target.value)},previewPage);
+                  }} className="mt-1 min-h-11 w-full rounded-lg border bg-white p-2" />
+                </label>)}
+              </div>
+            </>}
+          </div>
           {current&&<><div className="mandatory-editor-dimensions mt-4 grid grid-cols-2 gap-2">
             {(['signatureWidth','signatureHeight','signatureX','signatureY'] as const).map((field,i)=><PdfNumericField key={field} label={['Ancho de firma','Alto de firma','Coordenada X','Coordenada Y'][i]} value={current[field]} disabled={saving||removing||loading} onChange={value=>changeDimension(field,value)}/>)}</div>
             <button type="button" className="mt-2 min-h-[44px] w-full rounded-xl border px-3" disabled={saving||removing||loading} onClick={()=>setDraft(list=>list.map((a,i)=>{if(i!==index)return a;const p=pages.find(p=>p.page===a.page);const w=Math.min(90,p?.width||90),h=Math.min(32,p?.height||32);return {...a,signatureWidth:w,signatureHeight:h,signatureX:a.signatureX==null?null:Math.max(0,Math.min((p?.width||595)-w,a.signatureX)),signatureY:a.signatureY==null?null:Math.max(0,Math.min((p?.height||842)-h,a.signatureY))};}))}>Restablecer tamaño</button>
@@ -305,7 +401,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         </aside>
 
         <div className="mandatory-editor-preview flex min-h-0 flex-col bg-slate-200 dark:bg-slate-950">
-          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} anchors={draft} activeIndex={index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={setIndex} onChange={changeAnchorBox}/>:<div role="alert">{error||'PDF no disponible'}</div>}
+          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} anchors={foremanPreviewAnchor?[...draft,foremanPreviewAnchor]:draft} activeIndex={foremanSelected&&foremanPreviewAnchor?draft.length:index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={selected=>{if(selected===draft.length)setForemanSelected(true);else{setIndex(selected);setForemanSelected(false);}}} onChange={(target,box,page)=>{if(target===draft.length){setForemanBox({x:box.signatureX,y:box.signatureY,width:box.signatureWidth,height:box.signatureHeight},page);}else changeAnchorBox(target,box,page);}}/>:<div role="alert">{error||'PDF no disponible'}</div>}
         </div>
       </div>
 
@@ -316,7 +412,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         <button type="button" disabled={loading||saving||removing} onClick={async()=>{
           if(saveInFlight.current)return;saveInFlight.current=true;
           setSaving(true);setError('');
-          try{await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
+          try{await onSave(draft,foremanTemplate||undefined);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
           finally{saveInFlight.current=false;setSaving(false);}
         }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar trabajadores y posiciones'}</button>
       </div>

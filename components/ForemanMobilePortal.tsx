@@ -1,4 +1,5 @@
 import { SIGNATURE_INK } from '../src/lib/signatureInk';
+import { repeatForemanSignature, type ForemanSignatureTemplate } from '../src/lib/foremanSignatureTemplate';
 import { activateForemanPush, restoreForemanPush, disableForemanPush, foremanPushHelp } from '../src/services/foremanPushService';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
@@ -23,6 +24,8 @@ import {
   repairForemanMandatoryAnchors,
   removeForemanMandatoryWorker,
   storeForemanMandatorySignedPdf,
+  signImportedDocumentAsForeman,
+  getImportedForemanSignature,
   createForemanOperationalDocument,
   resubmitForemanDocument,
   type ForemanAttendanceRow,
@@ -251,6 +254,17 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const [selectedMandatoryPeriodKeys,setSelectedMandatoryPeriodKeys]=useState<Set<string>>(new Set());
   const [expandedMandatoryDocuments,setExpandedMandatoryDocuments]=useState<Set<string>>(new Set());
   const [mandatorySignatureImages,setMandatorySignatureImages]=useState<Record<string,Record<string,string>>>({});
+  const [foremanDocumentSigning,setForemanDocumentSigning]=useState<string|null>(null);
+  const [foremanEvidence,setForemanEvidence]=useState<Record<string,{signed:boolean;signature?:string;signedAt?:string}>>({});
+  useEffect(()=>{
+    let alive=true;
+    const pending=(data?.mandatoryDocuments||[]).filter(doc=>expandedMandatoryDocuments.has(doc.id)&&doc.details?.foremanSignatureTemplate?.enabled);
+    void Promise.all(pending.map(async doc=>{
+      const evidence=await getImportedForemanSignature(token,doc.id);
+      if(alive)setForemanEvidence(previous=>({...previous,[doc.id]:evidence}));
+    })).catch((e:any)=>{if(alive)setError(e?.message||'No se pudo comprobar la firma del encargado.');});
+    return()=>{alive=false;};
+  },[token,data?.mandatoryDocuments,expandedMandatoryDocuments]);
   const [nameCorrection,setNameCorrection]=useState<{documentId:string;workerId:number;value:string}|null>(null);
 
   const [refreshingDocuments,setRefreshingDocuments]=useState(false);
@@ -683,8 +697,25 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       .map((worker:any)=>String(worker.legacyWorkerId)));
     const unresolved=anchors.filter(anchor=>requiredIds.has(String(anchor.workerId))&&(!anchor.resolved||anchor.signatureX==null||anchor.signatureY==null||anchor.signatureWidth==null||anchor.signatureHeight==null));
     if(unresolved.length)throw new Error('El supervisor debe resolver las posiciones de firma antes de continuar.');
-    const bytes=await buildSignedMandatoryPdf({originalPdfBase64:source.base64,anchors,signatures:realSignatures||{}});
-    const fidelity=verify?await verifyMandatoryPdfFidelity(source.base64,bytes,anchors):null;
+    const template=doc.details?.foremanSignatureTemplate as ForemanSignatureTemplate|undefined;
+    const foreman=template?.enabled?await getImportedForemanSignature(token,doc.id):null;
+    if(template?.enabled&&template.required&&!foreman?.signed)throw new Error('Falta la firma obligatoria del encargado.');
+    const foremanInk=template?.enabled&&foreman?.signed&&foreman.signature?{signature:foreman.signature,template}:undefined;
+    const bytes=await buildSignedMandatoryPdf({originalPdfBase64:source.base64,anchors,signatures:realSignatures||{},foreman:foremanInk});
+    const maskAnchors=[...anchors];
+    if(foremanInk){
+      const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const job=pdfjs.getDocument({data:base64ToBytes(source.base64),useSystemFonts:true});
+      try{
+        const opened=await job.promise;
+        const dimensions=await Promise.all(Array.from({length:opened.numPages},async(_,index)=>{const page=await opened.getPage(index+1);const view=page.view;return {width:Number(view[2])-Number(view[0]),height:Number(view[3])-Number(view[1])};}));
+        for(const rect of repeatForemanSignature(template,dimensions)){
+          maskAnchors.push({workerId:-999999999,workerName:'Encargado',dni:'',page:rect.page,order:9999,nameX:null,nameY:null,rowHeight:null,
+            signatureX:rect.x,signatureY:rect.y,signatureWidth:rect.width,signatureHeight:rect.height,resolved:true,confidence:1});
+        }
+      }finally{await job.destroy?.();}
+    }
+    const fidelity=verify?await verifyMandatoryPdfFidelity(source.base64,bytes,maskAnchors):null;
     return {source,bytes,fidelity,anchors};
   };
 
@@ -974,7 +1005,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     const unresolvedAnchorCount=isImportedMandatory
       ? importedWorkerOrder.filter(id=>!importedAnchorMap.get(id)?.resolved).length
       : workerAnchors.filter(anchor=>!anchor.resolved).length;
-    const canFinalize=requiredSignatureTotal>0&&pendingRequired===0;
+    const foremanTemplate=doc.details?.foremanSignatureTemplate as ForemanSignatureTemplate|undefined;
+    const foremanRequired=Boolean(foremanTemplate?.enabled&&foremanTemplate.required);
+    const foremanSigned=Boolean(foremanEvidence[doc.id]?.signed);
+    const canFinalize=requiredSignatureTotal>0&&pendingRequired===0&&(!foremanRequired||foremanSigned);
     const expanded=expandedMandatoryDocuments.has(doc.id);
 
     return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 overflow-hidden rounded-2xl bg-white border shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
@@ -1098,6 +1132,12 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           {!closed&&isImportedMandatory&&<button type="button" disabled={saving} onClick={()=>void revokeWorkerSignature(doc,worker)} className="min-h-[48px] rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar firma y volver a firmar</button>}
         </div>)}</div>}
       </div>
+      {isImportedMandatory&&foremanTemplate?.enabled&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
+        <h4 className="font-black text-blue-900">Firma del encargado · Todas las páginas</h4>
+        <p className="mt-1 text-sm text-blue-900">{foremanRequired?'Firma obligatoria antes de enviar.':'Firma habilitada por el supervisor.'} Su recuadro se repetirá en cada hoja.</p>
+        <div className="mt-2 font-bold text-sm">{foremanSigned?'✓ Firma del encargado guardada': 'Pendiente de firma del encargado'}</div>
+        {!closed&&<button type="button" disabled={saving} onClick={()=>setForemanDocumentSigning(doc.id)} className="mt-3 min-h-[52px] w-full rounded-xl bg-[#00548E] px-3 py-3 font-black text-white">{foremanSigned?'Volver a firmar como encargado':'Firmar como encargado'}</button>}
+      </div>}
       {!closed&&pendingRequired>0&&<p className="mt-3 text-sm font-bold text-amber-900">Faltan {pendingRequired} firma(s) obligatoria(s) para enviar.</p>}
       {!closed&&isImportedMandatory&&<p className="mt-3 text-sm text-slate-600">Si una firma está mal colocada, pide al supervisor que retire el documento del portal y corrija su posición. No hace falta repetirla si corresponde a la persona correcta.</p>}
 
@@ -1461,6 +1501,19 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>} 
     {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
+    {foremanDocumentSigning&&<SignaturePad title="Firma del encargado (todas las páginas)" onSave={async img=>{
+      const documentId=foremanDocumentSigning;
+      setForemanDocumentSigning(null);setSaving(true);
+      try{
+        await signImportedDocumentAsForeman(token,documentId,img);
+        const evidence=await getImportedForemanSignature(token,documentId);
+        if(!evidence.signed||!evidence.signature)throw new Error('No ha sido posible verificar la firma guardada.');
+        setForemanEvidence(current=>({...current,[documentId]:evidence}));
+        await refresh();
+        setError('');setOperationFeedback('Firma del encargado guardada. Se aplicará a todas las páginas.');
+      }catch(e:any){setError(e?.message||'Error al firmar como encargado.');}
+      finally{setSaving(false);}
+    }} onCancel={()=>setForemanDocumentSigning(null)}/>}
     {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{
       const current=mandatorySigning;
       setMandatorySigning(null);

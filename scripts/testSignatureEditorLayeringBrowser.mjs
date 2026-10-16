@@ -31,7 +31,7 @@ try {
     setup(b) {
       b.onResolve({filter:/foremanPortalService$|\/supabase$|mandatoryPdfOverlay$|^pdfjs-dist\/|^lucide-react$/}, args=>({path:args.path,namespace:'layout-mock'}));
       b.onLoad({filter:/.*/,namespace:'layout-mock'}, ({path:p})=>{
-        if(p.includes('foremanPortalService'))return {contents:'export const getSupervisorMandatoryPdf=async()=>({base64:"JVBERg=="});'};
+        if(p.includes('foremanPortalService'))return {contents:'export const loadForemanSignatureTemplate=async()=>null;export const getSupervisorMandatoryPdf=async()=>({base64:"JVBERg=="});'};
         if(p.endsWith('/supabase'))return {contents:'export const supabase={query:async()=>[]};'};
         if(p.endsWith('mandatoryPdfOverlay'))return {contents:'export const base64ToBytes=()=>new Uint8Array();'};
         if(p==='lucide-react')return {contents:'export const Trash2=()=>null;'};
