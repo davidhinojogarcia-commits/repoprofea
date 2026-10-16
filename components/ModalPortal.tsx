@@ -76,7 +76,7 @@ export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string; 
       ref={rootRef}
       data-modal-layout={layout}
       className="profea-modal-overlay fixed inset-0 isolate pointer-events-auto"
-      style={{ zIndex: layerRef.current }}
+      style={{ position: 'fixed', inset: 0, isolation: 'isolate', zIndex: layerRef.current }}
       role="presentation"
       aria-label={label}
       onKeyDown={onKeyDown}

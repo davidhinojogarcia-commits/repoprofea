@@ -18,8 +18,8 @@ export default function ForemanModelSettings({modelKey,initial,onClose,onSave}:P
     catch(e:any){setError(e.message||'No se pudo guardar la configuración.');}
     finally{inFlight.current=false;setBusy(false);}
   };
-  return <ModalPortal label="Firma del encargado"><section className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3">
-    <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-slate-900 dark:bg-slate-900 dark:text-slate-50">
+  return <ModalPortal label="Firma del encargado" layout="fullscreen"><section className="foreman-model-settings-overlay">
+    <div className="foreman-model-settings-panel rounded-2xl bg-white p-5 text-slate-900 dark:bg-slate-900 dark:text-slate-50">
       <h2 className="text-lg font-black">Firma del encargado</h2>
       <p className="mt-2 text-sm">Indica si corresponde firmar este documento. La plantilla solo se reutiliza al cargarla expresamente y guardarla.</p>
       <label className="mt-3 block text-sm font-bold">Modelo documental<input disabled={busy} value={layout.templateKey} maxLength={120} onChange={e=>setLayout({...layout,templateKey:e.target.value})} className="mt-1 min-h-[48px] w-full rounded-lg border bg-white p-2 text-slate-900"/></label>
