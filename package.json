@@ -44,7 +44,8 @@
     "test:inventory-gmail": "node --import tsx scripts/testInventoryGmail.ts",
     "test:employment-worksites": "node --import tsx scripts/testEmploymentWorksiteAssignment.ts && node scripts/testEmploymentWorksiteIntake.mjs && node scripts/testEmploymentWorksiteService.mjs && node scripts/testEmploymentWorksiteUi.mjs",
     "test:pdf-signature-workspace": "node --import tsx scripts/testPdfSignatureCoordinates.ts && node scripts/testEmploymentDocumentAnalysis.mjs",
-    "test:pdf-signature-workspace-browser": "node scripts/testPdfSignatureWorkspaceBrowser.mjs"
+    "test:pdf-signature-workspace-browser": "node scripts/testPdfSignatureWorkspaceBrowser.mjs",
+    "test:foreman-repeat-signature": "node --import tsx scripts/testForemanRepeatSignature.ts"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
