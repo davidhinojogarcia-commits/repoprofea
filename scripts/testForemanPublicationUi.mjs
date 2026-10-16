@@ -12,7 +12,7 @@ let scrolledDocument='';
 window.HTMLElement.prototype.scrollIntoView=function(){scrolledDocument=this.id;};
 const workers=[{id:1,apellidosNombre:'Persona Uno',categoria:'PEON'},{id:2,apellidosNombre:'Persona Dos',categoria:'PEON'}];
 const doc={id:'doc',owner_id:'owner',obra:'Obra A',work_date:'2026-10-09',period_key:'2026-10',document_type:process.argv[2]||process.env.FOREMAN_TEST_DOCUMENT_TYPE||'control_presencia',category:'',status:'pending',lifecycle_status:'READY',workers:[],signatures:{'1':'signed','2':'signed'},details:{sourceFilename:'control.pdf',originalPdfMode:'overlay',importedWorkerIds:[1,2],importedWorkers:workers,workerAnchors:workers.map(w=>({workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id})),documentWorkersV2:workers.map(w=>({id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED'}))}};
-let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0,extraDocs=[];
+let calls=[],confirmResult=true,confirmMessages=[],alerts=[],portalReads=0,extraDocs=[],includeAttendance=true;
 globalThis.__alerts=alerts;
 globalThis.__confirm=async(message)=>{confirmMessages.push(message);return confirmResult;};
 const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,lifecycleStatus:doc.lifecycle_status,assignedAt:doc.assigned_at,details:{...doc.details,lifecycleStatus:'READY'},signatures:doc.signatures,workers:doc.workers});
@@ -22,7 +22,11 @@ globalThis.__foremanUi={
  async getSupervisorMandatorySignatures(){return {};},
 };
 globalThis.__foremanApi={
- async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc),...structuredClone(extraDocs)]:[];},
+ async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc),...structuredClone(extraDocs)]:table==='foreman_attendance_days'&&includeAttendance?[
+   {id:'signed-day',obra:'Obra A',work_date:'2026-10-09',foreman_name:'ENCARGADO CON FIRMAS',status:'draft',rows:[{workerId:1,entrySignature:'data:image/png;base64,AAAA',exitSignature:'data:image/png;base64,AAAA'}]},
+   {id:'unsigned-day',obra:'Obra A',work_date:'2026-10-09',foreman_name:'ENCARGADO SIN FIRMAS',status:'completed',rows:[{workerId:2}]},
+   {id:'partial-day',obra:'Obra A',work_date:'2026-10-09',foreman_name:'ENCARGADO FIRMA PARCIAL',status:'reviewed',rows:[{workerId:3,entrySignature:'data:image/png;base64,AAAA'}]},
+ ]:[];},
  async rpc(name,args){calls.push({name,args});if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
 };
 const serviceSource=await fs.readFile(new URL('../src/services/foremanPortalService.ts',import.meta.url),'utf8');
@@ -44,6 +48,10 @@ try {
  const find=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
  const mount=async component=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(component));};
  await mount(React.createElement(ForemanDocumentsDashboard));
+ assert(document.body.textContent.includes('ENCARGADO CON FIRMAS'),'signed attendance remains visible even in a mixed draft');
+ assert(!document.body.textContent.includes('ENCARGADO SIN FIRMAS'),'completed status alone cannot expose unsigned attendance');
+ assert(!document.body.textContent.includes('ENCARGADO FIRMA PARCIAL'),'partial signatures cannot expose an unsigned PDF');
+ includeAttendance=false;
  assert(!document.body.textContent.includes('Ver trazabilidad'));
  assert(find('Enviar al portal de encargados'),'explicit publication button');
  assert.equal(calls.length,0,'opening supervisor dashboard must not publish');

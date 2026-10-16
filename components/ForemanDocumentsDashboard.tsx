@@ -1,5 +1,6 @@
 import { dispatchForemanDocumentPush, foremanPushReceiptMessage } from '../src/services/foremanPushService';
 import { foremanDocumentPeriod, documentFortnightLabel, type DocumentFortnight } from '../src/lib/foremanDocumentPeriod';
+import { signedAttendanceRows } from '../src/lib/signedAttendance';
 import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appAlert, appConfirm, appPrompt } from '../src/lib/appDialog';
@@ -272,7 +273,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   );
 
   const allCards=useMemo(()=>{
-    const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
+    const dayCards=attendance.filter(item=>signedAttendanceRows(item.rows).length>0).map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
     const mandatoryCards=visibleMandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards]

@@ -113,6 +113,8 @@ jobs:
         run: npm run test:mandatory-missing-worker
       - name: Manual portal publication and signature revocation
         run: npm run test:foreman-publication
+      - name: Signed attendance PDFs
+        run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
         run: npm run test:mandatory-persistence
       - name: SAE code position persistence
@@ -189,7 +191,6 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
-
 
 
 
