@@ -345,6 +345,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <label className="mt-2 flex items-center gap-2 text-sm font-bold">
               <input type="checkbox" checked={Boolean(foremanTemplate?.enabled)} onChange={e=>{
                 if(e.target.checked){
+                  if(foremanTemplate?.templateKey===modelKey){setForemanTemplate({...foremanTemplate,enabled:true});return;}
                   const page=pages.find(p=>p.page===previewPage);
                   if(page)setForemanTemplate(createForemanTemplate(modelKey,{x:page.width*0.65,y:page.height*0.08,width:page.width*0.27,height:page.height*0.07},page,foremanTemplate||undefined));
                 }else if(foremanTemplate)setForemanTemplate({...foremanTemplate,enabled:false,required:false});
