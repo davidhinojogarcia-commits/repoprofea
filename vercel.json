@@ -23,6 +23,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "fix/foreman-signature-default-panel": false,
       "feat/independent-foreman-signatures": false,
       "local/fix-mandatory-persistence-20261009": false,
       "validation/gestionprofea-trace-v1-19-0-20261003": false,

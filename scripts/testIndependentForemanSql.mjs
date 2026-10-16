@@ -16,15 +16,27 @@ try{
  create table public.foreman_portal_access(id uuid primary key,owner_id uuid,obra text,foreman_name text,token_hash text,active boolean);
  create table public.foreman_mandatory_documents(id uuid primary key,owner_id uuid,obra text,document_type text,status text,lifecycle_status text,assigned_at timestamptz,details jsonb default '{}',signatures jsonb default '{}',updated_at timestamptz,correction_pending boolean default false);
  create table public.mandatory_document_events_v2(id bigserial,document_id uuid,owner_id uuid,event_type text,actor_type text,actor_name text,metadata jsonb);
- create table public.foreman_attendance_days(id uuid primary key,owner_id uuid,obra text,work_date date,status text,rows jsonb default '[]',updated_at timestamptz,correction_pending boolean default false);
+ create table public.foreman_attendance_days(id uuid primary key,owner_id uuid,obra text,work_date date,status text,rows jsonb default '[]',updated_at timestamptz,correction_pending boolean default false,unique(owner_id,obra,work_date));
  `);
  for(const file of ['20261016150500_foreman_reusable_signature.sql','20261016150510_enforce_foreman_signature_completion.sql','20261016154418_independent_foreman_signature_scope.sql'])await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
+ // Legacy native documents have no per-document configuration.
+ await query("insert into foreman_mandatory_documents(id,owner_id,obra,document_type,status,details,signatures) values($1,$2,'Obra A','epis','pending','{}','{\"7\":\"legacy-worker-ink\"}')",[id(90),owner]);
+ await query("insert into foreman_mandatory_documents(id,owner_id,obra,document_type,status,details) values($1,$2,'Obra A','epis','completed','{}')",[id(91),owner]);
+ const defaults=fs.readFileSync(new URL('../supabase/migrations/20261016162645_default_foreman_signing_panel.sql',import.meta.url),'utf8');
+ await db.exec(defaults);await db.exec(defaults);
+ assert.equal((await query('select details from foreman_mandatory_documents where id=$1',[id(90)]))[0].details.foremanSignatureTemplate.required,true,'pending legacy native document repaired');
+ assert.equal((await query('select signatures from foreman_mandatory_documents where id=$1',[id(90)]))[0].signatures['7'],'legacy-worker-ink','backfill preserves worker ink');
+ assert.deepEqual((await query('select details from foreman_mandatory_documents where id=$1',[id(91)]))[0].details,{},'completed history untouched');
  // Repeat migration proves it is safe after an interrupted local deployment.
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261016154418_independent_foreman_signature_scope.sql',import.meta.url),'utf8'));
+ await db.exec(defaults);
  await query("insert into foreman_portal_access values($1,$2,'Obra A','Encargado',encode(extensions.digest('token','sha256'),'hex'),true)",[access,owner]);
  await query("insert into foreman_portal_access values($1,$2,'Obra B','Otro',encode(extensions.digest('wrong-worksite','sha256'),'hex'),true)",[id(4),owner]);
  await query("insert into foreman_mandatory_documents(id,owner_id,obra,document_type,status,lifecycle_status,assigned_at,signatures) values($1,$2,'Obra A','epis','pending','READY',null,'{\"7\":\"worker-ink\"}')",[doc,owner]);
  await query("insert into foreman_attendance_days values($1,$2,'Obra A','2026-10-16','draft','[{\"workerId\":7,\"entrySignature\":\"worker-ink\"}]',now(),false,null,null)",[day,owner]);
+ assert.equal((await query('select details from foreman_mandatory_documents where id=$1',[doc]))[0].details.foremanSignatureTemplate.required,true,'new native document has required template without supervisor setup');
+ await as(null);assert.equal((await rpc('get_attendance_foreman_evidence','token','2026-10-17')).layout.required,true,'panel available before first daily save');
+ await db.exec('reset role');await assert.rejects(query("insert into foreman_attendance_days(id,owner_id,obra,work_date,status) values($1,$2,'Obra A','2026-10-17','completed')",[id(21),owner]),/Falta la firma/,'first completed insert cannot bypass foreman signing');
  await as(other);await assert.rejects(rpc('save_foreman_signature_template',doc,layout.templateKey,layout),/no autorizado/);
  await assert.rejects(rpc('get_supervisor_foreman_evidence',doc),/no autorizado/);
  await as(null);await assert.rejects(rpc('save_foreman_signature_template',doc,layout.templateKey,layout),/permission denied/);
@@ -66,7 +78,7 @@ try{
  await as(null);await rpc('sign_attendance_as_foreman','token','2026-10-16',png);
  assert.equal((await rpc('get_attendance_foreman_evidence','token','2026-10-16')).signed,true);
  await as(owner);assert.equal((await rpc('get_supervisor_foreman_evidence',day)).signature,png);
- await db.exec('reset role');await query("update foreman_attendance_days set status='completed' where id=$1",[day]);
+ await db.exec('reset role');await query("insert into foreman_attendance_days(id,owner_id,obra,work_date,status,rows) values($1,$2,'Obra A','2026-10-16','completed','[{\"workerId\":7,\"entrySignature\":\"worker-ink\"}]') on conflict(owner_id,obra,work_date) do update set status=excluded.status,rows=excluded.rows",[id(22),owner]);
  await as(null);await assert.rejects(rpc('sign_attendance_as_foreman','token','2026-10-16',png),/no disponible/);
  await db.exec('reset role');await query("update foreman_attendance_days set status='draft',correction_pending=true,rows='[]' where id=$1",[day]);
  await as(null);assert.equal((await rpc('get_attendance_foreman_evidence','token','2026-10-16')).signed,false,'row changes invalidate responsible approval');

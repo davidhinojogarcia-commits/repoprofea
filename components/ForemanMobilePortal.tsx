@@ -1,5 +1,5 @@
 import { getAttendanceForemanEvidence, signAttendanceAsForeman } from '../src/services/foremanPortalService';
-import { enabledForemanTemplate } from '../src/lib/foremanSignaturePolicy';
+import { effectiveForemanTemplate, enabledForemanTemplate } from '../src/lib/foremanSignaturePolicy';
 import { SIGNATURE_INK } from '../src/lib/signatureInk';
 import { repeatForemanSignature, type ForemanSignatureTemplate } from '../src/lib/foremanSignatureTemplate';
 import { activateForemanPush, restoreForemanPush, disableForemanPush, foremanPushHelp } from '../src/services/foremanPushService';
@@ -412,7 +412,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   const persist=async(nextRows:ForemanAttendanceRow[],status:'draft'|'completed'='draft')=>{
     setSaving(true);
     try{
-      if(status==='completed'&&attendanceEvidence?.workDate===date&&attendanceEvidence.layout?.enabled&&attendanceEvidence.layout.required&&!attendanceEvidence.signed)throw new Error('Falta la firma obligatoria del encargado.');
+      if(status==='completed'&&effectiveForemanTemplate('control_horario',attendanceEvidence?.workDate===date?attendanceEvidence.layout:undefined)?.required&&!(attendanceEvidence?.workDate===date&&attendanceEvidence.signed))throw new Error('Falta la firma obligatoria del encargado.');
       await saveForemanAttendance(token,date,nextRows,status);
       setRows(nextRows);
       setError('');
@@ -554,6 +554,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         ? 'Relación de Formación preparada. Debajo tienes los trabajadores para firmar.'
         : 'Documento preparado correctamente para recoger firmas.');
       if(createdId){
+        setExpandedMandatoryDocuments(current=>new Set([...current,createdId]));
         setFocusDocumentId(createdId);
         window.setTimeout(()=>document.getElementById('foreman-signing-'+createdId)?.scrollIntoView({behavior:'smooth',block:'start'}),120);
       }
@@ -1192,6 +1193,8 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
   const currentAttendance=data?.attendance.find(day=>String(day.workDate).slice(0,10)===date);
   const attendanceLocked=Boolean(currentAttendance&&['completed','reviewed'].includes(currentAttendance.status)&&!currentAttendance.correctionPending);
+  const attendanceTemplate=effectiveForemanTemplate('control_horario',attendanceEvidence?.workDate===date?attendanceEvidence.layout:undefined);
+  const attendanceForemanSigned=Boolean(attendanceEvidence?.workDate===date&&attendanceEvidence.signed);
   const completedToday=controlRows.filter(r=>r.entrySignature&&r.exitSignature).length;
   return <div className="min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
     <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
@@ -1300,10 +1303,10 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
             </div>
           </div>
         </div>)}
-        {attendanceEvidence?.workDate===date&&attendanceEvidence.layout?.enabled&&<div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 text-slate-900"><h3 className="font-black">Firma del encargado</h3><p className="mt-1 text-sm">Completa primero las firmas de entrada y salida. Si cambias la jornada, el encargado deberá firmar de nuevo.</p><p className="mt-1 text-sm">{attendanceEvidence.signed?'Firma guardada y verificada':attendanceEvidence.layout.required?'Firma obligatoria pendiente':'Firma pendiente'}</p><button type="button" disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>setAttendanceSigning(true)} className="mt-3 min-h-[52px] w-full rounded-xl bg-[#00548E] px-3 py-3 font-black text-white">Firmar como encargado</button></div>}
+        {attendanceTemplate&&<div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 text-slate-900"><h3 className="font-black">Firma del encargado</h3><p className="mt-1 text-sm">Completa primero las firmas de entrada y salida. Si cambias la jornada, el encargado deberá firmar de nuevo.</p><p className="mt-1 text-sm">{attendanceForemanSigned?'Firma guardada y verificada':attendanceTemplate.required?'Firma obligatoria pendiente':'Firma pendiente'}</p><button type="button" disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>setAttendanceSigning(true)} className="mt-3 min-h-[52px] w-full rounded-xl bg-[#00548E] px-3 py-3 font-black text-white">Firmar como encargado</button></div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button disabled={saving||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
-          <button disabled={saving||!controlRows.length||completedToday!==controlRows.length} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
+          <button disabled={saving||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
         </div>
       </section>}
 
