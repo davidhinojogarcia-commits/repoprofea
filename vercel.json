@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/visit-minutes",
+      "destination": "/api/gmail?action=visit-minutes"
+    },
+    {
       "source": "/login",
       "destination": "/index.html"
     },
@@ -43,7 +47,8 @@
       "feat/inventory-usage-identification": false,
       "feat/employment-worksite-assignment": false,
       "fix/signature-editor-sidebar-overlay": false,
-      "feat/pdf-signature-workspace": false
+      "feat/pdf-signature-workspace": false,
+      "feat/worksite-visit-minutes": false
     }
   }
 }

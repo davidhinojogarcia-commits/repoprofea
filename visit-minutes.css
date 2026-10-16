@@ -1,0 +1,11 @@
+/* Ink must be read against paper in both themes, including global overrides. */
+html .visit-signature-surface,
+html.dark .visit-signature-surface,
+html.dark img.visit-signature-surface,
+html.dark canvas.visit-signature-surface {
+  background-color: #fff !important;
+}
+.dark #root img.visit-signature-surface,
+.dark #root canvas.visit-signature-surface {
+  background-color: #fff !important;
+}

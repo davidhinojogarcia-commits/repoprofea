@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import ModalPortal from './ModalPortal';
+import { VisitContactsPanel } from './VisitContactsPanel';
 import {
   Trash2,
   Plus,
@@ -34,6 +35,7 @@ import {
   Users,
   Clock,
   QrCode,
+  HardHat,
 } from "lucide-react";
 import { Person, DeletedPerson } from "../types";
 import {
@@ -164,6 +166,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
     | "categorias"
     | "supervisor"
     | "technician"
+    | "visitContacts"
     | "administrative"
     | "medicalProvider"
     | "footwearProvider"
@@ -1142,6 +1145,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
           {[
             ["administrative", "Administrativo/a", Users],
+            ["visitContacts", "Dirección facultativa", HardHat],
             ["medicalProvider", "Empresa reconocimientos médicos", Stethoscope],
             ["footwearProvider", "Proveedor de calzado", Building2],
             ["trainingProvider", "Empresas de formación", GraduationCap],
@@ -1218,7 +1222,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          {activeTab === "trabajadores" ? (
+          {activeTab === "visitContacts" ? <VisitContactsPanel /> : activeTab === "trabajadores" ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in duration-300">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">

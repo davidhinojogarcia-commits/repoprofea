@@ -61,6 +61,12 @@ function buildMime(input: {
 }
 
 export default async function handler(req: any, res: any) {
+  // Share the existing function budget; visit routes perform their own auth,
+  // including the participant email-code flow before a session exists.
+  if (String(req.query?.action || '') === 'visit-minutes') {
+    const { visitMinutesHandler } = await import('../src/server/visitMinutesHandler.js');
+    return visitMinutesHandler(req, res);
+  }
   res.setHeader('Cache-Control', 'no-store');
   try {
     const action = String(req.query?.action || '').trim();

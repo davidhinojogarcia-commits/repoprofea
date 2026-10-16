@@ -1,0 +1,609 @@
+import React, { useEffect, useRef, useState } from 'react';
+import ModalPortal from './ModalPortal';
+import { appConfirm, appPrompt } from '../src/lib/appDialog';
+import { loadAppBusinessSettings } from '../src/services/appSettingsService';
+import { visitRequest, downloadVisitFile, readVisitAttachment } from '../src/services/visitMinutesService';
+import { madridDate, personName, VISIT_STATUS_LABELS, type VisitContent, type VisitPerson, type VisitRecord, type VisitCommand, type VisitContact, madridTimestamp } from '../src/lib/visitMinutes';
+import { VisitMinutesReadView } from './VisitMinutesReadView';
+import { VisitSignaturePad } from './VisitSignaturePad';
+import { visitInput } from './VisitContactsPanel';
+const button = 'min-h-[46px] rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold disabled:opacity-50 dark:border-slate-600';
+const primary = button + ' bg-[#00548E] text-white';
+const emptyPerson = (): VisitPerson => ({
+  id: crypto.randomUUID(),
+  firstName: '',
+  lastName: '',
+  role: '',
+  entity: '',
+  phone: '',
+  email: '',
+  attended: true,
+  reviewRequired: true,
+  signing: 'required',
+  receiveFinal: true
+});
+function blankContent(work: any, supervisor: any): VisitContent {
+  return {
+    worksiteId: work?.id || '',
+    worksite: work?.nombre || '',
+    code: work?.codigo || '',
+    location: '',
+    municipality: work?.municipio || '',
+    promoter: 'Diputación Provincial de Cádiz',
+    author: supervisor?.nombreApellidos || '',
+    authorRole: supervisor?.cargo || 'Supervisor de obras',
+    authorEmail: supervisor?.email || '',
+    authorPhone: supervisor?.telefono || '',
+    date: madridDate(),
+    start: new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Madrid',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date()),
+    end: '',
+    purpose: '',
+    discussion: '',
+    observations: '',
+    nextVisit: '',
+    agreements: [],
+    attachments: []
+  };
+}
+export function VisitMinutesPanel({
+  initialWorksite = ''
+}: {
+  initialWorksite?: string;
+}) {
+  const [works, setWorks] = useState<any[]>([]),
+    [contacts, setContacts] = useState<VisitContact[]>([]),
+    [supervisor, setSupervisor] = useState<any>({}),
+    [records, setRecords] = useState<any[]>([]),
+    [hasMore, setHasMore] = useState(false),
+    [workFilter, setWorkFilter] = useState(''),
+    [statusFilter, setStatusFilter] = useState(''),
+    [search, setSearch] = useState(''),
+    [query, setQuery] = useState('');
+  const [record, setRecord] = useState<VisitRecord | null>(null),
+    [creating, setCreating] = useState(false),
+    [content, setContent] = useState<VisitContent | null>(null),
+    [people, setPeople] = useState<VisitPerson[]>([]),
+    [jobs, setJobs] = useState<any[]>([]),
+    [history, setHistory] = useState<any | null>(null),
+    [mail, setMail] = useState<{
+      kind: 'review' | 'signing' | 'final';
+      messages: any[];
+    } | null>(null),
+    [onsite, setOnsite] = useState<{
+      personId: string;
+      kind: 'response' | 'signature';
+    } | null>(null),
+    [onsiteAck, setOnsiteAck] = useState(false),
+    [responseComment, setResponseComment] = useState(''),
+    [link, setLink] = useState(''),
+    [followNotes, setFollowNotes] = useState<Record<string, string>>({});
+  const [loaded, setLoaded] = useState(false),
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState('');
+  const guard = useRef(false),
+    operation = useRef<{
+      key: string;
+      id: string;
+    } | null>(null),
+    createId = useRef('');
+  // Form updates are immutable. Reference changes avoid serializing megabytes
+  // of attachments on every keystroke just to show the unsaved-changes badge.
+  const dirty = !!content && (creating || record?.state.status === 'draft' && (content !== record.state.content || people !== record.state.participants));
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  useEffect(() => {
+    const abort = new AbortController();
+    Promise.all([visitRequest({
+      action: 'works'
+    }, {
+      signal: abort.signal
+    }), visitRequest({
+      action: 'contacts'
+    }, {
+      signal: abort.signal
+    }), loadAppBusinessSettings()]).then(([w, c, s]) => {
+      setWorks(w.works);
+      setContacts(c.contacts);
+      setSupervisor(s.supervisor);
+      const match = w.works.find((work: any) => work.nombre === initialWorksite || work.id === initialWorksite);
+      setWorkFilter(match?.id || '');
+      setLoaded(true);
+    }).catch(e => {
+      if (!abort.signal.aborted) setError(e.message);
+    });
+    return () => abort.abort();
+  }, [initialWorksite]);
+  useEffect(() => {
+    if (!loaded) return;
+    const abort = new AbortController();
+    setLoading(true);
+    visitRequest({
+      action: 'list',
+      worksiteId: workFilter,
+      status: statusFilter,
+      search: query
+    }, {
+      signal: abort.signal
+    }).then(r => {
+      setRecords(r.records);
+      setHasMore(r.hasMore);
+    }).catch(e => {
+      if (!abort.signal.aborted) setError(e.message);
+    }).finally(() => {
+      if (!abort.signal.aborted) setLoading(false);
+    });
+    return () => abort.abort();
+  }, [loaded, workFilter, statusFilter, query]);
+  const run = async (task: () => Promise<void>) => {
+    if (guard.current) return;
+    guard.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await task();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      guard.current = false;
+      setBusy(false);
+    }
+  };
+  const install = (r: VisitRecord) => {
+    setRecord(r);
+    setContent(r.state.content);
+    setPeople(r.state.participants);
+    setCreating(false);
+    setHistory(null);
+    setOnsite(null);
+    setLink('');
+  };
+  const refreshList = async () => {
+    const r = await visitRequest({
+      action: 'list',
+      worksiteId: workFilter,
+      status: statusFilter,
+      search: query
+    });
+    setRecords(r.records);
+    setHasMore(r.hasMore);
+  };
+  const open = async (id: string) => {
+    if (dirty && !(await appConfirm('Quitas de pantalla un borrador con cambios sin guardar. ¿Continuar?'))) return;
+    const r = await visitRequest({
+      action: 'get',
+      id
+    });
+    install(r.record);
+    setJobs(r.jobs);
+  };
+  const requestOperation = (key: string) => {
+    if (operation.current?.key !== key) operation.current = {
+      key,
+      id: crypto.randomUUID()
+    };
+    return operation.current.id;
+  };
+  const mutate = async (command: VisitCommand) => {
+    if (!record) throw new Error('Guarda primero el borrador.');
+    const r = await visitRequest({
+      action: 'command',
+      id: record.id,
+      revision: record.revision,
+      command,
+      operation: requestOperation(record.id + JSON.stringify(command)),
+      inPersonConfirmed: ['respond', 'sign'].includes(command.type) && onsiteAck
+    });
+    operation.current = null;
+    install({
+      ...r.record,
+      canWrite: true
+    });
+    setMessage('Acta guardada. Los datos están confirmados por el servidor.');
+    return r.record as VisitRecord;
+  };
+  const start = async (source?: VisitRecord) => {
+    if (dirty && !(await appConfirm('Hay cambios sin guardar. ¿Abrir otra acta?'))) return;
+    const work = works.find(w => w.id === (source?.obra_id || workFilter)) || works[0];
+    const c = blankContent(work, supervisor);
+    if (source) c.agreements = source.state.content.agreements.filter(a => !source.state.followup[a.id]?.done).map(a => ({
+      ...a,
+      id: crypto.randomUUID(),
+      source: `${source.number} · v${source.version}`
+    }));
+    setRecord(null);
+    setCreating(true);
+    setContent(c);
+    setPeople([]);
+    setJobs([]);
+    setHistory(null);
+    setOnsite(null);
+    createId.current = crypto.randomUUID();
+    setMessage('Borrador nuevo: guarda antes de solicitar conformidades.');
+  };
+  const save = () => void run(async () => {
+    if (!content) return;
+    if (creating) {
+      const r = await visitRequest({
+        action: 'create',
+        id: createId.current,
+        operation: requestOperation(createId.current + JSON.stringify({
+          content,
+          people
+        })),
+        content,
+        participants: people
+      });
+      operation.current = null;
+      install({
+        ...r.record,
+        canWrite: true
+      });
+      setMessage('Borrador creado y guardado.');
+    } else await mutate({
+      type: 'save',
+      content,
+      participants: people
+    });
+    await refreshList();
+  });
+  const preview = (kind: 'review' | 'signing' | 'final') => void run(async () => {
+    if (!record) return;
+    const r = await visitRequest({
+      action: 'preview-mail',
+      id: record.id,
+      kind
+    });
+    setMail({
+      kind,
+      messages: r.messages
+    });
+  });
+  const sendFlow = () => void run(async () => {
+    if (!record || !mail) return;
+    let current = record;
+    if (mail.kind === 'review' && record.status === 'draft') current = await mutate({
+      type: 'review'
+    });else if (mail.kind === 'signing' && record.status === 'review') current = await mutate({
+      type: 'open-signing'
+    });else if (mail.kind === 'final') {
+      const r = await visitRequest({
+        action: 'queue-final',
+        id: record.id,
+        revision: record.revision,
+        operation: requestOperation(record.id + ':queue-final')
+      });
+      operation.current = null;
+      current = r.record;
+      install({
+        ...current,
+        canWrite: true
+      });
+    }
+    const selected = (await visitRequest({
+      action: 'get',
+      id: current.id
+    })).jobs.filter((j: any) => j.version === current.version && j.kind === mail.kind && ['pending', 'failed'].includes(j.status));
+    let accepted = 0,
+      failed = 0;
+    setMail(null);
+    for (const [index, j] of selected.entries()) {
+      setMessage(`Tramitando correo ${index + 1} de ${selected.length}…`);
+      try {
+        const result = await visitRequest({
+          action: 'send-job',
+          id: current.id,
+          jobId: j.id
+        });
+        if (result.delivery === 'sent') accepted++;
+      } catch (e: any) {
+        failed++;
+        setError(e.message);
+        if (['GMAIL_NOT_CONNECTED', 'GMAIL_RECONNECT_REQUIRED', 'GMAIL_SEND_PERMISSION_REQUIRED', 'GMAIL_RATE_LIMITED'].includes(e.code)) break;
+      }
+    }
+    const refreshed = await visitRequest({
+      action: 'get',
+      id: current.id
+    });
+    install(refreshed.record);
+    setJobs(refreshed.jobs);
+    setMessage(`${accepted} correo(s) aceptados por Gmail en esta operación.${failed ? ' Hay envíos pendientes o fallidos; consulta el detalle.' : ''} La aceptación no acredita lectura ni recepción.`);
+    await refreshList();
+  });
+  const addContact = (contact: VisitContact) => {
+    if (people.some(p => p.id === contact.id)) return;
+    const assignment = contact.assignments.find(a => a.worksiteId === content?.worksiteId);
+    setPeople([...people, {
+      ...emptyPerson(),
+      ...contact,
+      role: assignment?.role || contact.role,
+      receiveFinal: !!contact.email
+    }]);
+  };
+  const saveUsualContact = async (p: VisitPerson) => {
+    if (!content) return;
+    const existing = contacts.find(c => c.id === p.id);
+    const assignments = [...(existing?.assignments || []).filter(a => a.worksiteId !== content.worksiteId), {
+      worksiteId: content.worksiteId,
+      role: p.role
+    }];
+    const r = await visitRequest({
+      action: 'save-contact',
+      contact: {
+        ...p,
+        revision: existing?.revision || 0,
+        active: true,
+        assignments
+      }
+    });
+    setContacts(current => [r.contact, ...current.filter(c => c.id !== p.id)]);
+    setMessage('Contacto habitual guardado; las demás obras y actas anteriores se conservan.');
+  };
+  const changeWorksite=async(worksiteId:string)=>{
+    if(!content)return;const work=works.find(w=>w.id===worksiteId);if(!work)return;
+    if((people.length||content.discussion||content.purpose)&&!await appConfirm('Se conservará la redacción y se retirarán los participantes de la obra anterior. Revisa que el contenido corresponda a la nueva obra. ¿Cambiar obra?'))return;
+    setContent({...content,worksiteId:work.id,worksite:work.nombre,code:work.codigo||'',municipality:work.municipio||'',location:''});setPeople([]);
+  };
+  const canEdit = creating || record?.canWrite && record.status === 'draft';
+  const canOpenSigning = record?.status === 'review' && record.state.participants.filter(p => p.reviewRequired).every(p => record.state.responses[p.id]?.decision === 'agree');
+  return <main className="mx-auto max-w-6xl space-y-4 text-slate-900 dark:text-slate-100">
+    <header className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"><h1 className="text-2xl font-black">Actas de visitas de obra</h1><p className="mt-2 text-sm">Redacta, solicita conformidad, recoge las firmas y distribuye la versión firmada. Los acuerdos pendientes pueden continuar en la siguiente visita.</p><button disabled={!loaded || busy || !works.length} onClick={() => void run(() => start())} className={primary + ' mt-4'}>Nueva acta de visita</button></header>
+    {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800">{error}<button type="button" className="ml-3 underline" onClick={() => window.location.reload()}>Recargar módulo</button></div>}{message && <p role="status" className="rounded-xl bg-blue-50 p-4 text-blue-900">{message}</p>}{busy && <p role="status">Procesando… No cierres esta pantalla hasta recibir confirmación.</p>}
+    <section className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-3"><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm font-bold">Obra<select className={visitInput} value={workFilter} onChange={e => setWorkFilter(e.target.value)} disabled={busy}><option value="">Todas las obras accesibles</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label><label className="text-sm font-bold">Estado<select className={visitInput} disabled={busy} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">Todos</option>{Object.entries(VISIT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><form onSubmit={e => {
+          e.preventDefault();
+          setQuery(search);
+        }}><label className="text-sm font-bold">Número, obra o asistente<input className={visitInput} value={search} onChange={e => setSearch(e.target.value)} maxLength={100} /></label><button className={button + ' mt-1'} disabled={busy}>Buscar actas</button></form></div>
+      {loading && <p role="status">Cargando actas…</p>}<div className="grid gap-2 sm:grid-cols-2">{records.map(r => <button disabled={busy} key={r.id} onClick={() => void run(() => open(r.id))} className={'rounded-xl border p-4 text-left ' + (record?.id === r.id ? 'border-blue-500 bg-blue-50 dark:bg-blue-950' : 'border-slate-200 dark:border-slate-700')}><strong>{r.number} · v{r.version}</strong><p className="mt-1">{r.worksite}</p><p className="text-sm">{String(r.visit_date).slice(0, 10)} · {VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</p></button>)}</div>{loaded && !loading && !records.length && <p>No hay actas que coincidan con los filtros.</p>}{hasMore && <button disabled={busy} className={button} onClick={() => void run(async () => {
+        const r = await visitRequest({
+          action: 'list',
+          worksiteId: workFilter,
+          status: statusFilter,
+          search: query,
+          offset: records.length
+        });
+        setRecords(current => [...current, ...r.records.filter((n: any) => !current.some(x => x.id === n.id))]);
+        setHasMore(r.hasMore);
+      })}>Cargar siguientes actas</button>}</section>
+    {content && <section className="space-y-4">
+      <div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
+      {canEdit ? <fieldset disabled={busy} className="rounded-2xl border bg-white p-4 sm:p-6 dark:border-slate-700 dark:bg-slate-900 space-y-5">
+        <legend className="font-black">Datos de la visita</legend>
+        <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Obra<select disabled={!creating} className={visitInput} value={content.worksiteId} onChange={e => void run(()=>changeWorksite(e.target.value))}>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>{([['date', 'Fecha', 'date'], ['start', 'Hora inicio', 'time'], ['end', 'Hora final', 'time'], ['location', 'Emplazamiento', 'text'], ['municipality', 'Municipio', 'text'], ['promoter', 'Promotor', 'text'], ['author', 'Redacta: nombre y apellidos', 'text'], ['authorRole', 'Cargo del autor', 'text'], ['authorEmail', 'Correo del autor', 'email'], ['authorPhone', 'Teléfono del autor', 'tel'], ['nextVisit', 'Próxima visita (opcional)', 'date']] as const).map(([key, label, type]) => <label className="text-sm font-bold" key={key}>{label}<input className={visitInput} type={type} value={content[key]} onChange={e => setContent({
+              ...content,
+              [key]: e.target.value
+            })} /></label>)}</div>
+        {([['purpose', 'Objeto de la visita', 3], ['discussion', 'Asuntos tratados y decisiones', 8], ['observations', 'Incidencias y observaciones', 4]] as const).map(([key, label, rows]) => <label key={key} className="block text-sm font-bold">{label}<textarea aria-label={label} className={visitInput} rows={rows} value={content[key]} onChange={e => setContent({
+            ...content,
+            [key]: e.target.value
+          })} /></label>)}
+        <section className="space-y-3"><h3 className="font-black">Acuerdos y actuaciones</h3>{content.agreements.map((a, index) => <div key={a.id} className="rounded-xl border p-3 space-y-2"><label className="block text-sm font-bold">Acuerdo {index + 1}<textarea aria-label={`Acuerdo ${index + 1}`} className={visitInput} value={a.text} onChange={e => setContent({
+                ...content,
+                agreements: content.agreements.map(item => item.id === a.id ? {
+                  ...item,
+                  text: e.target.value
+                } : item)
+              })} /></label><div className="grid gap-2 sm:grid-cols-2">{(['responsible', 'deadline'] as const).map(key => <label key={key} className="text-sm font-bold">{key === 'responsible' ? 'Responsable' : 'Plazo'}<input type={key === 'deadline' ? 'date' : 'text'} className={visitInput} value={a[key]} onChange={e => setContent({
+                  ...content,
+                  agreements: content.agreements.map(item => item.id === a.id ? {
+                    ...item,
+                    [key]: e.target.value
+                  } : item)
+                })} /></label>)}</div><button type="button" className={button} onClick={() => setContent({
+              ...content,
+              agreements: content.agreements.filter(item => item.id !== a.id)
+            })}>Quitar acuerdo</button></div>)}<button type="button" className={button} onClick={() => setContent({
+            ...content,
+            agreements: [...content.agreements, {
+              id: crypto.randomUUID(),
+              text: '',
+              responsible: '',
+              deadline: ''
+            }]
+          })}>Añadir acuerdo</button></section>
+        <section className="space-y-3"><h3 className="font-black">Participantes y destinatarios</h3><p className="text-sm">Revisión, firma, asistencia y distribución son decisiones independientes. Para firmar, la persona debe revisar primero. Sin correo puede responder y firmar presencialmente, pero no recibir el PDF por email.</p>
+          <label className="block text-sm font-bold">Añadir desde Dirección facultativa<select className={visitInput} value="" onChange={e => {
+              const c = contacts.find(c => c.id === e.target.value);
+              if (c) addContact(c);
+            }}><option value="">Selecciona una persona asociada a esta obra…</option>{contacts.filter(c => c.active && c.assignments.some(a => a.worksiteId === content.worksiteId)).map(c => <option key={c.id} value={c.id}>{personName(c)} · {c.role}</option>)}</select></label>
+          <div className="flex flex-wrap gap-2"><button type="button" className={button} onClick={() => setPeople([...people, emptyPerson()])}>Añadir asistente manual</button><button type="button" className={button} onClick={() => {
+              const names = String(supervisor.nombreApellidos || '').trim().split(/\s+/);
+              setPeople([...people, {
+                ...emptyPerson(),
+                firstName: names.shift() || '',
+                lastName: names.join(' '),
+                role: supervisor.cargo || 'Supervisor',
+                email: supervisor.email || '',
+                phone: supervisor.telefono || '',
+                entity: 'Diputación Provincial de Cádiz',
+                receiveFinal: !!supervisor.email
+              }]);
+            }}>Añadirme como supervisor</button></div>
+          {people.map((p, index) => <div key={p.id} className="rounded-xl border border-slate-300 p-4 dark:border-slate-600 space-y-3"><h4 className="font-bold">Participante {index + 1}</h4><div className="grid gap-2 sm:grid-cols-2">{([['firstName', 'Nombre'], ['lastName', 'Apellidos'], ['role', 'Cargo / función'], ['entity', 'Entidad'], ['phone', 'Teléfono'], ['email', 'Correo']] as const).map(([key, label]) => <label key={key} className="text-sm font-bold">{label}<input type={key === 'email' ? 'email' : key === 'phone' ? 'tel' : 'text'} className={visitInput} value={p[key]} onChange={e => setPeople(people.map(item => item.id === p.id ? {
+                  ...item,
+                  [key]: e.target.value
+                } : item))} /></label>)}</div><div className="flex flex-wrap gap-4">{([['attended', 'Asistió a la visita'], ['reviewRequired', 'Debe dar conformidad'], ['receiveFinal', 'Recibe PDF final']] as const).map(([key, label]) => <label key={key} className="flex gap-2 text-sm"><input type="checkbox" checked={p[key]} onChange={e => setPeople(people.map(item => item.id === p.id ? {
+                  ...item,
+                  [key]: e.target.checked
+                } : item))} />{label}</label>)}</div><label className="block text-sm font-bold">Firma<select className={visitInput} value={p.signing} onChange={e => setPeople(people.map(item => item.id === p.id ? {
+                ...item,
+                signing: e.target.value as VisitPerson['signing'],
+                reviewRequired: e.target.value !== 'none' || item.reviewRequired
+              } : item))}><option value="required">Obligatoria</option><option value="optional">Opcional</option><option value="none">No firma</option></select></label><div className="flex flex-wrap gap-2"><button type="button" className={button} onClick={() => setPeople(people.filter(item => item.id !== p.id))}>Quitar participante</button><button type="button" className={button} onClick={() => void run(() => saveUsualContact(p))}>Guardar como contacto habitual</button></div></div>)}
+        </section>
+        <section className="space-y-2"><h3 className="font-black">Anexos y fotografías</h3><p className="text-sm">PNG, JPEG o PDF. Máximo ocho anexos y 1,5 MB en conjunto. Los PDF se incorporan como anexos, sin editar sus páginas originales.</p><input type="file" accept="image/png,image/jpeg,application/pdf" aria-label="Añadir anexo" onChange={e => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            void run(async () => {
+              const base64 = await readVisitAttachment(file);
+              if (!['image/png', 'image/jpeg', 'application/pdf'].includes(file.type)) throw new Error('Tipo de anexo no permitido.');
+              setContent(c => c ? {
+                ...c,
+                attachments: [...c.attachments, {
+                  id: crypto.randomUUID(),
+                  name: file.name,
+                  mime: file.type as any,
+                  base64,
+                  caption: ''
+                }]
+              } : c);
+            });
+          }} />{content.attachments.map(a => <div key={a.id} className="rounded-xl border p-3"><p className="font-bold break-all">{a.name}</p><input className={visitInput} aria-label={`Descripción de ${a.name}`} value={a.caption} onChange={e => setContent({
+              ...content,
+              attachments: content.attachments.map(item => item.id === a.id ? {
+                ...item,
+                caption: e.target.value
+              } : item)
+            })} /><button type="button" className={button + ' mt-2'} onClick={() => setContent({
+              ...content,
+              attachments: content.attachments.filter(item => item.id !== a.id)
+            })}>Quitar anexo</button></div>)}</section>
+        <button type="button" className={primary} onClick={save}>Guardar borrador</button>
+      </fieldset> : record && <VisitMinutesReadView state={record.state} number={record.number} />}
+      {record && <div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-4">
+        {!record.canWrite && <p className="font-bold">Consulta de obra compartida. Solo el autor puede modificar o distribuir esta acta.</p>}
+        <div className="flex flex-wrap gap-2"><button disabled={busy} className={button} onClick={() => void run(async () => downloadVisitFile(await visitRequest({
+            action: 'pdf',
+            id: record.id
+          })))}>{record.status === 'signed' ? 'Descargar PDF firmado' : 'Consultar PDF de esta versión'}</button><button disabled={busy} className={button} onClick={() => void run(() => open(record.id))}>Actualizar</button><button disabled={busy} className={button} onClick={() => void run(async () => setHistory(await visitRequest({
+            action: 'history',
+            id: record.id
+          })))}>Trazabilidad y versiones</button>
+          {record.canWrite && <>{record.status === 'draft' && <button disabled={busy || dirty} className={primary} onClick={() => preview('review')}>Enviar para revisión</button>}{record.status === 'review' && <button disabled={busy || !canOpenSigning} className={primary} onClick={() => preview('signing')}>Abrir firmas y avisar</button>}{record.status === 'signing' && <button disabled={busy || !record.state.participants.filter(p => p.signing === 'required').every(p => record.state.signatures[p.id])} className={primary} onClick={() => void run(async () => {
+              if (await appConfirm('Se cerrará la firma y se conservará el PDF final. Las firmas opcionales pendientes quedarán sin aportar. ¿Finalizar?')) {
+                await mutate({
+                  type: 'finalize'
+                });
+                await refreshList();
+              }
+            })}>Finalizar acta firmada</button>}{record.status === 'signed' && <><button disabled={busy} className={primary} onClick={() => preview('final')}>Enviar acta firmada por correo</button><button disabled={busy} className={button} onClick={() => void run(() => start(record))}>Nueva visita con acuerdos pendientes</button></>}{!['draft', 'cancelled'].includes(record.status) && <button disabled={busy} className={button} onClick={() => void run(async () => {
+              if (await appConfirm('Se archivará esta versión y se solicitarán de nuevo las conformidades y firmas. ¿Crear nueva versión?')) {
+                await mutate({
+                  type: 'revise'
+                });
+                setJobs([]);
+                await refreshList();
+              }
+            })}>Nueva versión / corregir</button>}{record.status !== 'cancelled' && <button disabled={busy} className={button} onClick={() => void run(async () => {
+              const reason = await appPrompt('Motivo de anulación (se conservará la trazabilidad):');
+              if (reason) {
+                await mutate({
+                  type: 'cancel',
+                  reason
+                });
+                await refreshList();
+              }
+            })}>Anular acta</button>}</>}
+        </div>
+        {record.status === 'review' && !canOpenSigning && <p className="text-sm text-amber-700 dark:text-amber-300">Faltan conformidades. El silencio no equivale a aceptación.</p>}
+        {record.canWrite && ['review', 'changes', 'rejected', 'signing'].includes(record.status) && <section className="space-y-3"><h3 className="font-black">Acceso de cada participante</h3>{record.state.participants.filter(p => p.reviewRequired).map(p => <div key={p.id} className="rounded-xl border p-3"><strong>{personName(p)}</strong><p className="text-sm">{record.state.responses[p.id]?.decision === 'agree' ? 'Conforme' : record.state.responses[p.id]?.decision === 'changes' ? 'Solicita cambios' : record.state.responses[p.id]?.decision === 'reject' ? 'Disconforme' : 'Pendiente'} · {record.state.signatures[p.id] ? 'Firma guardada' : 'Sin firma'}</p><div className="mt-2 flex flex-wrap gap-2">{p.email && <><button disabled={busy} className={button} onClick={() => void run(async () => {
+                  const r = await visitRequest({
+                    action: 'link',
+                    id: record.id,
+                    personId: p.id
+                  });
+                  setLink(r.url);
+                  setMessage('Nuevo enlace de siete días. El anterior queda revocado. La persona debe verificar su correo.');
+                })}>Generar / renovar enlace personal</button><button disabled={busy} className={button} onClick={() => void run(async () => {
+                  await visitRequest({
+                    action: 'revoke-link',
+                    id: record.id,
+                    personId: p.id
+                  });
+                  setLink('');
+                  setMessage('Acceso revocado.');
+                })}>Revocar enlace</button></>}{!record.state.responses[p.id] && record.status !== 'signing' && <button disabled={busy} className={button} onClick={() => {
+                setOnsite({
+                  personId: p.id,
+                  kind: 'response'
+                });
+                setOnsiteAck(false);
+                setResponseComment('');
+              }}>Conformidad presencial</button>}{record.status === 'signing' && p.signing !== 'none' && !record.state.signatures[p.id] && <button disabled={busy} className={button} onClick={() => {
+                setOnsite({
+                  personId: p.id,
+                  kind: 'signature'
+                });
+                setOnsiteAck(false);
+              }}>Firma presencial</button>}</div></div>)}</section>}
+        {link && <label className="block text-sm font-bold">Enlace personal: entrégalo solo a su destinatario<input className={visitInput} readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>}
+        {onsite && (() => {
+          const p = record.state.participants.find(p => p.id === onsite.personId)!;
+          return <section className="rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={image => void run(() => mutate({
+              type: 'sign',
+              personId: p.id,
+              image,
+              mode: 'in-person'
+            }).then(() => undefined))} /> : <><label className="block text-sm font-bold">Comentario / reservas<textarea className={visitInput} value={responseComment} onChange={e => setResponseComment(e.target.value)} /></label><div className="flex flex-wrap gap-2">{([['agree', 'Doy mi conformidad'], ['changes', 'Solicito cambios'], ['reject', 'No estoy conforme']] as const).map(([decision, label]) => <button key={decision} disabled={busy || !onsiteAck} className={button} onClick={() => void run(() => mutate({
+                  type: 'respond',
+                  personId: p.id,
+                  decision,
+                  comment: responseComment,
+                  mode: 'in-person'
+                }).then(() => undefined))}>{label}</button>)}</div></>}</section>;
+        })()}
+        {!!jobs.length && <section><h3 className="font-black">Distribución por destinatario</h3><p className="text-xs">Aceptado por Gmail no acredita recepción o lectura. Si el resultado es incierto, comprueba Enviados; no se reintentará automáticamente.</p>{jobs.filter(j => j.version === record.version).map(j => <div key={j.id} className="mt-2 rounded-xl border p-3 text-sm"><strong>{personName(record.state.participants.find(p => p.id === j.person_id) || {
+                firstName: 'Participante',
+                lastName: ''
+              })}</strong><p>{j.kind === 'review' ? 'Revisión' : j.kind === 'signing' ? 'Firma' : 'PDF final'} · {({
+                pending: 'Pendiente',
+                sending: 'En curso',
+                sent: 'Aceptado por Gmail',
+                failed: 'Fallido',
+                uncertain: 'Resultado incierto',
+                cancelled: 'Cancelado'
+              } as any)[j.status]} · {j.attempts} intento(s)</p>{record.canWrite && ['pending', 'failed', 'sending'].includes(j.status) && <button disabled={busy} className={button + ' mt-2'} onClick={() => void run(async () => {
+              await visitRequest({
+                action: 'send-job',
+                id: record.id,
+                jobId: j.id
+              });
+              await open(record.id);
+              setMessage('Estado de envío actualizado.');
+            })}>{j.status === 'sending' ? 'Comprobar estado del envío' : 'Enviar / reintentar este correo'}</button>}</div>)}</section>}
+        {record.status === 'signed' && record.state.content.agreements.length > 0 && <section className="space-y-2"><h3 className="font-black">Seguimiento posterior de acuerdos</h3><p className="text-sm">Este seguimiento no modifica el acta ni su PDF firmado.</p>{record.state.content.agreements.map(a => <div key={a.id} className="rounded-xl border p-3"><p>{a.text}</p><p className="text-sm">{a.responsible} · {a.deadline} · {record.state.followup[a.id]?.done ? 'Resuelto' : 'Pendiente'}</p>{record.canWrite && <><input aria-label={`Nota de seguimiento de ${a.text}`} className={visitInput + ' my-2'} value={followNotes[a.id] ?? record.state.followup[a.id]?.note ?? ''} onChange={e => setFollowNotes({
+                ...followNotes,
+                [a.id]: e.target.value
+              })} /><button disabled={busy} className={button} onClick={() => void run(() => mutate({
+                type: 'followup',
+                agreementId: a.id,
+                done: !record.state.followup[a.id]?.done,
+                note: followNotes[a.id] ?? record.state.followup[a.id]?.note ?? ''
+              }).then(() => undefined))}>Marcar {record.state.followup[a.id]?.done ? 'pendiente' : 'resuelto'} y guardar nota</button></>}</div>)}</section>}
+        {history && <section className="space-y-2"><h3 className="font-black">Versiones archivadas y trazabilidad</h3>{history.versions.map((v: any) => <button key={v.version} disabled={busy} className={button} onClick={() => void run(async () => downloadVisitFile(await visitRequest({
+            action: 'pdf',
+            id: record.id,
+            version: v.version
+          })))}>Descargar versión {v.version}</button>)}<ol className="max-h-96 overflow-auto space-y-2">{history.events.map((e: any) => <li key={e.id} className="rounded-lg border p-3 text-sm">{madridTimestamp(e.at)} · v{e.version} · {e.event} · {e.actor.startsWith('participant:') ? personName(record.state.participants.find(p => p.id === e.actor.slice(12)) || {
+                firstName: 'Participante de versión anterior',
+                lastName: ''
+              }) : 'Supervisor'}</li>)}</ol>{history.events.length >= 200 && <button disabled={busy} className={button} onClick={() => void run(async () => {
+            const r = await visitRequest({
+              action: 'history',
+              id: record.id,
+              offset: history.events.length
+            });
+            setHistory({
+              ...history,
+              events: [...history.events, ...r.events]
+            });
+          })}>Cargar eventos anteriores</button>}</section>}
+      </div>}
+    </section>}
+    {mail && <ModalPortal><div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-3"><section role="dialog" aria-modal="true" aria-labelledby="visit-mail-title" className="max-h-[90dvh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-5 text-slate-900 dark:bg-slate-900 dark:text-slate-100 space-y-4"><h2 id="visit-mail-title" className="text-xl font-black">Revisar correos antes de enviar</h2><p>Se enviará un correo individual a cada dirección disponible, desde tu Gmail autorizado. No se revelan las direcciones de otros asistentes.</p>{mail.kind === 'final' && <p className="font-bold">Adjunto: {record?.number}_v{record?.version}_FIRMADA.pdf · Se utiliza el archivo final conservado.</p>}{!mail.messages.length && <p>No hay destinatarios de correo para esta fase. Puedes continuar presencialmente.</p>}{mail.messages.map(m => <div className="rounded-xl border p-3" key={m.personId}><p className="font-bold">Para: {m.email || 'Sin correo: participación presencial; no se enviará email'}</p><p className="font-bold mt-1">{m.subject}</p><pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm">{m.body}</pre></div>)}<div className="flex flex-wrap gap-2"><button disabled={busy} className={primary} onClick={sendFlow}>Confirmar y {mail.kind === 'review' ? 'abrir revisión' : mail.kind === 'signing' ? 'abrir firmas' : 'enviar PDF firmado'}</button><button disabled={busy} className={button} onClick={() => setMail(null)}>Cancelar</button></div></section></div></ModalPortal>}
+  </main>;
+}

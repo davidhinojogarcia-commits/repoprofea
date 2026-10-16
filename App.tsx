@@ -41,6 +41,7 @@ const PreventionSection = lazy(() => import('./components/PreventionSection').th
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
+const VisitMinutesPanel = lazy(() => import('./components/VisitMinutesPanel').then(module => ({ default: module.VisitMinutesPanel })));
 const Stats = lazy(() => import('./components/Stats').then(module => ({ default: module.Stats })));
 const RegistrationForm = lazy(() => import('./components/RegistrationForm').then(module => ({ default: module.RegistrationForm })));
 const PersonList = lazy(() => import('./components/PersonList').then(module => ({ default: module.PersonList })));
@@ -119,6 +120,7 @@ const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: strin
   citas: { step: 'Paso 3 de 6', title: 'Reconocimientos médicos', help: 'Comprueba citas y aptitud médica.' },
   documentacion_obra: { step: 'Paso 4 de 6', title: 'Documentación de obra', help: 'Completa y revisa los documentos de la obra.' },
   documentacion_encargados: { step: 'Seguimiento', title: 'Documentación de encargados', help: 'Revisa firmas, partes y registros diarios enviados desde obra.' },
+  actas_visitas: { step: 'Seguimiento', title: 'Actas de visitas de obra', help: 'Redacta acuerdos, solicita conformidad y distribuye el acta firmada.' },
   subcontratas: { step: 'Paso 5 de 6', title: 'CAE', help: 'Revisa la coordinación y documentación de empresas.' },
   prevencion: { step: 'Prevención en obra', title: 'Incidencias y alertas', help: 'Comunica riesgos, revisa la tarea y registra las medidas adoptadas.' },
   inventario: { step: 'Paso 6 de 6', title: 'Maquinaria y herramientas', help: 'Consulta equipos disponibles, asignados o averiados.' },
@@ -154,6 +156,12 @@ function App() {
   });
 
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
+  const [visitWorksite, setVisitWorksite] = useState('');
+  useEffect(() => {
+    const openVisit = (event: Event) => {setVisitWorksite(String((event as CustomEvent).detail?.worksite || ''));setActiveView('actas_visitas');};
+    window.addEventListener('profea:open-visit-minutes',openVisit);
+    return () => window.removeEventListener('profea:open-visit-minutes',openVisit);
+  }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('inventoryItem') || params.has('inventoryInvite')) {
@@ -235,7 +243,7 @@ function App() {
     setInterfaceMode(nextMode);
     if (
       nextMode === 'guided' &&
-      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
+      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'actas_visitas', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
     ) {
       setActiveView('dashboard');
       window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
@@ -2351,6 +2359,10 @@ function App() {
             <Suspense fallback={<ViewLoadingFallback />}>
               <ForemanDocumentsDashboard />
             </Suspense>
+          )}
+
+          {activeView === 'actas_visitas' && (
+            <Suspense fallback={<ViewLoadingFallback />}><VisitMinutesPanel initialWorksite={visitWorksite}/></Suspense>
           )}
 
           {activeView === 'inventario' && (
