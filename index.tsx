@@ -18,6 +18,7 @@ import './dark-mode-hardening.css';
 import './medical-citations-contrast.css';
 import './guided-mobile-accessibility.css';
 import './accessibility-contrast.css';
+import './visit-minutes.css';
 
 if (typeof globalThis !== 'undefined') {
   const runtime = globalThis as any;
@@ -73,6 +74,7 @@ const MedicalAppointmentConfirmationPortal = React.lazy(() => import('./componen
 const WorkerQrPortal = React.lazy(() => import('./components/WorkerQrPortal').then(module => ({ default: module.WorkerQrPortal })));
 const RemoteScannerPortal = React.lazy(() => import('./components/RemoteScannerPortal').then(module => ({ default: module.RemoteScannerPortal })));
 const ForemanMobilePortal = React.lazy(() => import('./components/ForemanMobilePortal').then(module => ({ default: module.ForemanMobilePortal })));
+const VisitMinutesPortal = React.lazy(() => import('./components/VisitMinutesPortal').then(module => ({ default: module.VisitMinutesPortal })));
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 const normalizeLegacyLoginRoute = () => {
@@ -103,6 +105,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 const initialSearchParams = new URLSearchParams(window.location.search);
+const visitToken = new URLSearchParams(window.location.hash.slice(1)).get('visit') || '';
 const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
@@ -171,7 +174,9 @@ ReactDOM.createRoot(rootElement).render(
     <RootErrorBoundary>
       <>
         <AppDialogHost />
-        {isMedicalConfirmation ? (
+        {visitToken ? (
+        <React.Suspense fallback={<RouteLoadingFallback />}><VisitMinutesPortal token={visitToken}/></React.Suspense>
+      ) : isMedicalConfirmation ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><MedicalAppointmentConfirmationPortal /></React.Suspense>
       ) : foremanToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><ForemanMobilePortal token={foremanToken} /></React.Suspense>

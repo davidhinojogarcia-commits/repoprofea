@@ -3,7 +3,7 @@ import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, 
 import { useAuthShell } from './AuthGate';
 import { APP_BUILD, APP_VERSION } from '../src/lib/appVersion';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'prevencion' | 'documentacion_obra' | 'documentacion_encargados' | 'inventario' | 'administracion';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'prevencion' | 'documentacion_obra' | 'documentacion_encargados' | 'inventario' | 'administracion' | 'actas_visitas';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -68,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'prevencion', label: 'Incidencias y alertas', icon: ShieldCheck },
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
+        { id: 'actas_visitas', label: 'Actas de visitas', icon: ClipboardCheck },
         { id: 'documentacion_encargados', label: 'Documentación de encargados', icon: ClipboardCheck },
         {
           id: 'subcontratas',
@@ -103,6 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'citas', label: '4. Reconocimientos', subtitle: 'Citas y aptitud médica', icon: Calendar },
         { id: 'documentacion_obra', label: '5. Documentación', subtitle: 'Documentos de la obra', icon: Files },
         { id: 'documentacion_encargados', label: 'Documentación de encargados', subtitle: 'Firmas y partes recibidos', icon: ClipboardCheck },
+        { id: 'actas_visitas', label: 'Actas de visitas', subtitle: 'Acuerdos, conformidades y firmas', icon: ClipboardCheck },
         { id: 'subcontratas', label: '6. CAE', subtitle: 'Coordinación de empresas', icon: HardHat },
         { id: 'prevencion', label: 'Incidencias y alertas', subtitle: 'Comprobaciones y seguimiento por obra', icon: ShieldCheck },
         { id: 'inventario', label: '7. Maquinaria', subtitle: 'Equipos y herramientas', icon: Wrench },

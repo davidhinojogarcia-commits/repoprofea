@@ -721,6 +721,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
 
   return (
     <div className="w-full text-slate-900 dark:text-slate-100">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"><span className="text-sm font-bold">Actas de visitas de la obra seleccionada</span><button type="button" disabled={!selectedWork} onClick={()=>window.dispatchEvent(new CustomEvent('profea:open-visit-minutes',{detail:{worksite:selectedWork}}))} className="min-h-[46px] rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Abrir actas de visitas</button></div>
       <div className="pb-6">
         <div className="max-w-[1580px] mx-auto space-y-3 sm:space-y-6">
           <div className="lg:hidden sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
