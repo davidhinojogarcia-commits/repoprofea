@@ -145,6 +145,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
   const hostRef=useRef<HTMLDivElement>(null);
   const [renderError,setRenderError]=useState('');
   const [rendering,setRendering]=useState(true);
+  const [zoom,setZoom]=useState(1);
 
   useEffect(()=>{
     let cancelled=false;
@@ -164,8 +165,8 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
           if(cancelled)return;
           const page=await pdf.getPage(pageNumber);
           const base=page.getViewport({scale:1});
-          const available=Math.max(280,Math.min(window.innerWidth-24,900));
-          const scale=Math.min(2,available/base.width);
+          const available=host.clientWidth||Math.min(window.innerWidth,900)*zoom;
+          const scale=Math.min(3,available/base.width);
           const viewport=page.getViewport({scale});
           const canvas=document.createElement('canvas');
           canvas.width=Math.ceil(viewport.width);
@@ -191,21 +192,27 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
       }
     })();
     return()=>{cancelled=true;try{pdf?.destroy?.();}catch{}};
-  },[bytes]);
+  },[bytes,zoom]);
 
-  return <ModalPortal label={title}><div className="fixed inset-0 flex h-[100dvh] w-screen flex-col bg-slate-950">
-    <div className="flex items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-slate-900" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
+  return <ModalPortal label={title} layout="fullscreen"><div className="foreman-pdf-viewer">
+    <div className="foreman-pdf-viewer-header dark:bg-slate-900" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="min-w-0">
         <div className="truncate text-sm font-black text-slate-900 dark:text-slate-50">{title}</div>
         <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-300"><Maximize2 className="h-3.5 w-3.5"/>Pantalla completa · PDF real</div>
       </div>
       <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50">Cerrar</button>
     </div>
-    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-900 p-0 sm:p-3" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}>
+    <div className="foreman-pdf-viewer-tools" aria-label="Escala del PDF">
+      <button type="button" aria-label="Reducir PDF" disabled={zoom<=1} onClick={()=>setZoom(value=>Math.max(1,value-.5))}>−</button>
+      <span aria-live="polite">{Math.round(zoom*100)} %</span>
+      <button type="button" aria-label="Ampliar PDF" disabled={zoom>=3} onClick={()=>setZoom(value=>Math.min(3,value+.5))}>+</button>
+      <button type="button" onClick={()=>setZoom(1)}>Ajustar a pantalla</button>
+    </div>
+    <div className="foreman-pdf-viewer-pages" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}>
       {notice&&<div className="mx-auto mb-3 max-w-[900px] rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold leading-5 text-amber-900 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">{notice}</div>}
       {rendering&&<div className="mx-auto mt-8 max-w-md rounded-2xl bg-white p-5 text-center text-sm font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-200">Cargando PDF…</div>}
       {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800 dark:border-rose-700 dark:bg-rose-950/80 dark:text-rose-100">{renderError}</div>}
-      <div ref={hostRef} className="mx-auto w-full max-w-none sm:max-w-[900px]" />
+      <div ref={hostRef} style={{width:`min(${900*zoom}px, ${100*zoom}%)`,margin:'0 auto'}} />
     </div>
   </div></ModalPortal>;
 };

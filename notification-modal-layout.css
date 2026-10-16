@@ -21,7 +21,6 @@ body.profea-modal-open aside.app-navigation-panel {
 /* Shared geometry for normal and portaled application modals. */
 #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
 .profea-modal-overlay:not([data-modal-layout="fullscreen"]) {
-  z-index: 40 !important;
   top: calc(var(--profea-app-header-height) + var(--profea-modal-gap)) !important;
   bottom: var(--profea-modal-gap) !important;
   right: var(--profea-modal-gap) !important;
@@ -29,6 +28,13 @@ body.profea-modal-open aside.app-navigation-panel {
   padding: 0 !important;
   overflow: hidden !important;
   overscroll-behavior: contain !important;
+}
+
+/* Legacy overlays keep their workspace layer. Portals retain their increasing
+   inline layer so cards, navigation and later modals cannot cover them. */
+#root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) { z-index: 40 !important; }
+@media (max-width: 1023px) {
+  #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) { z-index: 1000 !important; }
 }
 
 /* A modal panel can never grow into the header/footer gap. */
@@ -120,7 +126,6 @@ body.profea-modal-open aside.app-navigation-panel {
     left: var(--profea-modal-gap) !important;
     top: max(var(--profea-modal-gap), env(safe-area-inset-top)) !important;
     bottom: max(var(--profea-modal-gap), env(safe-area-inset-bottom)) !important;
-    z-index: 1000 !important;
     max-height: calc(100dvh - (2 * var(--profea-modal-gap))) !important;
   }
 
@@ -360,3 +365,32 @@ body.profea-modal-open aside.app-navigation-panel {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
 }
+
+/* Mobile PDF viewing must not depend on runtime Tailwind discovery. */
+.foreman-pdf-viewer {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #0f172a;
+}
+.foreman-pdf-viewer-header {
+  display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between;
+  gap: 0.75rem; padding: max(12px, env(safe-area-inset-top, 0px)) 16px 12px;
+  background: #fff; color: #0f172a; min-width: 0;
+}
+.foreman-pdf-viewer-header > div { min-width: 0; flex: 1; }
+.foreman-pdf-viewer-header button { flex: 0 0 auto; min-height: 44px; }
+.foreman-pdf-viewer-pages {
+  flex: 1 1 0%; min-height: 0; min-width: 0; width: 100%;
+  overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 12px 0 max(16px, env(safe-area-inset-bottom, 0px));
+}
+.foreman-pdf-viewer-pages > div { width: 100%; }
+.foreman-pdf-viewer-pages canvas { max-width: 100%; margin: 0 auto; }
+.foreman-model-settings-overlay {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(2,6,23,.65); padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+}
+.foreman-model-settings-panel { width: 100%; max-width: 32rem; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.foreman-pdf-viewer-tools { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; background: #fff; color: #0f172a; border-top: 1px solid #cbd5e1; }
+.foreman-pdf-viewer-tools button { min-width: 44px; min-height: 44px; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 10px; font-weight: 700; }
+.foreman-pdf-viewer-tools button:disabled { opacity: .45; }
