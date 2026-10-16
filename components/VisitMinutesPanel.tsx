@@ -272,14 +272,19 @@ export function VisitMinutesPanel({
       messages: r.messages
     });
   });
-  const sendFlow = () => void run(async () => {
-    if (!record || !mail) return;
+  const sendFlow = () => {
+    if (!record || !mail || busy || guard.current) return;
+    // Release the preview dialog before changing workflow status or requesting
+    // external mail delivery. An error must never strand the dialog over the page.
+    const pendingMail = mail;
+    setMail(null);
+    void run(async () => {
     let current = record;
-    if (mail.kind === 'review' && record.status === 'draft') current = await mutate({
+    if (pendingMail.kind === 'review' && record.status === 'draft') current = await mutate({
       type: 'review'
-    });else if (mail.kind === 'signing' && record.status === 'review') current = await mutate({
+    });else if (pendingMail.kind === 'signing' && record.status === 'review') current = await mutate({
       type: 'open-signing'
-    });else if (mail.kind === 'final') {
+    });else if (pendingMail.kind === 'final') {
       const r = await visitRequest({
         action: 'queue-final',
         id: record.id,
@@ -296,7 +301,7 @@ export function VisitMinutesPanel({
     const selected = (await visitRequest({
       action: 'get',
       id: current.id
-    })).jobs.filter((j: any) => j.version === current.version && j.kind === mail.kind && ['pending', 'failed'].includes(j.status));
+    })).jobs.filter((j: any) => j.version === current.version && j.kind === pendingMail.kind && ['pending', 'failed'].includes(j.status));
     let accepted = 0,
       failed = 0;
     setMail(null);
@@ -323,7 +328,8 @@ export function VisitMinutesPanel({
     setJobs(refreshed.jobs);
     setMessage(`${accepted} correo(s) aceptados por Gmail en esta operación.${failed ? ' Hay envíos pendientes o fallidos; consulta el detalle.' : ''} La aceptación no acredita lectura ni recepción.`);
     await refreshList();
-  });
+    });
+  };
   const addContact = (contact: VisitContact) => {
     if (people.some(p => p.id === contact.id)) return;
     const assignment = contact.assignments.find(a => a.worksiteId === content?.worksiteId);
