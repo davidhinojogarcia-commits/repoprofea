@@ -28,3 +28,12 @@ for(const documentType of ['inicio','control_presencia','contrato','prorroga']){
 for(const type of ['epis','formacion','maquinaria','autorizacion_uso_maquinaria','control_horario','ausencia_trabajador'])assert(allowsForemanSignature(type));
 assert.equal(allowsForemanSignature(undefined),false);
 console.log('PASS: type policy and historical metadata cannot expose foreman signing on excluded documents.');
+
+for(const documentType of ['epis','formacion','maquinaria','autorizacion_uso_maquinaria','control_horario']){
+ const defaultLayout=enabledForemanTemplate({documentType});
+ assert.equal(defaultLayout?.enabled,true,'missing configuration enables '+documentType);
+ assert.equal(defaultLayout?.required,true,'foreman must sign '+documentType);
+ assert.equal(enabledForemanTemplate({documentType,details:{foremanSignatureTemplate:{...model,enabled:false}}}),undefined,'explicit supervisor exclusion wins');
+ assert.equal(enabledForemanTemplate({documentType,details:{originalPdfMode:'overlay'}}),undefined,'never guess positions in an imported original');
+}
+console.log('PASS: native foreman panel defaults, required signing and explicit supervisor/original exceptions.');

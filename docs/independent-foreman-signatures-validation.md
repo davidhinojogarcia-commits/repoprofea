@@ -5,7 +5,7 @@ Rama: `feat/independent-foreman-signatures`. No autoriza fusión ni publicación
 
 ## Comportamiento
 
-- EPIs, formación e información y maquinaria: el supervisor abre **Configurar firma del encargado** en la tarjeta del documento normalizado, indica si corresponde y si es obligatoria, ajusta el recuadro y guarda el modelo. Los modelos quedan aislados por propietario y su reutilización es explícita.
+- EPIs, formación e información y maquinaria: el panel y la obligación de firma están activos por defecto en los modelos normalizados. El supervisor puede ajustar el recuadro, guardar el modelo o definir expresamente una excepción. Los modelos quedan aislados por propietario y su reutilización es explícita.
 - Control horario: misma configuración por jornada y modelo. El encargado completa las entradas y salidas y pulsa **Firmar como encargado**. Los cambios posteriores de filas o plantilla invalidan su conformidad, conservando trazabilidad sin duplicar imágenes en los eventos.
 - La firma se recoge con el SignaturePad existente, en azul `#164B9B`. La evidencia se recupera del servidor después de guardarla. Los PDF que abre el supervisor incorporan esa evidencia de forma independiente, conservando las firmas de trabajadores.
 - Los documentos adicionales normalizados conservan su circuito existente de firma propia del encargado; su botón tiene la misma denominación.
@@ -41,3 +41,16 @@ También se renderizaron los PDF de prueba con Poppler y se inspeccionaron visua
 ## Producción y seguridad
 
 No se han ejecutado migraciones remotas, escrituras de datos de producción, fusiones ni despliegues. `vercel.json` desactiva los despliegues de esta rama. Las nuevas RPC de configuración son exclusivas del supervisor autenticado y propietario; las RPC móviles validan el token activo y la obra en cada operación. Las tablas de imágenes permanecen cerradas a acceso directo. El nuevo registro de eventos de jornada usa RLS por propietario y no contiene imágenes de firmas.
+
+
+## Corrección del panel oculto (16/10/2026)
+
+La primera publicación condicionaba el panel a que existiese una plantilla activada para cada documento. Los documentos nativos creados en el portal no la generaban. Se ha corregido con valores predeterminados coherentes entre cliente y PostgreSQL:
+
+- EPIs, formación e información y ambos identificadores de maquinaria: panel y firma obligatoria por defecto; las excepciones explícitas del supervisor se conservan.
+- Control horario: el panel está disponible incluso antes del primer guardado de la jornada. La finalización queda bloqueada sin la firma; la validación también cubre el primer INSERT y el INSERT ON CONFLICT de las jornadas existentes.
+- La migración repara documentos y jornadas pendientes sin configuración; también inicializa los históricos cuando el supervisor los devuelve para corregir. No cambia documentos finalizados, PDF originales, firmas de trabajadores ni excepciones del supervisor.
+- Al preparar una relación nueva se abre directamente su panel de firmas.
+- Ampliadas las pruebas de PostgreSQL, política y Chromium para partir de documentos sin plantilla, exigir la firma antes de enviar y verificar el panel del documento recién creado. Han pasado también la suite de publicación, TypeScript y compilación.
+
+Los límites de dispositivos físicos y cuentas reales de la validación anterior siguen vigentes; la comprobación del panel sin configuración sí se ha realizado en Chromium real con servicios simulados y PostgreSQL local.
