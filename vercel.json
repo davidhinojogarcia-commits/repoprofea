@@ -51,7 +51,8 @@
       "fix/signature-editor-sidebar-overlay": false,
       "feat/pdf-signature-workspace": false,
       "feat/worksite-visit-minutes": false,
-      "fix/visit-minutes-native-esm": false
+      "fix/visit-minutes-native-esm": false,
+      "fix/completed-native-pdf": false
     }
   }
 }
