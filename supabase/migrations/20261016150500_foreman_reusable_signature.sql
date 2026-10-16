@@ -20,7 +20,7 @@ begin
  select * into d from public.foreman_mandatory_documents where id=p_document_id and owner_id=auth.uid();
  if not found then raise exception 'Documento no autorizado'; end if;
  select layout into t from public.foreman_signature_templates where owner_id=d.owner_id and model_key=p_model_key;
- return coalesce(d.details->'foremanSignatureTemplate',t,'null'::jsonb);
+ return case when d.details#>>'{foremanSignatureTemplate,templateKey}'=p_model_key then d.details->'foremanSignatureTemplate' else coalesce(t,'null'::jsonb) end;
 end $$;
 
 create or replace function public.save_foreman_signature_template(
