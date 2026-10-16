@@ -1,3 +1,4 @@
+import { SIGNATURE_INK } from '../src/lib/signatureInk';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import {
@@ -79,7 +80,7 @@ const SignaturePad: React.FC<{
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, rect.width, 165);
-    ctx.strokeStyle = '#111827';
+    ctx.strokeStyle = SIGNATURE_INK;
     ctx.lineWidth = 2.2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -758,3 +759,4 @@ export const AdditionalWorksiteDocumentsWorkspace: React.FC<AdditionalWorksiteDo
 // Se mantiene este export para no romper imports antiguos. La biblioteca ya se
 // integra directamente dentro de Documentación de obra y no muestra un botón flotante.
 export const AdditionalWorksiteDocumentsPanel: React.FC = () => null;
+

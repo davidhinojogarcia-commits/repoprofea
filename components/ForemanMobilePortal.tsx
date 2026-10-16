@@ -1,3 +1,4 @@
+import { SIGNATURE_INK } from '../src/lib/signatureInk';
 import { activateForemanPush, restoreForemanPush, disableForemanPush, foremanPushHelp } from '../src/services/foremanPushService';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
@@ -72,7 +73,7 @@ const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; on
     canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
     const ctx=canvas.getContext('2d',{alpha:true}); if(!ctx) return;
     ctx.setTransform(ratio,0,0,ratio,0,0); ctx.clearRect(0,0,rect.width,rect.height);
-    ctx.strokeStyle='#111827'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.strokeStyle=SIGNATURE_INK; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
   },[]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
   const exportSignature = () => {
@@ -1516,5 +1517,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }} onCancel={()=>setMandatorySigning(null)}/>} 
   </div>;
 };
+
 
 

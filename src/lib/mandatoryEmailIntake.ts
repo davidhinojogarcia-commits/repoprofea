@@ -13,6 +13,7 @@ import { prepareMandatoryDocumentFromEmail, restoreForemanMandatoryGmailSource }
 import { analyzeMandatoryOriginalPdf, analyzeEmploymentOriginalPdf, fileToBase64, resolveMandatoryAnchorsWithOcrRows, sha256Hex } from './mandatoryPdfOverlay';
 import { extractPrintedWorkerNameCandidates } from './mandatoryWorkerDetection';
 import { resolveMandatoryWorksite } from './mandatoryWorksiteDetection';
+import { proposeEmploymentWorksite } from './employmentWorksiteAssignment';
 
 const norm = (value: unknown) =>
   String(value || '')
@@ -308,6 +309,19 @@ const extractCategoryWithFilenameFallback = (text: string, filename: string) => 
   return probe;
 };
 
+const extractMandatoryTextSafely = async (file: File, warnings: string[], onProgress?: (message: string) => void) => {
+  try {
+    return await extractClientDocumentText(file, onProgress);
+  } catch (error) {
+    const type = documentType(file.name, '');
+    if (type !== 'contrato' && type !== 'prorroga') throw error;
+    warnings.push(`${file.name}: no se pudo completar la lectura. El original se conserva pendiente de revisión manual de obra, trabajador y firma.`);
+    // The PDF analyzer still validates the actual PDF and its pages below.
+    // Filename classification never supplies a worksite, identity or position.
+    return { text: '', source: 'none' as const };
+  }
+};
+
 const matchMandatoryWorkersWithOcrRetry = async (
   file: File,
   workers: Person[],
@@ -353,6 +367,7 @@ const matchMandatoryWorkersWithOcrRetry = async (
 };
 
 export type MandatoryEmailIntakeResult = {
+  pendingWorksiteDocuments?: number;
   scannedMessages: number;
   importedDocuments: number;
   skippedAttachments: number;
@@ -385,12 +400,14 @@ export async function processAdministrativeMandatoryInbox(options?: {
   options?.onProgress?.('Consultando Gmail de la administrativa…');
   const messages = await scanAdministrativeGmail(administrativeEmail);
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
-  const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : (await getDocuments<any>('obras', { limitCount: 1000 })).map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
+  const worksiteCatalog = await getDocuments<any>('obras', { limitCount: 1000 });
+  const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : worksiteCatalog.map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
   const existing = options?.existingSourceKeys || new Set<string>();
   const warnings: string[] = [];
   const missingDirectoryWorkers = new Set<string>();
   let importedDocuments = 0;
   let skippedAttachments = 0;
+  let pendingWorksiteDocuments = 0;
 
   for (const message of messages) {
     for (const attachment of message.attachments || []) {
@@ -403,7 +420,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
       options?.onProgress?.(`Leyendo ${attachment.filename}…`);
       try {
         const file = base64UrlAttachmentToFile(attachment);
-        const extracted = await extractClientDocumentText(file, options?.onProgress);
+        const extracted = await extractMandatoryTextSafely(file, warnings, options?.onProgress);
         const type = documentType(attachment.filename, extracted.text);
         if (!type) {
           skippedAttachments += 1;
@@ -417,7 +434,8 @@ export async function processAdministrativeMandatoryInbox(options?: {
           options?.onProgress,
         );
         const category = recognition.category;
-        const documentObra = extractWorksiteFromText(recognition.text, knownWorksites);
+        const worksiteProposal = ['contrato','prorroga'].includes(type) ? proposeEmploymentWorksite(recognition.text, worksiteCatalog) : undefined;
+        const documentObra = worksiteProposal ? '' : extractWorksiteFromText(recognition.text, knownWorksites);
         const listedWorkers = extractWorkersPrintedInPdf(recognition.text, workers, category, documentObra, type);
         if (!listedWorkers.length && !['contrato','prorroga'].includes(type)) {
           warnings.push(`${attachment.filename}: no se han podido leer nombres de personas en el PDF.`);
@@ -462,13 +480,14 @@ export async function processAdministrativeMandatoryInbox(options?: {
           emailSubject: message.subject,
           attachmentName: attachment.filename,
           obraHint: obra,
+          worksiteProposal,
           sourceText: recognition.text,
           sourcePdfBase64: await fileToBase64(file),
           sourcePdfSha256: await sha256Hex(sourceBytes),
           pageMeta: analysis.pages,
           workerAnchors: analysis.anchors,
         });
-        if(preparedId) importedDocuments += 1;
+        if(preparedId) { importedDocuments += 1; if(obra==='__PENDING_WORKSITE__')pendingWorksiteDocuments += 1; }
         existing.add(key);
       } catch (error: any) {
         warnings.push(`${attachment.filename}: ${error?.message || 'no se pudo procesar'}`);
@@ -476,11 +495,12 @@ export async function processAdministrativeMandatoryInbox(options?: {
     }
   }
 
-  return { scannedMessages: messages.length, importedDocuments, skippedAttachments, warnings, missingDirectoryWorkers:[...missingDirectoryWorkers] };
+  return { scannedMessages: messages.length, importedDocuments, skippedAttachments, warnings, pendingWorksiteDocuments, missingDirectoryWorkers:[...missingDirectoryWorkers] };
 }
 
 
 export type MandatoryManualImportResult = {
+  pendingWorksiteDocuments?: number;
   importedDocuments: number;
   skippedFiles: number;
   warnings: string[];
@@ -492,11 +512,13 @@ export async function processManualMandatoryFiles(
   options?: { onProgress?: (message: string) => void; obraHint?: string; obraCandidates?: string[] },
 ): Promise<MandatoryManualImportResult> {
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
-  const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : (await getDocuments<any>('obras', { limitCount: 1000 })).map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
+  const worksiteCatalog = await getDocuments<any>('obras', { limitCount: 1000 });
+  const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : worksiteCatalog.map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
   const warnings: string[] = [];
   const missingDirectoryWorkers = new Set<string>();
   let importedDocuments = 0;
   let skippedFiles = 0;
+  let pendingWorksiteDocuments = 0;
 
   for (const file of files) {
     if (!(file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) {
@@ -507,7 +529,7 @@ export async function processManualMandatoryFiles(
 
     options?.onProgress?.(`Analizando ${file.name}…`);
     try {
-      const extracted = await extractClientDocumentText(file, options?.onProgress);
+      const extracted = await extractMandatoryTextSafely(file, warnings, options?.onProgress);
       const type = documentType(file.name, extracted.text);
       if (!type) {
         skippedFiles += 1;
@@ -524,7 +546,8 @@ export async function processManualMandatoryFiles(
       );
       const category = recognition.category;
       const obraHint = String(options?.obraHint || '').trim();
-      const documentObra = extractWorksiteFromText(
+      const worksiteProposal = ['contrato','prorroga'].includes(type) ? proposeEmploymentWorksite(recognition.text, worksiteCatalog) : undefined;
+      const documentObra = worksiteProposal ? '' : extractWorksiteFromText(
         recognition.text,
         knownWorksites,
         files.length === 1 ? obraHint : '',
@@ -576,13 +599,14 @@ export async function processManualMandatoryFiles(
         pageMeta: analysis.pages,
         workerAnchors: analysis.anchors,
         obraHint: obra || null,
+        worksiteProposal,
       });
-      if(preparedId) importedDocuments += 1;
+      if(preparedId) { importedDocuments += 1; if(obra==='__PENDING_WORKSITE__')pendingWorksiteDocuments += 1; }
     } catch (error: any) {
       skippedFiles += 1;
       warnings.push(`${file.name}: ${error?.message || 'no se pudo procesar'}`);
     }
   }
 
-  return { importedDocuments, skippedFiles, warnings, missingDirectoryWorkers:[...missingDirectoryWorkers] };
+  return { importedDocuments, skippedFiles, warnings, pendingWorksiteDocuments, missingDirectoryWorkers:[...missingDirectoryWorkers] };
 }

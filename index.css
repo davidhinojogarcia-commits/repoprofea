@@ -552,3 +552,43 @@ body.profea-dialog-open #root {
 @media (min-width: 768px), (min-width: 700px) and (max-height: 600px) {
   .mandatory-editor-mobile-tabs { display: none; }
 }
+
+
+/* One bounded scroll surface for every imported PDF; no page is clipped by a flex child. */
+.mandatory-continuous-viewport { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; min-width:0; height:100%; overflow:hidden; }
+.mandatory-continuous-scroll { flex:1 1 0; min-height:0; min-width:0; overflow:auto; padding:16px; touch-action:pan-x pan-y pinch-zoom; -webkit-overflow-scrolling:touch; scrollbar-gutter:stable; }
+.mandatory-pdf-stack { display:flex; flex-direction:column; align-items:center; gap:24px; width:max-content; min-width:100%; padding-bottom:24px; }
+.mandatory-pdf-page { position:relative; flex:none; background:white; color:#0f172a; box-shadow:0 3px 14px #0f172a30; }
+.mandatory-pdf-page canvas { display:block; max-width:none; touch-action:pan-x pan-y pinch-zoom; }
+.mandatory-pdf-signature-box { position:absolute; border:2px dashed #164b9b; background:#164b9b12; cursor:pointer; }
+.mandatory-pdf-signature-box.is-selected { border:2px solid #164b9b; background:#164b9b20; }
+.mandatory-pdf-signature-box.needs-review { border-color:#a16207; }
+.mandatory-pdf-box-label { position:absolute; bottom:100%; left:0; max-width:220px; padding:2px 4px; background:#fff; color:#164b9b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.mandatory-anchor-editor .mandatory-pdf-resize-handle { position:absolute; width:26px; height:26px; min-height:26px; padding:0; border:2px solid white; border-radius:50%; background:#164b9b; box-shadow:0 0 0 1px #164b9b; touch-action:none; }
+.mandatory-pdf-resize-handle.nw { left:-13px; top:-13px; cursor:nwse-resize; }
+.mandatory-pdf-resize-handle.ne { right:-13px; top:-13px; cursor:nesw-resize; }
+.mandatory-pdf-resize-handle.sw { left:-13px; bottom:-13px; cursor:nesw-resize; }
+.mandatory-pdf-resize-handle.se { right:-13px; bottom:-13px; cursor:nwse-resize; }
+.mandatory-pdf-page-number { position:absolute; top:100%; right:0; font-size:11px; color:#475569; }
+.mandatory-pdf-page-error { position:absolute; inset:0; display:grid; place-items:center; color:#9f1239; background:#fff; }
+.mandatory-continuous-toolbar { display:flex; flex-direction:column; gap:6px; padding:8px 12px; background:#fff; color:#0f172a; flex-shrink:0; border-bottom:1px solid #94a3b8; }
+.mandatory-continuous-toolbar button,.mandatory-pdf-tool-toggle button { min-height:44px; border:1px solid #94a3b8; border-radius:10px; padding:6px 10px; font-weight:700; font-size:12px; }
+.mandatory-continuous-toolbar button:disabled { opacity:.4; }
+.mandatory-editor-zoom,.mandatory-pdf-modes { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; }
+.mandatory-continuous-toolbar button[aria-pressed="true"] { color:white; background:#00548e; border-color:#00548e; }
+.mandatory-pdf-mode-hint { font-size:12px; line-height:1.35; }
+.mandatory-pdf-tool-toggle { display:flex; justify-content:flex-end; background:#fff; flex-shrink:0; }
+.dark .mandatory-continuous-toolbar,.dark .mandatory-pdf-tool-toggle { background:#0f172a; color:#f8fafc; }
+.dark .mandatory-pdf-page-number { color:#cbd5e1; }
+.mandatory-anchor-editor[data-tools-hidden="true"] .mandatory-editor-controls { display:none; }
+.mandatory-anchor-editor[data-tools-hidden="true"] .mandatory-editor-main { display:flex; }
+.mandatory-anchor-editor[data-tools-hidden="true"] .mandatory-editor-preview { display:flex; flex:1; width:100%; height:100%; }
+.mandatory-anchor-editor .mandatory-editor-header { flex-wrap:wrap; }
+.mandatory-anchor-editor .mandatory-editor-header > div { flex:1 1 250px; }
+@media(max-height:600px) {
+ .mandatory-continuous-toolbar { gap:3px; padding:4px 8px; }
+ .mandatory-pdf-mode-hint { display:none; }
+ .mandatory-pdf-tool-toggle button { min-height:32px; }
+}
+
+@media(pointer:coarse) { .mandatory-anchor-editor .mandatory-pdf-resize-handle { width:44px; height:44px; min-height:44px; } .mandatory-pdf-resize-handle.nw,.mandatory-pdf-resize-handle.sw { left:-22px; } .mandatory-pdf-resize-handle.ne,.mandatory-pdf-resize-handle.se { right:-22px; } .mandatory-pdf-resize-handle.nw,.mandatory-pdf-resize-handle.ne { top:-22px; } .mandatory-pdf-resize-handle.sw,.mandatory-pdf-resize-handle.se { bottom:-22px; } }

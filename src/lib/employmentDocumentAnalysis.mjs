@@ -7,7 +7,7 @@ export function classifyEmploymentDocument(text, filename='') {
   if (/contrato\s+de\s+trabajo|contrato\s+laboral/.test(content.slice(0,3000)) || /\bcontrato\b/.test(name)) return 'contrato';
   return null;
 }
-const workerLabelText = text => normalize(text).replace(/\bdelide\b/g,'del').replace(/\bdel de la\b/g,'del').replace(/\bel la\b/g,'el').replace(/\btrabajador a\b/g,'trabajador');
+const workerLabelText = text => normalize(text).replace(/\bellla\b/g,'el').replace(/\btrabajador(?:ia|la)\b/g,'trabajador').replace(/\bdelide\b/g,'del').replace(/\bdel de la\b/g,'del').replace(/\bel la\b/g,'el').replace(/\btrabajador a\b/g,'trabajador');
 const workerLabel = text => /^(?:(?:firma(?: del| de la)?|datos(?: del| de la)?) )?(?:el |la |del |de la )?(?:trabajador(?:a)?|persona trabajadora)$/.test(workerLabelText(text));
 const sameName = (a,b) => {
   const left=normalize(a).split(' ').sort(),right=normalize(b).split(' ').sort();
@@ -36,33 +36,49 @@ export function recognizeEmploymentWorker(text) {
 export function suggestWorkerSignatureAnchor(pages, workerName, allowLabelOnly=false) {
   if(!normalize(workerName)||!Array.isArray(pages)||!pages.length)return {status:'REVIEW_REQUIRED',reason:'Falta el trabajador o las páginas'};
   const candidates=[];
+  const reliable=item=>item.confidence==null||Number(item.confidence)>=0.45;
+  const signingLabel=item=>reliable(item)&&workerLabel(item.text)&&!/^datos\b/.test(workerLabelText(item.text));
+  const propose=(page,index,item,source)=>{
+    const items=page.items||[],x=Number(item.x),y=Number(item.y),h=Number(item.height||0.015);
+    if(![x,y,h].every(Number.isFinite)||x<0||x>1||y<0||y>1)return;
+    const below=y+h+0.01;
+    const nextColumn=items.filter(v=>Number(v.x)>x+0.08&&Math.abs(Number(v.y)-y)<0.035&&/representante|empresa|empleador/.test(normalize(v.text)))
+      .sort((a,b)=>a.x-b.x)[0];
+    const width=Math.min(0.25,1-x-0.015,nextColumn?Number(nextColumn.x)-x-0.025:1);
+    // Reserve only empty space below the identified signing field, never text in a data table.
+    const obstacles=items.filter(v=>Number(v.y)>below&&Number(v.x)<x+width&&Number(v.x)+Number(v.width||0.01)>x);
+    const bottom=Math.min(0.985,...obstacles.map(v=>Number(v.y)-0.008));
+    const height=Math.min(0.045,bottom-below);
+    if(width<0.10||height<0.018)return;
+    candidates.push({page:index+1,x,y:below,width,height,nameX:source==='WORKER_NAME'?x:null,
+      nameY:source==='WORKER_NAME'?y:null,nameWidth:source==='WORKER_NAME'?Number(item.width||0.25):null,
+      nameHeight:source==='WORKER_NAME'?h:null,source,labelX:x,labelWidth:Number(item.width||0.08),labelY:y});
+  };
   pages.forEach((page,index)=>{
+    if(page?.manualOnly)return;
     const items=Array.isArray(page?.items)?page.items:[];
-    for(const item of items) {
-      if(!sameName(item?.text,workerName))continue;
-      const x=Number(item.x),y=Number(item.y),nameHeight=Number(item.height||0.015);
-      if(![x,y,nameHeight].every(Number.isFinite)||x<0||x>1||y<0||y>1)continue;
-      const near=items.some(label=>workerLabel(label?.text) && Math.abs(Number(label?.x)-x)<0.18 && Math.abs(Number(label?.y)-y)<0.16);
-      if(!near)continue;
-      const width=0.25,height=0.045,below=y+nameHeight+0.008;
-      if(below+height>0.99)continue;
-      candidates.push({page:index+1,x:Math.min(x,1-width),y:below,width,height,nameX:x,nameY:y,nameWidth:Number(item.width||0.25),nameHeight,source:'WORKER_NAME'});
+    for(const item of items){
+      if(!reliable(item)||!sameName(item.text,workerName))continue;
+      const near=items.some(label=>(signingLabel(label)||(reliable(label)&&/^(?:fdo|firmado)(?: por)?$/.test(normalize(label.text))))&&Math.abs(Number(label.x)-Number(item.x))<0.12&&Number(label.y)<=Number(item.y)&&Number(item.y)-Number(label.y)<0.12);
+      if(near)propose(page,index,item,'WORKER_NAME');
     }
   });
-  // Official forms may print the identity in the data table and only a worker label at the signing field.
-  // Label-only suggestions are allowed exclusively after identifying a single worker in that document.
-  if(!candidates.length && allowLabelOnly) pages.forEach((page,index)=>{
-    for(const item of page?.items||[]) {
-      const label=workerLabelText(item?.text);
-      if(!workerLabel(item?.text)||/^datos\b/.test(label)||Number(item?.y)<0.5)continue;
-      const x=Number(item.x),y=Number(item.y),height=Number(item.height||0.015);
-      if(![x,y,height].every(Number.isFinite)||x<0||x>0.9||y<0||y>0.9)continue;
-      const below=y+height+0.012;
-      if(below+0.045>0.99)continue;
-      candidates.push({page:index+1,x:Math.min(x,0.75),y:below,width:0.25,height:0.045,nameX:null,nameY:null,nameWidth:null,nameHeight:null,source:'WORKER_SIGNATURE_LABEL'});
+  if(!candidates.length&&allowLabelOnly)pages.forEach((page,index)=>{
+    if(page?.manualOnly)return;
+    for(const item of page?.items||[]){
+      if(!signingLabel(item))continue;
+      const explicit=/^firma\b/.test(workerLabelText(item.text));
+      const peer=(page.items||[]).some(v=>Math.abs(Number(v.y)-Number(item.y))<0.035&&Number(v.x)>Number(item.x)+0.08&&/representante|empresa|empleador/.test(normalize(v.text)));
+      if(explicit||peer)propose(page,index,item,'WORKER_SIGNATURE_LABEL');
     }
   });
-  const unique=candidates.filter((c,i)=>candidates.findIndex(v=>v.page===c.page&&Math.abs(v.x-c.x)<0.01&&Math.abs(v.y-c.y)<0.01)===i);
+  // OCR/native extraction emits overlapping full lines and word spans for one field.
+  // Collapse overlapping labels only; separate signing fields remain ambiguous.
+  const unique=[];
+  for(const candidate of candidates.sort((a,b)=>b.labelWidth-a.labelWidth)){
+    if(!unique.some(v=>v.page===candidate.page&&Math.abs(v.labelY-candidate.labelY)<0.015&&
+      candidate.labelX<v.labelX+v.labelWidth&&v.labelX<candidate.labelX+candidate.labelWidth))unique.push(candidate);
+  }
   if(unique.length!==1)return {status:'REVIEW_REQUIRED',reason:unique.length?'Hay varias posibles zonas de firma':'No se detectó una zona de firma fiable',candidates:unique};
   return {status:'SUGGESTED',anchor:unique[0],requiresSupervisorConfirmation:true};
 }
@@ -74,3 +90,4 @@ export function validateContractImport({documentType,pages,workers,anchorConfirm
   if(anchorConfirmed!==true)errors.push('El supervisor debe confirmar la ubicación de firma');
   return {valid:errors.length===0,errors};
 }
+

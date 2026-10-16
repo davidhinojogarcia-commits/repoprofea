@@ -1,6 +1,7 @@
 import { suggestWorkerSignatureAnchor } from './employmentDocumentAnalysis.mjs';
 import { readPdfTextContent } from './clientDocumentText';
 import { createWorker } from 'tesseract.js';
+import { getPdfPageOcr,rememberPdfPageOcr } from './pdfOcrCache';
 import type { Person } from '../../types';
 import {
   computeSignatureBoxFromDetectedName,
@@ -246,7 +247,7 @@ export async function analyzeEmploymentOriginalPdf(file:File, workers:Person[], 
       const width=Number(view[2])-Number(view[0]),height=Number(view[3])-Number(view[1]);
       pages.push({page:number,width,height,rotation:Number(page.rotate||0)});
       const content=await readPdfTextContent(page);
-      let items=groupLines(content.items).map(line=>({text:line.text,x:(line.minX-view[0])/width,y:1-(line.y-view[1]+line.height)/height,width:(line.maxX-line.minX)/width,height:line.height/height}));
+      let items:any[]=groupLines(content.items).map(line=>({text:line.text,x:(line.minX-view[0])/width,y:1-(line.y-view[1]+line.height)/height,width:(line.maxX-line.minX)/width,height:line.height/height}));
       // Include short native spans so worker/employer labels sharing one row are not merged.
       for(const line of groupLines(content.items)) for(let start=0;start<line.items.length;start++) for(let count=1;count<=4&&start+count<=line.items.length;count++) {
         const span=line.items.slice(start,start+count),boxes=span.map(itemBox);
@@ -256,17 +257,25 @@ export async function analyzeEmploymentOriginalPdf(file:File, workers:Person[], 
       if(!content.items.some((item:any)=>String(item.str||'').trim()) && workers.length===1 && Number(page.rotate||0)===0) {
         try {
           onProgress?.(`Localizando la zona de firma del formulario escaneado · página ${number}…`);
-          employmentOcr ||= await createWorker('spa');
-          const scale=2,viewport=page.getViewport({scale}),canvas=document.createElement('canvas');
-          canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-          const context=canvas.getContext('2d');if(!context)throw Error('Lienzo OCR no disponible');
-          await page.render({canvas,canvasContext:context,viewport}).promise;
-          const result=await employmentOcr.recognize(canvas,{}, {blocks:true,text:true});
+          const cached=getPdfPageOcr(file,number);
+          const scale=cached?.scale||2;
+          let result=cached?{data:cached.data}:null;
+          if(!result){
+            employmentOcr ||= await createWorker('spa');
+            const viewport=page.getViewport({scale}),canvas=document.createElement('canvas');
+            canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+            const context=canvas.getContext('2d');if(!context)throw Error('Lienzo OCR no disponible');
+            try{
+              await page.render({canvas,canvasContext:context,viewport}).promise;
+              result=await employmentOcr.recognize(canvas,{}, {blocks:true,text:true});
+              rememberPdfPageOcr(file,number,result.data,scale);
+            }finally{canvas.width=0;canvas.height=0;}
+          }
           const rows=collectTesseractLines(result.data,scale,height,number);
-          items=rows.map(row=>({text:row.text,x:row.x/width,y:1-(row.y+row.height)/height,width:row.width/width,height:row.height/height}));
+          items=rows.map(row=>({text:row.text,x:row.x/width,y:1-(row.y+row.height)/height,width:row.width/width,height:row.height/height,confidence:row.confidence/100}));
           for(const block of result.data.blocks||[])for(const paragraph of block.paragraphs||[])for(const line of paragraph.lines||[])for(let start=0;start<(line.words||[]).length;start++)for(let count=1;count<=4&&start+count<=line.words.length;count++) {
             const words=line.words.slice(start,start+count),left=Math.min(...words.map((w:any)=>w.bbox.x0)),right=Math.max(...words.map((w:any)=>w.bbox.x1)),top=Math.min(...words.map((w:any)=>w.bbox.y0)),bottom=Math.max(...words.map((w:any)=>w.bbox.y1));
-            items.push({text:words.map((w:any)=>w.text).join(' '),x:left/scale/width,y:top/scale/height,width:(right-left)/scale/width,height:(bottom-top)/scale/height});
+            items.push({text:words.map((w:any)=>w.text).join(' '),x:left/scale/width,y:top/scale/height,width:(right-left)/scale/width,height:(bottom-top)/scale/height,confidence:Math.min(...words.map((w:any)=>Number(w.confidence??w.conf??100)))/100});
           }
         } catch {onProgress?.('Zona de firma pendiente de encuadrar manualmente. El PDF original se conserva.');}
       }
@@ -286,7 +295,7 @@ export async function analyzeEmploymentOriginalPdf(file:File, workers:Person[], 
         confidence:safe?0.9:0,resolved:false,reason:safe?'Zona sugerida debajo del nombre. El supervisor debe revisarla y guardar la posición.':suggestion.reason||'Revisa y encuadra la firma manualmente.'};
     });
     return {pageCount:pages.length,pages,anchors,orderedWorkerIds:workers.map(w=>Number(w.id)),unresolvedWorkerIds:workers.map(w=>Number(w.id))};
-  } finally {await employmentOcr?.terminate();await loadingTask.destroy();}
+  } finally {try{await employmentOcr?.terminate();}finally{await loadingTask.destroy?.();}}
 }
 
 export async function analyzeMandatoryOriginalPdf(
@@ -297,7 +306,9 @@ export async function analyzeMandatoryOriginalPdf(
 ): Promise<MandatoryPdfAnalysis> {
   const pdfjs = await setupPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
+  const loadingTask=pdfjs.getDocument({data,useSystemFonts:true});
+  try {
+  const pdf=await loadingTask.promise;
   const pages: MandatoryPdfPageMeta[] = [];
   const pageLines: {
     page:number;
@@ -514,6 +525,7 @@ export async function analyzeMandatoryOriginalPdf(
     orderedWorkerIds:ordered.map(anchor=>anchor.workerId),
     unresolvedWorkerIds:ordered.filter(anchor=>!anchor.resolved).map(anchor=>anchor.workerId),
   };
+  } finally { await loadingTask.destroy?.(); }
 }
 
 
@@ -662,8 +674,11 @@ export async function resolveMandatoryAnchorsWithOcrRows(
 
   const pdfjs=await setupPdfJs();
   const data=new Uint8Array(await file.arrayBuffer());
-  const pdf=await pdfjs.getDocument({data,useSystemFonts:true}).promise;
-  const worker=await createWorker('spa');
+  const loadingTask=pdfjs.getDocument({data,useSystemFonts:true});
+  let worker:any=null;
+  try {
+  const pdf=await loadingTask.promise;
+  worker=await createWorker('spa');
   const scale=2.2;
   const ocrRows:OcrWorkerRow[]=[];
 
@@ -683,7 +698,7 @@ export async function resolveMandatoryAnchorsWithOcrRows(
       ocrRows.push(...collectTesseractLines(result?.data,scale,Number(base.height),pageNumber));
     }
   }finally{
-    await worker.terminate();
+    await worker.terminate();worker=null;
   }
 
   if(!ocrRows.length)return analysis;
@@ -787,6 +802,7 @@ export async function resolveMandatoryAnchorsWithOcrRows(
     orderedWorkerIds:ordered.map(anchor=>anchor.workerId),
     unresolvedWorkerIds:ordered.filter(anchor=>!anchor.resolved).map(anchor=>anchor.workerId),
   };
+  } finally { try { await worker?.terminate(); } finally { await loadingTask.destroy?.(); } }
 }
 
 export const bytesToBase64 = (bytes: Uint8Array) => {
@@ -935,8 +951,12 @@ export async function verifyMandatoryPdfFidelity(
   anchors: MandatoryWorkerAnchor[],
 ): Promise<MandatoryFidelityReport> {
   const pdfjs = await setupPdfJs();
-  const original = await pdfjs.getDocument({ data: base64ToBytes(originalPdfBase64), useSystemFonts:true }).promise;
-  const signed = await pdfjs.getDocument({ data: signedBytes.slice(), useSystemFonts:true }).promise;
+  const originalTask=pdfjs.getDocument({data:base64ToBytes(originalPdfBase64),useSystemFonts:true});
+  let signedTask:any=null;
+  try {
+  const original=await originalTask.promise;
+  signedTask=pdfjs.getDocument({data:signedBytes.slice(),useSystemFonts:true});
+  const signed=await signedTask.promise;
   const pageCountMatches = original.numPages === signed.numPages;
   let dimensionsMatch = pageCountMatches;
   let visualSamples = 0;
@@ -1028,6 +1048,8 @@ export async function verifyMandatoryPdfFidelity(
     visualMismatchRatio,
     checkedAt:new Date().toISOString(),
   };
+  } finally { await Promise.allSettled([originalTask.destroy?.(),signedTask?.destroy?.()]); }
+
 }
 
 export function pdfBlobFromBase64(value:string) {
@@ -1039,5 +1061,6 @@ export function pdfBlobFromBytes(value:Uint8Array) {
   copy.set(value);
   return new Blob([copy.buffer], { type:'application/pdf' });
 }
+
 
 

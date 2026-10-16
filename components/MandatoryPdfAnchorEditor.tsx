@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import ModalPortal from './ModalPortal';
+import MandatoryPdfViewport from './MandatoryPdfViewport';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { getSupervisorMandatoryPdf } from '../src/services/foremanPortalService';
 import { blockingMandatorySignatureIssues, suggestSafeMandatorySignaturePositions, validateMandatorySignaturePlacement } from '../src/lib/mandatorySignatureGeometry';
@@ -29,40 +30,17 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [removing,setRemoving]=useState(false);
   const [error,setError]=useState('');
   const [feedback,setFeedback]=useState('');
-  const [pages,setPages]=useState<{page:number;width:number;height:number}[]>([]);
+  const [pages,setPages]=useState<{page:number;width:number;height:number;rotation?:number}[]>([]);
   const [availableWorkers,setAvailableWorkers]=useState<any[]>([]);
   const [manualName,setManualName]=useState('');
-  const [zoom,setZoom]=useState(1);
+  const [toolsHidden,setToolsHidden]=useState(false);
+  const [pageRequest,setPageRequest]=useState<{page:number;sequence:number;focusSignature?:boolean}>({page:1,sequence:0});
+  const saveInFlight=useRef(false);
   const [mobilePanel,setMobilePanel]=useState<'controls'|'pdf'>('controls');
-  const [fitWidth,setFitWidth]=useState(true);
-  const [pdfPanelWidth,setPdfPanelWidth]=useState(0);
-  const pdfPanelRef=useRef<HTMLDivElement>(null);
-  const canvasRef=useRef<HTMLCanvasElement>(null);
-  const viewportRef=useRef<any>(null);
-  const renderTaskRef=useRef<any>(null);
   const employment=['contrato','prorroga'].includes(String(documentType));
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
   const currentIdentityLocked=Boolean(current&&signedIds.has(Number(current.workerId)));
-
-  const viewportPoint=(viewport:any,pdfX:number,pdfY:number)=>{
-    const t=Array.isArray(viewport?.transform)?viewport.transform:[1,0,0,1,0,0];
-    return [
-      t[0]*pdfX+t[2]*pdfY+t[4],
-      t[1]*pdfX+t[3]*pdfY+t[5],
-    ] as [number,number];
-  };
-
-  const pdfPointFromViewport=(viewport:any,viewX:number,viewY:number)=>{
-    const t=Array.isArray(viewport?.transform)?viewport.transform:[1,0,0,1,0,0];
-    const det=t[0]*t[3]-t[1]*t[2];
-    if(!det)return [viewX,viewY] as [number,number];
-    const dx=viewX-t[4],dy=viewY-t[5];
-    return [
-      ( t[3]*dx-t[2]*dy)/det,
-      (-t[1]*dx+t[0]*dy)/det,
-    ] as [number,number];
-  };
 
   useEffect(()=>{
     let cancelled=false;
@@ -84,94 +62,28 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   },[obra,documentType]);
 
   useEffect(()=>{
-    let cancelled=false;
+    let cancelled=false,loaded:any=null,task:any=null;
     (async()=>{
       try{
-        setLoading(true);
+        setLoading(true);setError('');
         const source=await getSupervisorMandatoryPdf(documentId,'original');
+        if(cancelled)return;
         const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
+        if(cancelled)return;
         if(!pdfjs.GlobalWorkerOptions.workerSrc)pdfjs.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
-        const loaded=await pdfjs.getDocument({data:base64ToBytes(source.base64),useSystemFonts:true}).promise;
-        const geometry=await Promise.all(Array.from({length:loaded.numPages},async(_,i)=>{const page=await loaded.getPage(i+1);const box=page.view;return {page:i+1,width:Number(box[2])-Number(box[0]),height:Number(box[3])-Number(box[1])};}));
+        task=pdfjs.getDocument({data:base64ToBytes(source.base64),useSystemFonts:true});
+        loaded=await task.promise;
+        if(cancelled){await task.destroy?.();return;}
+        const geometry=await Promise.all(Array.from({length:loaded.numPages},async(_,i)=>{const page=await loaded.getPage(i+1);const box=page.view;return {page:i+1,width:Number(box[2])-Number(box[0]),height:Number(box[3])-Number(box[1]),rotation:Number(page.rotate||0)};}));
         if(!cancelled){setPdf(loaded);setPages(geometry);}
-      }catch(e:any){
-        if(!cancelled)setError(e?.message||'No se pudo abrir el PDF original.');
-      }finally{
-        if(!cancelled)setLoading(false);
-      }
+      }catch(e:any){if(!cancelled)setError(e?.message||'No se pudo abrir el PDF original.');}
+      finally{if(!cancelled)setLoading(false);}
     })();
-    return()=>{cancelled=true;};
+    return()=>{cancelled=true;setPdf(null);void (task?.destroy?.()??loaded?.destroy?.());};
   },[documentId]);
-
-  useEffect(()=>{
-    const panel=pdfPanelRef.current;
-    if(!panel)return;
-    const measure=()=>{
-      const style=window.getComputedStyle(panel);
-      const width=panel.clientWidth-parseFloat(style.paddingLeft||'0')-parseFloat(style.paddingRight||'0');
-      setPdfPanelWidth(Math.max(0,Math.floor(width)));
-    };
-    measure();
-    const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(measure):null;
-    observer?.observe(panel);
-    window.addEventListener('resize',measure);
-    return()=>{observer?.disconnect();window.removeEventListener('resize',measure);};
-  },[]);
-
-  const currentPage=Math.max(1,Number(current?.page||previewPage));
+  const currentPage=previewPage;
   const pageCount=Number(pdf?.numPages||1);
-
-  useEffect(()=>{
-    if(!pdf||loading||!canvasRef.current)return;
-    let cancelled=false;
-    let renderTask:any=null;
-    (async()=>{
-      // PDF.js owns the canvas until the previous render has finished cancelling.
-      const previous=renderTaskRef.current;
-      if(previous)await previous.promise.catch(()=>{});
-      if(cancelled)return;
-      const page=await pdf.getPage(Math.min(currentPage,pdf.numPages));
-      if(cancelled||!canvasRef.current)return;
-      const base=page.getViewport({scale:1});
-      const availableWidth=pdfPanelWidth||Math.max(1,window.innerWidth-32);
-      const baseFit=Math.max(0.1,Math.min(1.8,availableWidth/base.width));
-      const scale=fitWidth?baseFit:Math.max(0.35,Math.min(2.5,zoom));
-      const viewport=page.getViewport({scale});
-      viewportRef.current=viewport;
-      const canvas=canvasRef.current!;
-      canvas.width=Math.ceil(viewport.width);
-      canvas.height=Math.ceil(viewport.height);
-      const ctx=canvas.getContext('2d');
-      if(!ctx)return;
-      renderTask=page.render({canvas,canvasContext:ctx,viewport});
-      renderTaskRef.current=renderTask;
-      try{await renderTask.promise;}finally{if(renderTaskRef.current===renderTask)renderTaskRef.current=null;}
-      if(cancelled)return;
-
-      for(const anchor of draft.filter(anchor=>anchor.page===currentPage&&anchor.signatureX!=null&&anchor.signatureY!=null)){
-        const selected=anchor===current;
-        const p1=viewportPoint(viewport,Number(anchor.signatureX),Number(anchor.signatureY));
-        const p2=viewportPoint(
-          viewport,
-          Number(anchor.signatureX)+Number(anchor.signatureWidth||110),
-          Number(anchor.signatureY)+Number(anchor.signatureHeight||32),
-        );
-        const left=Math.min(p1[0],p2[0]);
-        const top=Math.min(p1[1],p2[1]);
-        const width=Math.abs(p2[0]-p1[0]);
-        const height=Math.abs(p2[1]-p1[1]);
-        ctx.save();
-        ctx.strokeStyle=anchor.resolved?(selected?'#00548E':'#64748b'):'#b45309';
-        ctx.lineWidth=selected?3:1;
-        ctx.setLineDash([8,5]);
-        ctx.strokeRect(left,top,width,height);
-        ctx.fillStyle='rgba(0,84,142,0.10)';
-        ctx.fillRect(left,top,width,height);
-        ctx.restore();
-      }
-    })().catch(e=>{if(!cancelled&&e?.name!=='RenderingCancelledException')setError(e?.message||'No se pudo representar la página.');});
-    return()=>{cancelled=true;renderTask?.cancel();};
-  },[pdf,loading,current,draft,currentPage,zoom,fitWidth,pdfPanelWidth]);
+  useEffect(()=>{if(current){setPreviewPage(current.page);setPageRequest(p=>({page:current.page,sequence:p.sequence+1}));}},[index]);
 
   const readPageGeometry=async()=>{
     if(!pdf)throw new Error('Espera a que se cargue el PDF original.');
@@ -181,7 +93,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }));
   };
   const suggestPositions=async()=>{
-    if(employment){setFeedback('Revisa la zona sugerida debajo del nombre o toca en el PDF para encuadrarla.');return;}
+    if(employment){setPageRequest(p=>({page:current?.page||previewPage,sequence:p.sequence+1,focusSignature:true}));setMobilePanel('pdf');setFeedback('Revisa el recuadro sugerido. Activa Mover firma para corregirlo.');return;}
     setSaving(true);setError('');
     try {
       const pages=await readPageGeometry();
@@ -204,10 +116,22 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const unresolved=useMemo(()=>draft.filter(anchor=>!anchor.resolved).length,[draft]);
 
   const selectPage=(value:number)=>{
+    const page=Math.max(1,Math.min(pageCount,value));
+    setPreviewPage(page);setPageRequest(p=>({page,sequence:p.sequence+1}));
+  };
+  const changeAnchorBox=(target:number,box:{signatureX:number;signatureY:number;signatureWidth:number;signatureHeight:number},page:number)=>{
     if(saving||removing||loading)return;
-    if(!current){setPreviewPage(Math.max(1,Math.min(pageCount,value)));return;}
-    if(currentIdentityLocked){setError('Revoca la firma antes de cambiar la página del trabajador.');return;}
-    setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,page:Math.max(1,Math.min(pageCount,value)),resolved:false}:anchor));
+    setDraft(list=>list.map((anchor,i)=>i===target?{...anchor,...box,page,resolved:Number(anchor.workerId)!==0,
+      confidence:Number(anchor.workerId)!==0?1:0,reason:'Posición confirmada manualmente por el supervisor.'}:anchor));
+  };
+  const changeDimension=(field:'signatureX'|'signatureY'|'signatureWidth'|'signatureHeight',value:number)=>{
+    if(!current||saving||removing||loading)return;
+    const meta=pages.find(p=>p.page===current.page);if(!meta)return;
+    const width=Math.min(meta.width,Math.max(8,field==='signatureWidth'?value:Number(current.signatureWidth||90)));
+    const height=Math.min(meta.height,Math.max(4,field==='signatureHeight'?value:Number(current.signatureHeight||32)));
+    setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,signatureWidth:width,signatureHeight:height,
+      signatureX:field==='signatureX'?Math.max(0,Math.min(meta.width-width,value)):anchor.signatureX==null?null:Math.max(0,Math.min(meta.width-width,anchor.signatureX)),
+      signatureY:field==='signatureY'?Math.max(0,Math.min(meta.height-height,value)):anchor.signatureY==null?null:Math.max(0,Math.min(meta.height-height,anchor.signatureY))}:anchor));
   };
 
   const assignCurrentWorker=(workerId:number)=>{
@@ -297,34 +221,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }
   };
 
-  const handleCanvasClick=(event:React.MouseEvent<HTMLCanvasElement>)=>{
-    if(!current||!viewportRef.current||!canvasRef.current||saving||removing||loading)return;
-    const canvas=canvasRef.current;
-    const rect=canvas.getBoundingClientRect();
-    const x=(event.clientX-rect.left)*(canvas.width/rect.width);
-    const y=(event.clientY-rect.top)*(canvas.height/rect.height);
-    const [pdfX,pdfY]=pdfPointFromViewport(viewportRef.current,x,y);
-    const viewBox=viewportRef.current.viewBox||[0,0,595,842];
-    const pageWidth=Math.abs(Number(viewBox[2]||595)-Number(viewBox[0]||0));
-    const pageHeight=Math.abs(Number(viewBox[3]||842)-Number(viewBox[1]||0));
-    const boxWidth=Math.min(pageWidth-8,Number(current.signatureWidth||90));
-    const boxHeight=Math.min(pageHeight-8,Number(current.signatureHeight||12));
-    const signatureX=Math.max(4,Math.min(pageWidth-boxWidth-4,pdfX-boxWidth/2));
-    const signatureY=Math.max(4,Math.min(pageHeight-boxHeight-4,pdfY-boxHeight/2));
-    setDraft(list=>list.map((anchor,i)=>i===index?{
-      ...anchor,
-      page:currentPage,
-      signatureX,
-      signatureY,
-      signatureWidth:boxWidth,
-      signatureHeight:boxHeight,
-      resolved:Number(current.workerId)!==0,
-      confidence:Number(current.workerId)!==0?1:0,
-      reason:'Posición confirmada manualmente por el supervisor.',
-    }:anchor));
-  };
-
-  return <ModalPortal label="Ajustar firmas"><div data-mobile-panel={mobilePanel} className="mandatory-anchor-editor fixed inset-0 flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
+  return <ModalPortal label="Ajustar firmas" layout="fullscreen"><div data-mobile-panel={mobilePanel} data-tools-hidden={toolsHidden} className="mandatory-anchor-editor fixed inset-0 flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
     <div className="mandatory-editor-shell mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-50 sm:rounded-3xl">
       <div className="mandatory-editor-header flex items-start justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
@@ -332,11 +229,13 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           <h2 className="text-lg font-black">{title}</h2>
           <p className="text-sm text-slate-600 dark:text-slate-300">{employment?'Revisa el nombre del trabajador y encuadra su firma debajo del nombre, en la página correspondiente. Guarda la posición antes de enviar al portal.':'Selecciona un trabajador y toca justo a la derecha de su nombre y apellidos. Esa será la posición exacta de su firma.'}</p>
         </div>
+        <button type="button" onClick={()=>{setToolsHidden(!toolsHidden);setMobilePanel(toolsHidden?'controls':'pdf');}} className="min-h-[44px] rounded-xl border px-3 py-2 text-sm font-black">{toolsHidden?'Mostrar ajustes':'Ocultar ajustes'}</button>
+        <button type="button" onClick={()=>{const el=document.documentElement;if(el?.requestFullscreen)void el.requestFullscreen().catch(()=>setFeedback('El editor ya ocupa toda la pantalla disponible.'));else setFeedback('El editor ya ocupa toda la pantalla disponible.');}} className="min-h-[44px] rounded-xl border px-3 py-2 text-sm font-black">Pantalla completa</button>
         <button type="button" onClick={onCancel} className="min-h-[44px] rounded-xl border px-4 py-2 text-sm font-black">Cerrar</button>
       </div>
 
       <nav className="mandatory-editor-mobile-tabs" aria-label="Panel de ajuste de firmas">
-        <button type="button" aria-pressed={mobilePanel==='controls'} onClick={()=>setMobilePanel('controls')}>Trabajador y ajustes</button>
+        <button type="button" aria-pressed={mobilePanel==='controls'} onClick={()=>{setToolsHidden(false);setMobilePanel('controls');}}>Trabajador y ajustes</button>
         <button type="button" aria-pressed={mobilePanel==='pdf'} onClick={()=>setMobilePanel('pdf')}>PDF y posición de firma</button>
       </nav>
       <div className="mandatory-editor-main">
@@ -361,7 +260,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           </label>}
           {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
 
-          <label className="mt-4 block text-sm font-black">Página
+          <label className="mt-4 block text-sm font-black">Página visible
             <div className="mt-2 flex items-center gap-2">
               <button type="button" onClick={()=>selectPage(currentPage-1)} disabled={currentPage<=1} className="h-11 w-11 rounded-xl border font-black disabled:opacity-30">−</button>
               <div className="flex-1 rounded-xl border px-3 py-2.5 text-center font-black">{currentPage} / {pageCount}</div>
@@ -370,7 +269,10 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           </label>
 
           {employment&&current&&current.signatureX!=null&&current.signatureY!=null&&<button type="button" disabled={saving||loading||removing} onClick={()=>setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,resolved:true,confidence:1,reason:'Posición confirmada manualmente por el supervisor.'}:anchor))} className="mt-3 min-h-[48px] w-full rounded-xl border border-[#00548E] px-3 py-2 text-sm font-black">Confirmar zona de firma y trabajador</button>}
-          {current&&<div className="mandatory-editor-dimensions mt-4 grid grid-cols-2 gap-2">{(['signatureWidth','signatureHeight'] as const).map((field,i)=><label key={field} className="text-sm font-bold">{i===0?'Ancho de firma':'Alto de firma'}<input type="number" min={i===0?28:8} max={i===0?160:40} value={current[field]|| (i===0?90:12)} onChange={event=>{const value=Number(event.target.value);if(!Number.isFinite(value)||value<(i===0?28:8)||value>(i===0?160:40))return;setDraft(list=>list.map((anchor,n)=>n===index?{...anchor,[field]:value}:anchor));}} className="mt-1 min-h-[44px] w-full rounded-xl border bg-white px-2 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/></label>)}</div>}
+          {current&&<><div className="mandatory-editor-dimensions mt-4 grid grid-cols-2 gap-2">
+            {(['signatureWidth','signatureHeight','signatureX','signatureY'] as const).map((field,i)=><PdfNumericField key={field} label={['Ancho de firma','Alto de firma','Coordenada X','Coordenada Y'][i]} value={current[field]} disabled={saving||removing||loading} onChange={value=>changeDimension(field,value)}/>)}</div>
+            <button type="button" className="mt-2 min-h-[44px] w-full rounded-xl border px-3" disabled={saving||removing||loading} onClick={()=>setDraft(list=>list.map((a,i)=>{if(i!==index)return a;const p=pages.find(p=>p.page===a.page);const w=Math.min(90,p?.width||90),h=Math.min(32,p?.height||32);return {...a,signatureWidth:w,signatureHeight:h,signatureX:a.signatureX==null?null:Math.max(0,Math.min((p?.width||595)-w,a.signatureX)),signatureY:a.signatureY==null?null:Math.max(0,Math.min((p?.height||842)-h,a.signatureY))};}))}>Restablecer tamaño</button>
+            <p className="mt-1 text-xs">Dimensiones y coordenadas en puntos del PDF, independientes del zoom.</p></>}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button type="button" disabled={index<=0} onClick={()=>setIndex(i=>Math.max(0,i-1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Anterior</button>
             <button type="button" disabled={index>=draft.length-1} onClick={()=>setIndex(i=>Math.min(draft.length-1,i+1))} className="min-h-[48px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Siguiente</button>
@@ -392,7 +294,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           </button>
 
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-5 text-slate-700 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100">
-            El recuadro azul marca dónde se colocará la firma. Colócalo en la misma línea del trabajador, inmediatamente a la derecha de su nombre. El PDF original no se mueve ni se rediseña.
+            El recuadro marca la zona de firma. Activa «Mover firma» para colocarlo o dimensionarlo. «Navegar por documento» permite desplazarse sin alterar las firmas. El PDF original se conserva.
           </div>
           {feedback&&<div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{feedback}</div>}
           {currentOverlapIssues.length>0&&<div role="status" className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100"><strong>Solapamiento entre firmas · Informativo</strong><p className="mt-2">Puedes guardar los trabajadores añadidos y las posiciones tal como están. Este aviso no bloquea el guardado ni pide confirmación.</p></div>}
@@ -403,42 +305,19 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         </aside>
 
         <div className="mandatory-editor-preview flex min-h-0 flex-col bg-slate-200 dark:bg-slate-950">
-          <div className="mandatory-editor-toolbar flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-            <div className="mandatory-editor-pages">
-              <button type="button" onClick={()=>selectPage(currentPage-1)} disabled={currentPage<=1} className="min-h-[42px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">← Página anterior</button>
-              <div className="min-w-[78px] rounded-xl bg-slate-100 px-3 py-2 text-center text-sm font-black dark:bg-slate-800 dark:text-slate-50">{currentPage} / {pageCount}</div>
-              <button type="button" onClick={()=>selectPage(currentPage+1)} disabled={currentPage>=pageCount} className="min-h-[42px] rounded-xl border px-3 py-2 text-sm font-black disabled:opacity-30">Página siguiente →</button>
-            </div>
-            <div className="mandatory-editor-zoom flex items-center gap-2">
-              <button type="button" onClick={()=>{setFitWidth(false);setZoom(value=>Math.max(.35,Number((value-.15).toFixed(2))))}} className="h-10 min-w-10 rounded-xl border px-3 font-black">−</button>
-              <button type="button" onClick={()=>{setFitWidth(true);setZoom(1)}} className={`h-10 rounded-xl border px-3 text-xs font-black ${fitWidth?'border-[#00548E] bg-blue-50 text-[#00548E]':''}`}>Ajustar</button>
-              <button type="button" onClick={()=>{setFitWidth(false);setZoom(value=>Math.min(2.5,Number((value+.15).toFixed(2))))}} className="h-10 min-w-10 rounded-xl border px-3 font-black">+</button>
-            </div>
-          </div>
-          <div ref={pdfPanelRef} className="mandatory-editor-pdf-scroll min-h-0 flex-1 overflow-auto p-2 sm:p-4">
-            {loading
-              ? <div className="p-10 text-center font-bold">Abriendo PDF original…</div>
-              : <div className="mandatory-editor-canvas mx-auto w-max max-w-none pb-4">
-                  <canvas
-                    ref={canvasRef}
-                    onClick={handleCanvasClick}
-                    className="block max-w-none cursor-crosshair bg-white shadow-xl"
-                  />
-                  <div className="mandatory-editor-pdf-hint mt-3 rounded-xl bg-white/90 px-3 py-2 text-center text-xs font-bold text-slate-600">
-                    Desplázate por la página y toca exactamente donde debe quedar la firma.
-                  </div>
-                </div>}
-          </div>
+          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} anchors={draft} activeIndex={index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={setIndex} onChange={changeAnchorBox}/>:<div role="alert">{error||'PDF no disponible'}</div>}
         </div>
       </div>
 
       <div className="mandatory-editor-footer shrink-0 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}> 
+        {error&&<div role="alert" className="text-sm font-bold text-rose-700 dark:text-rose-200">{error}</div>}
         <div className={`text-sm font-black ${!draft.length||unresolved||blockingIssues.length?'text-amber-700 dark:text-amber-300':'text-emerald-700 dark:text-emerald-300'}`}>{!draft.length?'Falta identificar el trabajador del documento':unresolved? `${unresolved} posición(es) pendiente(s)` : blockingIssues.length?'Hay posiciones que revisar antes de enviar':validation.ok?'Posiciones comprobadas: sin conflictos':'Avisos informativos: puedes guardar y enviar'}</div>
         <button type="button" disabled={loading||saving} onClick={()=>void suggestPositions()} className="min-h-[52px] rounded-xl border border-blue-300 px-4 py-3 text-sm font-black text-[#00548E] dark:text-blue-200 disabled:opacity-50">{employment?'Revisar zona de firma':'Ajustar automáticamente dentro de cada fila'}</button>
         <button type="button" disabled={loading||saving||removing} onClick={async()=>{
+          if(saveInFlight.current)return;saveInFlight.current=true;
           setSaving(true);setError('');
           try{await onSave(draft);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
-          finally{setSaving(false);}
+          finally{saveInFlight.current=false;setSaving(false);}
         }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar trabajadores y posiciones'}</button>
       </div>
     </div>
@@ -449,3 +328,14 @@ export default MandatoryPdfAnchorEditor;
 
 
 
+
+
+const PdfNumericField:React.FC<{label:string;value:number|null;disabled:boolean;onChange:(value:number)=>void}>=({label,value,disabled,onChange})=>{
+  const [text,setText]=useState(value==null?'':String(Math.round(value*100)/100));
+  const focused=useRef(false);
+  useEffect(()=>{if(!focused.current)setText(value==null?'':String(Math.round(value*100)/100));},[value]);
+  return <label className="text-sm font-bold">{label}<input aria-label={label} type="text" inputMode="decimal" value={text} disabled={disabled}
+    onFocus={()=>{focused.current=true;}} onChange={event=>{const raw=event.target.value;setText(raw);if(raw.trim()&&/^\d+(?:[.,]\d+)?$/.test(raw)){const n=Number(raw.replace(',','.'));if(Number.isFinite(n))onChange(n);}}}
+    onBlur={()=>{focused.current=false;setText(value==null?'':String(Math.round(value*100)/100));}}
+    className="mt-1 min-h-[44px] w-full rounded-xl border bg-white px-2 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/></label>;
+}

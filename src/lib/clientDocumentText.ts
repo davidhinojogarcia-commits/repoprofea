@@ -1,4 +1,5 @@
 import { createWorker } from 'tesseract.js';
+import { rememberPdfPageOcr } from './pdfOcrCache';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 export type ClientExtractedDocument = {
@@ -87,7 +88,9 @@ export async function extractClientDocumentText(
   if (isPdf) {
     const pdfjs = await setupPdfJs();
     const data = new Uint8Array(await file.arrayBuffer());
-    const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
+    const loadingTask = pdfjs.getDocument({ data, useSystemFonts: true });
+    try {
+    const pdf = await loadingTask.promise;
     const nativePages: string[] = [];
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -114,8 +117,10 @@ export async function extractClientDocumentText(
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         onProgress?.(`OCR local · página ${pageNumber}/${pdf.numPages}…`);
         const page = await pdf.getPage(pageNumber);
-        const canvas = await canvasForPage(page, options.ocrScale || (options.forceOcr ? 2.4 : 1.8));
-        const result = await worker.recognize(canvas);
+        const canvas = await canvasForPage(page, options.ocrScale || (options.forceOcr ? 2.4 : 2));
+        const result = await worker.recognize(canvas,{}, {blocks:true,text:true});
+        rememberPdfPageOcr(file,pageNumber,result.data,options.ocrScale || (options.forceOcr ? 2.4 : 2));
+        canvas.width=0;canvas.height=0;
         const text = String(result?.data?.text || '').trim();
         if (text) ocrPages.push(`[PÁGINA ${pageNumber}]\n${text}`);
       }
@@ -127,6 +132,7 @@ export async function extractClientDocumentText(
     } finally {
       await worker.terminate();
     }
+    } finally { await loadingTask.destroy?.(); }
   }
 
   onProgress?.('Ejecutando OCR local sobre la imagen…');
@@ -139,3 +145,4 @@ export async function extractClientDocumentText(
     await worker.terminate();
   }
 }
+

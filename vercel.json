@@ -40,7 +40,10 @@
       "fix/employment-worker-preview": false,
       "fix/gmail-authorization-recovery": false,
       "fix/inventory-invitation-sharing": false,
-      "feat/inventory-usage-identification": false
+      "feat/inventory-usage-identification": false,
+      "feat/employment-worksite-assignment": false,
+      "fix/signature-editor-sidebar-overlay": false,
+      "feat/pdf-signature-workspace": false
     }
   }
 }

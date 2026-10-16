@@ -3,7 +3,7 @@
  *
  * All application overlays stay inside the workspace instead of covering navigation.
  * The geometry is centralised here so every modal gets the same sidebar/header spacing.
- * Portaled dialogs use `.profea-modal-overlay` and receive the same rules.
+ * Portaled dialogs use `.profea-modal-overlay:not([data-modal-layout="fullscreen"])` and receive the same rules.
  */
 
 :root {
@@ -13,14 +13,14 @@
 
 /* Navigation always remains above application modals. */
 #root:has([class~="fixed"][class~="inset-0"]:not(.lg\:hidden)) aside.app-navigation-panel,
-#root:has(.profea-modal-overlay) aside.app-navigation-panel,
+#root:has(.profea-modal-overlay:not([data-modal-layout="fullscreen"])) aside.app-navigation-panel,
 body.profea-modal-open aside.app-navigation-panel {
   z-index: 50 !important;
 }
 
 /* Shared geometry for normal and portaled application modals. */
 #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
-.profea-modal-overlay {
+.profea-modal-overlay:not([data-modal-layout="fullscreen"]) {
   z-index: 40 !important;
   top: calc(var(--profea-app-header-height) + var(--profea-modal-gap)) !important;
   bottom: var(--profea-modal-gap) !important;
@@ -33,7 +33,7 @@ body.profea-modal-open aside.app-navigation-panel {
 
 /* A modal panel can never grow into the header/footer gap. */
 #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden) > :first-child,
-.profea-modal-overlay > :first-child {
+.profea-modal-overlay:not([data-modal-layout="fullscreen"]) > :first-child {
   max-height: 100% !important;
   min-height: 0 !important;
   overscroll-behavior: contain !important;
@@ -93,14 +93,14 @@ body.profea-modal-open aside.app-navigation-panel {
   /* Expanded desktop sidebar (lg:w-64 = 16rem). */
   #root:has(aside.app-navigation-panel.lg\:w-64)
     [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
-  body:has(#root aside.app-navigation-panel.lg\:w-64) .profea-modal-overlay {
+  body:has(#root aside.app-navigation-panel.lg\:w-64) .profea-modal-overlay:not([data-modal-layout="fullscreen"]) {
     left: calc(16rem + var(--profea-modal-gap)) !important;
   }
 
   /* Collapsed desktop sidebar (lg:w-20 = 5rem). */
   #root:has(aside.app-navigation-panel.lg\:w-20)
     [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
-  body:has(#root aside.app-navigation-panel.lg\:w-20) .profea-modal-overlay {
+  body:has(#root aside.app-navigation-panel.lg\:w-20) .profea-modal-overlay:not([data-modal-layout="fullscreen"]) {
     left: calc(5rem + var(--profea-modal-gap)) !important;
   }
 }
@@ -116,7 +116,7 @@ body.profea-modal-open aside.app-navigation-panel {
   }
 
   #root [class~="fixed"][class~="inset-0"]:not(.lg\:hidden),
-  .profea-modal-overlay {
+  .profea-modal-overlay:not([data-modal-layout="fullscreen"]) {
     left: var(--profea-modal-gap) !important;
     top: max(var(--profea-modal-gap), env(safe-area-inset-top)) !important;
     bottom: max(var(--profea-modal-gap), env(safe-area-inset-bottom)) !important;
@@ -338,3 +338,25 @@ body.profea-modal-open aside.app-navigation-panel {
   }
 }
 
+
+
+/* Signature positioning owns the viewport. Keep the portal's inline stack layer:
+   workspace !important geometry must never lower it beneath the navigation. */
+.profea-modal-overlay[data-modal-layout="fullscreen"] {
+  position: fixed;
+  inset: 0;
+  isolation: isolate;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.profea-modal-overlay[data-modal-layout="fullscreen"] > .mandatory-anchor-editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+}
