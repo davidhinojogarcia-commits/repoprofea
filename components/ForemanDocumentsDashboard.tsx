@@ -720,7 +720,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const receipt = await assignMandatoryDocumentV2(item.id);
       setMandatory(items=>items.map(doc=>doc.id===item.id?{...doc,lifecycle_status:receipt.lifecycleStatus,assigned_at:receipt.assignedAt,details:{...doc.details,lifecycleStatus:receipt.lifecycleStatus}}:doc));
       const accessMessage=receipt.activePortal===true
-        ? 'Abre Control inicios en el portal de esta obra y pulsa Actualizar documentos. Si hay filtros activos, pulsa Todos.'
+        ? 'Abre Control, inicios y contratos en el portal de esta obra y pulsa Actualizar documentos. Si hay filtros activos, pulsa Todos.'
         : receipt.activePortal===false
           ? 'Esta obra no tiene un acceso activo de encargado. Genera o activa su acceso antes de abrir el portal.'
           : 'No se pudo comprobar el acceso del encargado. Revisa que el acceso esté activo y corresponda a esta obra.';
