@@ -97,6 +97,9 @@ export function AppDialogHost() {
     }
     if (event.key === 'Enter' && !event.shiftKey) {
       if (isPrompt && event.target instanceof HTMLTextAreaElement) return;
+      // Let a focused button perform its own action. Enter on Cancel must never
+      // be converted into confirmation of a destructive operation.
+      if (event.target instanceof HTMLButtonElement) return;
       event.preventDefault();
       onConfirm();
     }
@@ -122,7 +125,7 @@ export function AppDialogHost() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="profea-dialog-title"
-        className={`w-full max-w-md overflow-hidden rounded-3xl border bg-white shadow-2xl dark:bg-slate-900 ${palette.ring}`}
+        className={`profea-app-dialog-panel w-full max-w-md overflow-hidden rounded-3xl border bg-white shadow-2xl dark:bg-slate-900 ${palette.ring}`}
       >
         <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white dark:border-slate-700">
           <div className="flex items-center gap-3">
@@ -154,7 +157,7 @@ export function AppDialogHost() {
             />
           )}
 
-          <div className={`mt-6 grid gap-2 ${isConfirm ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`profea-app-dialog-actions mt-6 grid gap-2 ${isConfirm ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {isConfirm && (
               <button
                 type="button"

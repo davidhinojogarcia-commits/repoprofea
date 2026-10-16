@@ -12,6 +12,56 @@ body.profea-modal-open {
   overflow: hidden;
 }
 
+/* Critical confirmation geometry must not depend on the CDN's runtime utility
+   generation. Portaled cards/windows may already have their own stacking layers. */
+.profea-app-dialog-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483600 !important;
+  isolation: isolate;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: rgba(2, 6, 23, .8);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.profea-app-dialog-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 28rem;
+  min-height: 0;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  border: 1px solid #cbd5e1;
+  border-radius: 1.5rem;
+  background: #fff;
+  color: #334155;
+  box-shadow: 0 24px 60px #02061760;
+}
+
+.profea-app-dialog-panel > :first-child {
+  padding: 1rem 1.25rem;
+  background-color: #00548e;
+  color: #fff;
+}
+
+.profea-app-dialog-panel > :last-child { padding: 1.25rem; }
+.profea-app-dialog-panel button { min-height: 50px; overflow-wrap: break-word; }
+.profea-app-dialog-actions { display: grid; gap: .5rem; margin-top: 1.5rem; }
+.dark .profea-app-dialog-panel { background: #0f172a; color: #e2e8f0; }
+
+@media (max-width: 480px) {
+  .profea-app-dialog-panel .profea-app-dialog-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Global dialog stacking guard.
    When a confirmation/alert is open, hide any pre-existing app modal behind it.
    This prevents double-window effects such as Editar/Eliminar, Devolver/Confirmar, etc.
