@@ -19,6 +19,8 @@ try{
  let r=(await call(create)).record;
  assert.equal(r.version,1);assert.match(r.number,/AV-\d{4}-\d+/);assert.equal((await call(create)).record.id,r.id,'creation retry is idempotent');
  assert.equal((await env.invoke({...create,content:{...content,discussion:'Changed payload'}})).status,409,'same operation changed payload rejected');
+ const parallel=await Promise.all(['Primera edición concurrente.','Segunda edición concurrente.'].map(discussion=>env.invoke({action:'command',id:r.id,revision:r.revision,operation:randomUUID(),command:{type:'save',content:{...content,discussion},participants:[person(),person(21)]}})));assert.deepEqual(parallel.map(x=>x.status).sort(),[200,409],'exactly one competing revision can commit');r=(await call({action:'get',id:r.id})).record;assert.equal(r.revision,2);
+ await call({action:'save-contact',contact:{...savedContact,firstName:'Contacto actualizado'}});assert.equal((await call({action:'get',id:r.id})).record.state.participants[0].firstName,'Ana','directory changes cannot rewrite a visit snapshot');
  assert.equal((await env.invoke({...create,id:id(31),operation:randomUUID(),content:{...content,worksiteId:id(11)}})).status,403,'foreign work blocked');
  assert.equal((await env.invoke({action:'get',id:r.id},2)).status,403,'foreign acta blocked');
  assert.equal((await call({action:'get',id:r.id},3)).record.canWrite,false,'shared work read is allowed');
