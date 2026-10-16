@@ -29,7 +29,7 @@ try{
      const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=JSON.parse(Buffer.concat(chunks).toString());apiLog.push({action:body.action,command:body.command?.type});
      if(apiHold)await new Promise(resolve=>setTimeout(resolve,300));
      if(failSave&&body.action==='command'&&body.command.type==='save'){res.statusCode=503;res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ok:false,message:'Fallo de guardado simulado: los datos no se han guardado.'}));}
-     const user=req.headers.authorization==='Bearer user-1'?1:null;const result=await env.invoke(body,user);res.statusCode=result.status;for(const[k,v]of Object.entries(result.headers))res.setHeader(k,v);res.setHeader('content-type','application/json');return res.end(JSON.stringify(result.data));
+     const user=req.headers.authorization==='Bearer user-1'?1:null;const result=await env.invoke(body,user);if(body.action==='preview-mail'&&result.data.messages?.length){const m=result.data.messages[0];result.data.messages=Array.from({length:6},(_,i)=>({...m,personId:'preview-'+i,subject:m.subject+' · Destinatario '+(i+1)}));}res.statusCode=result.status;for(const[k,v]of Object.entries(result.headers))res.setHeader(k,v);res.setHeader('content-type','application/json');return res.end(JSON.stringify(result.data));
    }
    res.setHeader('content-type','text/html');res.end(`<!doctype html><html lang="es"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><script>${config}</script>${styles}<body class="bg-slate-50 dark:bg-slate-950"><div id="root" class="p-3 sm:p-6"></div><script src="/app.js"></script></body></html>`);
   }catch(e){errors.push(e.message);res.statusCode=500;res.end('Test server failure');}
@@ -49,7 +49,20 @@ try{
  assert.equal(apiLog.filter(c=>c.action==='create').length-beforeCreate,1,'rapid double click creates one acta');
  await page.getByRole('button',{name:'Actualizar',exact:true}).click();assert.equal(await page.getByLabel('Asuntos tratados y decisiones').inputValue(),content.discussion);
  failSave=true;await page.getByLabel('Incidencias y observaciones',{exact:true}).fill('Observación que debe conservarse tras un error.');await page.getByRole('button',{name:'Guardar borrador',exact:true}).click();await page.getByRole('alert').filter({hasText:'Fallo de guardado simulado'}).waitFor();assert.equal(await page.getByLabel('Incidencias y observaciones',{exact:true}).inputValue(),'Observación que debe conservarse tras un error.');failSave=false;await page.getByRole('button',{name:'Guardar borrador',exact:true}).click();await page.getByText('Acta guardada. Los datos están confirmados por el servidor.').waitFor();
- await page.getByRole('button',{name:'Enviar para revisión',exact:true}).click();const dialog=page.getByRole('dialog').last();await dialog.getByText('ana@example.test',{exact:false}).waitFor();await dialog.getByRole('button',{name:'Confirmar y abrir revisión',exact:true}).click();await page.getByRole('button',{name:'Generar / renovar enlace personal'}).waitFor();
+ await page.getByRole('button',{name:'Enviar para revisión',exact:true}).click();const dialog=page.getByRole('dialog').last();await dialog.getByText('ana@example.test',{exact:false}).first().waitFor();
+ for(const [width,height] of [[390,667],[1180,760],[820,1180],[1440,900]])for(const dark of [false,true]){
+  await page.setViewportSize({width,height});await page.evaluate(d=>document.documentElement.classList.toggle('dark',d),dark);
+  const body=dialog.locator('.visit-mail-body'),cancel=dialog.getByRole('button',{name:'Cancelar',exact:true});
+  assert(await body.evaluate(el=>el.scrollHeight>el.clientHeight),'many recipients require an internal scroller');
+  await body.hover();await page.mouse.wheel(0,700);await page.waitForFunction(()=>document.querySelector('.visit-mail-body').scrollTop>0);
+  await page.mouse.wheel(0,-100000);await page.waitForFunction(()=>document.querySelector('.visit-mail-body').scrollTop===0);
+  for(const button of [cancel,dialog.getByRole('button',{name:'Confirmar y abrir revisión',exact:true})]){
+   assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.y>=0&&r.bottom<=innerHeight&&el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'mail actions visible and clickable without scrolling the background');
+  }
+  await fs.mkdir(path.join(root,'tmp/visit-mail'),{recursive:true});await page.screenshot({path:path.join(root,`tmp/visit-mail/${width}-${height}-${dark}.png`)});
+ }
+ const sendsBeforeCancel=env.sent.length;await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();await dialog.waitFor({state:'detached'});assert.equal(env.sent.length,sendsBeforeCancel,'cancel preview sends no email');await page.getByRole('button',{name:'Enviar para revisión',exact:true}).click();await dialog.waitFor();
+ await dialog.getByRole('button',{name:'Confirmar y abrir revisión',exact:true}).click();await page.getByRole('button',{name:'Generar / renovar enlace personal'}).waitFor();
  await page.getByRole('button',{name:'Generar / renovar enlace personal'}).click();const access=page.getByLabel('Enlace personal: entrégalo solo a su destinatario');await access.waitFor();const token=(await access.inputValue()).split('=')[1];
  const attendee=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const mobile=await attendee.newPage();mobile.on('pageerror',e=>errors.push(e.message));
  await mobile.goto(base+'/#visit='+token);await mobile.getByRole('button',{name:'Enviar código a mi correo'}).click();await mobile.getByRole('status').filter({hasText:'Código enviado'}).waitFor();const code=env.sent.at(-1).body.match(/es: (\d{6})/)[1];
