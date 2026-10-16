@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import {createForemanTemplate,repeatForemanSignature} from '../src/lib/foremanSignatureTemplate';
+
+const a4={width:595.28,height:841.89};
+const model=createForemanTemplate('inicio:modelo-provincial',{x:380,y:55,width:145,height:55},a4);
+assert.equal(model.revision,1);
+assert.equal(model.allPages,true);
+const boxes=repeatForemanSignature(model,[a4,a4,a4]);
+assert.equal(boxes.length,3);
+assert(boxes.every((b,i)=>b.page===i+1&&Math.abs(b.x-380)<0.0001&&Math.abs(b.y-55)<0.0001));
+const revised=createForemanTemplate(model.templateKey,{x:355,y:60,width:175,height:45},a4,model);
+assert.equal(revised.revision,2);
+assert.equal(repeatForemanSignature(revised,[a4,a4])[1].width,175);
+const scaled=repeatForemanSignature(revised,[a4,{width:1190.56,height:1683.78}]);
+assert(Math.abs(scaled[1].x-710)<0.001);
+assert.throws(()=>repeatForemanSignature(revised,[a4,{width:841.89,height:595.28}]),/formato/);
+assert.throws(()=>createForemanTemplate('inicio',{x:580,y:25,width:50,height:20},a4),/recuadro/);
+const disabled={...revised,enabled:false};
+assert.deepEqual(repeatForemanSignature(disabled,[a4]),[]);
+assert.throws(()=>createForemanTemplate('',{x:100,y:25,width:50,height:20},a4),/Modelo/);
+console.log('OK · plantilla persistente, revisión, repetición, escalado y protección de página');
