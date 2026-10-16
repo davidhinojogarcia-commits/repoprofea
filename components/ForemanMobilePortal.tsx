@@ -624,8 +624,20 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const getCompletedMandatoryPdf=async(doc:ForemanMandatoryDocument)=>{
+    // Native documents are generated from persisted data, just as in the
+    // supervisor dashboard. Only imported documents have a stored PDF original.
+    if(doc.details?.originalPdfMode!=='overlay'&&!['contrato','prorroga'].includes(doc.documentType)){
+      const [signatures,evidence]=await Promise.all([
+        getForemanMandatorySignatures(token,doc.id),
+        enabledForemanTemplate(doc)?getImportedForemanSignature(token,doc.id):Promise.resolve(null),
+      ]);
+      const {generateForemanMandatoryDocumentPdf}=await import('../src/lib/foremanDocumentsPdf');
+      const output=generateForemanMandatoryDocumentPdf({...doc,signatures,
+        details:{...doc.details,foremanSignature:evidence?.signature}},data?.obra||'');
+      return {bytes:new Uint8Array(output.doc.output('arraybuffer')),filename:output.filename};
+    }
     const source=await getForemanMandatoryPdf(token,doc.id,'signed');
-    if(!source?.base64){
+    if(!source?.base64||source.variant!=='signed'){
       throw new Error('No se ha encontrado el PDF firmado de este documento.');
     }
     return {
