@@ -14,7 +14,7 @@ const sources = [
     order:'work_date.desc',
     limit:180,
     revision:'updated_at',
-    select:'id,obra,work_date,foreman_name,rows,status,completed_at,updated_at,correction_pending,correction_reason',
+    select:'id,obra,work_date,foreman_name,foreman_signature_template,rows,status,completed_at,updated_at,correction_pending,correction_reason',
   },
   {
     table:'foreman_mandatory_documents',

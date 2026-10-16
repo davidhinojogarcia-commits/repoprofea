@@ -1,3 +1,6 @@
+import ForemanModelSettings from './ForemanModelSettings';
+import { allowsForemanSignature } from '../src/lib/foremanSignaturePolicy';
+import { saveAttendanceForemanTemplate, getSupervisorForemanEvidence } from '../src/services/foremanPortalService';
 import { dispatchForemanDocumentPush, foremanPushReceiptMessage } from '../src/services/foremanPushService';
 import { foremanDocumentPeriod, documentFortnightLabel, type DocumentFortnight } from '../src/lib/foremanDocumentPeriod';
 import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
@@ -62,6 +65,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const gmailScanBlockedRef=useRef(false);
   const [importBusy,setImportBusy]=useState(false);
   const [editingMandatory,setEditingMandatory]=useState<DbMandatory|null>(null);
+  const [signatureSettings,setSignatureSettings]=useState<any|null>(null);
   const [positioningMandatory,setPositioningMandatory]=useState<DbMandatory|null>(null);
   const [editWorkers,setEditWorkers]=useState<any[]>([]);
   const [editWorkerIds,setEditWorkerIds]=useState<Set<string>>(new Set());
@@ -515,7 +519,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const openPdf=async(card:any)=>{
     try{
       if(card.kind==='attendance'){
-        const day:ForemanAttendanceDay={id:card.item.id,workDate:card.item.work_date,rows:card.item.rows||[],status:card.item.status,completedAt:card.item.completed_at,updatedAt:card.item.updated_at};
+        const evidence=await getSupervisorForemanEvidence(card.item.id);
+        const day:ForemanAttendanceDay={id:card.item.id,workDate:card.item.work_date,foremanSignature:evidence.signature,foremanTemplate:evidence.layout,rows:card.item.rows||[],status:card.item.status,completedAt:card.item.completed_at,updatedAt:card.item.updated_at};
         const out=generateForemanAttendancePdf(day,card.item.obra,card.item.foreman_name); downloadPDF(out.doc,out.filename); return;
       }
       if(card.kind==='mandatory'){
@@ -525,6 +530,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           return;
         }
         const record:ForemanMandatoryDocument={id:m.id,workDate:m.work_date,periodKey:m.period_key,documentType:m.document_type,category:m.category,workers:m.workers||[],signatures:m.signatures||{},status:m.status,completedAt:m.completed_at,details:m.details||{}};
+        const evidence=allowsForemanSignature(m.document_type)?await getSupervisorForemanEvidence(m.id):{};
+        record.details={...record.details,foremanSignature:evidence.signature};
         const out=generateForemanMandatoryDocumentPdf(record,m.obra); downloadPDF(out.doc,out.filename); return;
       }
       const d=card.item as DbDocument;
@@ -562,6 +569,8 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           category:item.category,workers:item.workers||[],signatures:item.signatures||{},status:item.status,
           completedAt:item.completed_at,details:item.details||{}
         };
+        const evidence=allowsForemanSignature(item.document_type)?await getSupervisorForemanEvidence(item.id):{};
+        record.details={...record.details,foremanSignature:evidence.signature};
         const out=generateForemanMandatoryDocumentPdf(record,item.obra);
         const blob=out.doc.output('blob');
         file=new File([blob],out.filename,{type:'application/pdf'});
@@ -1001,6 +1010,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && (
             <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
           )}
+            {(card.kind==='attendance'||(card.kind==='mandatory'&&allowsForemanSignature(card.item.document_type)&&card.item.details?.originalPdfMode!=='overlay'))&&<button type="button" onClick={()=>setSignatureSettings(card)} className="min-h-[48px] rounded-xl border px-3 py-2 text-xs font-black">Configurar firma del encargado</button>}
           {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))) && (
             <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
           )}
@@ -1041,6 +1051,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       }}
     />}
 
+    {signatureSettings&&<ForemanModelSettings modelKey={signatureSettings.kind==='attendance'?'control_horario:modelo-institucional':signatureSettings.item.document_type+':modelo-institucional'} initial={signatureSettings.kind==='attendance'?signatureSettings.item.foreman_signature_template:signatureSettings.item.details?.foremanSignatureTemplate} onClose={()=>setSignatureSettings(null)} onSave={async layout=>{
+      if(signatureSettings.kind==='attendance')await saveAttendanceForemanTemplate(signatureSettings.item.id,layout);
+      else await saveForemanSignatureTemplate(signatureSettings.item.id,layout.templateKey,layout);
+      await refresh(true);
+    }}/>}
     {editingCard&&<ModalPortal label="Edición del supervisor"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white">

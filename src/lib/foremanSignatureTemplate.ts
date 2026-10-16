@@ -16,6 +16,14 @@ export type ForemanSignatureTemplate = {
 };
 export type PdfPageSize = { width: number; height: number };
 export type SignatureRectangle = { page: number; x: number; y: number; width: number; height: number };
+/** Default boxes match the signature cells of the existing institutional models. */
+export function defaultGeneratedForemanTemplate(templateKey:string):ForemanSignatureTemplate {
+  const attendance=templateKey.startsWith('control_horario:');
+  return {templateKey,enabled:false,required:false,allPages:true,
+    x:(attendance?214:14)/297,y:(attendance?86:18)/210,
+    width:(attendance?68:82)/297,height:(attendance?10:14)/210,
+    pageRatio:297/210,revision:1};
+}
 const finite = (n: number) => Number.isFinite(n);
 export function validateForemanTemplate(template: ForemanSignatureTemplate): void {
   if (!template.templateKey?.trim()) throw new Error('Modelo documental sin identificar.');

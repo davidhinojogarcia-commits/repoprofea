@@ -1,3 +1,5 @@
+import { drawForemanModelSignature } from './drawForemanModelSignature';
+import { enabledForemanTemplate } from './foremanSignaturePolicy';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Person } from '../../types';
@@ -191,6 +193,7 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
   }
 
   applyInstitutionalPdfStandard(doc);
+  drawForemanModelSignature(doc,day.foremanSignature,day.foremanTemplate);
   return {
     doc,
     filename:`REGISTRO_DIARIO_JORNADA_${String(day.workDate||'').slice(0,10)}.pdf`,
@@ -293,9 +296,11 @@ export function generateForemanMandatoryDocumentPdf(
       maquinariaPorTrabajador: machineryByWorker,
       workerSignatures,
     };
-    if (record.documentType === 'epis') return generateEpiDeliveryPdf(record.workers || [], context);
-    if (record.documentType === 'formacion') return generateTrainingInformationPdf(record.workers || [], context);
-    return generateMachineryAuthorizationPdf(record.workers || [], context);
+    const output=record.documentType==='epis'?generateEpiDeliveryPdf(record.workers||[],context)
+      :record.documentType==='formacion'?generateTrainingInformationPdf(record.workers||[],context)
+      :generateMachineryAuthorizationPdf(record.workers||[],context);
+    drawForemanModelSignature(output.doc,record.details?.foremanSignature,enabledForemanTemplate(record));
+    return output;
   }
 
   if (['contrato','prorroga'].includes(record.documentType)) throw new Error('Los contratos y prórrogas deben abrirse desde el PDF original o firmado almacenado.');
