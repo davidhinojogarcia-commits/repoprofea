@@ -89,9 +89,11 @@ jobs:
         run: npm run test:employment-worksites
       - name: Employment PDF and responsive browser regression
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
           npm run test:employment-browser
           npm run test:independent-foreman-browser
+          node scripts/testAppDialogBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testAppDialogBrowser.mjs
           npm run test:pdf-signature-workspace
           npm run test:pdf-signature-workspace-browser
           node scripts/testSignatureEditorLayeringBrowser.mjs

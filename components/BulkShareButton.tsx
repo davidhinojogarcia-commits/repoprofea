@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import ModalPortal from './ModalPortal';
 import { Share2, Users, X, Loader2, Eye, Pencil, Search, CheckCircle2 } from 'lucide-react';
 import { getSessionUser, supabase } from '../src/lib/supabase';
 import { listShareableProfiles } from '../src/lib/functions';
@@ -129,8 +129,9 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
 
   if (resourceIds.length === 0) return null;
 
-  const modal = open && typeof document !== 'undefined' ? createPortal(
-    <div className="profea-modal-overlay fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={() => !busy && setOpen(false)}>
+  const modal = open ? (
+    <ModalPortal label="Compartir registros">
+    <div className="fixed inset-0 flex items-center justify-center bg-slate-900/45 dark:bg-slate-950/65 backdrop-blur-sm" onClick={() => !busy && setOpen(false)}>
       <div className="w-full max-w-xl max-h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3">
@@ -140,7 +141,7 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
               <p className="text-xs text-slate-500">Solo se compartirán los registros de los que seas propietario.</p>
             </div>
           </div>
-          <button type="button" disabled={busy} onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+          <button type="button" aria-label="Cerrar ventana de compartir" disabled={busy} onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
@@ -183,8 +184,8 @@ export const BulkShareButton: React.FC<Props> = ({ resourceType, resourceIds, la
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
+    </ModalPortal>
   ) : null;
 
   return (

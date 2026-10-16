@@ -52,3 +52,13 @@ assert.match(modalPortal,/document\.body\.style\.overflow = 'hidden'/,'ModalPort
 assert.match(appDialog,/z-\[2147483600\]/,'Los diálogos globales deben quedar por encima de cualquier modal');
 
 console.log('Global full-screen overlay layering audit passed.');
+
+// Raw createPortal calls may only implement the primitives or a non-modal filter.
+for(const file of files){
+ const source=fs.readFileSync(path.join(componentsDir,file),'utf8');
+ if(/createPortal\(/.test(source)&&!['ModalPortal.tsx','AppDialogHost.tsx','DirectoryStatusFilter.tsx'].includes(file)){
+  assert.fail(file+' debe usar ModalPortal para conservar las capas, el foco y el bloqueo del fondo');
+ }
+}
+assert.match(appDialog,/zIndex:\s*2147483600/,'La confirmación debe conservar su capa incluso sin Tailwind');
+assert.match(appDialog,/position:\s*['"]fixed['"]/,'La confirmación debe ser fija incluso sin Tailwind');
