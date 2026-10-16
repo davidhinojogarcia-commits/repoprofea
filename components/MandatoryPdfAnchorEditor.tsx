@@ -164,7 +164,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         const y=Math.round(Number(item.transform[5])/5)*5;
         lines.set(y,[...(lines.get(y)||[]),item]);
       }
-      const patterns=/firma\\s+(?:del\\s+)?encargad[oa]|el\\s+encargad[oa]|fdo\\.?\\s*encargad[oa]|firma\\s+del\\s+responsable\\s+de\\s+obra/i;
+      const patterns=/firma\s+(?:del\s+)?encargad[oa]|el\s+encargad[oa]|fdo\.?\s*encargad[oa]|firma\s+del\s+responsable\s+de\s+obra/i;
       const candidate=[...lines.entries()].sort((a,b)=>a[0]-b[0]).map(([y,items])=>({
         y,items:items.sort((a,b)=>Number(a.transform[4])-Number(b.transform[4])),
       })).find(line=>patterns.test(line.items.map(item=>String(item.str||'')).join(' ')));
