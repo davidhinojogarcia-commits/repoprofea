@@ -49,7 +49,7 @@ La primera publicación condicionaba el panel a que existiese una plantilla acti
 
 - EPIs, formación e información y ambos identificadores de maquinaria: panel y firma obligatoria por defecto; las excepciones explícitas del supervisor se conservan.
 - Control horario: el panel está disponible incluso antes del primer guardado de la jornada. La finalización queda bloqueada sin la firma; la validación también cubre el primer INSERT y el INSERT ON CONFLICT de las jornadas existentes.
-- La migración repara documentos y jornadas pendientes sin configuración. No cambia documentos finalizados, PDF originales, firmas de trabajadores ni excepciones del supervisor.
+- La migración repara documentos y jornadas pendientes sin configuración; también inicializa los históricos cuando el supervisor los devuelve para corregir. No cambia documentos finalizados, PDF originales, firmas de trabajadores ni excepciones del supervisor.
 - Al preparar una relación nueva se abre directamente su panel de firmas.
 - Ampliadas las pruebas de PostgreSQL, política y Chromium para partir de documentos sin plantilla, exigir la firma antes de enviar y verificar el panel del documento recién creado. Han pasado también la suite de publicación, TypeScript y compilación.
 

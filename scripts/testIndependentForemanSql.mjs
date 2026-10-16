@@ -22,11 +22,17 @@ try{
  // Legacy native documents have no per-document configuration.
  await query("insert into foreman_mandatory_documents(id,owner_id,obra,document_type,status,details,signatures) values($1,$2,'Obra A','epis','pending','{}','{\"7\":\"legacy-worker-ink\"}')",[id(90),owner]);
  await query("insert into foreman_mandatory_documents(id,owner_id,obra,document_type,status,details) values($1,$2,'Obra A','epis','completed','{}')",[id(91),owner]);
+ await query("insert into foreman_attendance_days(id,owner_id,obra,work_date,status) values($1,$2,'Obra A','2026-10-15','completed')",[id(92),owner]);
  const defaults=fs.readFileSync(new URL('../supabase/migrations/20261016162645_default_foreman_signing_panel.sql',import.meta.url),'utf8');
  await db.exec(defaults);await db.exec(defaults);
  assert.equal((await query('select details from foreman_mandatory_documents where id=$1',[id(90)]))[0].details.foremanSignatureTemplate.required,true,'pending legacy native document repaired');
  assert.equal((await query('select signatures from foreman_mandatory_documents where id=$1',[id(90)]))[0].signatures['7'],'legacy-worker-ink','backfill preserves worker ink');
  assert.deepEqual((await query('select details from foreman_mandatory_documents where id=$1',[id(91)]))[0].details,{},'completed history untouched');
+ assert.equal((await query('select foreman_signature_template from foreman_attendance_days where id=$1',[id(92)]))[0].foreman_signature_template,null,'completed attendance history untouched');
+ await query("update foreman_mandatory_documents set status='pending' where id=$1",[id(91)]);
+ assert.equal((await query('select details from foreman_mandatory_documents where id=$1',[id(91)]))[0].details.foremanSignatureTemplate.required,true,'returned historical document receives default');
+ await query("update foreman_attendance_days set status='draft',correction_pending=true where id=$1",[id(92)]);
+ assert.equal((await query('select foreman_signature_template from foreman_attendance_days where id=$1',[id(92)]))[0].foreman_signature_template.required,true,'returned historical attendance receives default');
  // Repeat migration proves it is safe after an interrupted local deployment.
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261016154418_independent_foreman_signature_scope.sql',import.meta.url),'utf8'));
  await db.exec(defaults);

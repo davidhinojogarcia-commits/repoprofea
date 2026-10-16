@@ -25,13 +25,19 @@ begin
  return new;
 end $$;
 drop trigger if exists a_initialize_native_foreman_signature on public.foreman_mandatory_documents;
-create trigger a_initialize_native_foreman_signature before insert or update of details,document_type
+create trigger a_initialize_native_foreman_signature before insert or update of details,document_type,status
 on public.foreman_mandatory_documents for each row execute function public.initialize_native_foreman_signature();
 
 create or replace function public.initialize_attendance_foreman_signature() returns trigger
 language plpgsql security definer set search_path=public as $$
 declare existing public.foreman_attendance_days%rowtype;
 begin
+ if tg_op='UPDATE' then
+   if new.status='draft' and new.foreman_signature_template is null then
+     new.foreman_signature_template=public.default_foreman_signature_layout('control_horario');
+   end if;
+   return new;
+ end if;
  -- save_foreman_attendance uses INSERT ... ON CONFLICT UPDATE, so candidate
  -- inserts must inherit any existing supervisor override/evidence first.
  select * into existing from public.foreman_attendance_days
@@ -46,7 +52,7 @@ begin
  return new;
 end $$;
 drop trigger if exists a_initialize_attendance_foreman_signature on public.foreman_attendance_days;
-create trigger a_initialize_attendance_foreman_signature before insert on public.foreman_attendance_days
+create trigger a_initialize_attendance_foreman_signature before insert or update of status on public.foreman_attendance_days
 for each row execute function public.initialize_attendance_foreman_signature();
 
 create or replace function public.guard_attendance_foreman_signature() returns trigger
