@@ -1,3 +1,4 @@
+import { repeatForemanSignature, type ForemanSignatureTemplate } from './foremanSignatureTemplate';
 import { suggestWorkerSignatureAnchor } from './employmentDocumentAnalysis.mjs';
 import { readPdfTextContent } from './clientDocumentText';
 import { createWorker } from 'tesseract.js';
@@ -865,6 +866,7 @@ export async function buildSignedMandatoryPdf(input: {
   originalPdfBase64: string;
   anchors: MandatoryWorkerAnchor[];
   signatures: Record<string, { signature?: string } | string>;
+  foreman?: { signature: string; template: ForemanSignatureTemplate };
 }) {
   const PDFLib = await loadPdfLib();
   const originalBytes = base64ToBytes(input.originalPdfBase64);
@@ -921,6 +923,25 @@ export async function buildSignedMandatoryPdf(input: {
     });
   }
 
+  // The foreman's independent signature repeats on every compatible page.
+  // It never uses or overrides a worker identity/anchor.
+  if(input.foreman?.template?.enabled){
+    if(!input.foreman.signature?.startsWith('data:image/'))throw new Error('Falta la firma válida del encargado.');
+    const positions=repeatForemanSignature(input.foreman.template,pages.map((page:any)=>page.getSize()));
+    const decoded=signatureDataToBytes(input.foreman.signature);
+    const image=decoded.type==='png'?await pdfDoc.embedPng(decoded.bytes):await pdfDoc.embedJpg(decoded.bytes);
+    for(const rectangle of positions){
+      const {width,height}=fitSignatureInsideBox({
+        imageWidth:image.width,imageHeight:image.height,
+        boxWidth:rectangle.width,boxHeight:rectangle.height,
+      });
+      pages[rectangle.page-1].drawImage(image,{
+        x:rectangle.x+(rectangle.width-width)/2,
+        y:rectangle.y+(rectangle.height-height)/2,
+        width,height,
+      });
+    }
+  }
   return new Uint8Array(await pdfDoc.save({ useObjectStreams: false, addDefaultPage: false }));
 }
 
