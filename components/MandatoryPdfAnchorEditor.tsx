@@ -1,3 +1,4 @@
+import { allowsForemanSignature } from '../src/lib/foremanSignaturePolicy';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import ModalPortal from './ModalPortal';
@@ -89,6 +90,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const pageCount=Number(pdf?.numPages||1);
   useEffect(()=>{
     let active=true;
+    if(!allowsForemanSignature(documentType))return;
     void loadForemanSignatureTemplate(documentId,modelKey).then((value:any)=>{
       if(!active)return;
       if(value&&value.templateKey===modelKey){setForemanTemplate(value);setFeedback('Plantilla recuperada. Comprueba su posición en el PDF antes de guardar.');}
@@ -336,7 +338,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
           </label>
 
           {employment&&current&&current.signatureX!=null&&current.signatureY!=null&&<button type="button" disabled={saving||loading||removing} onClick={()=>setDraft(list=>list.map((anchor,i)=>i===index?{...anchor,resolved:true,confidence:1,reason:'Posición confirmada manualmente por el supervisor.'}:anchor))} className="mt-3 min-h-[48px] w-full rounded-xl border border-[#00548E] px-3 py-2 text-sm font-black">Confirmar zona de firma y trabajador</button>}
-          <div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50 p-3 text-slate-900">
+          {allowsForemanSignature(documentType)&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50 p-3 text-slate-900">
             <div className="text-sm font-black">Firma propia del encargado · Todas las páginas</div>
             <p className="mt-1 text-xs">Modelo reutilizable: ajusta una sola vez. El mismo recuadro se repetirá en todas las hojas con dimensiones compatibles.</p>
             <label className="mt-2 block text-xs font-bold">Identificador del modelo
@@ -364,7 +366,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
                 </label>)}
               </div>
             </>}
-          </div>
+          </div>}
           {current&&<><div className="mandatory-editor-dimensions mt-4 grid grid-cols-2 gap-2">
             {(['signatureWidth','signatureHeight','signatureX','signatureY'] as const).map((field,i)=><PdfNumericField key={field} label={['Ancho de firma','Alto de firma','Coordenada X','Coordenada Y'][i]} value={current[field]} disabled={saving||removing||loading} onChange={value=>changeDimension(field,value)}/>)}</div>
             <button type="button" className="mt-2 min-h-[44px] w-full rounded-xl border px-3" disabled={saving||removing||loading} onClick={()=>setDraft(list=>list.map((a,i)=>{if(i!==index)return a;const p=pages.find(p=>p.page===a.page);const w=Math.min(90,p?.width||90),h=Math.min(32,p?.height||32);return {...a,signatureWidth:w,signatureHeight:h,signatureX:a.signatureX==null?null:Math.max(0,Math.min((p?.width||595)-w,a.signatureX)),signatureY:a.signatureY==null?null:Math.max(0,Math.min((p?.height||842)-h,a.signatureY))};}))}>Restablecer tamaño</button>
@@ -412,7 +414,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         <button type="button" disabled={loading||saving||removing} onClick={async()=>{
           if(saveInFlight.current)return;saveInFlight.current=true;
           setSaving(true);setError('');
-          try{await onSave(draft,foremanTemplate||undefined);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
+          try{await onSave(draft,allowsForemanSignature(documentType)?foremanTemplate||undefined:undefined);}catch(e:any){setError(e?.message||'No se pudieron guardar las posiciones.');}
           finally{saveInFlight.current=false;setSaving(false);}
         }} className="min-h-[52px] rounded-xl bg-[#00548E] px-5 py-3 text-base font-black text-white disabled:bg-slate-300">{saving?'Guardando…':'Guardar trabajadores y posiciones'}</button>
       </div>

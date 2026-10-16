@@ -61,6 +61,8 @@ export type ForemanAttendanceRow = {
 export type ForemanAttendanceDay = {
   id?: string;
   workDate: string;
+  foremanSignature?: string;
+  foremanTemplate?: import('../lib/foremanSignatureTemplate').ForemanSignatureTemplate;
   rows: ForemanAttendanceRow[];
   status: 'draft' | 'completed' | 'reviewed';
   completedAt?: string | null;
@@ -846,4 +848,20 @@ export async function signImportedDocumentAsForeman(token:string,documentId:stri
 }
 export async function getImportedForemanSignature(token:string,documentId:string):Promise<{signed:boolean;signature?:string;signedAt?:string}>{
   return withForemanTimeout(supabase.rpc('get_foreman_document_signature',{p_token:token,p_document_id:documentId}),'No se pudo recuperar la firma del encargado.');
+}
+
+export function getAttendanceForemanEvidence(token:string,workDate:string){
+  return withForemanTimeout(supabase.rpc('get_attendance_foreman_evidence',{p_token:token,p_work_date:workDate}),'No se pudo comprobar la firma del control horario.');
+}
+export function signAttendanceAsForeman(token:string,workDate:string,signature:string){
+  return withForemanTimeout(supabase.rpc('sign_attendance_as_foreman',{p_token:token,p_work_date:workDate,p_signature:signature}),'No se pudo guardar la firma del encargado.');
+}
+export function saveAttendanceForemanTemplate(documentId:string,layout:import('../lib/foremanSignatureTemplate').ForemanSignatureTemplate){
+  return supabase.rpc('save_attendance_foreman_template',{p_document_id:documentId,p_layout:layout});
+}
+export function getSupervisorForemanEvidence(documentId:string){
+  return supabase.rpc('get_supervisor_foreman_evidence',{p_document_id:documentId});
+}
+export function getReusableForemanLayout(modelKey:string){
+  return supabase.rpc('get_reusable_foreman_layout',{p_model_key:modelKey});
 }

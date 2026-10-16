@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
-    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs && node scripts/testForemanPublicationReceipt.mjs && node --import tsx scripts/testForemanDocumentPeriod.ts && node --import tsx scripts/testForemanRepeatSignature.ts",
+    "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs && node scripts/testForemanPublicationReceipt.mjs && node --import tsx scripts/testForemanDocumentPeriod.ts && node --import tsx scripts/testForemanRepeatSignature.ts && node scripts/testIndependentForemanSql.mjs && node scripts/testIndependentForemanPdf.mjs",
     "test:visit-minutes": "node scripts/testVisitMinutesDomain.mjs && node scripts/testVisitMinutesPdf.mjs && node scripts/testVisitMinutesIntegration.mjs",
     "test:visit-minutes-browser": "node scripts/testVisitMinutesBrowser.mjs",
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
@@ -35,6 +35,7 @@
     "test:tutor-agent": "node --import tsx scripts/testProfeaTutorAgent.ts && node --import tsx scripts/testProfeaTutorRegression.ts && node scripts/testProfeaTutorUi.mjs && node scripts/testProfeaTutorServerless.mjs && node scripts/testAppFilterHydration.mjs",
     "test:foreman-push": "node scripts/testForemanPushSql.mjs && node --import tsx scripts/testForemanPush.ts && node scripts/testForemanPushBrowser.mjs",
     "test:employment-documents": "node scripts/testEmploymentDocumentAnalysis.mjs && node scripts/testEmploymentIntakeFallback.mjs && node scripts/testEmploymentDocumentsSql.mjs && node scripts/testForemanPublicationUi.mjs contrato && node scripts/testForemanPublicationUi.mjs prorroga",
+    "test:independent-foreman-browser": "node scripts/testIndependentForemanBrowser.mjs",
     "test:employment-browser": "node scripts/testEmploymentDocumentsBrowser.mjs",
     "test:gmail-authorization": "node --import tsx scripts/testGmailAuthorization.ts && node scripts/testGmailAuthorizationUi.mjs",
     "test:inventory-invitations": "node scripts/testInventoryInvitationsSql.mjs && node scripts/testInventoryInvitationDelivery.mjs && node scripts/testInventoryInvitationsUi.mjs",
@@ -45,7 +46,7 @@
     "test:employment-worksites": "node --import tsx scripts/testEmploymentWorksiteAssignment.ts && node scripts/testEmploymentWorksiteIntake.mjs && node scripts/testEmploymentWorksiteService.mjs && node scripts/testEmploymentWorksiteUi.mjs",
     "test:pdf-signature-workspace": "node --import tsx scripts/testPdfSignatureCoordinates.ts && node scripts/testEmploymentDocumentAnalysis.mjs",
     "test:pdf-signature-workspace-browser": "node scripts/testPdfSignatureWorkspaceBrowser.mjs",
-    "test:foreman-repeat-signature": "node --import tsx scripts/testForemanRepeatSignature.ts"
+    "test:foreman-repeat-signature": "node --import tsx scripts/testForemanRepeatSignature.ts && node scripts/testIndependentForemanSql.mjs && node scripts/testIndependentForemanPdf.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

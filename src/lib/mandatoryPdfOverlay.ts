@@ -1,3 +1,4 @@
+import { allowsForemanSignature } from './foremanSignaturePolicy';
 import { repeatForemanSignature, type ForemanSignatureTemplate } from './foremanSignatureTemplate';
 import { suggestWorkerSignatureAnchor } from './employmentDocumentAnalysis.mjs';
 import { readPdfTextContent } from './clientDocumentText';
@@ -864,6 +865,7 @@ const signatureDataToBytes = (value: string) => {
 
 export async function buildSignedMandatoryPdf(input: {
   originalPdfBase64: string;
+  documentType?: string;
   anchors: MandatoryWorkerAnchor[];
   signatures: Record<string, { signature?: string } | string>;
   foreman?: { signature: string; template: ForemanSignatureTemplate };
@@ -926,6 +928,7 @@ export async function buildSignedMandatoryPdf(input: {
   // The foreman's independent signature repeats on every compatible page.
   // It never uses or overrides a worker identity/anchor.
   if(input.foreman?.template?.enabled){
+    if(input.documentType&&!allowsForemanSignature(input.documentType))throw new Error('Este documento no admite firma del encargado.');
     if(!input.foreman.signature?.startsWith('data:image/'))throw new Error('Falta la firma válida del encargado.');
     const positions=repeatForemanSignature(input.foreman.template,pages.map((page:any)=>page.getSize()));
     const decoded=signatureDataToBytes(input.foreman.signature);

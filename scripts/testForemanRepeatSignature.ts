@@ -1,8 +1,9 @@
+import { allowsForemanSignature, enabledForemanTemplate } from '../src/lib/foremanSignaturePolicy';
 import assert from 'node:assert/strict';
 import {createForemanTemplate,repeatForemanSignature} from '../src/lib/foremanSignatureTemplate';
 
 const a4={width:595.28,height:841.89};
-const model=createForemanTemplate('inicio:modelo-provincial',{x:380,y:55,width:145,height:55},a4);
+const model=createForemanTemplate('epis:modelo-provincial',{x:380,y:55,width:145,height:55},a4);
 assert.equal(model.revision,1);
 assert.equal(model.allPages,true);
 const boxes=repeatForemanSignature(model,[a4,a4,a4]);
@@ -19,3 +20,11 @@ const disabled={...revised,enabled:false};
 assert.deepEqual(repeatForemanSignature(disabled,[a4]),[]);
 assert.throws(()=>createForemanTemplate('',{x:100,y:25,width:50,height:20},a4),/Modelo/);
 console.log('OK · plantilla persistente, revisión, repetición, escalado y protección de página');
+
+for(const documentType of ['inicio','control_presencia','contrato','prorroga']){
+  assert.equal(allowsForemanSignature(documentType),false);
+  assert.equal(enabledForemanTemplate({documentType,details:{foremanSignatureTemplate:model}}),undefined);
+}
+for(const type of ['epis','formacion','maquinaria','autorizacion_uso_maquinaria','control_horario','ausencia_trabajador'])assert(allowsForemanSignature(type));
+assert.equal(allowsForemanSignature(undefined),false);
+console.log('PASS: type policy and historical metadata cannot expose foreman signing on excluded documents.');
