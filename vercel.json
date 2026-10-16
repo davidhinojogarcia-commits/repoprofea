@@ -40,7 +40,8 @@
       "fix/employment-worker-preview": false,
       "fix/gmail-authorization-recovery": false,
       "fix/inventory-invitation-sharing": false,
-      "feat/inventory-usage-identification": false
+      "feat/inventory-usage-identification": false,
+      "fix/signature-editor-sidebar-overlay": false
     }
   }
 }

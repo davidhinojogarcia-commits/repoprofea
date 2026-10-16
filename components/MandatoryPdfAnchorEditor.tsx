@@ -324,7 +324,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     }:anchor));
   };
 
-  return <ModalPortal label="Ajustar firmas"><div data-mobile-panel={mobilePanel} className="mandatory-anchor-editor fixed inset-0 flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
+  return <ModalPortal label="Ajustar firmas" layout="fullscreen"><div data-mobile-panel={mobilePanel} className="mandatory-anchor-editor fixed inset-0 flex h-[100dvh] flex-col bg-slate-950/90 p-0 sm:p-3">
     <div className="mandatory-editor-shell mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col overflow-hidden bg-white text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-50 sm:rounded-3xl">
       <div className="mandatory-editor-header flex items-start justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
@@ -446,6 +446,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 };
 
 export default MandatoryPdfAnchorEditor;
+
 
 
 

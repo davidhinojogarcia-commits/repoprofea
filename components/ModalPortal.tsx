@@ -16,7 +16,7 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string }> = ({ children, label }) => {
+export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string; layout?: 'workspace' | 'fullscreen' }> = ({ children, label, layout = 'workspace' }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<number>(0);
   if (!layerRef.current) {
@@ -74,6 +74,7 @@ export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string }
   return createPortal(
     <div
       ref={rootRef}
+      data-modal-layout={layout}
       className="profea-modal-overlay fixed inset-0 isolate pointer-events-auto"
       style={{ zIndex: layerRef.current }}
       role="presentation"
@@ -87,3 +88,4 @@ export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string }
 };
 
 export default ModalPortal;
+
