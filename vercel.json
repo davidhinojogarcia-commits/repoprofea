@@ -48,7 +48,8 @@
       "feat/employment-worksite-assignment": false,
       "fix/signature-editor-sidebar-overlay": false,
       "feat/pdf-signature-workspace": false,
-      "feat/worksite-visit-minutes": false
+      "feat/worksite-visit-minutes": false,
+      "fix/visit-minutes-native-esm": false
     }
   }
 }
