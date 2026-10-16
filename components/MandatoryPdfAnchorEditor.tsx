@@ -150,6 +150,39 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     setDraft(list=>list.map((anchor,i)=>i===target?{...anchor,...box,page,resolved:Number(anchor.workerId)!==0,
       confidence:Number(anchor.workerId)!==0?1:0,reason:'Posición confirmada manualmente por el supervisor.'}:anchor));
   };
+  const detectForemanSignature=async()=>{
+    if(!pdf)return;
+    setSaving(true);setError('');
+    try{
+      const page=await pdf.getPage(1);
+      const meta=pages.find(p=>p.page===1);
+      if(!meta)throw new Error('No se han cargado las dimensiones de la primera hoja.');
+      const content=await page.getTextContent();
+      const lines=new Map<number,any[]>();
+      for(const item of content.items as any[]){
+        if(!item?.str||!Array.isArray(item.transform))continue;
+        const y=Math.round(Number(item.transform[5])/5)*5;
+        lines.set(y,[...(lines.get(y)||[]),item]);
+      }
+      const patterns=/firma\\s+(?:del\\s+)?encargad[oa]|el\\s+encargad[oa]|fdo\\.?\\s*encargad[oa]|firma\\s+del\\s+responsable\\s+de\\s+obra/i;
+      const candidate=[...lines.entries()].sort((a,b)=>a[0]-b[0]).map(([y,items])=>({
+        y,items:items.sort((a,b)=>Number(a.transform[4])-Number(b.transform[4])),
+      })).find(line=>patterns.test(line.items.map(item=>String(item.str||'')).join(' ')));
+      if(!candidate){
+        setFeedback('No se ha localizado una referencia inequívoca al encargado. Sitúa el recuadro manualmente; tu corrección quedará guardada para las próximas veces.');
+        return;
+      }
+      const labelItem=candidate.items.find(item=>/encargad|responsable/i.test(String(item.str)))||candidate.items[0];
+      const x=Math.min(meta.width-145,Math.max(8,Number(labelItem.transform[4])-10));
+      const y=Math.min(meta.height-55,Math.max(6,candidate.y+14));
+      setForemanTemplate(createForemanTemplate(modelKey,{x,y,width:Math.min(145,meta.width-x),height:45},meta,foremanTemplate||undefined));
+      setPreviewPage(1);setForemanSelected(true);
+      setPageRequest(p=>({page:1,sequence:p.sequence+1,focusSignature:true}));
+      setMobilePanel('pdf');
+      setFeedback('Posición sugerida a partir de la referencia al encargado. Revisa y ajusta el recuadro antes de guardar.');
+    }catch(e:any){setError(e?.message||'No se pudo detectar la posición. Configúrala manualmente.');}
+    finally{setSaving(false);}
+  };
   const setForemanBox=(box:{x:number;y:number;width:number;height:number},pageNumber=previewPage)=>{
     const meta=pages.find(page=>page.page===pageNumber);
     if(!meta)return;
@@ -319,6 +352,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             </label>
             {foremanTemplate?.enabled&&<>
               <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={foremanTemplate.required} onChange={e=>setForemanTemplate(t=>t?{...t,required:e.target.checked}:t)}/>Obligatoria para devolver al supervisor</label>
+              <button type="button" disabled={saving||loading} onClick={()=>void detectForemanSignature()} className="mt-2 min-h-11 w-full rounded-lg border border-[#00548E] bg-white p-2 font-black text-[#00548E]">Detectar referencia al encargado en el PDF</button>
               <button type="button" onClick={()=>{setForemanSelected(true);setMobilePanel('pdf');setPageRequest(p=>({page:previewPage,sequence:p.sequence+1,focusSignature:true}));}} className="mt-2 min-h-11 w-full rounded-lg bg-[#00548E] p-2 font-black text-white">Mover y dimensionar firma del encargado en el PDF</button>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {(['x','y','width','height'] as const).map(field=><label key={field} className="text-xs font-bold">{field==='x'?'X':field==='y'?'Y':field==='width'?'Ancho':'Alto'}
