@@ -91,6 +91,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:employment-browser
+          npm run test:independent-foreman-browser
           npm run test:pdf-signature-workspace
           npm run test:pdf-signature-workspace-browser
           node scripts/testSignatureEditorLayeringBrowser.mjs
