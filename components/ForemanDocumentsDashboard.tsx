@@ -13,7 +13,7 @@ import { generateForemanAttendancePdf, generateForemanCompletedDocumentPdf, gene
 import { processAdministrativeMandatoryInbox, processManualMandatoryFiles } from '../src/lib/mandatoryEmailIntake';
 import { beginGmailOAuth, getGmailConnectionStatus, needsGmailAuthorization, sendPdfWithConnectedGmail } from '../src/lib/gmailConnection';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft, loadSupervisorMandatoryEditorDocument } from '../src/services/foremanPortalService';
+import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSupervisorMandatoryPdf, getSupervisorMandatorySignatures, markMandatoryDocumentReturned, removeSupervisorMandatoryWorker, returnForemanItemForCorrection, reviewForemanItem, updateForemanMandatoryDocument, saveSupervisorMandatoryDraft, loadSupervisorMandatoryEditorDocument, saveForemanSignatureTemplate } from '../src/services/foremanPortalService';
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
@@ -1030,8 +1030,11 @@ export const ForemanDocumentsDashboard: React.FC = () => {
         setMailMessage('Trabajador eliminado del documento. Ya no cuenta como firma pendiente.');
         await refresh(true);
       }}
-      onSave={async(anchors)=>{
+      onSave={async(anchors,foremanTemplate)=>{
         await saveSupervisorMandatoryDraft(positioningMandatory.id,anchors,positioningMandatory.updated_at);
+        if(foremanTemplate){
+          await saveForemanSignatureTemplate(positioningMandatory.id,foremanTemplate.templateKey,foremanTemplate);
+        }
         setMailMessage('Trabajadores y posiciones guardados y verificados. El solapamiento entre firmas es informativo y no impide guardar la revisión.');
         setPositioningMandatory(null);
         await refresh(true);
