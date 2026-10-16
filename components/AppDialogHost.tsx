@@ -128,6 +128,7 @@ export function AppDialogHost() {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        data-kind={current.kind}
         aria-labelledby="profea-dialog-title"
         className={`profea-app-dialog-panel w-full max-w-md overflow-hidden rounded-3xl border bg-white shadow-2xl dark:bg-slate-900 ${palette.ring}`}
       >

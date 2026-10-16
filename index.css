@@ -614,3 +614,7 @@ body.profea-dialog-open #root {
 .profea-app-dialog-panel button:last-child { background: #00548e; color: white; }
 .dark .profea-app-dialog-panel { background: #0f172a; color: #f8fafc; border-color: #475569; }
 body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-events: none; }
+
+.profea-app-dialog-panel[data-kind="success"] button:last-child { background: #059669; }
+.profea-app-dialog-panel[data-kind="error"] button:last-child { background: #e11d48; }
+.profea-app-dialog-panel[data-kind="warning"] button:last-child { background: #d97706; }
