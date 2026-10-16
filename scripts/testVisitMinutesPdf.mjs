@@ -2,14 +2,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {PDFDocument} from 'pdf-lib';
 import {build} from 'esbuild';
+import ts from 'typescript';
 import {content,person,png,id} from './visitMinutesFixture.mjs';
 const out=new URL('./.visit-pdf.mjs',import.meta.url),directory=new URL('../tmp/pdfs/',import.meta.url);
+const nativeDirectory=await fs.mkdtemp(new URL('./.visit-native-',import.meta.url).pathname);
 try{
+ // Vercel transpiles server modules without bundling: Node must resolve every
+ // runtime relative import, including the logo and domain module.
+ for(const file of ['lib/visitMinutesPdf','lib/visitMinutes','assets/logoData']){
+  const source=await fs.readFile(new URL(`../src/${file}.ts`,import.meta.url),'utf8');
+  const destination=`${nativeDirectory}/${file}.js`;
+  await fs.mkdir(destination.slice(0,destination.lastIndexOf('/')),{recursive:true});
+  await fs.writeFile(destination,ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
+ }
+ const nativeRenderer=await import(`${nativeDirectory}/lib/visitMinutesPdf.js`);
  await build({stdin:{contents:"export {generateVisitMinutesPdf} from './src/lib/visitMinutesPdf';export {newVisit} from './src/lib/visitMinutes';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,format:'esm',platform:'node',packages:'external'});
  const {generateVisitMinutesPdf:generate,newVisit}=await import(out.href);const now='2026-10-16T08:00:00Z';
  const state=newVisit({...content,authorEmail:'',purpose:'Seguimiento de la obra.',discussion:'Se revisaron los trabajos.',observations:'',nextVisit:'',agreements:[]},[person()],now);
  state.status='signed';state.finalizedAt=now;state.issuedAt=now;state.responses={[person().id]:{decision:'agree',comment:'',mode:'email-code',at:now}};state.signatures={[person().id]:{image:png,mode:'email-code',at:now}};
  const single=await generate(state,'AV-2026-000001');const singleDoc=await PDFDocument.load(single);assert.equal(singleDoc.getPageCount(),1,'brief signed acta fits on one page');
+ assert.equal((await PDFDocument.load(await nativeRenderer.generateVisitMinutesPdf(state,'AV-2026-000001'))).getPageCount(),1,'unbundled Node ESM server renders the signed PDF');
  const before=structuredClone(state);const annex=await PDFDocument.create();annex.addPage([600,300]);annex.addPage([300,600]);const annexBytes=await annex.save();
  const multi=structuredClone(state);multi.content.discussion=Array.from({length:100},(_,i)=>`Asunto ${i+1}: Se revisó la ejecución y se dejó constancia de los puntos tratados durante la visita. No se añaden decisiones distintas a las redactadas. Ángela Pérez revisó las cotas.`).join('\n\n');
  multi.participants=Array.from({length:20},(_,n)=>person(20+n));multi.responses=Object.fromEntries(multi.participants.map(p=>[p.id,{decision:'agree',comment:'Conforme con lo descrito.',mode:'email-code',at:now}]));multi.signatures=Object.fromEntries(multi.participants.map(p=>[p.id,{image:png,at:now,mode:'email-code'}]));
@@ -21,4 +33,4 @@ try{
  const config=JSON.parse(await fs.readFile(new URL('../vercel.json',import.meta.url),'utf8'));assert(config.rewrites.some(r=>r.source==='/api/visit-minutes'&&r.destination==='/api/gmail?action=visit-minutes'),'production route uses the tested gateway');
  assert.equal((await fs.readdir(new URL('../api/',import.meta.url))).filter(p=>p==='visit-minutes.ts').length,0,'no additional serverless entrypoint');
  console.log(`PASS: one-page signed acta, ${loaded.getPageCount()}-page long acta, twenty signatures, photographic/PDF annexes, portrait/landscape dimensions, immutable input and function-budget routing.`);
-}finally{await fs.rm(out,{force:true});}
+}finally{await fs.rm(out,{force:true});await fs.rm(nativeDirectory,{recursive:true,force:true});}

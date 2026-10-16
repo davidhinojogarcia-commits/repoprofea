@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
-import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
-import { VISIT_NOTICE, madridTimestamp, personName, type VisitState } from './visitMinutes';
+import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData.js';
+import { VISIT_NOTICE, madridTimestamp, personName, type VisitState } from './visitMinutes.js';
 
 // Pure renderer: no localStorage, account caches, network calls or current-time
 // labels. The stored snapshot alone determines the document's visible content.
