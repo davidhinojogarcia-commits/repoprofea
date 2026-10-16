@@ -9,3 +9,14 @@ html.dark canvas.visit-signature-surface {
 .dark #root canvas.visit-signature-surface {
   background-color: #fff !important;
 }
+
+/* Mail previews can contain many long messages. Keep actions outside the scroller. */
+.visit-mail-overlay { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); background: #02061799; }
+.visit-mail-dialog { box-sizing: border-box; display: flex; flex-direction: column; width: min(60rem, 100%); height: min(52rem, 100%); max-height: 100%; min-height: 0; overflow: hidden; border-radius: 18px; background: #fff; color: #0f172a; }
+.visit-mail-header { flex: 0 0 auto; padding: 16px 20px; border-bottom: 1px solid #cbd5e1; }
+.visit-mail-body { flex: 1 1 0%; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 16px 20px; overflow-wrap: anywhere; }
+.visit-mail-body > * + * { margin-top: 16px; }
+.visit-mail-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.visit-mail-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-top: 1px solid #cbd5e1; }
+.visit-mail-actions button { min-height: 48px; flex: 1 1 180px; }
+.dark .visit-mail-dialog { background: #0f172a; color: #f8fafc; }
