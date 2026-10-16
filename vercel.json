@@ -41,7 +41,9 @@
       "fix/gmail-authorization-recovery": false,
       "fix/inventory-invitation-sharing": false,
       "feat/inventory-usage-identification": false,
-      "feat/employment-worksite-assignment": false
+      "feat/employment-worksite-assignment": false,
+      "fix/signature-editor-sidebar-overlay": false,
+      "feat/pdf-signature-workspace": false
     }
   }
 }

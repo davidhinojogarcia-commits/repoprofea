@@ -91,6 +91,9 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:employment-browser
+          npm run test:pdf-signature-workspace
+          npm run test:pdf-signature-workspace-browser
+          node scripts/testSignatureEditorLayeringBrowser.mjs
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
       - name: Supervisor signed PDF download regression
@@ -186,6 +189,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 

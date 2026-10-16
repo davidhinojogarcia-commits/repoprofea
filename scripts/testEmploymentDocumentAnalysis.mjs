@@ -38,3 +38,17 @@ assert.equal(suggestWorkerSignatureAnchor(fields,'PÉREZ GÓMEZ, JUAN CARLOS',tr
 assert.equal(suggestWorkerSignatureAnchor(fields,'PÉREZ GÓMEZ, JUAN CARLOS').status,'REVIEW_REQUIRED');
 assert.equal(suggestWorkerSignatureAnchor([{items:[{text:'Datos del trabajador',x:0.15,y:0.6}]}],'PÉREZ GÓMEZ, JUAN CARLOS',true).status,'REVIEW_REQUIRED');
 console.log('PASS: official SAE field/table layout, OCR header, DNI/date separation and worker-only signing field.');
+
+
+const scanned=[{items:[{text:'Datos delide la trabajadoría',x:.1,y:.3},{text:'María López Ruiz',x:.1,y:.34}]}];
+assert.equal(recognizeEmploymentWorker('DATOS DELIDE LA TRABAJADORÍA\nMaría López Ruiz').name,'María López Ruiz');
+assert.equal(suggestWorkerSignatureAnchor(scanned,'María López Ruiz',true).status,'REVIEW_REQUIRED','a worker data row is not a signing field');
+const officialScan={items:[{text:'Ellla trabajador/a',x:.15,y:.78,width:.15,height:.015,confidence:.9},{text:'trabajador/a',x:.18,y:.78,width:.12,height:.015,confidence:.95},{text:'Ellla representante de la Empresa',x:.4,y:.78,width:.3,height:.015}]};
+const identified=suggestWorkerSignatureAnchor([...scanned,officialScan,{items:[]}],'María López Ruiz',true);
+assert.equal(identified.status,'SUGGESTED');assert.equal(identified.anchor.page,2,'interior-page form label');assert.equal(identified.anchor.x,.15,'overlapping OCR spans are one signing field');
+assert.equal(suggestWorkerSignatureAnchor([officialScan,officialScan],'María López Ruiz',true).status,'REVIEW_REQUIRED','two different signing pages stay ambiguous');
+assert.equal(suggestWorkerSignatureAnchor([{items:[{text:'Firma del trabajador',x:.15,y:.2,width:.2,height:.015}]}],'María López Ruiz',true).status,'SUGGESTED','explicit signing field need not be in the lower half');
+assert.equal(suggestWorkerSignatureAnchor([{items:officialScan.items.map(v=>({...v,confidence:.1}))}],'María López Ruiz',true).status,'REVIEW_REQUIRED','low-confidence OCR never invents a position');
+console.log('PASS: observed Spanish OCR variants, data-table exclusion, duplicate span grouping, interior-page labels, ambiguity and confidence checks.');
+
+assert.equal(suggestWorkerSignatureAnchor([{items:[{text:'Fdo.',x:.6,y:.76},{text:'María López Ruiz',x:.6,y:.8}]}],'María López Ruiz').status,'SUGGESTED','Fdo linked to the exact worker name');
