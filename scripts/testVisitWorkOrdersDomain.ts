@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {cleanWorkOrders,assertOrderAuthorities,validateOrderTransition,orderClosed} from '../src/lib/visitWorkOrders';
+const id=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const a={worksiteId:id(10),personId:id(20),name:'Técnica competente',role:'Dirección de obra',entity:'Entidad',scopes:['technical' as const],userId:id(1),canVerify:true,active:true,justification:'Designación expresa'};
+const order={id:id(70),number:1,type:'order',nature:'technical',issuerId:a.personId,issuerName:a.name,issuerRole:a.role,issuerEntity:a.entity,recipientId:'',recipient:'Encargado',description:'Proteger acceso peatonal',location:'Acceso norte',issuedDate:'2026-10-17',deadline:'2026-10-20',priority:'urgent',observations:'',attachmentIds:[],officialReference:'Asiento 1',reservedDecision:false,authorizationReference:'',visibility:'worksite',foremanAccessIds:[],foremanCanReport:true};
+const clean=(o:any[])=>cleanWorkOrders(o,[],[]);
+assert.equal(clean([order,{...order,id:id(71),number:2}]).length,2);
+assert.throws(()=>clean([order,{...order,id:id(71)}]),/duplicados/);
+assert.throws(()=>clean([{...order,issuedDate:'2026-02-30'}]),/Fecha/);
+assert.throws(()=>clean([{...order,deadline:'2026-10-16'}]),/plazo/);
+assert.throws(()=>clean([{...order,recipientId:id(99)}]),/Destinatario/);
+assert.throws(()=>clean([{...order,attachmentIds:[id(99)]}]),/Anexo/);
+assert.throws(()=>clean([{...order,reservedDecision:true}]),/autorización/);
+assert.throws(()=>clean([{...order,type:'recommendation'}]),/recomendaciones/);
+const definitions=clean([order]);assertOrderAuthorities(definitions,[a]);assertOrderAuthorities(clean([{...order,recipient:"",recipientId:""}]),[a]);
+for(const grants of [[],[{...a,active:false}],[{...a,scopes:['preventive' as const]}],[{...a,role:'Asistente'}]])assert.throws(()=>assertOrderAuthorities(definitions,grants),/competencia/);
+assert.throws(()=>validateOrderTransition('in_progress','verified','foreman',false,'Terminado'),/encargado/);
+assert.throws(()=>validateOrderTransition('in_progress','verified','supervisor',true,'Comprobado'),/Primero/);
+assert.throws(()=>validateOrderTransition('executed_pending_verification','verified','supervisor',false,'Comprobado'),/autorización/);
+assert.throws(()=>validateOrderTransition('executed_pending_verification','verified','supervisor',true,''),/justificar/);
+assert.throws(()=>validateOrderTransition('in_progress','superseded','supervisor',true,'Sustituida'),/sustituye/);
+validateOrderTransition('communicated','in_progress','foreman',false,'Iniciada');validateOrderTransition('in_progress','executed_pending_verification','foreman',false,'Terminada');validateOrderTransition('executed_pending_verification','verified','supervisor',true,'Comprobada in situ');
+assert(!orderClosed('executed_pending_verification'));assert(!orderClosed('breached'));
+for(const closed of ['verified','cancelled','superseded'] as const){assert(orderClosed(closed));assert.throws(()=>validateOrderTransition(closed,'in_progress','supervisor',true,'Reabierta'),/cerrada/);}
+console.log('PASS: work order identifiers, dates, attachments, recipient references, reserved decisions, explicit competencies, foreman limits and competent verification.');

@@ -1,3 +1,4 @@
+import { cleanWorkOrders, type WorkOrderDefinition, type OrderReference } from './visitWorkOrders.js';
 export type VisitStatus = 'draft' | 'review' | 'changes' | 'rejected' | 'signing' | 'signed' | 'cancelled';
 export type VisitPerson = {
   id: string;
@@ -46,6 +47,8 @@ export type VisitContent = {
   nextVisit: string;
   agreements: VisitAgreement[];
   attachments: VisitAttachment[];
+  orders?: WorkOrderDefinition[];
+  orderReferences?: OrderReference[];
 };
 export type VisitResponse = {
   decision: 'agree' | 'changes' | 'reject';
@@ -54,6 +57,8 @@ export type VisitResponse = {
   mode: 'email-code' | 'in-person';
 };
 export type VisitSignature = {
+  intent?: 'agreement'|'reservations'|'knowledge';
+  note?: string;
   image: string;
   at: string;
   mode: 'email-code' | 'in-person';
@@ -230,6 +235,12 @@ export function cleanVisit(content: any, participants: any[]): {
   insist(new Set(people.map(p => p.id)).size === people.length, 'Participantes duplicados.');
   insist(new Set(people.map(p => `${personName(p).toLocaleLowerCase('es')}|${p.entity.toLocaleLowerCase('es')}`)).size === people.length, 'La misma persona aparece más de una vez.');
   insist(new Set(people.filter(p => p.email).map(p => p.email)).size === people.filter(p => p.email).length, 'Cada participante debe utilizar su propio correo.');
+  if(content.orders!==undefined)c.orders=cleanWorkOrders(content.orders,people,c.attachments);
+  if(content.orderReferences!==undefined){
+    insist(Array.isArray(content.orderReferences)&&content.orderReferences.length<=1000,'Referencias de órdenes inválidas.');
+    insist(content.orderReferences.every((r:any)=>uuidValid(r.id))&&new Set(content.orderReferences.map((r:any)=>r.id)).size===content.orderReferences.length,'Referencias de órdenes duplicadas o inválidas.');
+    c.orderReferences=content.orderReferences.map((r:any)=>({id:r.id,originNumber:text(r.originNumber,100),number:Number(r.number),description:text(r.description,20000),status:r.status,revision:Number(r.revision),recordedAt:text(r.recordedAt,40),visibility:r.visibility,foremanAccessIds:r.foremanAccessIds}));
+  }
   return {
     content: c,
     participants: people
@@ -260,6 +271,8 @@ export type VisitCommand = {
   mode: VisitResponse['mode'];
 } | {
   type: 'sign';
+  intent?: VisitSignature['intent'];
+  note?: string;
   personId: string;
   image: string;
   mode: VisitSignature['mode'];
@@ -285,6 +298,7 @@ export function applyVisitCommand(before: VisitState, command: VisitCommand, now
       insist(state.content.purpose && state.content.discussion && state.content.end, 'Completa objeto, asuntos tratados y hora final antes de revisar.');
       insist(state.participants.some(p => p.signing === 'required'), 'Debe haber al menos un firmante obligatorio.');
       insist(state.participants.filter(p => p.receiveFinal).every(p => p.email), 'Completa el correo de quienes deben recibir el PDF final o desmarca su distribución antes de emitir.');
+      insist((state.content.orders||[]).every(o=>o.description), 'Completa todas las órdenes.');
       insist(state.content.agreements.every(a => a.text), 'Completa o elimina los acuerdos vacíos.');
       state.status = 'review';
       state.issuedAt = now;
@@ -307,7 +321,7 @@ export function applyVisitCommand(before: VisitState, command: VisitCommand, now
         break;
       }
     case 'open-signing':
-      insist(state.status === 'review' && state.participants.filter(p => p.reviewRequired).every(p => state.responses[p.id]?.decision === 'agree'), 'Faltan conformidades o hay cambios/disconformidades pendientes.');
+      insist(state.status === 'review' && state.participants.filter(p => p.reviewRequired).every(p => state.responses[p.id]?.decision === 'agree'), 'Faltan revisiones del contenido o hay cambios/disconformidades pendientes.');
       state.status = 'signing';
       break;
     case 'sign':
@@ -316,7 +330,12 @@ export function applyVisitCommand(before: VisitState, command: VisitCommand, now
         const p = state.participants.find(p => p.id === command.personId);
         insist(p && p.signing !== 'none' && state.responses[p.id]?.decision === 'agree' && !state.signatures[p.id], 'Firma no permitida o ya confirmada.');
         insist(typeof command.image === 'string' && command.image.length <= 250000 && /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i.test(command.image), 'La firma debe ser una imagen PNG válida de tamaño reducido.');
+        if(command.intent!==undefined){
+          insist(['agreement','reservations','knowledge'].includes(command.intent),'Sentido de firma inválido.');
+          insist(command.intent!=='reservations'||text(command.note||'',5000),'Explica las reservas de la firma.');
+        }
         state.signatures[p.id] = {
+          ...(command.intent?{intent:command.intent,note:text(command.note||'',5000)}:{}),
           image: command.image,
           at: now,
           mode: command.mode

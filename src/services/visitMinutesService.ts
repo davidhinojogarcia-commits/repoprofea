@@ -36,10 +36,11 @@ export async function visitRequest<T = any>(body: Record<string, unknown>, optio
 export function downloadVisitFile(file: {
   base64: string;
   filename: string;
+  mime?: string;
 }) {
   const bytes = Uint8Array.from(atob(file.base64), c => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], {
-    type: 'application/pdf'
+    type: file.mime || 'application/pdf'
   }));
   const a = document.createElement('a');
   a.href = url;

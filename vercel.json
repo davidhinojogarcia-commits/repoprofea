@@ -55,7 +55,8 @@
       "fix/completed-native-pdf": false,
       "fix/foreman-modal-pdf-layout": false,
       "fix/global-dialog-stack-audit": false,
-      "fix/visit-mail-preview-scroll": false
+      "fix/visit-mail-preview-scroll": false,
+      "feat/visit-work-orders": false
     }
   }
 }
