@@ -159,7 +159,8 @@ async function gmailToken(ownerId: string) {
   });
   return {
     token: await refreshGoogleAccessToken(decryptToken(connection.refresh_token_encrypted)),
-    from: connection.email
+    from: connection.email,
+    canRead: String(connection.scope||'').split(/\s+/).some(s=>['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.modify','https://mail.google.com/'].includes(s)),
   };
 }
 export async function sendVisitMime(ownerId: string, to: string, mail: {
@@ -171,6 +172,7 @@ export async function sendVisitMime(ownerId: string, to: string, mail: {
 }, connection?: {
   token: string;
   from: string;
+  deferTouch?: boolean;
 }) {
   const {
     token,
@@ -178,7 +180,7 @@ export async function sendVisitMime(ownerId: string, to: string, mail: {
   } = connection || (await gmailToken(ownerId));
   const boundary = 'profea_visit_' + identity.replace(/[^a-z0-9]/gi, '');
   const clean = (v: string) => v.replace(/[\r\n"<>]/g, ' ').trim();
-  const parts = [`To: ${clean(to)}`, `Subject: =?UTF-8?B?${Buffer.from(mail.subject).toString('base64')}?=`, `Message-ID: <visit-${clean(identity)}@gestionprofea.vercel.app>`, 'MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${boundary}"`, '', `--${boundary}`, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', mailPart(mail.body)];
+  const parts = [`From: ${clean(from)}`, `To: ${clean(to)}`, `Subject: =?UTF-8?B?${Buffer.from(mail.subject).toString('base64')}?=`, `Message-ID: <visit-${clean(identity)}@gestionprofea.vercel.app>`, 'MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${boundary}"`, '', `--${boundary}`, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', mailPart(mail.body)];
   if (attachment) parts.push(`--${boundary}`, `Content-Type: application/pdf; name="${clean(attachment.filename)}"`, 'Content-Transfer-Encoding: base64', `Content-Disposition: attachment; filename="${clean(attachment.filename)}"`, '', attachment.base64.replace(/(.{76})/g, '$1\r\n'));
   parts.push(`--${boundary}--`, '');
   let response: Response;
@@ -206,7 +208,7 @@ export async function sendVisitMime(ownerId: string, to: string, mail: {
     code: response.status === 401 ? 'GMAIL_RECONNECT_REQUIRED' : response.status === 429 ? 'GMAIL_RATE_LIMITED' : 'GMAIL_SEND_FAILED'
   });
   // Email confirmation is authoritative even if the auxiliary timestamp fails.
-  await touchSent(ownerId).catch(() => undefined);
+  if(!connection?.deferTouch)await touchSent(ownerId).catch(() => undefined);
   return {
     messageId: sent.id,
     from
@@ -278,6 +280,84 @@ const canonicalLink = (token: string) => {
   if (url.protocol !== 'https:' || url.username || url.password) throw fail('Dirección de aplicación inválida.', 503);
   return url.origin + '/#visit=' + token;
 };
+const jobFields='id,version,person_id,kind,status,attempts,message_id,error_code,updated_at';
+async function visitJobs(r:VisitRecord,id?:string){return database('visit_minutes_mail_jobs?'+query({select:jobFields,record_id:'eq.'+r.id,version:'eq.'+r.version,...(id?{id:'eq.'+id}:{}),order:'updated_at.asc',limit:'120'}));}
+const normalizeMailError=(e:any)=>({code:String(e?.code||'SEND_FAILED'),message:String(e?.message||'No se pudo confirmar el envío.').slice(0,399)});
+async function deliverVisitJob(r:VisitRecord,actor:string,job:any,connection:any,accesses?:any[],file?:any){
+ const claimed=await database('rpc/visit_minutes_claim_mail',{p_id:job.id});
+ if(!claimed){const current=(await visitJobs(r,job.id))[0];return {delivery:current?.status||'uncertain',messageId:current?.message_id};}
+ let acceptedId:string|null=null;
+ try{
+  const p=r.state.participants.find(p=>p.id===job.person_id);if(!p?.email)throw fail('El destinatario no tiene correo.');
+  let target='';
+  if(job.kind!=='final'){
+   const a=accesses?accesses.find(a=>a.person_id===p.id):(await database('visit_minutes_access?'+query({select:'token_encrypted,expires_at,revoked',record_id:'eq.'+r.id,version:'eq.'+r.version,person_id:'eq.'+p.id,limit:'1'})))[0];
+   if(!a||a.revoked||new Date(a.expires_at).getTime()<=Date.now())throw Object.assign(fail('Renueva el enlace antes de enviar.'),{code:'VISIT_LINK_EXPIRED'});
+   target=canonicalLink(decryptToken(a.token_encrypted));
+  }
+  if(job.kind==='final'){
+   file=file||(await database('visit_minutes_files?'+query({select:'base64,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0];
+   if(!file||r.status!=='signed'||digest(Buffer.from(file.base64,'base64'))!==file.sha256)throw fail('No se pudo verificar el archivo final.');
+  }
+  const result=await sendVisitMime(actor,p.email,visitMail(r.state,r.number,job.kind,p,target),job.id,file?{base64:file.base64,filename:r.number+'_v'+r.version+'_FIRMADA.pdf'}:undefined,connection);
+  acceptedId=result.messageId;
+  await database('rpc/visit_minutes_finish_mail',{p_id:job.id,p_status:'sent',p_message:acceptedId,p_code:null,p_actor:actor});
+  return {delivery:'sent',...result};
+ }catch(e:any){
+  const uncertain=e.uncertain||!!acceptedId;
+  try{await database('rpc/visit_minutes_finish_mail',{p_id:job.id,p_status:uncertain?'uncertain':'failed',p_message:acceptedId,p_code:acceptedId?'MAIL_ACCEPTED_STATUS_UNCONFIRMED':e.code||'SEND_FAILED',p_actor:actor});}catch{throw Object.assign(fail('No se pudo confirmar el guardado. Actualiza el estado antes de volver a enviar.',503),{code:'MAIL_STATUS_UNCONFIRMED',uncertain:true});}
+  throw e;
+ }
+}
+function mailResult(jobs:any[],kind:string){
+ const selected=jobs.filter(j=>j.kind===kind),accepted=selected.filter(j=>j.status==='sent'&&!!j.message_id).length;
+ return {total:selected.length,accepted,pending:selected.length-accepted,uncertain:selected.filter(j=>['uncertain','sending'].includes(j.status)).length};
+}
+async function sendVisitBatch(original:VisitRecord,actor:string,b:any){
+ if(!['review','signing','final'].includes(b.kind)||!uuidValid(b.operation)||b.version!==original.version||!Number.isInteger(b.revision))throw fail('Solicitud de envío inválida o de otra versión.',409);
+ let r=original,changed=false;const kind=b.kind;
+ const phase=kind==='review'&&r.status==='draft'?'review':kind==='signing'&&r.status==='review'?'open-signing':null;
+ if(!phase&&!(kind==='review'&&['review','changes','rejected'].includes(r.status)||kind==='signing'&&r.status==='signing'||kind==='final'&&r.status==='signed'))throw fail('El acta no está disponible para esta notificación.');
+ const hash=digest(JSON.stringify({type:'send-mail',kind,version:b.version}));
+ const done=await alreadyDone(r,b.operation,hash);
+ if(b.revision!==r.revision&&!done)throw fail('La versión ha cambiado. Actualiza antes de enviar.',409);
+ let jobs=await visitJobs(r);
+ const recipients=r.state.participants.filter(p=>p.email&&(kind==='review'?p.reviewRequired:kind==='signing'?p.signing!=='none':p.receiveFinal));
+ const eligible=jobs.filter((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5);
+ // Refresh once per bounded batch, before opening review or claiming recipients.
+ const proposed=phase?applyVisitCommand(r.state,{type:phase} as VisitCommand,new Date().toISOString()):r.state;
+ const connection=recipients.length&&(phase||eligible.length||kind==='final'&&!jobs.some((j:any)=>j.kind===kind))?await gmailToken(actor):null;
+ if(phase||kind==='final'&&!jobs.some((j:any)=>j.kind===kind)&&recipients.length){
+  const state=proposed;
+  if(phase==='review')await assertVisitOrders(database,state,r.id);
+  const extras=await linksAndJobs(r,state,kind);
+  r=await committed(r,state,b.operation,hash,actor,phase||'queue-final',extras);changed=true;jobs=await visitJobs(r);
+ }
+ const selected=jobs.filter((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5).slice(0,2);
+ const failures:any[]=[];let acceptedHere=0;
+ const accesses=selected.length&&kind!=='final'?await database('visit_minutes_access?'+query({select:'person_id,token_encrypted,expires_at,revoked',record_id:'eq.'+r.id,version:'eq.'+r.version,person_id:'in.('+selected.map((j:any)=>j.person_id).join(',')+')',limit:'2'})):[];
+ const file=selected.length&&kind==='final'?(await database('visit_minutes_files?'+query({select:'base64,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0]:undefined;
+ for(const j of selected){
+  try{const result=await deliverVisitJob(r,actor,j,{...connection,deferTouch:true},accesses,file);if(result.delivery==='sent'&&result.messageId)acceptedHere++;}
+  catch(e:any){failures.push({personId:j.person_id,...normalizeMailError(e)});if(['GMAIL_RECONNECT_REQUIRED','GMAIL_RATE_LIMITED','GMAIL_TEMPORARILY_UNAVAILABLE','MAIL_STATUS_UNCONFIRMED'].includes(e.code)||e.uncertain)break;}
+ }
+ if(acceptedHere)await touchSent(actor).catch(()=>undefined);
+ if(selected.length)jobs=await visitJobs(r);
+ return {ok:true,acceptedNow:acceptedHere,...(changed?{record:{...r,canWrite:true}}:{}),jobs,summary:mailResult(jobs,kind),failures,from:connection?.from||null,hasMore:failures.length===0&&jobs.some((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5)};
+}
+async function reconcileVisitMail(r:VisitRecord,actor:string,id:string){
+ if(!uuidValid(id))throw fail('Envío inválido.');const job=(await visitJobs(r,id))[0];if(!job)throw fail('Envío no disponible.',404);
+ if(job.status==='sent'&&job.message_id)return {ok:true,jobs:await visitJobs(r),delivery:'sent'};
+ if(!['uncertain','sending'].includes(job.status)||job.status==='sending'&&Date.now()-new Date(job.updated_at).getTime()<120000)throw fail('El envío sigue en curso o no necesita comprobación.',409);
+ if(job.status==='sending')await database('rpc/visit_minutes_claim_mail',{p_id:job.id});
+ const c=await gmailToken(actor);if(!c.canRead)throw Object.assign(fail('Comprueba Enviados en Gmail. Esta cuenta no permite consultar mensajes; no se reenviará automáticamente.',403),{code:'GMAIL_RECONCILE_PERMISSION_REQUIRED'});
+ const identity='<visit-'+job.id+'@gestionprofea.vercel.app>';
+ const provider=async(path:string)=>{const response=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{headers:{Authorization:'Bearer '+c.token},signal:AbortSignal.timeout(15000)});if(!response.ok)throw Object.assign(fail('Gmail no pudo comprobar Enviados.',502),{code:response.status===401?'GMAIL_RECONNECT_REQUIRED':'GMAIL_RECONCILE_FAILED'});return response.json();};
+ const found=job.message_id?{messages:[{id:job.message_id}]}:await provider('messages?'+new URLSearchParams({q:'in:sent rfc822msgid:'+identity,maxResults:'2'}));let matched:string|null=null;
+ for(const m of found.messages||[]){const detail=await provider('messages/'+encodeURIComponent(m.id)+'?format=metadata&metadataHeaders=Message-ID');if(detail.labelIds?.includes('SENT')&&detail.payload?.headers?.some((h:any)=>h.name.toLowerCase()==='message-id'&&h.value.trim()===identity)){if(matched)throw fail('Hay más de un resultado. Revisa Enviados manualmente.',409);matched=detail.id;}}
+ if(matched)await database('rpc/visit_minutes_finish_mail',{p_id:job.id,p_status:'sent',p_message:matched,p_code:null,p_actor:actor});
+ return {ok:true,jobs:await visitJobs(r),delivery:matched?'sent':'uncertain',message:matched?'Gmail confirma que el mensaje está en Enviados.':'No se ha podido confirmar el envío. No se repetirá automáticamente.'};
+}
 export async function visitMinutesHandler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -573,6 +653,7 @@ export async function visitMinutesHandler(req: any, res: any) {
       const recipients = r.state.participants.filter(p => b.kind === 'final' ? p.receiveFinal : b.kind === 'review' ? p.reviewRequired : p.signing !== 'none');
       return res.json({
         ok: true,
+        sender: (await database('gmail_connections?'+query({select:'email',user_id:'eq.'+user.id,limit:'1'})))[0]?.email||'',
         messages: recipients.map(p => ({
           personId: p.id,
           email: p.email,
@@ -580,62 +661,13 @@ export async function visitMinutesHandler(req: any, res: any) {
         }))
       });
     }
+    if(action==='send-mail')return res.json(await sendVisitBatch(r,user.id,b));
+    if(action==='reconcile-mail')return res.json(await reconcileVisitMail(r,user.id,b.jobId));
     if (action === 'send-job') {
-      if (!uuidValid(b.jobId)) throw fail('Envío inválido.');
-      const [job] = await database('visit_minutes_mail_jobs?' + query({
-        select: '*',
-        id: `eq.${b.jobId}`,
-        record_id: `eq.${r.id}`,
-        version: `eq.${r.version}`,
-        limit: '1'
-      }));
-      if (!job) throw fail('Envío no disponible.', 404);
-      const claimed = await database('rpc/visit_minutes_claim_mail', {
-        p_id: job.id
-      });
-      if (!claimed) return res.json({
-        ok: true,
-        delivery: job.status,
-        message: 'Envío ya tramitado, en curso o sin reintento automático.'
-      });
-      let googleConfirmed = false;
-      try {
-        const p = r.state.participants.find(p => p.id === job.person_id);
-        if (!p?.email) throw fail('El destinatario no tiene correo.');
-        let target = '';
-        if (job.kind !== 'final') {
-          const [a] = await database('visit_minutes_access?' + query({
-            select: 'token_encrypted,expires_at,revoked',
-            record_id: `eq.${r.id}`,
-            version: `eq.${r.version}`,
-            person_id: `eq.${p.id}`,
-            limit: '1'
-          }));
-          if (!a || a.revoked || new Date(a.expires_at).getTime() <= Date.now()) throw fail('Renueva el enlace antes de enviar.');
-          target = canonicalLink(decryptToken(a.token_encrypted));
-        }
-        const [file] = job.kind === 'final' ? await database('visit_minutes_files?' + query({
-          select: 'base64,sha256',
-          record_id: `eq.${r.id}`,
-          version: `eq.${r.version}`,
-          limit: '1'
-        })) : [];
-        if (job.kind === 'final' && (!file || r.status !== 'signed' || digest(Buffer.from(file.base64, 'base64')) !== file.sha256)) throw fail('No se pudo verificar el archivo final.');
-        const result = await sendVisitMime(user.id, p.email, visitMail(r.state, r.number, job.kind, p, target), job.id, file ? {
-          base64: file.base64,
-          filename: `${r.number}_v${r.version}_FIRMADA.pdf`
-        } : undefined);
-        googleConfirmed = true;
-        await database('rpc/visit_minutes_finish_mail',{p_id:job.id,p_status:'sent',p_message:result.messageId,p_code:null,p_actor:user.id});
-        return res.json({
-          ok: true,
-          delivery: 'sent',
-          ...result
-        });
-      } catch (error: any) {
-        await database('rpc/visit_minutes_finish_mail',{p_id:job.id,p_status:error.uncertain||googleConfirmed?'uncertain':'failed',p_message:null,p_code:googleConfirmed?'MAIL_ACCEPTED_STATUS_UNCONFIRMED':error.code||'SEND_FAILED',p_actor:user.id});
-        throw error;
-      }
+      if(!uuidValid(b.jobId))throw fail('Envío inválido.');
+      const jobs=await visitJobs(r,b.jobId);const job=jobs[0];if(!job)throw fail('Envío no disponible.',404);
+      if(!['pending','failed','sending'].includes(job.status))return res.json({ok:true,delivery:job.status,messageId:job.message_id});
+      return res.json({ok:true,...await deliverVisitJob(r,user.id,job,await gmailToken(user.id))});
     }
     if (action === 'link') {
       const p = r.state.participants.find(p => p.id === b.personId);

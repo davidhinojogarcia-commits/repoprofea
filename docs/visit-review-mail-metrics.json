@@ -1,0 +1,68 @@
+{
+  "baselineCommit": "557204a9225cf58d71bf5e44c7fa9b26414701c6",
+  "method": "isolated API/PostgreSQL; mocked Google; preview through delivery; no real latency or platform log volume measured",
+  "before": [
+    {
+      "recipients": 1,
+      "dbRequests": 29,
+      "dbWriteRequests": 4,
+      "stateWriteRequests": 3,
+      "functionInvocations": 6,
+      "oauthRefreshes": 1,
+      "gmailRequests": 1,
+      "auditEvents": 1,
+      "applicationConsoleLines": 0,
+      "applicationConsoleBytes": 0,
+      "simulatedDurationMs": 68,
+      "storedPdfs": 0,
+      "storedPdfBytes": 0
+    },
+    {
+      "recipients": 4,
+      "dbRequests": 56,
+      "dbWriteRequests": 13,
+      "stateWriteRequests": 9,
+      "functionInvocations": 9,
+      "oauthRefreshes": 4,
+      "gmailRequests": 4,
+      "auditEvents": 4,
+      "applicationConsoleLines": 0,
+      "applicationConsoleBytes": 0,
+      "simulatedDurationMs": 124,
+      "storedPdfs": 0,
+      "storedPdfBytes": 0
+    }
+  ],
+  "after": [
+    {
+      "recipients": 1,
+      "dbRequests": 19,
+      "dbWriteRequests": 4,
+      "stateWriteRequests": 3,
+      "functionInvocations": 2,
+      "oauthRefreshes": 1,
+      "gmailRequests": 1,
+      "auditEvents": 1,
+      "applicationConsoleLines": 0,
+      "applicationConsoleBytes": 0,
+      "simulatedDurationMs": 48,
+      "storedPdfs": 0,
+      "storedPdfBytes": 0
+    },
+    {
+      "recipients": 4,
+      "dbRequests": 34,
+      "dbWriteRequests": 11,
+      "stateWriteRequests": 9,
+      "functionInvocations": 3,
+      "oauthRefreshes": 2,
+      "gmailRequests": 4,
+      "auditEvents": 4,
+      "applicationConsoleLines": 0,
+      "applicationConsoleBytes": 0,
+      "simulatedDurationMs": 80,
+      "storedPdfs": 0,
+      "storedPdfBytes": 0
+    }
+  ]
+}

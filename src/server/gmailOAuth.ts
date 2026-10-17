@@ -203,7 +203,8 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
-  });
+    signal: AbortSignal.timeout(15000),
+  }).catch(()=>{throw Object.assign(new Error('Google no pudo renovar el acceso a Gmail en este momento.'),{status:503,code:'GMAIL_TEMPORARILY_UNAVAILABLE'});});
   const data: any = await response.json().catch(() => ({}));
   if (!response.ok || !data.access_token) {
     if (data.error === 'invalid_grant') {

@@ -56,7 +56,8 @@
       "fix/foreman-modal-pdf-layout": false,
       "fix/global-dialog-stack-audit": false,
       "fix/visit-mail-preview-scroll": false,
-      "feat/visit-work-orders": false
+      "feat/visit-work-orders": false,
+      "fix/visit-review-mail-delivery": false
     }
   }
 }

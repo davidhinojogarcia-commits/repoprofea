@@ -120,6 +120,8 @@ jobs:
         run: npm run test:visit-minutes
       - name: Work orders permissions, follow-up and publication
         run: npm run test:visit-work-orders
+      - name: Visit mail OAuth, batching and reconciliation
+        run: npm run test:visit-mail
       - name: Worksite visit minutes browser workflow
         run: npm run test:visit-minutes-browser
       - name: Mandatory selection and manual position persistence
