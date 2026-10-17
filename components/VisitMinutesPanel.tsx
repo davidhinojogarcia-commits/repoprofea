@@ -3,7 +3,7 @@ import { VisitWorkOrdersEditor } from './VisitWorkOrdersEditor';
 import { VisitWorkOrdersFollowup } from './VisitWorkOrdersFollowup';
 import { beginGmailOAuth, getGmailConnectionStatus } from '../src/lib/gmailConnection';
 import ModalPortal from './ModalPortal';
-import { appConfirm, appPrompt } from '../src/lib/appDialog';
+import { appConfirm } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
 import { visitRequest, downloadVisitFile, readVisitAttachment } from '../src/services/visitMinutesService';
 import { madridDate, personName, VISIT_STATUS_LABELS, type VisitContent, type VisitPerson, type VisitRecord, type VisitCommand, type VisitContact, madridTimestamp } from '../src/lib/visitMinutes';
@@ -85,8 +85,10 @@ export function VisitMinutesPanel({
     } | null>(null),
     [onsiteAck, setOnsiteAck] = useState(false),
     [responseComment, setResponseComment] = useState(''),
-    [link, setLink] = useState(''),
-    [followNotes, setFollowNotes] = useState<Record<string, string>>({});
+    [link, setLink] = useState('');
+  const editorRef=useRef<HTMLElement>(null);
+  const [editFocus,setEditFocus]=useState(0);
+  useEffect(()=>{if(editFocus){editorRef.current?.focus({preventScroll:true});editorRef.current?.scrollIntoView({block:'start',behavior:'smooth'});}},[editFocus]);
   const [mailError,setMailError]=useState(''),[mailNotice,setMailNotice]=useState(''),[gmailRequired,setGmailRequired]=useState(false),[mailSending,setMailSending]=useState(false);
   const mailOperation=useRef<{key:string;id:string}|null>(null);
   const [loaded, setLoaded] = useState(false),
@@ -172,7 +174,7 @@ export function VisitMinutesPanel({
   };
   const install = (r: VisitRecord) => {
     setRecord(r);
-    setContent(r.state.content);
+    setContent(r.canWrite&&r.status==='draft'&&r.state.content.agreements.length?{...r.state.content,agreements:[]}:r.state.content);
     setPeople(r.state.participants);
     setCreating(false);
     setHistory(null);
@@ -205,33 +207,49 @@ export function VisitMinutesPanel({
     };
     return operation.current.id;
   };
-  const mutate = async (command: VisitCommand) => {
-    if (!record) throw new Error('Guarda primero el borrador.');
+  const commitCommand = async (target: VisitRecord,command: VisitCommand) => {
     const r = await visitRequest({
       action: 'command',
-      id: record.id,
-      revision: record.revision,
+      id: target.id,
+      revision: target.revision,
       command,
-      operation: requestOperation(record.id + JSON.stringify(command)),
+      operation: requestOperation(target.id + ':'+target.revision+JSON.stringify(command)),
       inPersonConfirmed: ['respond', 'sign'].includes(command.type) && onsiteAck
     });
     operation.current = null;
-    install({
-      ...r.record,
-      canWrite: true
-    });
-    setMessage('Acta guardada. Los datos están confirmados por el servidor.');
-    return r.record as VisitRecord;
+    return {...r.record,canWrite:true} as VisitRecord;
+  };
+  const mutate = async(command:VisitCommand)=>{
+    if(!record)throw new Error('Guarda primero el borrador.');
+    const updated=await commitCommand(record,command);install(updated);
+    setMessage('Acta guardada. Los datos están confirmados por el servidor.');return updated;
+  };
+  const editActa=async(id:string)=>{
+    if(record?.id===id&&record.status==='draft'&&record.canWrite){setEditFocus(v=>v+1);return;}
+    if(dirty&&!await appConfirm('Hay cambios sin guardar. ¿Continuar y descartarlos?'))return;
+    const loaded=await visitRequest({action:'get',id});let target=loaded.record as VisitRecord;
+    if(!target.canWrite||target.status==='cancelled')throw new Error('No tienes permiso para editar esta acta o está eliminada.');
+    if(target.status!=='draft'){
+      if(!await appConfirm('Se conservará esta versión. La corrección creará un nuevo borrador y requerirá una nueva revisión y firmas. ¿Editar acta?'))return;
+      target=await commitCommand(target,{type:'revise'});install(target);setJobs([]);await refreshList();
+    }else{install(target);setJobs(loaded.jobs);}
+    setMessage('Acta abierta para editar. Guarda los cambios antes de enviarla a revisión.');setEditFocus(v=>v+1);
+  };
+  const deleteActa=async(id:string)=>{
+    const loaded=await visitRequest({action:'get',id});const target=loaded.record as VisitRecord;
+    if(!target.canWrite)throw new Error('No tienes permiso para eliminar esta acta.');
+    if(target.status!=='cancelled'){
+      if(!await appConfirm(`¿Eliminar el acta ${target.number}? Se retirará del listado habitual y se anularán sus accesos de revisión. Las versiones firmadas y el historial se conservarán; las órdenes emitidas mantendrán su seguimiento.${record?.id===id&&dirty?' Los cambios sin guardar se descartarán.':''}`))return;
+      await commitCommand(target,{type:'cancel',reason:'Acta retirada por el supervisor mediante Eliminar acta.'});
+    }
+    setRecords(rows=>rows.filter(r=>r.id!==id));
+    if(record?.id===id){setRecord(null);setContent(null);setCreating(false);setJobs([]);setHistory(null);setOnsite(null);setLink('');}
+    setMessage('Acta eliminada del listado habitual. Puedes consultar el historial en el filtro Eliminadas / anuladas.');await refreshList();
   };
   const start = async (source?: VisitRecord) => {
     if (dirty && !(await appConfirm('Hay cambios sin guardar. ¿Abrir otra acta?'))) return;
     const work = works.find(w => w.id === (source?.obra_id || workFilter)) || works[0];
     const c = blankContent(work, supervisor);
-    if (source) c.agreements = source.state.content.agreements.filter(a => !source.state.followup[a.id]?.done).map(a => ({
-      ...a,
-      id: crypto.randomUUID(),
-      source: `${source.number} · v${source.version}`
-    }));
     setRecord(null);
     setCreating(true);
     setContent(c);
@@ -347,11 +365,11 @@ export function VisitMinutesPanel({
   return <main className="mx-auto max-w-6xl space-y-4 text-slate-900 dark:text-slate-100">
     <header className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"><h1 className="text-2xl font-black">Actas de visitas de obra</h1><p className="mt-2 text-sm">Registra órdenes e instrucciones, revisa el documento, recoge firmas y sigue su ejecución entre visitas.</p><button disabled={!loaded || busy || !works.length} onClick={() => void run(() => start())} className={primary + ' mt-4'}>Nueva acta de visita</button></header>
     {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800">{error}<button type="button" className="ml-3 underline" onClick={() => window.location.reload()}>Recargar módulo</button></div>}{message && <p role="status" className="rounded-xl bg-blue-50 p-4 text-blue-900">{message}</p>}{busy && <p role="status">Procesando… No cierres esta pantalla hasta recibir confirmación.</p>}
-    <section className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-3"><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm font-bold">Obra<select className={visitInput} value={workFilter} onChange={e => setWorkFilter(e.target.value)} disabled={busy}><option value="">Todas las obras accesibles</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label><label className="text-sm font-bold">Estado<select className={visitInput} disabled={busy} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">Todos</option>{Object.entries(VISIT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><form onSubmit={e => {
+    <section className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-3"><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm font-bold">Obra<select className={visitInput} value={workFilter} onChange={e => setWorkFilter(e.target.value)} disabled={busy}><option value="">Todas las obras accesibles</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label><label className="text-sm font-bold">Estado<select aria-label="Estado de las actas" className={visitInput} disabled={busy} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">No eliminadas</option>{Object.entries(VISIT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{k==='cancelled'?'Eliminadas / anuladas':v}</option>)}</select></label><form onSubmit={e => {
           e.preventDefault();
           setQuery(search);
         }}><label className="text-sm font-bold">Número, obra o asistente<input className={visitInput} value={search} onChange={e => setSearch(e.target.value)} maxLength={100} /></label><button className={button + ' mt-1'} disabled={busy}>Buscar actas</button></form></div>
-      {loading && <p role="status">Cargando actas…</p>}<div className="grid gap-2 sm:grid-cols-2">{records.map(r => <button disabled={busy} key={r.id} onClick={() => void run(() => open(r.id))} className={'rounded-xl border p-4 text-left ' + (record?.id === r.id ? 'border-blue-500 bg-blue-50 dark:bg-blue-950' : 'border-slate-200 dark:border-slate-700')}><strong>{r.number} · v{r.version}</strong><p className="mt-1">{r.worksite}</p><p className="text-sm">{String(r.visit_date).slice(0, 10)} · {VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</p></button>)}</div>{loaded && !loading && !records.length && <p>No hay actas que coincidan con los filtros.</p>}{hasMore && <button disabled={busy} className={button} onClick={() => void run(async () => {
+      {loading && <p role="status">Cargando actas…</p>}<div className="grid gap-2 sm:grid-cols-2">{records.map(r => <article aria-label={'Acta '+r.number} key={r.id} className={'rounded-xl border p-4 '+(record?.id===r.id?'border-blue-500 bg-blue-50 dark:bg-blue-950':'border-slate-200 dark:border-slate-700')}><button aria-label={'Abrir acta '+r.number} disabled={busy} onClick={()=>void run(()=>open(r.id))} className="w-full min-h-[46px] text-left"><strong>{r.number} · v{r.version}</strong><p className="mt-1">{r.worksite}</p><p className="text-sm">{String(r.visit_date).slice(0,10)} · {VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</p></button>{r.isOwner&&r.status!=='cancelled'&&<div className="mt-3 grid grid-cols-2 gap-2"><button aria-label={'Editar acta '+r.number} disabled={busy} className={button} onClick={()=>void run(()=>editActa(r.id))}>Editar</button><button aria-label={'Eliminar acta '+r.number} disabled={busy} className={button+' text-red-700 dark:text-red-300'} onClick={()=>void run(()=>deleteActa(r.id))}>Eliminar</button></div>}</article>)}</div>{loaded && !loading && !records.length && <p>No hay actas que coincidan con los filtros.</p>}{hasMore && <button disabled={busy} className={button} onClick={() => void run(async () => {
         const r = await visitRequest({
           action: 'list',
           worksiteId: workFilter,
@@ -362,7 +380,7 @@ export function VisitMinutesPanel({
         setRecords(current => [...current, ...r.records.filter((n: any) => !current.some(x => x.id === n.id))]);
         setHasMore(r.hasMore);
       })}>Cargar siguientes actas</button>}</section>
-    {content && <section className="space-y-4">
+    {content && <section ref={editorRef} tabIndex={-1} className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
       {canEdit ? <fieldset disabled={busy} className="rounded-2xl border bg-white p-4 sm:p-6 dark:border-slate-700 dark:bg-slate-900 space-y-5">
         <legend className="font-black">Datos de la visita</legend>
@@ -375,30 +393,6 @@ export function VisitMinutesPanel({
             [key]: e.target.value
           })} /></label>)}
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} />
-        <details className="space-y-3"><summary className="font-black">Acuerdos históricos y actuaciones complementarias</summary>{content.agreements.map((a, index) => <div key={a.id} className="rounded-xl border p-3 space-y-2"><label className="block text-sm font-bold">Acuerdo {index + 1}<textarea aria-label={`Acuerdo ${index + 1}`} className={visitInput} value={a.text} onChange={e => setContent({
-                ...content,
-                agreements: content.agreements.map(item => item.id === a.id ? {
-                  ...item,
-                  text: e.target.value
-                } : item)
-              })} /></label><div className="grid gap-2 sm:grid-cols-2">{(['responsible', 'deadline'] as const).map(key => <label key={key} className="text-sm font-bold">{key === 'responsible' ? 'Responsable' : 'Plazo'}<input type={key === 'deadline' ? 'date' : 'text'} className={visitInput} value={a[key]} onChange={e => setContent({
-                  ...content,
-                  agreements: content.agreements.map(item => item.id === a.id ? {
-                    ...item,
-                    [key]: e.target.value
-                  } : item)
-                })} /></label>)}</div><button type="button" className={button} onClick={() => setContent({
-              ...content,
-              agreements: content.agreements.filter(item => item.id !== a.id)
-            })}>Quitar acuerdo</button></div>)}<button type="button" className={button} onClick={() => setContent({
-            ...content,
-            agreements: [...content.agreements, {
-              id: crypto.randomUUID(),
-              text: '',
-              responsible: '',
-              deadline: ''
-            }]
-          })}>Añadir acuerdo</button></details>
         <section className="space-y-3"><h3 className="font-black">Participantes y destinatarios</h3><p className="text-sm">Revisión, firma, asistencia y distribución son decisiones independientes. Para firmar, la persona debe revisar primero. Sin correo puede responder y firmar presencialmente, pero no recibir el PDF por email.</p>
           <label className="block text-sm font-bold">Añadir desde Dirección facultativa<select className={visitInput} value="" onChange={e => {
               const c = contacts.find(c => c.id === e.target.value);
@@ -475,24 +469,7 @@ export function VisitMinutesPanel({
                 });
                 await refreshList();
               }
-            })}>Finalizar acta firmada</button>}{record.status === 'signed' && <><button disabled={busy} className={primary} onClick={() => preview('final')}>Enviar acta firmada por correo</button><button disabled={busy} className={button} onClick={() => void run(() => start(record))}>Nueva visita con órdenes pendientes</button></>}{!['draft', 'cancelled'].includes(record.status) && <button disabled={busy} className={button} onClick={() => void run(async () => {
-              if (await appConfirm('Se archivará esta versión y se solicitarán de nuevo las conformidades y firmas. ¿Crear nueva versión?')) {
-                await mutate({
-                  type: 'revise'
-                });
-                setJobs([]);
-                await refreshList();
-              }
-            })}>Nueva versión / corregir</button>}{record.status !== 'cancelled' && <button disabled={busy} className={button} onClick={() => void run(async () => {
-              const reason = await appPrompt('Motivo de anulación (se conservará la trazabilidad):');
-              if (reason) {
-                await mutate({
-                  type: 'cancel',
-                  reason
-                });
-                await refreshList();
-              }
-            })}>Anular acta</button>}</>}
+            })}>Finalizar acta firmada</button>}{record.status === 'signed' && <><button disabled={busy} className={primary} onClick={() => preview('final')}>Enviar acta firmada por correo</button><button disabled={busy} className={button} onClick={() => void run(() => start(record))}>Nueva visita con órdenes pendientes</button></>}{record.status!=='cancelled'&&<><button disabled={busy} className={button} onClick={()=>void run(()=>editActa(record.id))}>Editar acta</button><button disabled={busy} className={button+' text-red-700 dark:text-red-300'} onClick={()=>void run(()=>deleteActa(record.id))}>Eliminar acta</button></>}</>}
         </div>
         {record.status === 'review' && !canOpenSigning && <p className="text-sm text-amber-700 dark:text-amber-300">Faltan revisiones del contenido. El silencio no equivale a aceptación.</p>}
         {record.canWrite && ['review', 'changes', 'rejected', 'signing'].includes(record.status) && <section className="space-y-3"><h3 className="font-black">Acceso de cada participante</h3>{record.state.participants.filter(p => p.reviewRequired).map(p => <div key={p.id} className="rounded-xl border p-3"><strong>{personName(p)}</strong><p className="text-sm">{record.state.responses[p.id]?.decision === 'agree' ? 'Conforme' : record.state.responses[p.id]?.decision === 'changes' ? 'Solicita cambios' : record.state.responses[p.id]?.decision === 'reject' ? 'Disconforme' : 'Pendiente'} · {record.state.signatures[p.id] ? 'Firma guardada' : 'Sin firma'}</p><div className="mt-2 flex flex-wrap gap-2">{p.email && <><button disabled={busy} className={button} onClick={() => void run(async () => {
@@ -556,15 +533,6 @@ export function VisitMinutesPanel({
               const result=await visitRequest({action:'preview-mail',id:record.id,kind:j.kind});setMailError('');setMailNotice('');setGmailRequired(false);setMail({kind:j.kind,messages:result.messages,sender:result.sender});
             })}>Reintentar correos pendientes</button>}</div>)}</section>}
         <VisitWorkOrdersFollowup worksiteId={record.obra_id} />
-        {record.status === 'signed' && record.state.content.agreements.length > 0 && <section className="space-y-2"><h3 className="font-black">Seguimiento posterior de acuerdos</h3><p className="text-sm">Este seguimiento no modifica el acta ni su PDF firmado.</p>{record.state.content.agreements.map(a => <div key={a.id} className="rounded-xl border p-3"><p>{a.text}</p><p className="text-sm">{a.responsible} · {a.deadline} · {record.state.followup[a.id]?.done ? 'Resuelto' : 'Pendiente'}</p>{record.canWrite && <><input aria-label={`Nota de seguimiento de ${a.text}`} className={visitInput + ' my-2'} value={followNotes[a.id] ?? record.state.followup[a.id]?.note ?? ''} onChange={e => setFollowNotes({
-                ...followNotes,
-                [a.id]: e.target.value
-              })} /><button disabled={busy} className={button} onClick={() => void run(() => mutate({
-                type: 'followup',
-                agreementId: a.id,
-                done: !record.state.followup[a.id]?.done,
-                note: followNotes[a.id] ?? record.state.followup[a.id]?.note ?? ''
-              }).then(() => undefined))}>Marcar {record.state.followup[a.id]?.done ? 'pendiente' : 'resuelto'} y guardar nota</button></>}</div>)}</section>}
         {history && <section className="space-y-2"><h3 className="font-black">Versiones archivadas y trazabilidad</h3>{history.versions.map((v: any) => <button key={v.version} disabled={busy} className={button} onClick={() => void run(async () => downloadVisitFile(await visitRequest({
             action: 'pdf',
             id: record.id,

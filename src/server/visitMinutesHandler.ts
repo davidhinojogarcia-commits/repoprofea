@@ -545,6 +545,7 @@ export async function visitMinutesHandler(req: any, res: any) {
         if (!uuidValid(b.worksiteId)) throw fail('Obra inválida.');
         params.obra_id = `eq.${b.worksiteId}`;
       }
+      if(!b.status)params.status='not.in.(cancelled)';
       if (b.status) {
         if (!['draft', 'review', 'changes', 'rejected', 'signing', 'signed', 'cancelled'].includes(b.status)) throw fail('Estado inválido.');
         params.status = `eq.${b.status}`;
@@ -556,7 +557,7 @@ export async function visitMinutesHandler(req: any, res: any) {
       const records = await database('visit_minutes?' + query(params), undefined, auth);
       return res.json({
         ok: true,
-        records: records.slice(0, limit),
+        records: records.slice(0, limit).map((r:any)=>({...r,isOwner:r.owner_id===user.id})),
         hasMore: records.length > limit
       });
     }
