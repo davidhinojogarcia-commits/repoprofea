@@ -366,7 +366,9 @@ export function VisitMinutesPanel({
   const changeWorksite=async(worksiteId:string)=>{
     if(!content)return;const work=works.find(w=>w.id===worksiteId);if(!work)return;
     if((people.length||content.discussion||content.purpose)&&!await appConfirm('Se conservará la redacción y se retirarán los participantes de la obra anterior. Revisa que el contenido corresponda a la nueva obra. ¿Cambiar obra?'))return;
-    setContent({...content,worksiteId:work.id,worksite:work.nombre,code:work.codigo||'',municipality:work.municipio||'',location:''});setPeople([]);
+    setContent({...content,worksiteId:work.id,worksite:work.nombre,code:work.codigo||'',municipality:work.municipio||'',location:''});
+    const assigned=contacts.filter(c=>c.active&&c.assignments.some(a=>a.worksiteId===work.id)).map(c=>({...emptyPerson(),...c,role:c.assignments.find(a=>a.worksiteId===work.id)?.role||c.role,receiveFinal:!!c.email}));
+    setPeople(assigned.filter((p,i,all)=>all.findIndex(x=>x.id===p.id)===i));
   };
   const canEdit = creating || record?.canWrite && record.status === 'draft';
   const canOpenSigning = record?.status === 'review' && record.state.participants.filter(p => p.reviewRequired).every(p => record.state.responses[p.id]?.decision === 'agree');
