@@ -348,7 +348,7 @@ async function sendVisitBatch(original:VisitRecord,actor:string,b:any){
  }
  if(acceptedHere)await touchSent(actor).catch(()=>undefined);
  if(selected.length)jobs=await visitJobs(r);
- return {ok:true,acceptedNow:acceptedHere,...(changed?{record:{...r,canWrite:true}}:{}),jobs,summary:mailResult(jobs,kind),failures,from:connection?.from||null,hasMore:failures.length===0&&jobs.some((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5)};
+ return {ok:true,acceptedNow:acceptedHere,...((changed||b.revision!==r.revision)?{record:{...r,canWrite:true}}:{}),jobs,summary:mailResult(jobs,kind),failures,from:connection?.from||null,hasMore:failures.length===0&&jobs.some((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5)};
 }
 async function reconcileVisitMail(r:VisitRecord,actor:string,id:string){
  if(!uuidValid(id))throw fail('Envío inválido.');const job=(await visitJobs(r,id))[0];if(!job)throw fail('Envío no disponible.',404);
