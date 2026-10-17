@@ -433,7 +433,7 @@ export function VisitMinutesPanel({
                 entity: 'Diputación Provincial de Cádiz',
                 receiveFinal: !!technician.email
               }]);
-            }}>Añadir técnico responsable</button>
+            }}>Añadir técnico responsable</button></div>
           {people.map((p, index) => <div key={p.id} className="rounded-xl border border-slate-300 p-4 dark:border-slate-600 space-y-3"><h4 className="font-bold">Participante {index + 1}</h4><div className="grid gap-2 sm:grid-cols-2">{([['firstName', 'Nombre'], ['lastName', 'Apellidos'], ['role', 'Cargo / función'], ['entity', 'Entidad'], ['phone', 'Teléfono'], ['email', 'Correo']] as const).map(([key, label]) => <label key={key} className="text-sm font-bold">{label}<input type={key === 'email' ? 'email' : key === 'phone' ? 'tel' : 'text'} className={visitInput} value={p[key]} onChange={e => setPeople(people.map(item => item.id === p.id ? {
                   ...item,
                   [key]: e.target.value
