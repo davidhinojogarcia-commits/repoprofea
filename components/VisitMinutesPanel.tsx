@@ -255,7 +255,10 @@ export function VisitMinutesPanel({
     setRecord(null);
     setCreating(true);
     setContent(c);
-    setPeople([]);
+    const assigned=contacts.filter(c=>c.active&&c.assignments.some(a=>a.worksiteId===work?.id)).map(c=>({...emptyPerson(),...c,role:c.assignments.find(a=>a.worksiteId===work?.id)?.role||c.role,receiveFinal:!!c.email}));
+    // A preloaded contact remains editable and removable before sending.
+    // Deduplicate by stable contact ID, avoiding two entries for the same person.
+    setPeople(assigned.filter((p,i,all)=>all.findIndex(x=>x.id===p.id)===i));
     setJobs([]);
     setHistory(null);
     setOnsite(null);
