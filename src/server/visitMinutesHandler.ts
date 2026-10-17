@@ -741,7 +741,7 @@ export async function visitMinutesHandler(req: any, res: any) {
         if (command.type === 'sign') await validateSignature(command.image);
         state = applyVisitCommand(r.state, command, new Date().toISOString());
         event = command.type;
-        if (command.type === 'save') await validateAttachments(state);
+        if (command.type === 'save') { await validateAttachments(state);await assertVisitOrders(database,state,r.id,true); }
         if(['review','finalize'].includes(command.type))await assertVisitOrders(database,state,r.id);
         if (command.type === 'review' || command.type === 'open-signing') extras = await linksAndJobs(r, state, command.type === 'review' ? 'review' : 'signing');
         if (command.type === 'finalize') {

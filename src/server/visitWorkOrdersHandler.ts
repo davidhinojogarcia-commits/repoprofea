@@ -159,6 +159,7 @@ export async function assertVisitOrders(
   db: Database,
   state: VisitState,
   recordId: string,
+  presenceOnly = false,
 ) {
   const orders = state.content.orders || [];
   const issued = await db(
@@ -169,7 +170,7 @@ export async function assertVisitOrders(
     throw error(
       "Las órdenes ya emitidas deben conservarse en la nueva versión. Anula o sustituye con justificación mediante el seguimiento.",
     );
-  if (!orders.length) return;
+  if (!orders.length || presenceOnly) return;
   const grants = (
     await db(
       "visit_order_authorities?" +
@@ -195,6 +196,27 @@ export async function assertVisitOrders(
   );
   for (const record of records) {
     const next = orders.find((o) => o.id === record.id)!;
+    if (
+      record.origin_record_id !== recordId ||
+      record.definition.number !== next.number
+    )
+      throw error(
+        "Conserva el identificador y número de la orden original. Para otra visita, utiliza una referencia.",
+      );
+    const changed = Object.keys(next)
+      .filter((k) => k !== "correctionReason")
+      .some(
+        (k) =>
+          JSON.stringify(record.definition[k]) !==
+          JSON.stringify((next as any)[k]),
+      );
+    if (
+      changed &&
+      ["verified", "cancelled", "superseded"].includes(record.status)
+    )
+      throw error(
+        "Una orden cerrada conserva su definición; registra otra orden si corresponde.",
+      );
     if (
       JSON.stringify(record.definition) !== JSON.stringify(next) &&
       !next.correctionReason?.trim()
@@ -586,6 +608,11 @@ export async function handleVisitOrders(
       );
       if (!e || (fc && !permits(e.access_rules, fc.access.id)))
         throw error("Evidencia no autorizada.", 403);
+      if (digest(Buffer.from(e.base64, "base64")) !== e.sha256)
+        throw error(
+          "La evidencia no supera la comprobación de integridad.",
+          409,
+        );
       return res.json({
         ok: true,
         file: {
@@ -625,6 +652,16 @@ export async function handleVisitOrders(
       a.scopes.includes(order.definition.nature),
     );
 
+    if (
+      !fc &&
+      b.status &&
+      ["verified", "cancelled", "superseded", "breached"].includes(b.status) &&
+      !canVerify
+    )
+      throw error(
+        "No tienes competencia expresa vigente para comprobar o anular esta orden.",
+        403,
+      );
     const raw = b.evidence || [];
     if (!Array.isArray(raw) || raw.length > 8)
       throw error("Evidencias inválidas.");
