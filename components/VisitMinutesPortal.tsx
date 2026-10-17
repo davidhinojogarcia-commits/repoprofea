@@ -115,8 +115,9 @@ export function VisitMinutesPortal({
                 comment,
                 mode: 'email-code'
               })} className="rounded-xl border px-4 py-3 font-bold">{label}</button>)}</div></>}
-        {record.status === 'signing' && person.signing !== 'none' && !record.state.signatures[person.id] && (signing ? <VisitSignaturePad busy={busy} name={personName(person)} onCancel={() => setSigning(false)} onConfirm={image => act({
+        {record.status === 'signing' && person.signing !== 'none' && !record.state.signatures[person.id] && (signing ? <VisitSignaturePad busy={busy} name={personName(person)} onCancel={() => setSigning(false)} onConfirm={(image,intent,note) => act({
             type: 'sign',
+            intent, note,
             personId: person.id,
             image,
             mode: 'email-code'

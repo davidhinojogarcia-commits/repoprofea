@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { VisitWorkOrdersEditor } from './VisitWorkOrdersEditor';
+import { VisitWorkOrdersFollowup } from './VisitWorkOrdersFollowup';
 import ModalPortal from './ModalPortal';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
@@ -46,6 +48,8 @@ function blankContent(work: any, supervisor: any): VisitContent {
     observations: '',
     nextVisit: '',
     agreements: [],
+    orders: [],
+    orderReferences: [],
     attachments: []
   };
 }
@@ -232,7 +236,7 @@ export function VisitMinutesPanel({
     setHistory(null);
     setOnsite(null);
     createId.current = crypto.randomUUID();
-    setMessage('Borrador nuevo: guarda antes de solicitar conformidades.');
+    setMessage('Borrador nuevo: guarda antes de solicitar la revisión.');
   };
   const save = () => void run(async () => {
     if (!content) return;
@@ -367,7 +371,7 @@ export function VisitMinutesPanel({
   const canEdit = creating || record?.canWrite && record.status === 'draft';
   const canOpenSigning = record?.status === 'review' && record.state.participants.filter(p => p.reviewRequired).every(p => record.state.responses[p.id]?.decision === 'agree');
   return <main className="mx-auto max-w-6xl space-y-4 text-slate-900 dark:text-slate-100">
-    <header className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"><h1 className="text-2xl font-black">Actas de visitas de obra</h1><p className="mt-2 text-sm">Redacta, solicita conformidad, recoge las firmas y distribuye la versión firmada. Los acuerdos pendientes pueden continuar en la siguiente visita.</p><button disabled={!loaded || busy || !works.length} onClick={() => void run(() => start())} className={primary + ' mt-4'}>Nueva acta de visita</button></header>
+    <header className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"><h1 className="text-2xl font-black">Actas de visitas de obra</h1><p className="mt-2 text-sm">Registra órdenes e instrucciones, revisa el documento, recoge firmas y sigue su ejecución entre visitas.</p><button disabled={!loaded || busy || !works.length} onClick={() => void run(() => start())} className={primary + ' mt-4'}>Nueva acta de visita</button></header>
     {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800">{error}<button type="button" className="ml-3 underline" onClick={() => window.location.reload()}>Recargar módulo</button></div>}{message && <p role="status" className="rounded-xl bg-blue-50 p-4 text-blue-900">{message}</p>}{busy && <p role="status">Procesando… No cierres esta pantalla hasta recibir confirmación.</p>}
     <section className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-3"><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm font-bold">Obra<select className={visitInput} value={workFilter} onChange={e => setWorkFilter(e.target.value)} disabled={busy}><option value="">Todas las obras accesibles</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label><label className="text-sm font-bold">Estado<select className={visitInput} disabled={busy} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">Todos</option>{Object.entries(VISIT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><form onSubmit={e => {
           e.preventDefault();
@@ -396,7 +400,8 @@ export function VisitMinutesPanel({
             ...content,
             [key]: e.target.value
           })} /></label>)}
-        <section className="space-y-3"><h3 className="font-black">Acuerdos y actuaciones</h3>{content.agreements.map((a, index) => <div key={a.id} className="rounded-xl border p-3 space-y-2"><label className="block text-sm font-bold">Acuerdo {index + 1}<textarea aria-label={`Acuerdo ${index + 1}`} className={visitInput} value={a.text} onChange={e => setContent({
+        <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} />
+        <details className="space-y-3"><summary className="font-black">Acuerdos históricos y actuaciones complementarias</summary>{content.agreements.map((a, index) => <div key={a.id} className="rounded-xl border p-3 space-y-2"><label className="block text-sm font-bold">Acuerdo {index + 1}<textarea aria-label={`Acuerdo ${index + 1}`} className={visitInput} value={a.text} onChange={e => setContent({
                 ...content,
                 agreements: content.agreements.map(item => item.id === a.id ? {
                   ...item,
@@ -419,7 +424,7 @@ export function VisitMinutesPanel({
               responsible: '',
               deadline: ''
             }]
-          })}>Añadir acuerdo</button></section>
+          })}>Añadir acuerdo</button></details>
         <section className="space-y-3"><h3 className="font-black">Participantes y destinatarios</h3><p className="text-sm">Revisión, firma, asistencia y distribución son decisiones independientes. Para firmar, la persona debe revisar primero. Sin correo puede responder y firmar presencialmente, pero no recibir el PDF por email.</p>
           <label className="block text-sm font-bold">Añadir desde Dirección facultativa<select className={visitInput} value="" onChange={e => {
               const c = contacts.find(c => c.id === e.target.value);
@@ -496,7 +501,7 @@ export function VisitMinutesPanel({
                 });
                 await refreshList();
               }
-            })}>Finalizar acta firmada</button>}{record.status === 'signed' && <><button disabled={busy} className={primary} onClick={() => preview('final')}>Enviar acta firmada por correo</button><button disabled={busy} className={button} onClick={() => void run(() => start(record))}>Nueva visita con acuerdos pendientes</button></>}{!['draft', 'cancelled'].includes(record.status) && <button disabled={busy} className={button} onClick={() => void run(async () => {
+            })}>Finalizar acta firmada</button>}{record.status === 'signed' && <><button disabled={busy} className={primary} onClick={() => preview('final')}>Enviar acta firmada por correo</button><button disabled={busy} className={button} onClick={() => void run(() => start(record))}>Nueva visita con órdenes pendientes</button></>}{!['draft', 'cancelled'].includes(record.status) && <button disabled={busy} className={button} onClick={() => void run(async () => {
               if (await appConfirm('Se archivará esta versión y se solicitarán de nuevo las conformidades y firmas. ¿Crear nueva versión?')) {
                 await mutate({
                   type: 'revise'
@@ -515,7 +520,7 @@ export function VisitMinutesPanel({
               }
             })}>Anular acta</button>}</>}
         </div>
-        {record.status === 'review' && !canOpenSigning && <p className="text-sm text-amber-700 dark:text-amber-300">Faltan conformidades. El silencio no equivale a aceptación.</p>}
+        {record.status === 'review' && !canOpenSigning && <p className="text-sm text-amber-700 dark:text-amber-300">Faltan revisiones del contenido. El silencio no equivale a aceptación.</p>}
         {record.canWrite && ['review', 'changes', 'rejected', 'signing'].includes(record.status) && <section className="space-y-3"><h3 className="font-black">Acceso de cada participante</h3>{record.state.participants.filter(p => p.reviewRequired).map(p => <div key={p.id} className="rounded-xl border p-3"><strong>{personName(p)}</strong><p className="text-sm">{record.state.responses[p.id]?.decision === 'agree' ? 'Conforme' : record.state.responses[p.id]?.decision === 'changes' ? 'Solicita cambios' : record.state.responses[p.id]?.decision === 'reject' ? 'Disconforme' : 'Pendiente'} · {record.state.signatures[p.id] ? 'Firma guardada' : 'Sin firma'}</p><div className="mt-2 flex flex-wrap gap-2">{p.email && <><button disabled={busy} className={button} onClick={() => void run(async () => {
                   const r = await visitRequest({
                     action: 'link',
@@ -549,8 +554,9 @@ export function VisitMinutesPanel({
         {link && <label className="block text-sm font-bold">Enlace personal: entrégalo solo a su destinatario<input className={visitInput} readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>}
         {onsite && (() => {
           const p = record.state.participants.find(p => p.id === onsite.personId)!;
-          return <section className="rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={image => void run(() => mutate({
+          return <section className="rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={(image,intent,note) => void run(() => mutate({
               type: 'sign',
+            intent, note,
               personId: p.id,
               image,
               mode: 'in-person'
@@ -581,6 +587,7 @@ export function VisitMinutesPanel({
               await open(record.id);
               setMessage('Estado de envío actualizado.');
             })}>{j.status === 'sending' ? 'Comprobar estado del envío' : 'Enviar / reintentar este correo'}</button>}</div>)}</section>}
+        <VisitWorkOrdersFollowup worksiteId={record.obra_id} />
         {record.status === 'signed' && record.state.content.agreements.length > 0 && <section className="space-y-2"><h3 className="font-black">Seguimiento posterior de acuerdos</h3><p className="text-sm">Este seguimiento no modifica el acta ni su PDF firmado.</p>{record.state.content.agreements.map(a => <div key={a.id} className="rounded-xl border p-3"><p>{a.text}</p><p className="text-sm">{a.responsible} · {a.deadline} · {record.state.followup[a.id]?.done ? 'Resuelto' : 'Pendiente'}</p>{record.canWrite && <><input aria-label={`Nota de seguimiento de ${a.text}`} className={visitInput + ' my-2'} value={followNotes[a.id] ?? record.state.followup[a.id]?.note ?? ''} onChange={e => setFollowNotes({
                 ...followNotes,
                 [a.id]: e.target.value

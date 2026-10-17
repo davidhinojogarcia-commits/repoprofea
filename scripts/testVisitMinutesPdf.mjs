@@ -9,7 +9,7 @@ const nativeDirectory=await fs.mkdtemp(new URL('./.visit-native-',import.meta.ur
 try{
  // Vercel transpiles server modules without bundling: Node must resolve every
  // runtime relative import, including the logo and domain module.
- for(const file of ['lib/visitMinutesPdf','lib/visitMinutes','assets/logoData']){
+ for(const file of ['lib/visitMinutesPdf','lib/visitMinutes','lib/visitWorkOrders','assets/logoData']){
   const source=await fs.readFile(new URL(`../src/${file}.ts`,import.meta.url),'utf8');
   const destination=`${nativeDirectory}/${file}.js`;
   await fs.mkdir(destination.slice(0,destination.lastIndexOf('/')),{recursive:true});

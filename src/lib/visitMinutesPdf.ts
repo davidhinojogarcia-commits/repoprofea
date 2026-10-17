@@ -1,3 +1,4 @@
+import { ORDERS_NOTICE, ORDER_NATURE_LABELS, ORDER_STATUS_LABELS } from './visitWorkOrders.js';
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData.js';
@@ -47,6 +48,8 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     const lines = doc.splitTextToSize(String(value || 'No indicado').replace(/\t/g, '    '), 174);
     for (const line of lines) {
       room(5);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
       doc.setTextColor(ink);
       doc.text(line, 18, y);
       y += 4.2;
@@ -75,16 +78,23 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
   paragraph(c.purpose);
   section('3. Asuntos tratados');
   paragraph(c.discussion);
-  section('4. Acuerdos y actuaciones');
-  if (!c.agreements.length) paragraph('No se han registrado acuerdos estructurados.');
-  c.agreements.forEach((a, i) => {
-    paragraph(`${i + 1}. ${a.text}`, 9, true);
-    paragraph(`Responsable: ${a.responsible || 'No asignado'} · Plazo: ${a.deadline || 'No establecido'}${a.source ? '\nProcedencia: ' + a.source : ''}`, 8);
-  });
+  if(c.orders!==undefined){
+  section('4. ÓRDENES E INSTRUCCIONES DE OBRA');
+  if (!c.orders?.length) paragraph('Sin órdenes nuevas registradas.');
+  for(const o of c.orders||[]) {
+    room(70);
+    paragraph(`Orden ${o.number} · ${o.type==='order'?'Orden':o.type==='technical_instruction'?'Instrucción técnica':'Recomendación'} · ${ORDER_NATURE_LABELS[o.nature]} · Prioridad: ${o.priority==='urgent'?'Urgente':o.priority==='high'?'Alta':'Normal'}`,9,true);
+    paragraph(`Identificador: ${o.id}\nEmite: ${o.issuerName} · ${o.issuerRole} · ${o.issuerEntity}\nDestinatario / responsable: ${o.recipient||'No asignado'}\nZona: ${o.location||'No indicada'}\nEmisión: ${o.issuedDate} · Plazo: ${o.deadline||'Sin plazo'}`,8);
+    paragraph(o.description);
+    paragraph(`Estado al emitir esta versión: Comunicada. El seguimiento posterior es independiente.\nObservaciones: ${o.observations||'Sin observaciones'}\nReferencia oficial: ${o.officialReference||'No indicada'}\nAutorización competente: ${o.authorizationReference||'No indicada'}${o.correctionReason?'\nCorrección justificada: '+o.correctionReason:''}\nAnexos asociados: ${o.attachmentIds.map(id=>c.attachments.find(a=>a.id===id)?.name||id).join(', ')||'Ninguno'}`,8);
+  }
+  if(c.orderReferences?.length){section('Órdenes de visitas anteriores');for(const r of c.orderReferences)paragraph(`${r.originNumber} · Orden ${r.number} · ${r.id}\n${r.description}\nEstado observado: ${ORDER_STATUS_LABELS[r.status]} · Revisión ${r.revision} · ${madridTimestamp(r.recordedAt)}`,8);}
+  }
+  if(c.agreements.length){section('Actuaciones complementarias / históricas');c.agreements.forEach((a,i)=>{paragraph(`${i+1}. ${a.text}`,9,true);paragraph(`Responsable: ${a.responsible||'No asignado'} · Plazo: ${a.deadline||'No establecido'}${a.source?'\nProcedencia: '+a.source:''}`,8);});}
   section('5. Incidencias y observaciones');
   paragraph(c.observations || 'Sin observaciones registradas.');
   if (c.nextVisit) paragraph(`Próxima visita: ${c.nextVisit}`);
-  section('6. Conformidades y firmas', 70);
+  section('6. Revisión del contenido y firmas', 70);
   for (const p of state.participants.filter(p => p.reviewRequired || p.signing !== 'none')) {
     const r = state.responses[p.id],
       s = state.signatures[p.id];
@@ -93,7 +103,7 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     paragraph(r ? `${r.decision === 'agree' ? 'Conforme' : r.decision === 'changes' ? 'Solicita cambios' : 'Disconforme'} · ${madridTimestamp(r.at)} · ${r.mode === 'email-code' ? 'Verificación por correo' : 'Presencial, identificado por supervisor'}${r.comment ? '\nReservas / comentario: ' + r.comment : ''}` : 'Conformidad pendiente', 8);
     if (s) {
       room(36);
-      paragraph(`Firma de ${personName(p)}`, 8, true);
+      paragraph(`Firma de ${personName(p)} · ${s.intent==='reservations'?'Con reservas':s.intent==='knowledge'?'Simple conocimiento':'Conformidad con el contenido'}${s.note?'\n'+s.note:''}`, 8, true);
       const image = doc.getImageProperties(s.image);
       const ratio = image.width / image.height;
       const w = Math.min(70, 20 * ratio),
@@ -111,6 +121,7 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
   if (!c.attachments.length) paragraph('Sin anexos.');
   for (const [i, a] of c.attachments.entries()) paragraph(`${i + 1}. ${a.name}${a.caption ? ' · ' + a.caption : ''}`, 8);
   paragraph(VISIT_NOTICE, 7);
+  if(c.orders!==undefined)paragraph(ORDERS_NOTICE,7);
   for (const a of c.attachments.filter(a => a.mime !== 'application/pdf')) {
     doc.addPage();
     heading();

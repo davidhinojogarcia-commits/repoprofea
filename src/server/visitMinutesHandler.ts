@@ -1,3 +1,4 @@
+import { isOrderAction, handleVisitOrders, resolveOrderReferences, assertVisitOrders } from './visitWorkOrdersHandler.js';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { SUPABASE_URL, SERVICE_KEY, PUBLIC_KEY, authenticateRequest, encryptToken, decryptToken, getConnection, refreshGoogleAccessToken, requireServerConfig, touchSent } from './gmailOAuth.js';
@@ -34,7 +35,7 @@ async function database(path: string, body?: any, authorization?: string, method
   if (!response.ok) {
     const message=String(data?.message);
     if(/visit_contacts_email_unique/.test(message))throw fail('Ya hay un contacto con ese correo. Edita el contacto existente.',409);
-    if(/Sin permisos|Obra no autorizada|Cuenta no activa|Acceso revocado/.test(message))throw fail('El permiso o enlace ya no está vigente. Actualiza y comprueba el acceso.',403);
+    if(/Sin permisos|Sin permiso|Sin competencia|Encargado sin autorización|Acta no autorizada|Obra no autorizada|Cuenta no activa|Acceso revocado/.test(message))throw fail('El permiso o enlace ya no está vigente. Actualiza y comprueba el acceso.',403);
     if(/envío en curso/.test(message))throw fail('Hay un envío en curso. Comprueba su resultado antes de cambiar la versión.',409);
     if(/demasiado grande|Archivo final inválido/.test(message))throw fail('El acta o PDF supera los límites de tamaño. Revisa los anexos antes de continuar.',413);
     const stale = /Revisión desactualizada|Operación reutilizada|duplicate key/i.test(message);
@@ -290,6 +291,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     const b = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     if (Buffer.byteLength(JSON.stringify(b)) > 3100000) throw fail('La solicitud es demasiado grande. Reduce los anexos.', 413);
     const action = String(b.action || '');
+    if(action.startsWith('foreman-visits-'))return await handleVisitOrders(req,b,res,null,'',{database,digest,validateAttachments});
     if (['challenge', 'verify', 'portal', 'portal-command', 'portal-pdf'].includes(action)) {
       const {
         access,
@@ -357,6 +359,7 @@ export async function visitMinutesHandler(req: any, res: any) {
         type: 'sign',
         personId: person.id,
         image: b.command.image,
+        intent: b.command.intent, note: b.command.note,
         mode: 'email-code'
       } : (() => {
         throw fail('Acción no autorizada.', 403);
@@ -381,6 +384,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     }
     const user = await activeUser(req),
       auth = String(req.headers?.authorization || '');
+    if(isOrderAction(action))return await handleVisitOrders(req,b,res,user,auth,{database,digest,validateAttachments});
     if (action === 'works') return res.json({
       ok: true,
       works: await database('obras?select=id,nombre,codigo,municipio,descripcion&order=nombre.asc&limit=1000', undefined, auth)
@@ -480,12 +484,12 @@ export async function visitMinutesHandler(req: any, res: any) {
         limit: '1'
       }), undefined, auth);
       if (!work) throw fail('Selecciona una obra a la que tengas acceso.', 403);
-      const content = {
+      const content = await resolveOrderReferences(database,{
         ...b.content,
         worksite: work.nombre,
         code: work.codigo || b.content.code || '',
         municipality: work.municipio || b.content.municipality || ''
-      };
+      });
       const state = newVisit(content, b.participants, new Date().toISOString());
       await validateAttachments(state);
       const result = await committed({
@@ -493,7 +497,7 @@ export async function visitMinutesHandler(req: any, res: any) {
         owner_id: user.id,
         revision: 0
       } as VisitRecord, state, b.operation, digest(JSON.stringify({
-        content,
+        content: b.content,
         participants: b.participants
       })), user.id, 'create');
       return res.json({
@@ -728,16 +732,17 @@ export async function visitMinutesHandler(req: any, res: any) {
         }
         if (command.type === 'save') {
           if (command.content.worksiteId !== r.obra_id) throw fail('La obra del acta no puede cambiar.');
-          command.content = {
+          command.content = await resolveOrderReferences(database,{
             ...command.content,
             worksite: r.state.content.worksite,
             code: r.state.content.code
-          };
+          });
         }
         if (command.type === 'sign') await validateSignature(command.image);
         state = applyVisitCommand(r.state, command, new Date().toISOString());
         event = command.type;
         if (command.type === 'save') await validateAttachments(state);
+        if(['review','finalize'].includes(command.type))await assertVisitOrders(database,state,r.id);
         if (command.type === 'review' || command.type === 'open-signing') extras = await linksAndJobs(r, state, command.type === 'review' ? 'review' : 'signing');
         if (command.type === 'finalize') {
           const bytes = await generateVisitMinutesPdf(state, r.number);
