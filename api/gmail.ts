@@ -157,7 +157,7 @@ export default async function handler(req: any, res: any) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           });
         } catch (error) {
-          console.warn('[gmail-disconnect] No se pudo revocar el token en Google; se elimina igualmente la conexión local.', error);
+          console.warn('[gmail-disconnect]', {code:'GMAIL_REVOKE_UNCONFIRMED'});
         }
       }
       await deleteConnection(user.id);
@@ -308,7 +308,6 @@ export default async function handler(req: any, res: any) {
       });
       const sent: any = await sendResponse.json().catch(() => ({}));
       if (!sendResponse.ok || !sent.id) {
-        console.error('[gmail-send] Google response:', sent);
         throw new Error('Gmail no pudo enviar el correo. Revisa la autorización de la cuenta.');
       }
 

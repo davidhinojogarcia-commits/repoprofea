@@ -1,9 +1,19 @@
 {
   "baselineCommit": "557204a9225cf58d71bf5e44c7fa9b26414701c6",
-  "method": "isolated API/PostgreSQL; mocked Google; preview through delivery; no real latency or platform log volume measured",
+  "method": "isolated API/PostgreSQL; mocked Google; preview through delivery; instrumented shared error console with synthetic payload; no real latency or platform log volume measured",
   "before": [
     {
       "recipients": 1,
+      "sharedGmailErrorLogs": {
+        "authorization": {
+          "lines": 1,
+          "bytes": 44
+        },
+        "unexpected": {
+          "lines": 6,
+          "bytes": 2276
+        }
+      },
       "dbRequests": 29,
       "dbWriteRequests": 4,
       "stateWriteRequests": 3,
@@ -13,12 +23,22 @@
       "auditEvents": 1,
       "applicationConsoleLines": 0,
       "applicationConsoleBytes": 0,
-      "simulatedDurationMs": 68,
+      "simulatedDurationMs": 70,
       "storedPdfs": 0,
       "storedPdfBytes": 0
     },
     {
       "recipients": 4,
+      "sharedGmailErrorLogs": {
+        "authorization": {
+          "lines": 1,
+          "bytes": 44
+        },
+        "unexpected": {
+          "lines": 6,
+          "bytes": 2276
+        }
+      },
       "dbRequests": 56,
       "dbWriteRequests": 13,
       "stateWriteRequests": 9,
@@ -28,7 +48,7 @@
       "auditEvents": 4,
       "applicationConsoleLines": 0,
       "applicationConsoleBytes": 0,
-      "simulatedDurationMs": 124,
+      "simulatedDurationMs": 113,
       "storedPdfs": 0,
       "storedPdfBytes": 0
     }
@@ -36,6 +56,16 @@
   "after": [
     {
       "recipients": 1,
+      "sharedGmailErrorLogs": {
+        "authorization": {
+          "lines": 0,
+          "bytes": 0
+        },
+        "unexpected": {
+          "lines": 1,
+          "bytes": 67
+        }
+      },
       "dbRequests": 19,
       "dbWriteRequests": 4,
       "stateWriteRequests": 3,
@@ -45,12 +75,22 @@
       "auditEvents": 1,
       "applicationConsoleLines": 0,
       "applicationConsoleBytes": 0,
-      "simulatedDurationMs": 48,
+      "simulatedDurationMs": 55,
       "storedPdfs": 0,
       "storedPdfBytes": 0
     },
     {
       "recipients": 4,
+      "sharedGmailErrorLogs": {
+        "authorization": {
+          "lines": 0,
+          "bytes": 0
+        },
+        "unexpected": {
+          "lines": 1,
+          "bytes": 67
+        }
+      },
       "dbRequests": 34,
       "dbWriteRequests": 11,
       "stateWriteRequests": 9,
@@ -60,7 +100,7 @@
       "auditEvents": 4,
       "applicationConsoleLines": 0,
       "applicationConsoleBytes": 0,
-      "simulatedDurationMs": 80,
+      "simulatedDurationMs": 74,
       "storedPdfs": 0,
       "storedPdfBytes": 0
     }

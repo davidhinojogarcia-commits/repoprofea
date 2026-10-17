@@ -15,6 +15,8 @@ El código sí llamaba a Gmail: `sendFlow → command(review) → get → send-j
 - `src/server/gmailOAuth.ts`: renovación con timeout de 15 segundos y error de red normalizado, sin volcar respuestas del proveedor.
 - Tests/fixture y CI: casos OAuth, fallos parciales, concurrencia, incertidumbre, reconciliación, navegador y benchmark reproducible. Rama sin despliegues automáticos Vercel.
 
+- `api/gmail.ts`, `api/gmail-oauth-callback.ts` y el manejador compartido de errores: suprimen el volcado de respuesta Google y objetos de error completos. Los fallos inesperados dejan un único registro acotado `{status, code}` y los errores de autorización conocidos no generan una segunda traza de consola. La revocación no imprime objetos con datos sensibles.
+
 ## C. Gmail real: pendiente de autorización
 
 **No se ha enviado ningún correo real en este trabajo.** La lectura agregada de producción no valida ahora la vigencia de los tokens ni sustituye la prueba real. Se requiere autorización expresa de la cuenta remitente y del destinatario de pruebas, y un entorno de prueba autorizado que no altere producción. La prueba debe usar el flujo de la app; enviar mediante otro conector no acreditaría este recorrido.
@@ -44,10 +46,19 @@ Misma fixture sintética, API real y motor PostgreSQL PGlite; Gmail y OAuth simu
 | Eventos de auditoría de aceptación | 1 / 4 | 1 / 4 |
 | Consola de aplicación instrumentada | 0 líneas, 0 bytes | 0 líneas, 0 bytes |
 | PDF almacenado por este flujo de revisión | 0, 0 bytes | 0, 0 bytes |
-| Tiempo local con Gmail simulado, una muestra | 68 / 124 ms | 48 / 80 ms |
+| Tiempo local con Gmail simulado, una muestra | 70 / 113 ms | 55 / 74 ms |
 | Tiempo real de Gmail/Vercel | No medido | No medido |
 | Volumen de logs de plataforma Vercel/Supabase | No medido | No medido |
 | Memoria temporal real de plataforma | No medida | No medida |
+
+Dos sondas adicionales del manejador Gmail compartido, con errores completamente sintéticos y consola Node capturada en un stream:
+
+| Caso controlado | Antes | Después |
+| --- | ---: | ---: |
+| Error esperado de autorización | 1 línea / 44 bytes | 0 líneas / 0 bytes |
+| Error inesperado con diagnóstico sintético de 2 KB | 6 líneas / 2276 bytes | 1 línea / 67 bytes |
+
+Estas sondas miden la salida concreta de la aplicación en esos casos; no estiman el volumen mensual de logs de plataforma. El registro operativo conserva código y estado sin diagnóstico íntegro, tokens ni objetos de respuesta. Hay una prueba que exige que un marcador sensible sintético no aparezca en el log.
 
 Para cuatro personas: 39 % menos peticiones Supabase, 67 % menos invocaciones y 50 % menos renovaciones OAuth en la fixture. No se atribuye esa reducción al volumen de logs real ni a la latencia de producción. La auditoría necesaria y los estados no se eliminan. El tiempo local sirve como diagnóstico del banco de pruebas, no como predicción de entrega real. No se crean PDF temporales para revisar; no se elimina ningún archivo firmado, versión, evidencia u original.
 

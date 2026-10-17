@@ -26,8 +26,8 @@ export async function visitTestServer({sourceRef}={}){
  for(const n of [1,2,3,4])await db.query('insert into profiles(id,email,active) values($1,$2,$3)',[id(n),`supervisor${n}@example.test`,n!==4]);
  await db.query('insert into obras values($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)',[id(10),id(1),content.worksite,content.code,content.municipality,'Obra sintética',id(11),id(2),'Obra ajena','99999GR','Otra localidad','']);
  await db.query('insert into data_permissions(user_id,resource_type,resource_id,can_read) values($1,$2,$3,true)',[id(3),'obra',id(10)]);
- await build({stdin:{contents:"export {default as gmailHandler} from './api/gmail'; export {encryptToken} from './src/server/gmailOAuth';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,platform:'node',format:'esm',packages:'external',plugins:sourceRef?[{name:'baseline-source',setup(b){b.onLoad({filter:/src\/server\/(visitMinutesHandler|gmailOAuth)\.ts$/},args=>({contents:execFileSync('git',['show',sourceRef+':src/server/'+args.path.split('/').at(-1)],{cwd:new URL('../',import.meta.url).pathname,encoding:'utf8'}),loader:'ts',resolveDir:new URL('../src/server/',import.meta.url).pathname}));}}]:[]});
- const {gmailHandler,encryptToken}=await import(out.href+'?t='+Date.now());
+ await build({stdin:{contents:"export {default as gmailHandler} from './api/gmail'; export {encryptToken,apiError} from './src/server/gmailOAuth';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,platform:'node',format:'esm',packages:'external',plugins:sourceRef?[{name:'baseline-source',setup(b){b.onLoad({filter:/src\/server\/(visitMinutesHandler|gmailOAuth)\.ts$/},args=>({contents:execFileSync('git',['show',sourceRef+':src/server/'+args.path.split('/').at(-1)],{cwd:new URL('../',import.meta.url).pathname,encoding:'utf8'}),loader:'ts',resolveDir:new URL('../src/server/',import.meta.url).pathname}));}}]:[]});
+ const {gmailHandler,encryptToken,apiError}=await import(out.href+'?t='+Date.now());
  await db.query('insert into gmail_connections values($1,$2,$3,$4,null)',[id(1),'supervisor@example.test',encryptToken('test-refresh-token'),'https://www.googleapis.com/auth/gmail.send']);
  const sent=[],calls=[],problems=[],originalFetch=globalThis.fetch;let googleMode='ok',persistSentFailure=false,googleQueue=[];let serialized=Promise.resolve();
  const sqlIdentifier=value=>{if(!/^[a-z_][a-z_0-9]*$/.test(value))throw Error('Unsafe test identifier '+value);return '"'+value+'"';};
@@ -77,5 +77,5 @@ export async function visitTestServer({sourceRef}={}){
  };
  const invoke=async(body,user=1)=>{let status=200,headers={};const res={setHeader(k,v){headers[k]=v;},status(s){status=s;return this;},json(data){return{status,data,headers};}};return gmailHandler({method:'POST',query:{action:'visit-minutes'},headers:user?{authorization:'Bearer user-'+user}:{},body},res);};
  const cleanup=async()=>{globalThis.fetch=originalFetch;await db.exec('reset role');await db.close();await fs.rm(out,{force:true});};
- return{db,invoke,sent,calls,problems,cleanup,setGoogleMode:v=>{googleMode=v;},setGoogleQueue:v=>{googleQueue=[...v];},failNextSentPersist:()=>{persistSentFailure=true;}};
+ return{db,invoke,sent,calls,problems,cleanup,apiError,setGoogleMode:v=>{googleMode=v;},setGoogleQueue:v=>{googleQueue=[...v];},failNextSentPersist:()=>{persistSentFailure=true;}};
 }

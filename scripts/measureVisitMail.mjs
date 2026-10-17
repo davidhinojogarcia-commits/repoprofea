@@ -1,3 +1,5 @@
+import {Console} from 'node:console';
+import {Writable} from 'node:stream';
 import fs from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {visitTestServer} from './visitMinutesTestServer.mjs';
@@ -8,6 +10,7 @@ for(const n of [1,4]){
  const call=async(body)=>{functions++;const r=await env.invoke(body);if(r.status!==200)throw Error(r.data.code+': '+r.data.message);return r.data;};
  try{
  let r=(await call({action:'create',id:id(90),operation:randomUUID(),content,participants:Array.from({length:n},(_,i)=>person(20+i))})).record;
+ const logScenarios={};for(const [scenario,status,code,message] of [['authorization',401,'GMAIL_RECONNECT_REQUIRED','Synthetic authorization expired'],['unexpected',503,'GMAIL_TEMPORARILY_UNAVAILABLE','Synthetic diagnostic '+('x'.repeat(2000))]]){let bytes=0,lines=0;const stream=new Writable({write(chunk,encoding,cb){bytes+=chunk.length;lines+=chunk.toString().split('\n').length-1;cb();}});const sink=new Console({stdout:stream,stderr:stream,colorMode:false});const saved={warn:console.warn,error:console.error};console.warn=sink.warn.bind(sink);console.error=sink.error.bind(sink);try{env.apiError({status(){return this;},json(v){return v;}},Object.assign(new Error(message),{status,code}));}finally{Object.assign(console,saved);}logScenarios[scenario]={lines,bytes};}
  const start=env.calls.length,begin=performance.now();functions=0;let consoleLines=0,consoleBytes=0;const savedConsole={log:console.log,warn:console.warn,error:console.error};restoreConsole=()=>Object.assign(console,savedConsole);for(const key of Object.keys(savedConsole))console[key]=(...args)=>{consoleLines++;consoleBytes+=Buffer.byteLength(args.map(String).join(' ')+'\n');};
  await call({action:'preview-mail',id:r.id,kind:'review'});
  if(mode==='before'){
@@ -20,7 +23,7 @@ for(const n of [1,4]){
  }
  Object.assign(console,savedConsole);const calls=env.calls.slice(start),db=calls.filter(c=>c.url.includes('/rest/v1/'));
  await env.db.exec('reset role');const events=(await env.db.query("select count(*)::int n from visit_minutes_events where event like 'mail-%'")).rows[0].n;
- results.push({recipients:n,dbRequests:db.length,dbWriteRequests:db.filter(c=>c.method!=='GET'&&!/rpc\/(visit_minutes_owner_can_write|visit_minutes_can_create_work|visit_order_work_users)/.test(c.url)).length,stateWriteRequests:db.filter(c=>/rpc\/visit_minutes_(commit|claim_mail|finish_mail)/.test(c.url)).length,functionInvocations:functions,oauthRefreshes:calls.filter(c=>c.url.includes('oauth2.googleapis.com/token')).length,gmailRequests:calls.filter(c=>c.url.includes('/messages/send')).length,auditEvents:events,applicationConsoleLines:consoleLines,applicationConsoleBytes:consoleBytes,simulatedDurationMs:Math.round(performance.now()-begin),storedPdfs:(await env.db.query('select count(*)::int n from visit_minutes_files')).rows[0].n,storedPdfBytes:Number((await env.db.query('select coalesce(sum(octet_length(base64)),0) n from visit_minutes_files')).rows[0].n)});
+ results.push({recipients:n,sharedGmailErrorLogs:logScenarios,dbRequests:db.length,dbWriteRequests:db.filter(c=>c.method!=='GET'&&!/rpc\/(visit_minutes_owner_can_write|visit_minutes_can_create_work|visit_order_work_users)/.test(c.url)).length,stateWriteRequests:db.filter(c=>/rpc\/visit_minutes_(commit|claim_mail|finish_mail)/.test(c.url)).length,functionInvocations:functions,oauthRefreshes:calls.filter(c=>c.url.includes('oauth2.googleapis.com/token')).length,gmailRequests:calls.filter(c=>c.url.includes('/messages/send')).length,auditEvents:events,applicationConsoleLines:consoleLines,applicationConsoleBytes:consoleBytes,simulatedDurationMs:Math.round(performance.now()-begin),storedPdfs:(await env.db.query('select count(*)::int n from visit_minutes_files')).rows[0].n,storedPdfBytes:Number((await env.db.query('select coalesce(sum(octet_length(base64)),0) n from visit_minutes_files')).rows[0].n)});
  }finally{restoreConsole?.();await env.cleanup();}
 }
 await fs.mkdir(new URL('../tmp/',import.meta.url),{recursive:true});await fs.writeFile(new URL('../tmp/mail-metrics-'+mode+'.json',import.meta.url),JSON.stringify(results,null,2));console.log(JSON.stringify({mode,results}));
