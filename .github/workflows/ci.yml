@@ -140,6 +140,8 @@ jobs:
         run: npm run test:mandatory-worker-detection
       - name: Global modal layering regression
         run: npm run test:modal-layering
+      - name: Global confirmation browser regression (Chromium + WebKit)
+        run: npm run test:app-dialog-browser
       - name: Light/dark contrast regression
         run: npm run test:theme-contrast
       - name: Global modal stack audit

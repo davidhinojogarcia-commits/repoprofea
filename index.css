@@ -618,3 +618,9 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
 .profea-app-dialog-panel[data-kind="success"] button:last-child { background: #059669; }
 .profea-app-dialog-panel[data-kind="error"] button:last-child { background: #e11d48; }
 .profea-app-dialog-panel[data-kind="warning"] button:last-child { background: #d97706; }
+/* PR #270: full-width mobile actions prevent truncated confirmation labels. */
+@media (max-width: 480px) {
+  .profea-app-dialog-panel > :last-child > :last-child { flex-direction: column; }
+  .profea-app-dialog-panel > :last-child > :last-child button { width: 100%; overflow-wrap: anywhere; }
+}
+
