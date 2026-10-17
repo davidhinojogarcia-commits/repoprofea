@@ -127,7 +127,7 @@ export function VisitMinutesPanel({
       setWorks(w.works);
       setContacts(c.contacts);
       setSupervisor(s.supervisor);
-      setTechnician(s.technician);
+      setTechnician(s.technician || {});
       const match = w.works.find((work: any) => work.nombre === initialWorksite || work.id === initialWorksite);
       setWorkFilter(match?.id || '');
       setLoaded(true);
