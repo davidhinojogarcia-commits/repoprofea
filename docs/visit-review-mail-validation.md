@@ -82,3 +82,9 @@ Pendientes: envío y recepción real autorizados, cuentas reales en entorno de p
 ## H. Entrega
 
 PR en borrador para revisión técnica y autorización de la prueba real. Sin cambios de esquema ni dependencias. Una nueva versión o firma conserva las versiones, órdenes e instrucciones y el PDF original. No fusionar ni desplegar automáticamente esta rama.
+
+## Alternativa local sin recursos de pago
+
+El aprovisionamiento de rama fue rechazado por requerir Pro; el proyecto independiente cotizado en 0/mes fue rechazado por el límite global de dos proyectos gratuitos del propietario. No se han pausado ni eliminado recursos. Las variables OAuth sensibles consultadas en Vercel no devuelven su valor; no se han exportado secretos ni leído tokens de producción.
+
+Se ha preparado y probado `scripts/visitMailLocal.mjs`: handler real de la rama y PostgreSQL PGlite local, con una frontera que solo permite OAuth, comprobación de identidad y un envío Gmail a las direcciones configuradas. Todas las operaciones REST/auth de Supabase quedan en la fixture local. Incluye un registro atómico privado que bloquea repeticiones incluso tras reiniciar y no guarda el contenido del correo. Las nuevas pruebas usan Google simulado; **todavía no se ha enviado ningún correo real**. Falta configurar una conexión OAuth de desarrollo de forma segura. Esta alternativa tampoco acredita Supabase alojado ni un enlace público entre dispositivos. Instrucciones y límites: [prueba local](visit-mail-local-test.md).
