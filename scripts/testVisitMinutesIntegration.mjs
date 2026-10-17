@@ -92,6 +92,17 @@ try{
  const noMailPerson={...person(),email:'',receiveFinal:false};let onsite=(await call({action:'create',id:id(34),operation:randomUUID(),content,participants:[noMailPerson]})).record;
  for(const command of [{type:'review'},{type:'respond',personId:noMailPerson.id,decision:'agree',comment:'',mode:'in-person'},{type:'open-signing'},{type:'sign',personId:noMailPerson.id,image:png,mode:'in-person'},{type:'finalize'}])onsite=(await call({action:'command',id:onsite.id,revision:onsite.revision,operation:randomUUID(),command,inPersonConfirmed:true})).record;
  assert.equal(onsite.status,'signed');assert.equal((await call({action:'get',id:onsite.id})).jobs.length,0,'no-email participants can complete the witnessed on-site flow without mail jobs');
+ // Removing an acta is the existing audited cancellation, hidden by default.
+ assert.equal((await call({action:'list'},1)).records.find(x=>x.id===onsite.id).isOwner,true);
+ assert.equal((await call({action:'list'},3)).records.find(x=>x.id===onsite.id).isOwner,false);
+ const cancelCommand={action:'command',id:onsite.id,revision:onsite.revision,operation:randomUUID(),command:{type:'cancel',reason:'Acta de prueba retirada por su propietario.'}};
+ assert.equal((await env.invoke(cancelCommand,3)).status,403,'shared reader cannot remove');
+ const signedBytes=(await call({action:'pdf',id:onsite.id})).base64;
+ const removed=await call(cancelCommand);assert.equal(removed.record.status,'cancelled');
+ assert(!(await call({action:'list'})).records.some(x=>x.id===onsite.id),'removed acta hidden on every fresh listing');
+ assert((await call({action:'list',status:'cancelled'})).records.some(x=>x.id===onsite.id),'removed acta remains available in explicit archive filter');
+ assert.equal((await call({action:'pdf',id:onsite.id,version:1})).base64,signedBytes,'removal preserves exact signed original');
+ assert((await call({action:'history',id:onsite.id})).events.some(x=>x.event==='cancel'),'audited owner action');
  const tables=await direct("select c.relname,c.relrowsecurity,has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') anon,has_table_privilege('authenticated',c.oid,'INSERT,UPDATE,DELETE') writes from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and (c.relname='visit_contacts' or c.relname like 'visit_minutes%')");assert.equal(tables.length,8);for(const t of tables){assert(t.relrowsecurity,t.relname);assert.equal(t.anon,false,t.relname);assert.equal(t.writes,false,t.relname);}
  const functions=await direct("select p.proname,p.prosecdef,has_function_privilege('anon',p.oid,'EXECUTE') anon from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname like 'visit_minutes_%'");for(const f of functions){assert.equal(f.prosecdef,false,f.proname);assert.equal(f.anon,false,f.proname);}
  const security=await direct("select has_function_privilege('anon','public.visit_minutes_verify(uuid,text,text)','execute') anon,has_function_privilege('authenticated','public.visit_minutes_commit(uuid,uuid,uuid,integer,jsonb,uuid,text,text,text,jsonb,jsonb,text,text,uuid,text,jsonb)','execute') client");assert.equal(security[0].anon,false);assert.equal(security[0].client,false);

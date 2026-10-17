@@ -57,7 +57,8 @@
       "fix/global-dialog-stack-audit": false,
       "fix/visit-mail-preview-scroll": false,
       "feat/visit-work-orders": false,
-      "fix/visit-review-mail-delivery": false
+      "fix/visit-review-mail-delivery": false,
+      "fix/visit-minutes-edit-delete": false
     }
   }
 }
