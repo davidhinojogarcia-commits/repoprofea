@@ -1,10 +1,11 @@
+import {execFileSync} from 'node:child_process';
 import fs from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,randomBytes} from 'node:crypto';
 import {build} from 'esbuild';
 import {id,content,person} from './visitMinutesFixture.mjs';
-export async function visitTestServer(){
- process.env.SUPABASE_SERVICE_ROLE_KEY='service-test';process.env.GOOGLE_GMAIL_CLIENT_ID='client-test';process.env.GOOGLE_GMAIL_CLIENT_SECRET='client-secret-test';process.env.GMAIL_TOKEN_ENCRYPTION_KEY='visit-tests-encryption-key-32-bytes';
+export async function visitTestServer({sourceRef,gmailConnection}={}){
+ process.env.SUPABASE_SERVICE_ROLE_KEY='service-test';process.env.GOOGLE_GMAIL_CLIENT_ID=gmailConnection?.clientId||'client-test';process.env.GOOGLE_GMAIL_CLIENT_SECRET=gmailConnection?.clientSecret||'client-secret-test';process.env.GMAIL_TOKEN_ENCRYPTION_KEY=gmailConnection?randomBytes(32).toString('base64url'):'visit-tests-encryption-key-32-bytes';
  const db=new PGlite(),out=new URL(`./.visit-handler-test-${randomUUID()}.mjs`,import.meta.url);
  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema private;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
@@ -13,7 +14,7 @@ export async function visitTestServer(){
  create table foreman_portal_access(id uuid primary key,owner_id uuid,obra text,foreman_name text,token_hash text,active boolean default true);
  grant all on foreman_portal_access to service_role;
  create table data_permissions(user_id uuid,resource_type text,resource_id text,can_read boolean,can_update boolean default false);
- create table gmail_connections(user_id uuid,email text,refresh_token_encrypted text,scope text,last_sent_at timestamptz);
+ create table gmail_connections(user_id uuid primary key,email text,refresh_token_encrypted text,scope text,last_sent_at timestamptz,connected_at timestamptz,updated_at timestamptz);
  create function private.has_obra_permission(uuid,text,text) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.data_permissions where user_id=auth.uid() and resource_type='obra' and resource_id=$1::text and case when $3='update' then can_update else can_read end)$$;
  grant usage on schema auth,private to authenticated,anon,service_role;
  grant select on profiles,obras to authenticated;grant all on profiles,obras,data_permissions,gmail_connections to service_role;
@@ -25,17 +26,17 @@ export async function visitTestServer(){
  for(const n of [1,2,3,4])await db.query('insert into profiles(id,email,active) values($1,$2,$3)',[id(n),`supervisor${n}@example.test`,n!==4]);
  await db.query('insert into obras values($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)',[id(10),id(1),content.worksite,content.code,content.municipality,'Obra sintética',id(11),id(2),'Obra ajena','99999GR','Otra localidad','']);
  await db.query('insert into data_permissions(user_id,resource_type,resource_id,can_read) values($1,$2,$3,true)',[id(3),'obra',id(10)]);
- await build({stdin:{contents:"export {default as gmailHandler} from './api/gmail'; export {encryptToken} from './src/server/gmailOAuth';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,platform:'node',format:'esm',packages:'external'});
- const {gmailHandler,encryptToken}=await import(out.href+'?t='+Date.now());
- await db.query('insert into gmail_connections values($1,$2,$3,$4,null)',[id(1),'supervisor@example.test',encryptToken('test-refresh-token'),'https://www.googleapis.com/auth/gmail.send']);
- const sent=[],calls=[],problems=[],originalFetch=globalThis.fetch;let googleMode='ok',persistSentFailure=false;let serialized=Promise.resolve();
+ await build({stdin:{contents:"export {default as gmailHandler} from './api/gmail'; export {default as callbackHandler} from './api/gmail-oauth-callback'; export {encryptToken,decryptToken,apiError} from './src/server/gmailOAuth';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,platform:'node',format:'esm',packages:'external',plugins:sourceRef?[{name:'baseline-source',setup(b){b.onLoad({filter:/src\/server\/(visitMinutesHandler|gmailOAuth)\.ts$/},args=>({contents:execFileSync('git',['show',sourceRef+':src/server/'+args.path.split('/').at(-1)],{cwd:new URL('../',import.meta.url).pathname,encoding:'utf8'}),loader:'ts',resolveDir:new URL('../src/server/',import.meta.url).pathname}));}}]:[]});
+ const {gmailHandler,callbackHandler,encryptToken,decryptToken,apiError}=await import(out.href+'?t='+Date.now());
+ await db.query('insert into gmail_connections(user_id,email,refresh_token_encrypted,scope,last_sent_at) values($1,$2,$3,$4,null)',[id(1),gmailConnection?.email||'supervisor@example.test',encryptToken(gmailConnection?.refreshToken||'test-refresh-token'),'https://www.googleapis.com/auth/gmail.send']);
+ const sent=[],calls=[],problems=[],originalFetch=globalThis.fetch;let googleMode='ok',persistSentFailure=false,googleQueue=[];let serialized=Promise.resolve();
  const sqlIdentifier=value=>{if(!/^[a-z_][a-z_0-9]*$/.test(value))throw Error('Unsafe test identifier '+value);return '"'+value+'"';};
  const handleDatabase=async(url,init)=>{
   const u=new URL(url),table=u.pathname.split('/rest/v1/')[1],auth=new Headers(init.headers).get('authorization'),service=auth==='Bearer service-test',user=auth?.match(/^Bearer user-(\d)$/)?.[1];
   await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[user?id(Number(user)):'']);await db.exec('set role '+(service?'service_role':user?'authenticated':'anon'));
   const args=[],where=[];let body=init.body?JSON.parse(init.body):undefined;
   if(table.startsWith('rpc/')){const fn=table.slice(4);if(persistSentFailure&&fn==='visit_minutes_finish_mail'&&body.p_status==='sent'){persistSentFailure=false;throw Error('Simulated acknowledgement persistence failure');}const fields=Object.entries(body);const sql='select public.'+sqlIdentifier(fn)+'('+fields.map(([key,value])=>{args.push(key==='p_scopes'?'{'+value.join(',')+'}':typeof value==='object'&&value!==null?JSON.stringify(value):value);return sqlIdentifier(key)+'=> $'+args.length;}).join(',')+') result';return(await db.query(sql,args)).rows[0].result;}
-  for(const [key,value]of u.searchParams){if(['select','order','limit','offset'].includes(key))continue;if(value.startsWith('eq.')){const v=value.slice(3);args.push(v==='true'?true:v==='false'?false:v);where.push(sqlIdentifier(key)+'=$'+args.length);}else if(value.startsWith('ilike.')){args.push(value.slice(6).replaceAll('*','%'));where.push(sqlIdentifier(key)+' ilike $'+args.length);}else if(value.startsWith('in.(')||value.startsWith('not.in.(')){const neg=value.startsWith('not.');const entries=value.slice(neg?8:4,-1).split(',');where.push(sqlIdentifier(key)+(neg?' not in (':' in (')+entries.map(v=>{args.push(v);return '$'+args.length;}).join(',')+')');}else if(value.startsWith('lt.')){args.push(value.slice(3));where.push(sqlIdentifier(key)+'<$'+args.length);}else throw Error('Unknown filter '+value);}
+  for(const [key,value]of u.searchParams){if(['select','order','limit','offset','on_conflict'].includes(key))continue;if(value.startsWith('eq.')){const v=value.slice(3);args.push(v==='true'?true:v==='false'?false:v);where.push(sqlIdentifier(key)+'=$'+args.length);}else if(value.startsWith('ilike.')){args.push(value.slice(6).replaceAll('*','%'));where.push(sqlIdentifier(key)+' ilike $'+args.length);}else if(value.startsWith('in.(')||value.startsWith('not.in.(')){const neg=value.startsWith('not.');const entries=value.slice(neg?8:4,-1).split(',');where.push(sqlIdentifier(key)+(neg?' not in (':' in (')+entries.map(v=>{args.push(v);return '$'+args.length;}).join(',')+')');}else if(value.startsWith('lt.')){args.push(value.slice(3));where.push(sqlIdentifier(key)+'<$'+args.length);}else throw Error('Unknown filter '+value);}
   const clause=where.length?' where '+where.join(' and '):'';
   if((init.method||'GET')==='GET'){
     const select=(u.searchParams.get('select')||'*').split(',').map(v=>v==='*'?'*':sqlIdentifier(v)).join(',');
@@ -49,7 +50,8 @@ export async function visitTestServer(){
     return(await db.query('update public.'+sqlIdentifier(table)+' set '+set+clause+' returning *',args)).rows;
   }
   const entries=Object.entries(body);args.push(...entries.map(([,value])=>typeof value==='object'&&value!==null?JSON.stringify(value):value));
-  return(await db.query('insert into public.'+sqlIdentifier(table)+'('+entries.map(([key])=>sqlIdentifier(key)).join(',')+') values('+args.map((_,i)=>'$'+(i+1)).join(',')+') returning *',args)).rows;
+  const conflict=u.searchParams.get('on_conflict');const upsert=conflict?' on conflict ('+sqlIdentifier(conflict)+') do update set '+entries.filter(([k])=>k!==conflict).map(([k])=>sqlIdentifier(k)+'=excluded.'+sqlIdentifier(k)).join(','):'';
+  return(await db.query('insert into public.'+sqlIdentifier(table)+'('+entries.map(([key])=>sqlIdentifier(key)).join(',')+') values('+args.map((_,i)=>'$'+(i+1)).join(',')+')'+upsert+' returning *',args)).rows;
  };
  globalThis.fetch=async(url,init={})=>{
    const target=String(url);calls.push({url:target,method:init.method||'GET'});
@@ -58,17 +60,24 @@ export async function visitTestServer(){
      let resolve;const before=serialized;serialized=new Promise(r=>{resolve=r;});await before;
      try{const data=await handleDatabase(target,init);return new Response(JSON.stringify(data),{status:200});}catch(e){problems.push(e.message);return new Response(JSON.stringify({message:e.message}),{status:400});}finally{resolve();}
    }
+   if(target==='https://oauth2.googleapis.com/token'&&googleMode==='refresh-invalid')return new Response(JSON.stringify({error:'invalid_grant'}),{status:400});
+   if(target==='https://oauth2.googleapis.com/token'&&googleMode==='refresh-network')throw Error('simulated refresh network');
    if(target==='https://oauth2.googleapis.com/token')return new Response(JSON.stringify({access_token:'access-test',expires_in:3600}),{status:200});
    if(target==='https://gmail.googleapis.com/gmail/v1/users/me/messages/send'){
      const raw=Buffer.from(JSON.parse(init.body).raw,'base64url').toString('utf8');
      const encoded=raw.match(/Content-Type: text\/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n([\s\S]*?)\r\n--/)[1];
      const body=Buffer.from(encoded.replace(/\s/g,''),'base64').toString('utf8');
-     if(googleMode==='network')throw Error('network');if(googleMode==='unauthorized')return new Response('{}',{status:401});if(googleMode==='quota')return new Response('{}',{status:429});if(googleMode==='no-id')return new Response('{}',{status:200});
-     sent.push({raw,body,id:'gmail-'+(sent.length+1)});return new Response(JSON.stringify({id:sent.at(-1).id}),{status:200});
+     const mode=googleQueue.shift()||googleMode;
+     if(mode==='network')throw Error('network');if(mode==='unauthorized')return new Response('{}',{status:401});if(mode==='quota')return new Response('{}',{status:429});if(mode==='no-id')return new Response('{}',{status:200});
+     if(['permission403','quota403','domain403'].includes(mode))return new Response(JSON.stringify({error:{errors:[{reason:mode==='permission403'?'insufficientPermissions':mode==='quota403'?'dailyLimitExceeded':'domainPolicy'}]}}),{status:403});
+     if(mode==='temporary')return new Response('{}',{status:503});if(mode==='invalid-address')return new Response('{}',{status:400});
+     sent.push({raw,body,id:'gmail-'+(sent.length+1)});if(mode==='accepted-network')throw Error('accepted but response lost');return new Response(JSON.stringify({id:sent.at(-1).id}),{status:200});
    }
+   if(target.startsWith('https://gmail.googleapis.com/gmail/v1/users/me/messages?')){const identity=new URL(target).searchParams.get('q').split('rfc822msgid:')[1];return new Response(JSON.stringify({messages:sent.filter(m=>m.raw.includes('Message-ID: '+identity)).map(m=>({id:m.id}))}),{status:200});}
+   if(target.startsWith('https://gmail.googleapis.com/gmail/v1/users/me/messages/')){const m=sent.find(m=>m.id===new URL(target).pathname.split('/').at(-1));return new Response(JSON.stringify(m?{id:m.id,labelIds:['SENT'],payload:{headers:[{name:'Message-ID',value:m.raw.match(/Message-ID: (.*)\r/)[1]}]}}:{}),{status:m?200:404});}
    throw Error('Real external call forbidden in visit tests: '+target);
  };
  const invoke=async(body,user=1)=>{let status=200,headers={};const res={setHeader(k,v){headers[k]=v;},status(s){status=s;return this;},json(data){return{status,data,headers};}};return gmailHandler({method:'POST',query:{action:'visit-minutes'},headers:user?{authorization:'Bearer user-'+user}:{},body},res);};
  const cleanup=async()=>{globalThis.fetch=originalFetch;await db.exec('reset role');await db.close();await fs.rm(out,{force:true});};
- return{db,invoke,sent,calls,problems,cleanup,setGoogleMode:v=>{googleMode=v;},failNextSentPersist:()=>{persistSentFailure=true;}};
+ return{db,invoke,sent,calls,problems,cleanup,apiError,gmailHandler,callbackHandler,decryptToken,setGoogleMode:v=>{googleMode=v;},setGoogleQueue:v=>{googleQueue=[...v];},failNextSentPersist:()=>{persistSentFailure=true;}};
 }

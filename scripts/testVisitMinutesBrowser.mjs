@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {build} from 'esbuild';
 import {createHash} from 'node:crypto';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
 import {visitTestServer} from './visitMinutesTestServer.mjs';
 import {id,content,person} from './visitMinutesFixture.mjs';
 // Download only the same Tailwind runtime already used by the application,
@@ -13,6 +13,7 @@ const tailwind=process.env.SIGNATURE_TAILWIND_SCRIPT?await fs.readFile(process.e
 const root=new URL('../',import.meta.url).pathname;
 const html=await fs.readFile(new URL('../index.html',import.meta.url),'utf8');const config=html.match(/<script>\s*(tailwind.config[\s\S]*?)<\/script>/)[1];
 const styles=[...((await fs.readFile(new URL('../index.tsx',import.meta.url),'utf8')).matchAll(/import '\.\/(.+\.css)'/g))].map(m=>`<link rel="stylesheet" href="/${m[1]}">`).join('');
+const engine=process.env.BROWSER_ENGINE==='webkit'?'webkit':'chromium';
 const env=await visitTestServer();let server,browser,debugPage;const errors=[];
 try{
  await env.db.query('insert into foreman_portal_access values($1,$2,$3,$4,$5,true)',[id(60),id(1),content.worksite,'Encargado de prueba',createHash('sha256').update('foreman-browser-orders-test-token').digest('hex')]);
@@ -27,6 +28,8 @@ try{
    if(req.url==='/app.js'){res.setHeader('content-type','text/javascript');return res.end(bundle);}
    if(req.url==='/tailwind.js'){res.setHeader('content-type','text/javascript');return res.end(tailwind);}
    if(req.url?.endsWith('.css')){const file=path.resolve(root,'.'+req.url);if(!file.startsWith(root))throw Error('Forbidden');res.setHeader('content-type','text/css');return res.end(await fs.readFile(file));}
+   if(req.url==='/api/gmail?action=status'){res.setHeader('content-type','application/json');return res.end(JSON.stringify({connected:true,email:'supervisor@example.test'}));}
+   if(req.url==='/api/gmail?action=start'){const chunks=[];for await(const chunk of req)chunks.push(chunk);const b=JSON.parse(Buffer.concat(chunks).toString());assert.equal(b.email,'supervisor@example.test');res.setHeader('content-type','application/json');return res.end(JSON.stringify({authorizationUrl:`http://127.0.0.1:${server.address().port}/#oauth-started`}));}
    if(req.url==='/api/visit-minutes'){
      const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=JSON.parse(Buffer.concat(chunks).toString());apiLog.push({action:body.action,command:body.command?.type});
      if(apiHold)await new Promise(resolve=>setTimeout(resolve,300));
@@ -37,7 +40,7 @@ try{
   }catch(e){errors.push(e.message);res.statusCode=500;res.end('Test server failure');}
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
- browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.SIGNATURE_BROWSER_EXECUTABLE?{executablePath:process.env.SIGNATURE_BROWSER_EXECUTABLE}:{})});
+ browser=await (engine==='webkit'?webkit:chromium).launch({headless:true,...(engine==='chromium'?{args:['--no-sandbox']}:{}),...(process.env.SIGNATURE_BROWSER_EXECUTABLE?{executablePath:process.env.SIGNATURE_BROWSER_EXECUTABLE}:{})});
  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();debugPage=page;page.on('pageerror',e=>errors.push(e.message));
  await page.goto(base+'/contacts');await page.getByRole('button',{name:'Añadir persona',exact:true}).click();
  await page.getByLabel('Nombre',{exact:true}).fill('Ana');await page.getByLabel('Apellidos',{exact:true}).fill('Persona de Prueba');await page.getByLabel('Entidad / empresa').fill('Entidad de prueba');await page.getByLabel('Correo electrónico',{exact:true}).fill('ana@example.test');
@@ -61,22 +64,23 @@ try{
   assert(await body.evaluate(el=>el.scrollHeight>el.clientHeight),'many recipients require an internal scroller');
   await body.hover();await page.mouse.wheel(0,700);await page.waitForFunction(()=>document.querySelector('.visit-mail-body').scrollTop>0);
   await page.mouse.wheel(0,-100000);await page.waitForFunction(()=>document.querySelector('.visit-mail-body').scrollTop===0);
-  for(const button of [cancel,dialog.getByRole('button',{name:'Confirmar y abrir revisión',exact:true})]){
+  for(const button of [cancel,dialog.getByRole('button',{name:'Confirmar y enviar correos',exact:true})]){
    assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.y>=0&&r.bottom<=innerHeight&&el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'mail actions visible and clickable without scrolling the background');
   }
   await fs.mkdir(path.join(root,'tmp/visit-mail'),{recursive:true});await page.screenshot({path:path.join(root,`tmp/visit-mail/${width}-${height}-${dark}.png`)});
  }
  const sendsBeforeCancel=env.sent.length;await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();await dialog.waitFor({state:'detached'});assert.equal(env.sent.length,sendsBeforeCancel,'cancel preview sends no email');await page.getByRole('button',{name:'Enviar para revisión',exact:true}).click();await dialog.waitFor();
- await dialog.getByRole('button',{name:'Confirmar y abrir revisión',exact:true}).click();await page.getByRole('button',{name:'Generar / renovar enlace personal'}).waitFor();
+ await page.setViewportSize({width:390,height:667});env.setGoogleMode('refresh-invalid');await dialog.getByRole('button',{name:'Confirmar y enviar correos',exact:true}).click();await dialog.getByRole('button',{name:'Volver a autorizar Gmail',exact:true}).waitFor();assert.equal(await dialog.count(),1,'OAuth error keeps preview modal open');assert(await dialog.getByRole('alert').isVisible());await dialog.getByRole('button',{name:'Volver a autorizar Gmail',exact:true}).click();await page.waitForURL('**/#oauth-started');await page.evaluate(()=>history.replaceState({},'',location.pathname));assert.equal(env.sent.length,sendsBeforeCancel,'OAuth failure never claims delivery');env.setGoogleMode('ok');const sends=apiLog.filter(c=>c.action==='send-mail').length;await dialog.getByRole('button',{name:'Reintentar correos pendientes',exact:true}).click({trial:true});await dialog.getByRole('button',{name:'Reintentar correos pendientes',exact:true}).evaluate(el=>{el.click();el.click();});await page.getByRole('button',{name:'Generar / renovar enlace personal'}).waitFor();assert.equal(apiLog.filter(c=>c.action==='send-mail').length-sends,1,'rapid double tap performs one bounded delivery request');assert(await page.getByText('Firma no habilitada',{exact:false}).first().isVisible(),'delivery does not claim signature is enabled before review');
  await page.getByRole('button',{name:'Generar / renovar enlace personal'}).click();const access=page.getByLabel('Enlace personal: entrégalo solo a su destinatario');await access.waitFor();const token=(await access.inputValue()).split('=')[1];
  const attendee=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const mobile=await attendee.newPage();mobile.on('pageerror',e=>errors.push(e.message));
  await mobile.goto(base+'/#visit='+token);await mobile.getByRole('button',{name:'Enviar código a mi correo'}).click();await mobile.getByRole('status').filter({hasText:'Código enviado'}).waitFor();const code=env.sent.at(-1).body.match(/es: (\d{6})/)[1];
  await mobile.getByLabel('Código de seis dígitos').fill(code);await mobile.getByRole('button',{name:'Verificar y abrir acta'}).click();await mobile.getByRole('button',{name:'Doy mi conformidad',exact:true}).click();await mobile.getByText('Respuesta guardada y comprobada en el servidor.').waitFor();
- await page.getByRole('button',{name:'Actualizar',exact:true}).click();await page.getByRole('button',{name:'Abrir firmas y avisar',exact:true}).click();await page.getByRole('dialog').last().getByRole('button',{name:'Confirmar y abrir firmas'}).click();await page.getByRole('button',{name:'Firma presencial',exact:true}).waitFor();assert.equal(await page.getByRole('dialog',{name:'Revisar correos antes de enviar'}).count(),0,'signing preview dialog is removed after confirmation');assert.equal(await page.locator('.profea-modal-overlay').count(),0,'signing flow leaves no modal overlay blocking the supervisor');
+ await page.getByRole('button',{name:'Actualizar',exact:true}).click();await page.getByRole('button',{name:'Abrir firmas y avisar',exact:true}).click();await page.getByRole('dialog').last().getByRole('button',{name:'Confirmar y enviar correos'}).click();await page.getByRole('button',{name:'Firma presencial',exact:true}).waitFor();assert.equal(await page.getByRole('dialog',{name:'Revisar correos antes de enviar'}).count(),0,'signing preview dialog is removed after confirmation');assert.equal(await page.locator('.profea-modal-overlay').count(),0,'signing flow leaves no modal overlay blocking the supervisor');
  await mobile.getByRole('button',{name:'Actualizar acta',exact:true}).click();await mobile.getByRole('button',{name:'Firmar esta versión'}).click();
  const canvas=mobile.getByLabel('Zona de firma de Ana Persona de Prueba');await canvas.scrollIntoViewIfNeeded();const canvasBox=await canvas.boundingBox();
  await mobile.mouse.move(canvasBox.x+20,canvasBox.y+80);await mobile.mouse.down();for(let x=0;x<140;x+=4)await mobile.mouse.move(canvasBox.x+20+x,canvasBox.y+80+25*Math.sin(x/15));await mobile.mouse.up();
  await mobile.getByRole('button',{name:'Borrar / repetir'}).click();assert(await mobile.getByRole('button',{name:'Confirmar firma',exact:true}).isDisabled(),'clear disables confirmation');
+ if(engine==='chromium'){
  const cdp=await attendee.newCDPSession(mobile);
  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:canvasBox.x+20,y:canvasBox.y+80,id:3}]});
  for(let x=0;x<140;x+=6)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:canvasBox.x+20+x,y:canvasBox.y+80+20*Math.sin(x/15),id:3}]});
@@ -86,6 +90,7 @@ try{
  await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',x:penBox.x+25,y:penBox.y+90,button:'left',clickCount:1,pointerType:'pen'});
  for(let x=0;x<150;x+=3)await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:penBox.x+25+x,y:penBox.y+90+30*Math.sin(x/17),button:'left',buttons:1,pointerType:'pen'});
  await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:penBox.x+175,y:penBox.y+90,button:'left',clickCount:1,pointerType:'pen'});
+ }else{await canvas.scrollIntoViewIfNeeded();const b=await canvas.boundingBox();await mobile.mouse.move(b.x+25,b.y+70);await mobile.mouse.down();for(let x=0;x<140;x+=4)await mobile.mouse.move(b.x+25+x,b.y+70+20*Math.sin(x/13));await mobile.mouse.up();}
  const inkBounds=()=>canvas.evaluate(c=>{const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let x0=c.width,x1=0,y0=c.height,y1=0;for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(p[(y*c.width+x)*4+3]>100){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);}return {width:x1-x0,height:y1-y0};});
  const beforeResize=await inkBounds();await mobile.setViewportSize({width:820,height:1000});await mobile.waitForTimeout(150);await mobile.setViewportSize({width:390,height:844});await mobile.waitForTimeout(150);const afterResize=await inkBounds();assert(Math.abs(beforeResize.width-afterResize.width)<=2&&Math.abs(beforeResize.height-afterResize.height)<=2,'rotation preserves the existing stroke without progressive shrink or stretching');
  await mobile.evaluate(()=>document.documentElement.classList.add('dark'));assert.equal(await canvas.evaluate(c=>getComputedStyle(c).backgroundColor),'rgb(255, 255, 255)','dark capture retains a paper background');
@@ -94,7 +99,7 @@ try{
  const pixelCheck=await mobile.getByAltText('Firma de Ana Persona de Prueba',{exact:true}).evaluate(async image=>{await image.decode();const c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);const p=ctx.getImageData(0,0,c.width,c.height).data;let blue=0,transparent=0;for(let i=0;i<p.length;i+=4){if(p[i+3]===0)transparent++;if(p[i+3]>200&&p[i]===22&&p[i+1]===75&&p[i+2]===155)blue++;}return {blue,transparent};});assert(pixelCheck.blue>10&&pixelCheck.transparent>10,'captured PNG retains blue ink and transparent background');
  await page.getByRole('button',{name:'Actualizar',exact:true}).click();await page.getByRole('button',{name:'Finalizar acta firmada',exact:true}).click();await page.getByRole('dialog').last().getByRole('button',{name:'Confirmar',exact:true}).click();await page.getByRole('button',{name:'Descargar PDF firmado',exact:true}).waitFor();
  const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF firmado',exact:true}).click();const download=await downloadPromise;assert.match(download.suggestedFilename(),/_FIRMADA.pdf$/);const downloaded=await fs.readFile(await download.path());assert(downloaded.subarray(0,4).toString()==='%PDF');
- await page.getByRole('button',{name:'Enviar acta firmada por correo'}).click();await page.getByRole('dialog').last().getByRole('button',{name:'Confirmar y enviar PDF firmado'}).click();await page.getByText(/1 correo\(s\) aceptados por Gmail/).waitFor();assert(env.sent.at(-1).raw.includes('application/pdf'));
+ await page.getByRole('button',{name:'Enviar acta firmada por correo'}).click();await page.getByRole('dialog').last().getByRole('button',{name:'Confirmar y enviar correos'}).click();await page.getByText(/Se han enviado correctamente los correos de actas firmadas/).waitFor();assert(env.sent.at(-1).raw.includes('application/pdf'));
  const foreman=await attendee.newPage();foreman.on('pageerror',e=>errors.push(e.message));await foreman.goto(base+'/foreman');await foreman.getByRole('button',{name:'Abrir / descargar PDF firmado'}).waitFor();const foremanDownload=foreman.waitForEvent('download');await foreman.getByRole('button',{name:'Abrir / descargar PDF firmado'}).click();assert.deepEqual(await fs.readFile(await (await foremanDownload).path()),downloaded,'foreman receives identical original signed PDF');await foreman.getByRole('button',{name:'Confirmar lectura del acta'}).click();await foreman.getByRole('button',{name:'Lectura confirmada'}).waitFor();await foreman.getByRole('button',{name:'ÓRDENES PENDIENTES',exact:true}).click();await foreman.getByRole('heading',{name:/Orden 1$/}).waitFor();const firstOrder=foreman.getByRole('article').filter({has:foreman.getByRole('heading',{name:/Orden 1$/})});await firstOrder.getByLabel('Avance o resultado de comprobación').fill('Actuación terminada con evidencia');await firstOrder.getByLabel('Estado',{exact:true}).selectOption('executed_pending_verification');assert.equal(await firstOrder.locator('option[value="verified"]').count(),0,'foreman cannot verify in UI');await firstOrder.getByLabel('Fotografía o documento justificativo').setInputFiles({name:'ejecucion.png',mimeType:'image/png',buffer:Buffer.from((await import('./visitMinutesFixture.mjs')).png.split(',')[1],'base64')});await firstOrder.getByText('ejecucion.png',{exact:false}).waitFor();await firstOrder.getByRole('button',{name:'Guardar avance o comprobación'}).click();await firstOrder.getByText(/Ejecutada, pendiente de comprobación/).waitFor();await foreman.reload();await foreman.getByRole('button',{name:'ÓRDENES PENDIENTES',exact:true}).click();await foreman.locator('p').filter({hasText:/Ejecutada, pendiente de comprobación/}).waitFor();assert(await foreman.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'foreman mobile without horizontal overflow');
  const screenshots=process.env.VISIT_SCREENSHOTS||new URL('../tmp/visit-ui/',import.meta.url).pathname;await fs.mkdir(screenshots,{recursive:true});
  for(const width of [390,820,1440])for(const dark of [false,true]){
@@ -105,5 +110,5 @@ try{
  }
  const idle=apiLog.length;await page.waitForTimeout(1000);assert.equal(apiLog.length,idle,'no polling while idle');
  await attendee.close();await context.close();assert.deepEqual(errors,[]);
- console.log('PASS Chromium → real API → PostgreSQL → PDF and simulated Gmail: contacts, persistence, slow/double click, save failure/retry, consent, email code, capture/clear/repeat, immutable final download/distribution, 390/820/1440 light/dark and no idle polling. Viewports are emulated; no real emails or physical devices.');
+ console.log('PASS '+engine+' → real API → PostgreSQL → PDF and simulated Gmail: contacts, persistence, slow/double click, save failure/retry, consent, email code, capture/clear/repeat, immutable final download/distribution, 390/820/1440 light/dark and no idle polling. Viewports are emulated; no real emails or physical devices.');
 }catch(error){if(debugPage&&!debugPage.isClosed()){console.error('Synthetic UI diagnostic:',(await debugPage.locator('body').innerText()).slice(-5500));await debugPage.screenshot({path:'/tmp/visit-ui-failure.png',fullPage:true});}throw error;}finally{await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));await env.cleanup();}

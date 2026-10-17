@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { VisitWorkOrdersEditor } from './VisitWorkOrdersEditor';
 import { VisitWorkOrdersFollowup } from './VisitWorkOrdersFollowup';
+import { beginGmailOAuth, getGmailConnectionStatus } from '../src/lib/gmailConnection';
 import ModalPortal from './ModalPortal';
 import { appConfirm, appPrompt } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
@@ -76,6 +77,7 @@ export function VisitMinutesPanel({
     [mail, setMail] = useState<{
       kind: 'review' | 'signing' | 'final';
       messages: any[];
+      sender?:string;
     } | null>(null),
     [onsite, setOnsite] = useState<{
       personId: string;
@@ -85,6 +87,8 @@ export function VisitMinutesPanel({
     [responseComment, setResponseComment] = useState(''),
     [link, setLink] = useState(''),
     [followNotes, setFollowNotes] = useState<Record<string, string>>({});
+  const [mailError,setMailError]=useState(''),[mailNotice,setMailNotice]=useState(''),[gmailRequired,setGmailRequired]=useState(false),[mailSending,setMailSending]=useState(false);
+  const mailOperation=useRef<{key:string;id:string}|null>(null);
   const [loaded, setLoaded] = useState(false),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(false),
@@ -271,69 +275,39 @@ export function VisitMinutesPanel({
       id: record.id,
       kind
     });
-    setMail({
-      kind,
-      messages: r.messages
-    });
+    setMailError('');setMailNotice('');setGmailRequired(false);
+    setMail({kind,messages:r.messages,sender:r.sender});
   });
   const sendFlow = () => {
-    if (!record || !mail || busy || guard.current) return;
-    // Release the preview dialog before changing workflow status or requesting
-    // external mail delivery. An error must never strand the dialog over the page.
-    const pendingMail = mail;
-    setMail(null);
-    void run(async () => {
-    let current = record;
-    if (pendingMail.kind === 'review' && record.status === 'draft') current = await mutate({
-      type: 'review'
-    });else if (pendingMail.kind === 'signing' && record.status === 'review') current = await mutate({
-      type: 'open-signing'
-    });else if (pendingMail.kind === 'final') {
-      const r = await visitRequest({
-        action: 'queue-final',
-        id: record.id,
-        revision: record.revision,
-        operation: requestOperation(record.id + ':queue-final')
-      });
-      operation.current = null;
-      current = r.record;
-      install({
-        ...current,
-        canWrite: true
-      });
-    }
-    const selected = (await visitRequest({
-      action: 'get',
-      id: current.id
-    })).jobs.filter((j: any) => j.version === current.version && j.kind === pendingMail.kind && ['pending', 'failed'].includes(j.status));
-    let accepted = 0,
-      failed = 0;
-    setMail(null);
-    for (const [index, j] of selected.entries()) {
-      setMessage(`Tramitando correo ${index + 1} de ${selected.length}…`);
-      try {
-        const result = await visitRequest({
-          action: 'send-job',
-          id: current.id,
-          jobId: j.id
-        });
-        if (result.delivery === 'sent') accepted++;
-      } catch (e: any) {
-        failed++;
-        setError(e.message);
-        if (['GMAIL_NOT_CONNECTED', 'GMAIL_RECONNECT_REQUIRED', 'GMAIL_SEND_PERMISSION_REQUIRED', 'GMAIL_RATE_LIMITED'].includes(e.code)) break;
-      }
-    }
-    const refreshed = await visitRequest({
-      action: 'get',
-      id: current.id
-    });
-    install(refreshed.record);
-    setJobs(refreshed.jobs);
-    setMessage(`${accepted} correo(s) aceptados por Gmail en esta operación.${failed ? ' Hay envíos pendientes o fallidos; consulta el detalle.' : ''} La aceptación no acredita lectura ni recepción.`);
-    await refreshList();
+    if(!record||!mail||busy||guard.current)return;
+    const pending=mail;
+    void run(async()=>{
+      setMailError('');setMailNotice('');setGmailRequired(false);setMailSending(true);
+      try{
+        let current=record,acceptedNow=0,result:any;
+        const key=record.id+':'+record.version+':'+pending.kind;
+        if(mailOperation.current?.key!==key)mailOperation.current={key,id:crypto.randomUUID()};
+        do{
+          result=await visitRequest({action:'send-mail',id:current.id,revision:current.revision,version:current.version,kind:pending.kind,operation:mailOperation.current.id});
+          if(result.record){current=result.record;install(current);setRecords(old=>old.map(r=>r.id===current.id?{...r,status:current.status,version:current.version}:r));}
+          setJobs(result.jobs);acceptedNow+=result.acceptedNow||0;
+          setMailNotice(`Gmail ha aceptado ${result.summary.accepted} de ${result.summary.total} correos.`);
+          if(result.failures.length){setMailError(result.failures[0].message);setGmailRequired(result.failures.some((e:any)=>['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED'].includes(e.code)));}
+        }while(result.hasMore);
+        const {accepted,total,pending:remaining,uncertain}=result.summary;
+        if(!total){setMailNotice('No hay destinatarios con correo. La participación presencial sigue disponible.');return;}
+        if(!remaining){
+          const text=acceptedNow?`Se han enviado correctamente los correos de ${pending.kind==='review'?'revisión a los asistentes':pending.kind==='signing'?'firma a los asistentes':'actas firmadas'}. ${total} destinatario(s).`:`Gmail ya había aceptado estos ${total} correos. No se han vuelto a enviar.`;
+          setMessage(text+' La aceptación no garantiza entrega ni lectura.');setMail(null);mailOperation.current=null;
+        }else setMailNotice(`Se han enviado ${accepted} de ${total} correos. Hay destinatarios pendientes.${uncertain?' Hay resultados inciertos o envíos en curso; comprueba su estado antes de reintentar.':''}`);
+      }catch(e:any){
+        const auth=['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED'].includes(e.code);
+        setGmailRequired(auth);setMailError(auth?'No se ha podido enviar el correo. Es necesario volver a autorizar Gmail.':e.message);
+      }finally{setMailSending(false);}
     });
   };
+  const reconnectVisitGmail=()=>void run(async()=>{try{const status=await getGmailConnectionStatus();await beginGmailOAuth(status.email||mail?.sender||'');}catch(e:any){setMailError(e.message);}});
+  const reconcileMail=(jobId:string)=>void run(async()=>{try{const result=await visitRequest({action:'reconcile-mail',id:record!.id,jobId});setJobs(result.jobs);setMailNotice(result.message||'Estado de Gmail comprobado.');setMessage(result.message||'Estado de Gmail comprobado.');}catch(e:any){setMailError(e.message);setError(e.message);}});
   const addContact = (contact: VisitContact) => {
     if (people.some(p => p.id === contact.id)) return;
     const assignment = contact.assignments.find(a => a.worksiteId === content?.worksiteId);
@@ -578,15 +552,9 @@ export function VisitMinutesPanel({
                 failed: 'Fallido',
                 uncertain: 'Resultado incierto',
                 cancelled: 'Cancelado'
-              } as any)[j.status]} · {j.attempts} intento(s)</p>{record.canWrite && ['pending', 'failed', 'sending'].includes(j.status) && <button disabled={busy} className={button + ' mt-2'} onClick={() => void run(async () => {
-              await visitRequest({
-                action: 'send-job',
-                id: record.id,
-                jobId: j.id
-              });
-              await open(record.id);
-              setMessage('Estado de envío actualizado.');
-            })}>{j.status === 'sending' ? 'Comprobar estado del envío' : 'Enviar / reintentar este correo'}</button>}</div>)}</section>}
+              } as any)[j.status]} · {j.attempts} intento(s)</p><p>Revisión: {({agree:'Conforme con el contenido',changes:'Con observaciones',reject:'Disconforme'} as any)[record.state.responses[j.person_id]?.decision||'']||(record.state.participants.find(p=>p.id===j.person_id)?.reviewRequired?'Pendiente de revisión':'No requiere revisión')} · {record.state.signatures[j.person_id]?'Firmado':record.state.participants.find(p=>p.id===j.person_id)?.signing==='none'?'No requiere firma':record.status==='signing'?'Pendiente de firma':record.status==='signed'?'Firma opcional no aportada':'Firma no habilitada'}</p>{j.error_code&&<p>Código: {j.error_code}</p>}{j.message_id&&<p>Identificador Gmail: {j.message_id}</p>}{['uncertain','sending'].includes(j.status)&&<button className={button} disabled={busy} onClick={()=>reconcileMail(j.id)}>Comprobar en Enviados</button>}{record.canWrite && ['pending', 'failed'].includes(j.status) && <button disabled={busy} className={button + ' mt-2'} onClick={() => void run(async () => {
+              const result=await visitRequest({action:'preview-mail',id:record.id,kind:j.kind});setMailError('');setMailNotice('');setGmailRequired(false);setMail({kind:j.kind,messages:result.messages,sender:result.sender});
+            })}>Reintentar correos pendientes</button>}</div>)}</section>}
         <VisitWorkOrdersFollowup worksiteId={record.obra_id} />
         {record.status === 'signed' && record.state.content.agreements.length > 0 && <section className="space-y-2"><h3 className="font-black">Seguimiento posterior de acuerdos</h3><p className="text-sm">Este seguimiento no modifica el acta ni su PDF firmado.</p>{record.state.content.agreements.map(a => <div key={a.id} className="rounded-xl border p-3"><p>{a.text}</p><p className="text-sm">{a.responsible} · {a.deadline} · {record.state.followup[a.id]?.done ? 'Resuelto' : 'Pendiente'}</p>{record.canWrite && <><input aria-label={`Nota de seguimiento de ${a.text}`} className={visitInput + ' my-2'} value={followNotes[a.id] ?? record.state.followup[a.id]?.note ?? ''} onChange={e => setFollowNotes({
                 ...followNotes,
@@ -617,6 +585,6 @@ export function VisitMinutesPanel({
           })}>Cargar eventos anteriores</button>}</section>}
       </div>}
     </section>}
-    {mail && <ModalPortal layout="fullscreen" label="Revisar correos antes de enviar"><div className="visit-mail-overlay"><section role="dialog" aria-modal="true" aria-labelledby="visit-mail-title" className="visit-mail-dialog bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100"><header className="visit-mail-header"><h2 id="visit-mail-title" className="text-xl font-black">Revisar correos antes de enviar</h2></header><div className="visit-mail-body"><p>Se enviará un correo individual a cada dirección disponible, desde tu Gmail autorizado. No se revelan las direcciones de otros asistentes.</p>{mail.kind === 'final' && <p className="font-bold">Adjunto: {record?.number}_v{record?.version}_FIRMADA.pdf · Se utiliza el archivo final conservado.</p>}{!mail.messages.length && <p>No hay destinatarios de correo para esta fase. Puedes continuar presencialmente.</p>}{mail.messages.map(m => <div className="rounded-xl border p-3" key={m.personId}><p className="font-bold">Para: {m.email || 'Sin correo: participación presencial; no se enviará email'}</p><p className="font-bold mt-1">{m.subject}</p><pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm">{m.body}</pre></div>)}</div><footer className="visit-mail-actions"><button disabled={busy} className={primary} onClick={sendFlow}>Confirmar y {mail.kind === 'review' ? 'abrir revisión' : mail.kind === 'signing' ? 'abrir firmas' : 'enviar PDF firmado'}</button><button disabled={busy} className={button} onClick={() => setMail(null)}>Cancelar</button></footer></section></div></ModalPortal>}
+    {mail && <ModalPortal layout="fullscreen" label="Revisar correos antes de enviar"><div className="visit-mail-overlay"><section role="dialog" aria-modal="true" aria-labelledby="visit-mail-title" className="visit-mail-dialog bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100"><header className="visit-mail-header"><h2 id="visit-mail-title" className="text-xl font-black">Revisar correos antes de enviar</h2></header><div className="visit-mail-body">{mail.sender&&<p className="font-bold">Cuenta remitente autorizada: {mail.sender}</p>}{mailSending&&<p role="status">Enviando correos… No cierres esta ventana.</p>}{mailError&&<div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-red-900">{mailError}{gmailRequired&&<button className={primary+' mt-2'} disabled={busy} onClick={reconnectVisitGmail}>Volver a autorizar Gmail</button>}</div>}{mailNotice&&<p role="status">{mailNotice}</p>}<p>Se enviará un correo individual a cada dirección disponible, desde tu Gmail autorizado. No se revelan las direcciones de otros asistentes.</p>{mail.kind === 'final' && <p className="font-bold">Adjunto: {record?.number}_v{record?.version}_FIRMADA.pdf · Se utiliza el archivo final conservado.</p>}{!mail.messages.length && <p>No hay destinatarios de correo para esta fase. Puedes continuar presencialmente.</p>}{mail.messages.map(m => <div className="rounded-xl border p-3" key={m.personId}><p className="font-bold">Para: {m.email || 'Sin correo: participación presencial; no se enviará email'}</p><p>{({sent:'Aceptado por Gmail',pending:'Pendiente de envío',failed:'Error de envío',sending:'Enviando',uncertain:'Resultado incierto',cancelled:'Cancelado'} as any)[jobs.find(j=>j.version===record?.version&&j.kind===mail.kind&&j.person_id===m.personId)?.status||'pending']}</p>{jobs.filter(j=>j.version===record?.version&&j.kind===mail.kind&&j.person_id===m.personId&&['uncertain','sending'].includes(j.status)).map(j=><button key={j.id} className={button} disabled={busy} onClick={()=>reconcileMail(j.id)}>Comprobar en Enviados</button>)}<p className="font-bold mt-1">{m.subject}</p><pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm">{m.body}</pre></div>)}</div><footer className="visit-mail-actions"><button disabled={busy} className={primary} onClick={sendFlow}>{mailSending?'Enviando correos…':mailError?'Reintentar correos pendientes':'Confirmar y enviar correos'}</button><button disabled={busy} className={button} onClick={() => setMail(null)}>Cancelar</button></footer></section></div></ModalPortal>}
   </main>;
 }

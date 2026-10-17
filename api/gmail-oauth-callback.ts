@@ -91,7 +91,8 @@ export default async function handler(req: any, res: any) {
 
     return redirectWithResult(res, true, `Gmail conectado correctamente: ${googleEmail}.`);
   } catch (error: any) {
-    console.error('[gmail-oauth-callback]', error);
+    const status=Number(error?.status)||500;
+    if(status>=500)console.error('[gmail-oauth-callback]',{status,code:/^[A-Z0-9_]{1,80}$/.test(String(error?.code||''))?error.code:'GMAIL_CALLBACK_FAILED'});
     return redirectWithResult(res, false, error?.message || 'No se pudo conectar Gmail.');
   }
 }

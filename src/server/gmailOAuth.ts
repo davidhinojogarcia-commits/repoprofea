@@ -203,7 +203,8 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
-  });
+    signal: AbortSignal.timeout(15000),
+  }).catch(()=>{throw Object.assign(new Error('Google no pudo renovar el acceso a Gmail en este momento.'),{status:503,code:'GMAIL_TEMPORARILY_UNAVAILABLE'});});
   const data: any = await response.json().catch(() => ({}));
   if (!response.ok || !data.access_token) {
     if (data.error === 'invalid_grant') {
@@ -226,13 +227,9 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
 export function apiError(res: any, error: any, fallback = 'No se pudo completar la operación.') {
   const status = Number(error?.status || 500);
   const code = String(error?.code || '');
-  if (code === 'GMAIL_SERVER_NOT_CONFIGURED') {
-    console.warn('[gmail-api] Módulo Gmail no configurado en este entorno.');
-  } else if (status >= 500) {
-    console.error('[gmail-api]', error);
-  } else {
-    console.warn('[gmail-api]', error?.message || error);
-  }
+  // Expected authorization errors are shown to the user. Unexpected failures
+  // emit one bounded operational record, never request/provider bodies or tokens.
+  if(status>=500)console.error('[gmail-api]',{status,code:/^[A-Z0-9_]{1,80}$/.test(code)?code:'GMAIL_OPERATION_FAILED'});
   return res.status(status >= 400 && status < 600 ? status : 500).json({
     ok: false,
     code: code || undefined,
