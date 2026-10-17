@@ -236,10 +236,6 @@ export function assertOrderAuthorities(
         a.entity === o.issuerEntity,
       "El emisor no tiene una competencia expresa vigente para esta orden.",
     );
-    insist(
-      o.recipient,
-      "Indica el destinatario o responsable de todas las órdenes.",
-    );
     insist(o.description, "Completa la descripción de todas las órdenes.");
   }
 }

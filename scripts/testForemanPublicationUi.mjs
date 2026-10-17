@@ -35,11 +35,12 @@ try {
  b.onResolve({filter:/(?:\/lib\/|\.\/)supabase$/},()=>({path:'supabase',namespace:'mock'}));
  b.onResolve({filter:/\/lib\/appDialog$/},()=>({path:'dialog',namespace:'mock'}));
  b.onResolve({filter:/mandatoryEmailIntake$/},()=>({path:'intake',namespace:'mock'}));
+ b.onResolve({filter:/ForemanVisitMinutes$/},()=>({path:'visits',namespace:'mock'}));
  b.onResolve({filter:/PreventionSection$/},()=>({path:'prevention',namespace:'mock'}));
  b.onResolve({filter:/\?url$/},()=>({path:'url',namespace:'mock'}));
- b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async(message,options)=>globalThis.__alerts.push({message,options});export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
+ b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='portal'?exportNames.map(name=>`export const ${name}=(...args)=>globalThis.__foremanUi.${name}(...args);`).join('\n'):args.path==='supabase'?"export const supabase=globalThis.__foremanApi; export const getSessionUser=async()=>({id:'owner'});":args.path==='dialog'?"export const appConfirm=(...args)=>globalThis.__confirm(...args);export const appAlert=async(message,options)=>globalThis.__alerts.push({message,options});export const appPrompt=async()=>null;":args.path==='intake'?"export const processAdministrativeMandatoryInbox=async()=>({importedDocuments:0,warnings:[]});export const processManualMandatoryFiles=async()=>({importedDocuments:0,warnings:[]});":args.path==='visits'?"export default function Visits({token,onOpenPdf}){return globalThis.__React.createElement('section',{'data-testid':'actual-visit-tab','data-token':token,'data-viewer':typeof onOpenPdf},'Actas firmadas y órdenes pendientes');}":args.path==='prevention'?"export const PreventionSection=()=>null;":"export default '';"}));
  }}]});
- const React=await import('react');const {createRoot}=await import('react-dom/client');const {ForemanMobilePortal,ForemanDocumentsDashboard}=await import(output.href);
+ const React=await import('react');globalThis.__React=React;const {createRoot}=await import('react-dom/client');const {ForemanMobilePortal,ForemanDocumentsDashboard}=await import(output.href);
  const action=async callback=>{await React.act(async()=>{await callback();await new Promise(resolve=>setTimeout(resolve,30));});};
  const find=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
  const mount=async component=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(component));};
@@ -64,6 +65,8 @@ try {
  await action(()=>find('Enviar al portal de encargados').click());
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  assert(find('Actualizar documentos'),'manual refresh in Control inicios');
+ await action(()=>find('Actas de visitas').click());assert(document.querySelector('[data-testid=actual-visit-tab]'),'visit tab mounts its panel in the complete portal');assert.equal(document.querySelector('[data-testid=actual-visit-tab]').dataset.token,'test');assert.equal(document.querySelector('[data-testid=actual-visit-tab]').dataset.viewer,'function');assert([...document.querySelectorAll('button')].every(b=>!b.className.includes('[object Object]')),'panels must not be interpolated into button classes');await action(()=>find('Control inicios').click());assert(!document.querySelector('[data-testid=actual-visit-tab]'));
+
  const beforeRefresh=portalReads;await action(()=>find('Actualizar documentos').click());
  assert.equal(portalReads,beforeRefresh+1,'manual refresh queries portal');
  const periodButton=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1'));
