@@ -62,6 +62,7 @@ export function VisitMinutesPanel({
   const [works, setWorks] = useState<any[]>([]),
     [contacts, setContacts] = useState<VisitContact[]>([]),
     [supervisor, setSupervisor] = useState<any>({}),
+    [technician, setTechnician] = useState<any>({}),
     [records, setRecords] = useState<any[]>([]),
     [hasMore, setHasMore] = useState(false),
     [workFilter, setWorkFilter] = useState(''),
@@ -126,6 +127,7 @@ export function VisitMinutesPanel({
       setWorks(w.works);
       setContacts(c.contacts);
       setSupervisor(s.supervisor);
+      setTechnician(s.technician);
       const match = w.works.find((work: any) => work.nombre === initialWorksite || work.id === initialWorksite);
       setWorkFilter(match?.id || '');
       setLoaded(true);
@@ -416,7 +418,25 @@ export function VisitMinutesPanel({
                 entity: 'Diputación Provincial de Cádiz',
                 receiveFinal: !!supervisor.email
               }]);
-            }}>Añadirme como supervisor</button></div>
+            }}>Añadirme como supervisor</button><button type="button" className={button} disabled={!String(technician.nombreApellidos || '').trim()} onClick={() => {
+              const name = String(technician.nombreApellidos || '').trim();
+              const email = String(technician.email || '').trim().toLowerCase();
+              if (people.some(p => email ? p.email.trim().toLowerCase() === email : (p.firstName + ' ' + p.lastName).trim().toLocaleLowerCase() === name.toLocaleLowerCase())) {
+                setMessage('El técnico responsable ya está incluido entre los participantes.');
+                return;
+              }
+              const names = name.split(/\s+/);
+              setPeople(current => [...current, {
+                ...emptyPerson(),
+                firstName: names.shift() || '',
+                lastName: names.join(' '),
+                role: technician.cargo || 'Técnico responsable',
+                email: technician.email || '',
+                phone: technician.telefono || '',
+                entity: 'Diputación Provincial de Cádiz',
+                receiveFinal: !!technician.email
+              }]);
+            }}>Añadir técnico responsable</button></div>
           {people.map((p, index) => <div key={p.id} className="rounded-xl border border-slate-300 p-4 dark:border-slate-600 space-y-3"><h4 className="font-bold">Participante {index + 1}</h4><div className="grid gap-2 sm:grid-cols-2">{([['firstName', 'Nombre'], ['lastName', 'Apellidos'], ['role', 'Cargo / función'], ['entity', 'Entidad'], ['phone', 'Teléfono'], ['email', 'Correo']] as const).map(([key, label]) => <label key={key} className="text-sm font-bold">{label}<input type={key === 'email' ? 'email' : key === 'phone' ? 'tel' : 'text'} className={visitInput} value={p[key]} onChange={e => setPeople(people.map(item => item.id === p.id ? {
                   ...item,
                   [key]: e.target.value
