@@ -292,7 +292,7 @@ export function VisitMinutesPanel({
           result=await visitRequest({action:'send-mail',id:current.id,revision:current.revision,version:current.version,kind:pending.kind,operation:mailOperation.current.id});
           if(result.record){current=result.record;install(current);setRecords(old=>old.map(r=>r.id===current.id?{...r,status:current.status,version:current.version}:r));}
           setJobs(result.jobs);acceptedNow+=result.acceptedNow||0;
-          setMailNotice(`Gmail ha aceptado ${result.summary.accepted} de ${result.summary.total} correos.`);
+          setMailNotice(`Gmail ha aceptado ${result.summary.accepted} de ${result.summary.total} correos. No se ha comprobado su entrega.`);
           if(result.failures.length){setMailError(result.failures[0].message);setGmailRequired(result.failures.some((e:any)=>['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED'].includes(e.code)));}
           batchCount++;
           if(result.hasMore && batchCount>=100) {
@@ -304,8 +304,8 @@ export function VisitMinutesPanel({
         if(!total){setMailNotice('No hay destinatarios con correo. La participación presencial sigue disponible.');return;}
         if(!remaining){
           const text=acceptedNow?`Gmail ha aceptado los correos de ${pending.kind==='review'?'revisión a los asistentes':pending.kind==='signing'?'firma a los asistentes':'actas firmadas'}. ${total} destinatario(s). La entrega no está confirmada.`:`Gmail ya había aceptado estos ${total} correos. No se han vuelto a enviar.`;
-          setMessage(text+' La aceptación no garantiza entrega ni lectura.');setMail(null);mailOperation.current=null;
-        }else setMailNotice(`Se han enviado ${accepted} de ${total} correos. Hay destinatarios pendientes.${uncertain?' Hay resultados inciertos o envíos en curso; comprueba su estado antes de reintentar.':''}`);
+          setMessage(text+(acceptedNow?'':' La aceptación no garantiza entrega ni lectura.'));setMail(null);mailOperation.current=null;
+        }else setMailNotice(`Gmail ha aceptado ${accepted} de ${total} correos. Hay destinatarios pendientes.${uncertain?' Hay resultados inciertos o envíos en curso; comprueba su estado antes de reintentar.':''}`);
       }catch(e:any){
         const auth=['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED'].includes(e.code);
         setGmailRequired(auth);setMailError(auth?'No se ha podido enviar el correo. Es necesario volver a autorizar Gmail.':e.message);
