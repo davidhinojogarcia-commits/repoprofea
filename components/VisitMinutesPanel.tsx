@@ -285,6 +285,7 @@ export function VisitMinutesPanel({
       setMailError('');setMailNotice('');setGmailRequired(false);setMailSending(true);
       try{
         let current=record,acceptedNow=0,result:any;
+        let batchCount=0;
         const key=record.id+':'+record.version+':'+pending.kind;
         if(mailOperation.current?.key!==key)mailOperation.current={key,id:crypto.randomUUID()};
         do{
@@ -293,11 +294,16 @@ export function VisitMinutesPanel({
           setJobs(result.jobs);acceptedNow+=result.acceptedNow||0;
           setMailNotice(`Gmail ha aceptado ${result.summary.accepted} de ${result.summary.total} correos.`);
           if(result.failures.length){setMailError(result.failures[0].message);setGmailRequired(result.failures.some((e:any)=>['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED'].includes(e.code)));}
+          batchCount++;
+          if(result.hasMore && batchCount>=100) {
+            setMailError('El envío se ha detenido tras 100 lotes para evitar ejecuciones repetitivas. Comprueba los destinatarios pendientes antes de continuar.');
+            return;
+          }
         }while(result.hasMore);
         const {accepted,total,pending:remaining,uncertain}=result.summary;
         if(!total){setMailNotice('No hay destinatarios con correo. La participación presencial sigue disponible.');return;}
         if(!remaining){
-          const text=acceptedNow?`Se han enviado correctamente los correos de ${pending.kind==='review'?'revisión a los asistentes':pending.kind==='signing'?'firma a los asistentes':'actas firmadas'}. ${total} destinatario(s).`:`Gmail ya había aceptado estos ${total} correos. No se han vuelto a enviar.`;
+          const text=acceptedNow?`Gmail ha aceptado los correos de ${pending.kind==='review'?'revisión a los asistentes':pending.kind==='signing'?'firma a los asistentes':'actas firmadas'}. ${total} destinatario(s). La entrega no está confirmada.`:`Gmail ya había aceptado estos ${total} correos. No se han vuelto a enviar.`;
           setMessage(text+' La aceptación no garantiza entrega ni lectura.');setMail(null);mailOperation.current=null;
         }else setMailNotice(`Se han enviado ${accepted} de ${total} correos. Hay destinatarios pendientes.${uncertain?' Hay resultados inciertos o envíos en curso; comprueba su estado antes de reintentar.':''}`);
       }catch(e:any){
