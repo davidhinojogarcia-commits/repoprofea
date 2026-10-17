@@ -406,7 +406,13 @@ export function VisitMinutesPanel({
               if (c) addContact(c);
             }}><option value="">Selecciona una persona asociada a esta obra…</option>{contacts.filter(c => c.active && c.assignments.some(a => a.worksiteId === content.worksiteId)).map(c => <option key={c.id} value={c.id}>{personName(c)} · {c.role}</option>)}</select></label>
           <div className="flex flex-wrap gap-2"><button type="button" className={button} onClick={() => setPeople([...people, emptyPerson()])}>Añadir asistente manual</button><button type="button" className={button} onClick={() => {
-              const names = String(supervisor.nombreApellidos || '').trim().split(/\s+/);
+              const name = String(supervisor.nombreApellidos || '').trim();
+              const email = String(supervisor.email || '').trim().toLowerCase();
+              if(people.some(p => email ? p.email.trim().toLowerCase()===email : (p.firstName+' '+p.lastName).trim().toLocaleLowerCase()===name.toLocaleLowerCase())){
+                setMessage('El supervisor ya está incluido entre los participantes.');
+                return;
+              }
+              const names = name.split(/\s+/);
               setPeople([...people, {
                 ...emptyPerson(),
                 firstName: names.shift() || '',
