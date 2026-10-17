@@ -203,10 +203,15 @@ export async function sendVisitMime(ownerId: string, to: string, mail: {
     });
   }
   const sent = await response.json().catch(() => ({}));
-  if (!response.ok || typeof sent.id !== 'string' || !sent.id.trim()) throw Object.assign(fail(response.status === 401 ? 'Renueva la autorización de Gmail en Configuración.' : response.status === 429 ? 'Gmail ha limitado los envíos. Inténtalo más tarde.' : 'Gmail no confirmó el envío. Revisa Enviados.', response.status === 401 ? 401 : 502), {
-    uncertain: response.ok || response.status >= 500,
-    code: response.status === 401 ? 'GMAIL_RECONNECT_REQUIRED' : response.status === 429 ? 'GMAIL_RATE_LIMITED' : 'GMAIL_SEND_FAILED'
-  });
+  if (!response.ok || typeof sent.id !== 'string' || !sent.id.trim()) {
+    const reasons=Array.isArray(sent.error?.errors)?sent.error.errors.map((e:any)=>e.reason):[];
+    const limited=response.status===429||response.status===403&&reasons.some((r:string)=>['dailyLimitExceeded','rateLimitExceeded','userRateLimitExceeded','quotaExceeded'].includes(r));
+    const permission=response.status===403&&reasons.includes('insufficientPermissions');
+    const forbidden=response.status===403&&!limited&&!permission;
+    const code=response.status===401?'GMAIL_RECONNECT_REQUIRED':permission?'GMAIL_SEND_PERMISSION_REQUIRED':limited?'GMAIL_RATE_LIMITED':forbidden?'GMAIL_SEND_FORBIDDEN':'GMAIL_SEND_FAILED';
+    const message=response.status===401||permission?'No se ha podido enviar el correo. Es necesario volver a autorizar Gmail.':limited?'Gmail ha limitado los envíos. Inténtalo más tarde.':forbidden?'La política de la cuenta impide el envío. Consulta al administrador de Gmail.':'Gmail no confirmó el envío. Revisa Enviados.';
+    throw Object.assign(fail(message,response.status===401?401:permission||forbidden?403:502),{uncertain:response.ok||response.status>=500,code});
+  }
   // Email confirmation is authoritative even if the auxiliary timestamp fails.
   if(!connection?.deferTouch)await touchSent(ownerId).catch(() => undefined);
   return {
@@ -339,7 +344,7 @@ async function sendVisitBatch(original:VisitRecord,actor:string,b:any){
  const file=selected.length&&kind==='final'?(await database('visit_minutes_files?'+query({select:'base64,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0]:undefined;
  for(const j of selected){
   try{const result=await deliverVisitJob(r,actor,j,{...connection,deferTouch:true},accesses,file);if(result.delivery==='sent'&&result.messageId)acceptedHere++;}
-  catch(e:any){failures.push({personId:j.person_id,...normalizeMailError(e)});if(['GMAIL_RECONNECT_REQUIRED','GMAIL_RATE_LIMITED','GMAIL_TEMPORARILY_UNAVAILABLE','MAIL_STATUS_UNCONFIRMED'].includes(e.code)||e.uncertain)break;}
+  catch(e:any){failures.push({personId:j.person_id,...normalizeMailError(e)});if(['GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED','GMAIL_SEND_FORBIDDEN','GMAIL_RATE_LIMITED','GMAIL_TEMPORARILY_UNAVAILABLE','MAIL_STATUS_UNCONFIRMED'].includes(e.code)||e.uncertain)break;}
  }
  if(acceptedHere)await touchSent(actor).catch(()=>undefined);
  if(selected.length)jobs=await visitJobs(r);

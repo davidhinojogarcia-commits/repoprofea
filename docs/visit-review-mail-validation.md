@@ -17,6 +17,8 @@ El código sí llamaba a Gmail: `sendFlow → command(review) → get → send-j
 
 - `api/gmail.ts`, `api/gmail-oauth-callback.ts` y el manejador compartido de errores: suprimen el volcado de respuesta Google y objetos de error completos. Los fallos inesperados dejan un único registro acotado `{status, code}` y los errores de autorización conocidos no generan una segunda traza de consola. La revocación no imprime objetos con datos sensibles.
 
+Errores 403 de cuota, permisos y política de dominio se distinguen por el motivo normalizado del proveedor, sin volcar su cuerpo ni reintentar el resto de destinatarios cuando falla toda la cuenta. Referencia técnica: https://developers.google.com/workspace/gmail/api/guides/handle-errors .
+
 ## C. Gmail real: pendiente de autorización
 
 **No se ha enviado ningún correo real en este trabajo.** La lectura agregada de producción no valida ahora la vigencia de los tokens ni sustituye la prueba real. Se requiere autorización expresa de la cuenta remitente y del destinatario de pruebas, y un entorno de prueba autorizado que no altere producción. La prueba debe usar el flujo de la app; enviar mediante otro conector no acreditaría este recorrido.
@@ -71,9 +73,9 @@ node scripts/measureVisitMail.mjs after
 
 ## F–G. Pruebas y regresiones
 
-Superadas localmente: TypeScript; tests de actas dominio/PDF/integración; órdenes/competencias/seguimiento; nueva integración de correo con cuatro destinatarios, privacidad, OAuth revocado y renovación/red, destinatario inválido, cuota, fallo parcial y reintento selectivo, doble petición concurrente, aceptación con pérdida de respuesta o persistencia, reconciliación y aislamiento entre supervisores. Gmail es simulado; el handler y PostgreSQL/PDF son reales.
+Superadas localmente: TypeScript; tests de actas dominio/PDF/integración; órdenes/competencias/seguimiento; nueva integración de correo con cuatro destinatarios, privacidad, OAuth revocado y renovación/red, destinatario inválido, cuota 429 y 403 (dailyLimitExceeded), permisos insuficientes 403 y política de dominio diferenciados, fallo parcial y reintento selectivo, doble petición concurrente, aceptación con pérdida de respuesta o persistencia, reconciliación y aislamiento entre supervisores. Gmail es simulado; el handler y PostgreSQL/PDF son reales.
 
-Chromium local superado: modal permanece abierto con OAuth inválido, error y botón de reautorización dentro del diálogo, recuperación con doble pulsación sin duplicar, revisión/OTP/firma/final/PDF y portal; resoluciones móvil/tablet/escritorio y claro/oscuro. El navegador utiliza usuarios sintéticos. CI ejecuta también este recorrido con WebKit y las regresiones completas del repositorio: firmas independientes de encargado, contratos/prórrogas, inicios/presencia, EPIs/formación/maquinaria, control horario, originales, permisos, Gmail de otros módulos, modales y persistencia. Consultar el resultado definitivo de CI en el PR, sin confundir pruebas configuradas con superadas.
+Chromium local superado: modal permanece abierto con OAuth inválido, error y botón de reautorización dentro del diálogo, llamada al inicio OAuth existente con cuenta remitente y retorno controlados, estado de firma no habilitada antes de completar revisión, recuperación con doble pulsación sin duplicar, revisión/OTP/firma/final/PDF y portal; resoluciones móvil/tablet/escritorio y claro/oscuro. El navegador utiliza usuarios sintéticos. CI ejecuta también este recorrido con WebKit y las regresiones completas del repositorio: firmas independientes de encargado, contratos/prórrogas, inicios/presencia, EPIs/formación/maquinaria, control horario, originales, permisos, Gmail de otros módulos, modales y persistencia. Consultar el resultado definitivo de CI en el PR, sin confundir pruebas configuradas con superadas.
 
 Pendientes: envío y recepción real autorizados, cuentas reales en entorno de pruebas, dispositivos Android/iPhone/iPad físicos y Safari/PWA nativo. No se ha publicado esta corrección ni modificado datos/configuración de producción.
 

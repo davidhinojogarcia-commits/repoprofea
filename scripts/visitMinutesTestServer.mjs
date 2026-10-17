@@ -68,6 +68,7 @@ export async function visitTestServer({sourceRef}={}){
      const body=Buffer.from(encoded.replace(/\s/g,''),'base64').toString('utf8');
      const mode=googleQueue.shift()||googleMode;
      if(mode==='network')throw Error('network');if(mode==='unauthorized')return new Response('{}',{status:401});if(mode==='quota')return new Response('{}',{status:429});if(mode==='no-id')return new Response('{}',{status:200});
+     if(['permission403','quota403','domain403'].includes(mode))return new Response(JSON.stringify({error:{errors:[{reason:mode==='permission403'?'insufficientPermissions':mode==='quota403'?'dailyLimitExceeded':'domainPolicy'}]}}),{status:403});
      if(mode==='temporary')return new Response('{}',{status:503});if(mode==='invalid-address')return new Response('{}',{status:400});
      sent.push({raw,body,id:'gmail-'+(sent.length+1)});if(mode==='accepted-network')throw Error('accepted but response lost');return new Response(JSON.stringify({id:sent.at(-1).id}),{status:200});
    }
