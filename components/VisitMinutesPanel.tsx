@@ -87,6 +87,13 @@ export function VisitMinutesPanel({
     [onsiteAck, setOnsiteAck] = useState(false),
     [responseComment, setResponseComment] = useState(''),
     [link, setLink] = useState('');
+  const onsiteRef=useRef<HTMLElement>(null);
+  useEffect(()=>{
+    if(!onsite)return;
+    // Bring the signing/review area into view on narrow mobile screens.
+    const frame=requestAnimationFrame(()=>onsiteRef.current?.scrollIntoView({block:'start',behavior:'smooth'}));
+    return ()=>cancelAnimationFrame(frame);
+  },[onsite?.personId,onsite?.kind]);
   const editorRef=useRef<HTMLElement>(null);
   const [editFocus,setEditFocus]=useState(0);
   useEffect(()=>{if(editFocus){editorRef.current?.focus({preventScroll:true});editorRef.current?.scrollIntoView({block:'start',behavior:'smooth'});}},[editFocus]);
@@ -538,7 +545,7 @@ export function VisitMinutesPanel({
         {link && <label className="block text-sm font-bold">Enlace personal: entrégalo solo a su destinatario<input className={visitInput} readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>}
         {onsite && (() => {
           const p = record.state.participants.find(p => p.id === onsite.personId)!;
-          return <section className="rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={(image,intent,note) => void run(() => mutate({
+          return <section ref={onsiteRef} aria-label="Revisión y firma presencial" className="scroll-mt-20 rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={(image,intent,note) => void run(() => mutate({
               type: 'sign',
             intent, note,
               personId: p.id,
