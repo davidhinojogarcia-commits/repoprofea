@@ -149,7 +149,7 @@ export function VisitMinutesPanel({
         const exact=w.works.filter((work:any)=>work.id===initialWorksite||work.nombre===initialWorksite);
         setWorkFilter(exact.length===1?exact[0].id:'');setLoaded(true);
       } catch(e) {
-        if(saved?.configuration){setWorks(saved.configuration.works);setContacts(saved.configuration.contacts);setSupervisor(saved.configuration.supervisor);setLoaded(true);setSyncState('Sin conexión. Configuración del dispositivo; los permisos se comprobarán al sincronizar.');}
+        if(saved?.configuration){setWorks(saved.configuration.works);setContacts(saved.configuration.contacts);setSupervisor(saved.configuration.supervisor);setTechnician(saved.configuration.technician||{});setLoaded(true);setSyncState('Sin conexión. Configuración del dispositivo; los permisos se comprobarán al sincronizar.');}
         else throw e;
       }
       draftReady.current=true;
@@ -197,7 +197,7 @@ export function VisitMinutesPanel({
   },[draftUser,works,contacts,supervisor,technician]);
   useEffect(()=>{
     if(!dirty||!draftUser||!draftReady.current||recovery)return;
-    const timer=window.setTimeout(()=>{void storeVisitDraft(draftUser,{...latestDraft.current,id:record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor}}).then(()=>setSyncState(navigator.onLine?'Pendiente de sincronización · copia protegida en este dispositivo':'Sin conexión · copia protegida en este dispositivo')).catch(e=>setSyncState(e.message));},350);
+    const timer=window.setTimeout(()=>{void storeVisitDraft(draftUser,{...latestDraft.current,id:record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor,technician}}).then(()=>setSyncState(navigator.onLine?'Pendiente de sincronización · copia protegida en este dispositivo':'Sin conexión · copia protegida en este dispositivo')).catch(e=>setSyncState(e.message));},350);
     return()=>window.clearTimeout(timer);
   },[content,people,dirty,draftUser,recovery,record,works,contacts,supervisor]);
   useEffect(()=>{
@@ -490,7 +490,7 @@ export function VisitMinutesPanel({
         <VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed}/>
         <details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer font-bold">Más datos de la visita (opcional)</summary><div className="grid gap-3 sm:grid-cols-2">{([['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre y apellidos','text'],['authorRole','Cargo del autor','text'],['authorEmail','Correo del autor','email'],['authorPhone','Teléfono del autor','tel'],['nextVisit','Próxima visita (opcional)','date']] as const).map(([key,label,type])=><label key={key} className="text-sm font-bold">{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div></details>
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
-        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
+        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={()=>setPeople(current=>[...current,{...emptyPerson(),role:'Encargado',attended:true,modality:'in-person',signing:'required'}])} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
         <div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewDraft()}>Enviar borrador para revisión</button></div>
       </fieldset> : record && <VisitMinutesReadView state={record.state} number={record.number} />}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { visitRequest } from "../src/services/visitMinutesService";
+import { appPrompt, appConfirm } from "../src/lib/appDialog";
 import {
   personName,
   type VisitContent,
@@ -357,6 +358,14 @@ export function VisitWorkOrdersEditor({
                 }
               />{" "}
               {o.origin_number} · Orden {o.number} · {o.definition.description}
+              <button type="button" className={btn+" ml-2 border-red-300 text-red-800"} disabled={busy} onClick={(e)=>{e.preventDefault();void run(async()=>{
+                const reason=await appPrompt("Indica el motivo para retirar esta orden pendiente. Se conservará su historial original.",{title:"Anular orden pendiente"});
+                if(!reason?.trim())return;
+                if(!await appConfirm("¿Anular esta orden? Dejará de aparecer como pendiente, pero seguirá registrada en el historial."))return;
+                await visitRequest({action:"orders-transition",worksiteId:content.worksiteId,orderId:o.id,revision:o.revision,status:"cancelled",note:reason.trim(),evidence:[],replacementId:null,operation:crypto.randomUUID()});
+                setPending(current=>current.filter(item=>item.id!==o.id));
+                onChange({...content,orderReferences:(content.orderReferences||[]).filter(ref=>ref.id!==o.id)});
+              });}}>Anular orden pendiente</button>
             </label>
           ))}
         {more && (
