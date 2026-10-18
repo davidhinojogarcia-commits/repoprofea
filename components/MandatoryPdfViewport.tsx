@@ -5,6 +5,7 @@ import {clampPdfBox,pdfBoxToViewport,resizePdfBox,viewportToPdf,type PdfBox,type
 type Props={
   pdf:any; pages:MandatoryPdfPageMeta[]; anchors:MandatoryWorkerAnchor[]; activeIndex:number;
   disabled:boolean; pageRequest:{page:number;sequence:number;focusSignature?:boolean};
+  readOnly?:boolean;
   onPageChange:(page:number)=>void; onSelect:(index:number)=>void;
   onChange:(index:number,box:PdfBox,page:number)=>void;
 };
@@ -230,11 +231,11 @@ export default function MandatoryPdfViewport(props:Props){
         <button type="button" aria-pressed={fit==='width'} onClick={()=>fitTo('width')}>Ajustar al ancho</button>
         <button type="button" aria-pressed={fit==='page'} onClick={()=>fitTo('page')}>Ajustar página</button>
       </div>
-      <div className="mandatory-pdf-modes" aria-label="Interacción con el PDF">
+      {!props.readOnly&&<div className="mandatory-pdf-modes" aria-label="Interacción con el PDF">
         <button type="button" aria-pressed={mode==='navigate'} onClick={()=>setMode('navigate')}>Navegar por documento</button>
         <button type="button" aria-pressed={mode==='edit'} onClick={()=>setMode('edit')}>Mover firma</button>
-      </div>
-      <p className="mandatory-pdf-mode-hint">{mode==='navigate'?'Desliza o arrastra para recorrer todas las páginas. Las firmas permanecen fijas.':'Arrastra el cuadro para moverlo, sus esquinas para dimensionarlo o toca el PDF para colocarlo.'}</p>
+      </div>}
+      <p className="mandatory-pdf-mode-hint">{props.readOnly?'Desliza para recorrer el documento. Puedes ampliar y ajustar las páginas.':mode==='navigate'?'Desliza o arrastra para recorrer todas las páginas. Las firmas permanecen fijas.':'Arrastra el cuadro para moverlo, sus esquinas para dimensionarlo o toca el PDF para colocarlo.'}</p>
     </div>}
     <div ref={scroll} className="mandatory-editor-pdf-scroll mandatory-continuous-scroll" tabIndex={0} aria-label="Documento PDF con desplazamiento continuo">
       <div className="mandatory-pdf-stack">{pages.map(meta=><PdfPage key={meta.page} {...props} meta={meta} scale={scale} mode={mode} scroll={scroll}/>)}</div>

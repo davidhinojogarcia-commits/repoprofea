@@ -2,11 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SIGNATURE_INK } from '../src/lib/signatureInk';
 export function VisitSignaturePad({
   name,
+  allowAgreement = true,
   busy,
   onConfirm,
   onCancel
 }: {
+  key?: string;
   name: string;
+  allowAgreement?: boolean;
   busy: boolean;
   onConfirm: (image: string, intent?: 'agreement'|'reservations'|'knowledge', note?: string) => void;
   onCancel: () => void;
@@ -18,7 +21,7 @@ export function VisitSignaturePad({
       y: number;
     } | null>(null);
   const [hasInk, setHasInk] = useState(false),
-    [intent,setIntent]=useState<'agreement'|'reservations'|'knowledge'>('agreement'),
+    [intent,setIntent]=useState<'agreement'|'reservations'|'knowledge'>(allowAgreement?'agreement':'knowledge'),
     [note,setNote]=useState(''),
     [ack, setAck] = useState(false),
     [error, setError] = useState('');
@@ -130,7 +133,7 @@ export function VisitSignaturePad({
     }} />
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} />Soy {name}; he leído esta versión y confirmo que el trazo es mi firma.</label>
     {error && <p role="alert" className="text-red-700">{error}</p>}
-    <label className="block font-bold">Alcance de la firma<select className="block w-full rounded-xl border p-3" value={intent} onChange={e=>setIntent(e.target.value as typeof intent)}><option value="agreement">Conformidad con el contenido del acta</option><option value="reservations">Firma con reservas</option><option value="knowledge">Simple conocimiento</option></select></label><label className="block">Reservas o aclaraciones<textarea className="block w-full rounded-xl border p-3" value={note} maxLength={5000} onChange={e=>setNote(e.target.value)}/></label><p className="text-sm">Esta firma no verifica la ejecución de las órdenes.</p>
+    <label className="block font-bold">Alcance de la firma<select aria-label="Alcance de la firma" className="block w-full rounded-xl border p-3" value={intent} onChange={e=>setIntent(e.target.value as typeof intent)}>{allowAgreement&&<option value="agreement">Conformidad con el contenido del acta</option>}<option value="reservations">Firma con reservas</option><option value="knowledge">Simple conocimiento</option></select></label><label className="block">Reservas o aclaraciones<textarea className="block w-full rounded-xl border p-3" value={note} maxLength={5000} onChange={e=>setNote(e.target.value)}/></label><p className="text-sm">Esta firma no verifica la ejecución de las órdenes.</p>
     <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={clear} className="rounded-xl border px-4 py-3 font-bold">Borrar / repetir</button><button type="button" disabled={busy || !hasInk || !ack} onClick={confirm} className="rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar firma</button><button type="button" disabled={busy} onClick={onCancel} className="rounded-xl border px-4 py-3">Cancelar</button></div>
   </div>;
 }

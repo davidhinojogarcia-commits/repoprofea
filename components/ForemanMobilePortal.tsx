@@ -2,6 +2,8 @@ import { getAttendanceForemanEvidence, signAttendanceAsForeman } from '../src/se
 import { effectiveForemanTemplate, enabledForemanTemplate } from '../src/lib/foremanSignaturePolicy';
 import { SIGNATURE_INK } from '../src/lib/signatureInk';
 import { repeatForemanSignature, type ForemanSignatureTemplate } from '../src/lib/foremanSignatureTemplate';
+import { reportOperationalError } from '../src/lib/operationalLog';
+import { useHandwrittenSignature } from '../src/hooks/useHandwrittenSignature';
 import { activateForemanPush, restoreForemanPush, disableForemanPush, foremanPushHelp } from '../src/services/foremanPushService';
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
@@ -69,74 +71,30 @@ const isIosDevice = () => {
 const isAndroidDevice = () => /android/i.test(navigator.userAgent);
 
 
-const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void; onCancel: () => void }> = ({ title, onSave, onCancel }) => {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const last = useRef<{x:number;y:number}|null>(null);
-  useEffect(() => {
-    const canvas=ref.current; if(!canvas) return;
-    const rect=canvas.getBoundingClientRect(); const ratio=Math.min(1.5,Math.max(1,window.devicePixelRatio||1));
-    canvas.width=Math.floor(rect.width*ratio); canvas.height=Math.floor(rect.height*ratio);
-    const ctx=canvas.getContext('2d',{alpha:true}); if(!ctx) return;
-    ctx.setTransform(ratio,0,0,ratio,0,0); ctx.clearRect(0,0,rect.width,rect.height);
-    ctx.strokeStyle=SIGNATURE_INK; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round';
-  },[]);
-  const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
-  const exportSignature = () => {
-    const canvas=ref.current;
-    const ctx=canvas?.getContext('2d');
-    if(!canvas||!ctx)return;
-    const image=ctx.getImageData(0,0,canvas.width,canvas.height);
-    let minX=canvas.width,minY=canvas.height,maxX=-1,maxY=-1;
-    for(let y=0;y<canvas.height;y+=2){
-      for(let x=0;x<canvas.width;x+=2){
-        const i=(y*canvas.width+x)*4;
-        if(image.data[i+3]>20){
-          minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
-        }
-      }
-    }
-    if(maxX<0||maxY<0){
-      void appAlert('Realiza la firma antes de guardarla.', { title:'Firma pendiente', kind:'warning' });
-      return;
-    }
-    const pad=14;
-    minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);
-    maxX=Math.min(canvas.width-1,maxX+pad);maxY=Math.min(canvas.height-1,maxY+pad);
-    const sourceW=Math.max(1,maxX-minX+1),sourceH=Math.max(1,maxY-minY+1);
-    const maxW=720,maxH=260,scale=Math.min(1,maxW/sourceW,maxH/sourceH);
-    const out=document.createElement('canvas');
-    out.width=Math.max(1,Math.round(sourceW*scale));
-    out.height=Math.max(1,Math.round(sourceH*scale));
-    const outCtx=out.getContext('2d',{alpha:true});
-    if(!outCtx)return;
-    outCtx.clearRect(0,0,out.width,out.height);
-    outCtx.drawImage(canvas,minX,minY,sourceW,sourceH,0,0,out.width,out.height);
-
-    // Garantía adicional: la firma se exporta sin fondo. La superficie blanca
-    // del recuadro es solo visual y cualquier píxel claro residual se hace transparente.
-    const exported=outCtx.getImageData(0,0,out.width,out.height);
-    for(let i=0;i<exported.data.length;i+=4){
-      const r=exported.data[i],g=exported.data[i+1],b=exported.data[i+2],a=exported.data[i+3];
-      if(a>0&&r>=245&&g>=245&&b>=245)exported.data[i+3]=0;
-    }
-    outCtx.putImageData(exported,0,0);
-    onSave(out.toDataURL('image/png'));
+export const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void | Promise<void>; onCancel: () => void }> = ({ title, onSave, onCancel }) => {
+  const savingRef = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const { ref, handlers, clear, exportPng, error } = useHandwrittenSignature({ disabled: busy });
+  const exportSignature = async () => {
+    if (savingRef.current) return;
+    const image = exportPng(true);
+    if (!image) { setSaveError('Realiza la firma antes de guardarla.'); return; }
+    savingRef.current = true; setBusy(true); setSaveError('');
+    try { await onSave(image); }
+    catch (error:any) { setSaveError(error?.message || 'No se pudo guardar. Tu firma se conserva para reintentar.'); }
+    finally { savingRef.current = false; setBusy(false); }
   };
   return <ModalPortal label={title}><div className="fixed inset-0 bg-slate-950/70 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{paddingTop:'env(safe-area-inset-top)'}}>
     <div className="w-full max-w-lg rounded-t-3xl bg-white p-4 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-50 sm:rounded-3xl sm:p-6" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))'}}>
       <h3 className="text-lg font-black text-slate-900 dark:text-slate-50">{title}</h3>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Firma con el dedo dentro del recuadro.</p>
-      <canvas ref={ref} className="mt-4 w-full h-[240px] sm:h-[280px] touch-none rounded-2xl border-2 border-slate-300 bg-white"
-        onPointerDown={e=>{e.preventDefault();drawing.current=true;last.current=point(e);e.currentTarget.setPointerCapture?.(e.pointerId)}}
-        onPointerMove={e=>{if(!drawing.current||!last.current)return;e.preventDefault();const ctx=e.currentTarget.getContext('2d');if(!ctx)return;const n=point(e);ctx.beginPath();ctx.moveTo(last.current.x,last.current.y);ctx.lineTo(n.x,n.y);ctx.stroke();last.current=n}}
-        onPointerUp={e=>{drawing.current=false;last.current=null;e.currentTarget.releasePointerCapture?.(e.pointerId)}}
-        onPointerCancel={()=>{drawing.current=false;last.current=null}}
-        onLostPointerCapture={()=>{drawing.current=false;last.current=null}}/>
+      <canvas ref={ref} aria-label={title} className="mt-4 w-full h-[240px] sm:h-[280px] touch-none rounded-2xl border-2 border-slate-300 bg-white" {...handlers}/>
+      {(error||saveError)&&<p role="alert" className="mt-2 text-sm font-bold text-red-700 dark:text-red-300">{error||saveError}</p>}
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <button onClick={()=>{const c=ref.current,ctx=c?.getContext('2d');if(c&&ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);ctx.restore();}}} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
-        <button onClick={onCancel} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50">Cancelar</button>
-        <button onClick={exportSignature} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white">Guardar</button>
+        <button disabled={busy} onClick={()=>{clear();setSaveError('');}} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50 disabled:opacity-50"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
+        <button disabled={busy} onClick={onCancel} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50 disabled:opacity-50">Cancelar</button>
+        <button disabled={busy} onClick={()=>void exportSignature()} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white disabled:opacity-50">{busy?'Guardando…':'Guardar'}</button>
       </div>
     </div>
   </div></ModalPortal>;
@@ -151,6 +109,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
   useEffect(()=>{
     let cancelled=false;
     let pdf:any=null;
+    let loadingTask:any=null;
     (async()=>{
       try{
         setRendering(true);
@@ -158,7 +117,8 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
         const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
         const workerModule=await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
         if(!pdfjs.GlobalWorkerOptions.workerSrc)pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
-        pdf=await pdfjs.getDocument({data:bytes.slice(),useSystemFonts:true}).promise;
+        loadingTask=pdfjs.getDocument({data:bytes.slice(),useSystemFonts:true});
+        pdf=await loadingTask.promise;
         const host=hostRef.current;
         if(!host||cancelled)return;
         host.innerHTML='';
@@ -192,7 +152,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
         if(!cancelled)setRendering(false);
       }
     })();
-    return()=>{cancelled=true;try{pdf?.destroy?.();}catch{}};
+    return()=>{cancelled=true;void Promise.resolve(loadingTask?.destroy?.()).catch(()=>undefined);};
   },[bytes,zoom]);
 
   return <ModalPortal label={title} layout="fullscreen"><div className="foreman-pdf-viewer">
@@ -218,7 +178,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
   </div></ModalPortal>;
 };
 
-export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
+const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -440,7 +400,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         ? {entrySignature:image,entryTime:r.entryTime||data?.defaultWorkStartHour||nowTime()}
         : {exitSignature:image,exitTime:r.exitTime||data?.defaultWorkEndHour||nowTime()})
     }:r);
-    setSigning(null);
     setSaving(true);
     try{
       await signForemanAttendance(token,date,next,currentSigning.workerId,currentSigning.kind,image);
@@ -452,10 +411,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       const savedRow=savedDay?.rows?.find(row=>Number(row.workerId)===Number(currentSigning.workerId));
       const signatureKey=currentSigning.kind==='entry'?'entrySignature':'exitSignature';
 
-      if(!savedRow || !(savedRow as any)[signatureKey]){
+      if(!savedRow || (savedRow as any)[signatureKey] !== image){
         throw new Error('La firma no ha quedado guardada en la jornada. Vuelve a intentarlo.');
       }
 
+      setSigning(null);
       setData(verified);
       setRows(savedDay?.rows?.map(row=>({
         ...row,
@@ -465,6 +425,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
       setError('');
     }catch(e:any){
       setError(e?.message||'No se pudo guardar la firma.');
+      throw e;
     }finally{
       setSaving(false);
     }
@@ -824,30 +785,45 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     return next;
   });
 
-  const loadMandatorySignatureImages=useCallback(async(documentId:string)=>{
-    try{
-      const real=await getForemanMandatorySignatures(token,documentId);
-      const images:Record<string,string>={};
-      Object.entries(real||{}).forEach(([workerId,raw])=>{
-        const value=typeof raw==='string'?raw:raw?.signature;
-        if(typeof value==='string'&&value.startsWith('data:image/'))images[String(workerId)]=value;
-      });
-      setMandatorySignatureImages(current=>({...current,[documentId]:images}));
-    }catch(error){
-      console.warn('No se pudieron cargar las miniaturas de firmas.',error);
-    }
+  const signatureLoadsRef=useRef(new Map<string,Promise<void>>());
+  const activePortalTokenRef=useRef(token);
+  activePortalTokenRef.current=token;
+  const loadMandatorySignatureImages=useCallback((documentId:string):Promise<void>=>{
+    const key=JSON.stringify([token,documentId]);
+    const existing=signatureLoadsRef.current.get(key);
+    if(existing)return existing;
+    const task=(async()=>{
+      try{
+        const real=await getForemanMandatorySignatures(token,documentId);
+        if(activePortalTokenRef.current!==token)return;
+        const images:Record<string,string>={};
+        Object.entries(real||{}).forEach(([workerId,raw])=>{
+          const value=typeof raw==='string'?raw:raw?.signature;
+          if(typeof value==='string'&&value.startsWith('data:image/'))images[String(workerId)]=value;
+        });
+        setMandatorySignatureImages(current=>({...current,[documentId]:images}));
+      }catch(error){
+        if(activePortalTokenRef.current!==token)return;
+        reportOperationalError('[foreman-signatures] No se pudieron cargar las miniaturas', error, 'warn');
+        setOperationFeedback('No se pudieron cargar las firmas guardadas. Vuelve a abrir el documento para reintentar.');
+      }finally{signatureLoadsRef.current.delete(key);}
+    })();
+    signatureLoadsRef.current.set(key,task);
+    return task;
   },[token]);
 
-  const toggleMandatoryDocument=(id:string)=>setExpandedMandatoryDocuments(current=>{
-    const next=new Set(current);
-    if(next.has(id)){
-      next.delete(id);
-    }else{
-      next.add(id);
-      if(!mandatorySignatureImages[id])void loadMandatorySignatureImages(id);
-    }
-    return next;
-  });
+  const toggleMandatoryDocument=(id:string)=>{
+    const doc=data?.mandatoryDocuments.find(item=>item.id===id);
+    // Signature metadata is already authorized by resolveForemanPortal. An
+    // unsigned document has no image to download. No network effects in updaters.
+    if(!expandedMandatoryDocuments.has(id)&&!mandatorySignatureImages[id]&&
+      doc&&Object.values(doc.signatures||{}).some(Boolean))void loadMandatorySignatureImages(id);
+    setExpandedMandatoryDocuments(current=>{
+      const next=new Set(current);
+      if(next.has(id))next.delete(id);else next.add(id);
+      return next;
+    });
+  };
 
   const assignedByWorksiteAndPeriod=useMemo(()=>{
     const byWorksite=new Map<string,Map<string,ForemanMandatoryDocument[]>>();
@@ -1265,7 +1241,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}
       >
         <div className="flex w-max min-w-full gap-2">
-          <button onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control inicios</span></button>
+          <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
           <button onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
           <button onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
           <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
@@ -1334,7 +1310,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='mandatory'&&<section className="space-y-3">
         <div className="rounded-2xl bg-white border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-black">Control inicios</h2><button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"><RefreshCw className="w-4 h-4"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-black">Control, inicios y contratos</h2><button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"><RefreshCw className="w-4 h-4"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}</button></div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen Inicio, Control de presencia, Contratos y Prórrogas enviados por el supervisor. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
         {documentsUpdatedAt&&<p role="status" className="px-1 text-xs text-slate-600 dark:text-slate-300">Última consulta: {documentsUpdatedAt} · {allAssignedMandatoryDocuments.length} documento(s) enviados a esta obra.</p>}
@@ -1539,11 +1515,11 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     </main>
     {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>} 
     {attendanceSigning&&<SignaturePad title="Firma del encargado · Control horario" onCancel={()=>setAttendanceSigning(false)} onSave={async image=>{
-      setAttendanceSigning(false);setSaving(true);
-      try{await saveForemanAttendance(token,date,controlRows,'draft');await signAttendanceAsForeman(token,date,image);const evidence=await getAttendanceForemanEvidence(token,date);if(!evidence.signed)throw new Error('No se pudo verificar la firma.');setAttendanceEvidence({...evidence,workDate:date});setError('');}
-      catch(e:any){setError(e.message);}finally{setSaving(false);}
+      setSaving(true);
+      try{await saveForemanAttendance(token,date,controlRows,'draft');await signAttendanceAsForeman(token,date,image);const evidence=await getAttendanceForemanEvidence(token,date);if(!evidence.signed)throw new Error('No se pudo verificar la firma.');setAttendanceEvidence({...evidence,workDate:date});setError('');setAttendanceSigning(false);}
+      catch(e:any){setError(e.message);throw e;}finally{setSaving(false);}
     }}/>}
-    {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>void applySignature(img)} onCancel={()=>setSigning(null)}/>}
+    {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
     {foremanDocumentSigning&&<SignaturePad title="Firma del encargado (todas las páginas)" onSave={async img=>{
       const documentId=foremanDocumentSigning;
@@ -1560,7 +1536,6 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
     }} onCancel={()=>setForemanDocumentSigning(null)}/>}
     {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{
       const current=mandatorySigning;
-      setMandatorySigning(null);
       setSaving(true);
       try{
         const currentDoc=(data?.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
@@ -1574,12 +1549,15 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
           resolveForemanPortal(token),
           getForemanMandatorySignatures(token,current.documentId),
         ]);
+        if(!verified.valid)throw new Error('No se pudo verificar el acceso al documento firmado.');
         const verifiedDoc=(verified.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
+        if(!verifiedDoc)throw new Error('El documento ya no está disponible en esta obra.');
         const storedSignature=realSignatures?.[String(current.workerId)];
         const storedImage=typeof storedSignature==='string'?storedSignature:storedSignature?.signature;
-        if(typeof storedImage!=='string'||!storedImage.startsWith('data:image/')){
+        if(typeof storedImage!=='string'||storedImage!==img){
           throw new Error('La firma no ha quedado guardada correctamente. Vuelve a intentarlo.');
         }
+        setMandatorySigning(null);
         setMandatorySignatureImages(previous=>({
           ...previous,
           [current.documentId]:{
@@ -1607,7 +1585,7 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
         const message=e?.message||'No se pudo guardar la firma.';
         setError(message);
         setOperationFeedback(message);
-        await appAlert(message,{title:'No se pudo guardar la firma',kind:'error'});
+        throw new Error(message);
       }finally{
         setSaving(false);
       }
@@ -1617,3 +1595,5 @@ export const ForemanMobilePortal: React.FC<{ token: string }> = ({ token }) => {
 
 
 
+// A portal token defines the full security scope of this screen and its local images.
+export const ForemanMobilePortal: React.FC<{ token: string }> = ({token}) => <ForemanMobilePortalContent key={token} token={token}/>;

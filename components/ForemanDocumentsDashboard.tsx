@@ -3,6 +3,7 @@ import { allowsForemanSignature } from '../src/lib/foremanSignaturePolicy';
 import { saveAttendanceForemanTemplate, getSupervisorForemanEvidence } from '../src/services/foremanPortalService';
 import { dispatchForemanDocumentPush, foremanPushReceiptMessage } from '../src/services/foremanPushService';
 import { foremanDocumentPeriod, documentFortnightLabel, type DocumentFortnight } from '../src/lib/foremanDocumentPeriod';
+import { signedAttendanceRows } from '../src/lib/signedAttendance';
 import { hasOverlappingMandatorySignatures } from '../src/lib/mandatorySignatureGeometry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appAlert, appConfirm, appPrompt } from '../src/lib/appDialog';
@@ -276,7 +277,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   );
 
   const allCards=useMemo(()=>{
-    const dayCards=attendance.map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
+    const dayCards=attendance.filter(item=>signedAttendanceRows(item.rows).length>0).map(item=>({kind:'attendance' as const,id:item.id,obra:item.obra,date:item.work_date,title:'Registro diario de jornada',subtitle:item.foreman_name,status:item.status,item}));
     const mandatoryCards=visibleMandatory.map(item=>({kind:'mandatory' as const,id:item.id,obra:item.obra,date:item.work_date,title:mandatoryDocumentLabel(item.document_type),subtitle:item.category||'',status:item.status,item}));
     const docCards=documents.map(item=>({kind:'document' as const,id:item.id,obra:item.obra,date:item.work_date,title:ADDITIONAL_WORKSITE_DOCUMENTS[item.document_type as AdditionalWorksiteDocumentType]?.short||item.document_type,subtitle:item.worker_snapshot?.apellidosNombre||item.completed_by,status:item.status,item}));
     return [...dayCards,...mandatoryCards,...docCards]
@@ -729,7 +730,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       const receipt = await assignMandatoryDocumentV2(item.id);
       setMandatory(items=>items.map(doc=>doc.id===item.id?{...doc,lifecycle_status:receipt.lifecycleStatus,assigned_at:receipt.assignedAt,details:{...doc.details,lifecycleStatus:receipt.lifecycleStatus}}:doc));
       const accessMessage=receipt.activePortal===true
-        ? 'Abre Control inicios en el portal de esta obra y pulsa Actualizar documentos. Si hay filtros activos, pulsa Todos.'
+        ? 'Abre Control, inicios y contratos en el portal de esta obra y pulsa Actualizar documentos. Si hay filtros activos, pulsa Todos.'
         : receipt.activePortal===false
           ? 'Esta obra no tiene un acceso activo de encargado. Genera o activa su acceso antes de abrir el portal.'
           : 'No se pudo comprobar el acceso del encargado. Revisa que el acceso esté activo y corresponda a esta obra.';

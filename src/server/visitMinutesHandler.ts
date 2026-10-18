@@ -2,8 +2,10 @@ import { isOrderAction, handleVisitOrders, resolveOrderReferences, assertVisitOr
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { SUPABASE_URL, SERVICE_KEY, PUBLIC_KEY, authenticateRequest, encryptToken, decryptToken, getConnection, refreshGoogleAccessToken, requireServerConfig, touchSent } from './gmailOAuth.js';
-import { applyVisitCommand, cleanContact, newVisit, uuidValid, visitMail, type VisitCommand, type VisitRecord, type VisitState } from '../lib/visitMinutes.js';
+import { applyVisitCommand, visitNeedsMail, cleanContact, newVisit, uuidValid, visitMail, type VisitCommand, type VisitRecord, type VisitState } from '../lib/visitMinutes.js';
 import { generateVisitMinutesPdf } from '../lib/visitMinutesPdf.js';
+import {visitAssetRows,hydrateVisitAssets,cachedVisitDraft,visitDraftDescriptor,visitTotalLimit} from './visitAssets.js';
+import {putVisitObject,storedVisitBytes,visitFileDescriptor} from './visitFileStorage.js';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), {
   status
 });
@@ -60,7 +62,9 @@ async function validateSignature(image:unknown) {
 }
 async function validateAttachments(state: VisitState) {
   for (const a of state.content.attachments) {
+    if(a.fileId)continue; // Validated against immutable owner/worksite asset metadata.
     const bytes = Buffer.from(a.base64, 'base64');
+    if(bytes.byteLength>1_500_000)throw fail('Cada anexo debe ocupar como máximo 1,5 MB.');
     try {
       if (a.mime === 'application/pdf') {
         const pdf = await PDFDocument.load(bytes);
@@ -78,7 +82,7 @@ async function validateAttachments(state: VisitState) {
 }
 function verifiedStoredPdf(file: any, state: VisitState) {
   if (!file && state.finalSha256) throw fail('Falta el archivo final conservado. No se regenerará un documento firmado.', 409);
-  if (file && (digest(Buffer.from(file.base64, 'base64')) !== file.sha256 || state.finalSha256 && state.finalSha256 !== file.sha256)) throw fail('La integridad del archivo final no coincide. No se ha descargado ni enviado.', 409);
+  if (file && ((!file.storage_path&&digest(Buffer.from(file.base64, 'base64')) !== file.sha256) || state.finalSha256 && state.finalSha256 !== file.sha256)) throw fail('La integridad del archivo final no coincide. No se ha descargado ni enviado.', 409);
 }
 async function activeUser(req: any) {
   const user = await authenticateRequest(req);
@@ -123,7 +127,7 @@ async function accessRecord(token: string, session?: string) {
   const owner = record && await database('rpc/visit_minutes_owner_can_write',{p_owner:record.owner_id,p_work:record.obra_id});
   if (!owner || !record || record.version !== access.version || record.status === 'cancelled') throw fail('Esta versión ya no está disponible. Solicita un nuevo acceso al supervisor.', 403);
   const person = record.state.participants.find((p: any) => p.id === access.person_id);
-  if (!person?.email || !person.reviewRequired) throw fail('Acceso no autorizado.', 403);
+  if (!person?.email || !person.reviewRequired || person.modality === 'in-person' || person.modality === 'none') throw fail('Acceso no autorizado.', 403);
   if (session !== undefined && (!/^[a-zA-Z0-9_-]{43}$/.test(session) || access.session_hash !== digest(session) || new Date(access.session_expires_at || 0).getTime() <= Date.now())) throw fail('Verifica de nuevo tu correo para continuar.', 401);
   return {
     access,
@@ -222,13 +226,14 @@ export async function sendVisitMime(ownerId: string, to: string, mail: {
 async function linksAndJobs(record: VisitRecord, state: VisitState, kind: 'review' | 'signing' | 'final') {
   const links: any[] = [],
     jobs: any[] = [];
-  const existingLinks = kind === 'final' ? [] : await database(`visit_minutes_access?${query({
+  const draftOnly=kind==='review'&&state.content.workflow==='3.1';
+  const existingLinks = kind === 'final'||draftOnly ? [] : await database(`visit_minutes_access?${query({
     select: 'person_id,revoked,expires_at',
     record_id: `eq.${record.id}`,
     version: `eq.${state.version}`
   })}`);
-  for (const p of state.participants.filter(p => p.email && (kind === 'final' ? p.receiveFinal : kind === 'review' ? p.reviewRequired : p.signing !== 'none'))) {
-    if (kind !== 'final') {
+  for (const p of state.participants.filter(p => visitNeedsMail(p,kind,state))) {
+    if (kind !== 'final'&&!draftOnly) {
       if (!existingLinks.some((a: any) => a.person_id === p.id && !a.revoked && new Date(a.expires_at).getTime() > Date.now())) {
         const token = freshToken();
         links.push({
@@ -285,26 +290,30 @@ const canonicalLink = (token: string) => {
   if (url.protocol !== 'https:' || url.username || url.password) throw fail('Dirección de aplicación inválida.', 503);
   return url.origin + '/#visit=' + token;
 };
-const jobFields='id,version,person_id,kind,status,attempts,message_id,error_code,updated_at';
-async function visitJobs(r:VisitRecord,id?:string){return database('visit_minutes_mail_jobs?'+query({select:jobFields,record_id:'eq.'+r.id,version:'eq.'+r.version,...(id?{id:'eq.'+id}:{}),order:'updated_at.asc',limit:'120'}));}
+const jobFields='notification_key,id,version,person_id,kind,status,attempts,message_id,error_code,updated_at';
+async function visitJobs(r:VisitRecord,id?:string){return database('visit_minutes_mail_jobs?'+query({select:jobFields,record_id:'eq.'+r.id,version:'eq.'+r.version,...(id?{id:'eq.'+id}:{}),order:'updated_at.asc',limit:'1000'}));}
 const normalizeMailError=(e:any)=>({code:String(e?.code||'SEND_FAILED'),message:String(e?.message||'No se pudo confirmar el envío.').slice(0,399)});
 async function deliverVisitJob(r:VisitRecord,actor:string,job:any,connection:any,accesses?:any[],file?:any){
  const claimed=await database('rpc/visit_minutes_claim_mail',{p_id:job.id});
  if(!claimed){const current=(await visitJobs(r,job.id))[0];return {delivery:current?.status||'uncertain',messageId:current?.message_id};}
  let acceptedId:string|null=null;
  try{
-  const p=r.state.participants.find(p=>p.id===job.person_id);if(!p?.email)throw fail('El destinatario no tiene correo.');
+  const p=r.state.participants.find(p=>p.id===job.person_id);if(!p || !visitNeedsMail(p,job.kind,r.state))throw fail('El destinatario no está autorizado para esta notificación.');
   let target='';
-  if(job.kind!=='final'){
+  const draftOnly=job.kind==='review'&&r.state.content.workflow==='3.1';
+  if(job.kind!=='final'&&!draftOnly){
    const a=accesses?accesses.find(a=>a.person_id===p.id):(await database('visit_minutes_access?'+query({select:'token_encrypted,expires_at,revoked',record_id:'eq.'+r.id,version:'eq.'+r.version,person_id:'eq.'+p.id,limit:'1'})))[0];
    if(!a||a.revoked||new Date(a.expires_at).getTime()<=Date.now())throw Object.assign(fail('Renueva el enlace antes de enviar.'),{code:'VISIT_LINK_EXPIRED'});
    target=canonicalLink(decryptToken(a.token_encrypted));
   }
   if(job.kind==='final'){
-   file=file||(await database('visit_minutes_files?'+query({select:'base64,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0];
-   if(!file||r.status!=='signed'||digest(Buffer.from(file.base64,'base64'))!==file.sha256)throw fail('No se pudo verificar el archivo final.');
+   file=file||(await database('visit_minutes_files?'+query({select:'base64,storage_path,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0];
+   if(!file||r.status!=='signed')throw fail('No se pudo verificar el archivo final.');
+   verifiedStoredPdf(file,r.state);
   }
-  const result=await sendVisitMime(actor,p.email,visitMail(r.state,r.number,job.kind,p,target),job.id,file?{base64:file.base64,filename:r.number+'_v'+r.version+'_FIRMADA.pdf'}:undefined,connection);
+  if(draftOnly)file=file||await cachedVisitDraft(database,r);
+  const attachment=file?{base64:Buffer.from(await storedVisitBytes(file)).toString('base64'),filename:r.number+'_v'+r.version+(draftOnly?'_BORRADOR.pdf':'_FIRMADA.pdf')}:undefined;
+  const result=await sendVisitMime(actor,p.email,visitMail(r.state,r.number,job.kind,p,target),job.id,attachment,connection);
   acceptedId=result.messageId;
   await database('rpc/visit_minutes_finish_mail',{p_id:job.id,p_status:'sent',p_message:acceptedId,p_code:null,p_actor:actor});
   return {delivery:'sent',...result};
@@ -315,22 +324,22 @@ async function deliverVisitJob(r:VisitRecord,actor:string,job:any,connection:any
  }
 }
 function mailResult(jobs:any[],kind:string){
- const selected=jobs.filter(j=>j.kind===kind),accepted=selected.filter(j=>j.status==='sent'&&!!j.message_id).length;
+ const selected=jobs.filter(j=>j.kind===kind&&!j.notification_key&&j.status!=='cancelled'),accepted=selected.filter(j=>j.status==='sent'&&!!j.message_id).length;
  return {total:selected.length,accepted,pending:selected.length-accepted,uncertain:selected.filter(j=>['uncertain','sending'].includes(j.status)).length};
 }
 async function sendVisitBatch(original:VisitRecord,actor:string,b:any){
  if(!['review','signing','final'].includes(b.kind)||!uuidValid(b.operation)||b.version!==original.version||!Number.isInteger(b.revision))throw fail('Solicitud de envío inválida o de otra versión.',409);
  let r=original,changed=false;const kind=b.kind;
- const phase=kind==='review'&&r.status==='draft'?'review':kind==='signing'&&r.status==='review'?'open-signing':null;
+ const phase=kind==='review'&&r.status==='draft'?'review':kind==='signing'&&['review','changes','rejected'].includes(r.status)?'open-signing':null;
  if(!phase&&!(kind==='review'&&['review','changes','rejected'].includes(r.status)||kind==='signing'&&r.status==='signing'||kind==='final'&&r.status==='signed'))throw fail('El acta no está disponible para esta notificación.');
- const hash=digest(JSON.stringify({type:'send-mail',kind,version:b.version}));
+ const hash=digest(JSON.stringify({type:'send-mail',kind,version:b.version,reviewClosure:b.reviewClosure||'',recipientIds:b.recipientIds||[]}));
  const done=await alreadyDone(r,b.operation,hash);
  if(b.revision!==r.revision&&!done)throw fail('La versión ha cambiado. Actualiza antes de enviar.',409);
  let jobs=await visitJobs(r);
- const recipients=r.state.participants.filter(p=>p.email&&(kind==='review'?p.reviewRequired:kind==='signing'?p.signing!=='none':p.receiveFinal));
- const eligible=jobs.filter((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5);
+ const eligible=jobs.filter((j:any)=>j.kind===kind&&!j.notification_key&&['pending','failed'].includes(j.status)&&j.attempts<5);
  // Refresh once per bounded batch, before opening review or claiming recipients.
- const proposed=phase?applyVisitCommand(r.state,{type:phase} as VisitCommand,new Date().toISOString()):r.state;
+ const proposed=phase?applyVisitCommand(r.state,{type:phase,reviewClosure:b.reviewClosure,recipientIds:b.recipientIds} as VisitCommand,new Date().toISOString()):r.state;
+ const recipients=proposed.participants.filter(p=>visitNeedsMail(p,kind,proposed));
  const connection=recipients.length&&(phase||eligible.length||kind==='final'&&!jobs.some((j:any)=>j.kind===kind))?await gmailToken(actor):null;
  if(phase||kind==='final'&&!jobs.some((j:any)=>j.kind===kind)&&recipients.length){
   const state=proposed;
@@ -338,17 +347,18 @@ async function sendVisitBatch(original:VisitRecord,actor:string,b:any){
   const extras=await linksAndJobs(r,state,kind);
   r=await committed(r,state,b.operation,hash,actor,phase||'queue-final',extras);changed=true;jobs=await visitJobs(r);
  }
- const selected=jobs.filter((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5).slice(0,2);
+ const selected=jobs.filter((j:any)=>j.kind===kind&&!j.notification_key&&['pending','failed'].includes(j.status)&&j.attempts<5).slice(0,2);
  const failures:any[]=[];let acceptedHere=0;
- const accesses=selected.length&&kind!=='final'?await database('visit_minutes_access?'+query({select:'person_id,token_encrypted,expires_at,revoked',record_id:'eq.'+r.id,version:'eq.'+r.version,person_id:'in.('+selected.map((j:any)=>j.person_id).join(',')+')',limit:'2'})):[];
- const file=selected.length&&kind==='final'?(await database('visit_minutes_files?'+query({select:'base64,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0]:undefined;
+ const draftOnly=kind==='review'&&r.state.content.workflow==='3.1';
+ const accesses=selected.length&&kind!=='final'&&!draftOnly?await database('visit_minutes_access?'+query({select:'person_id,token_encrypted,expires_at,revoked',record_id:'eq.'+r.id,version:'eq.'+r.version,person_id:'in.('+selected.map((j:any)=>j.person_id).join(',')+')',limit:'2'})):[];
+ const file=selected.length&&kind==='final'?(await database('visit_minutes_files?'+query({select:'base64,storage_path,sha256',record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'1'})))[0]:selected.length&&draftOnly?await cachedVisitDraft(database,r):undefined;
  for(const j of selected){
   try{const result=await deliverVisitJob(r,actor,j,{...connection,deferTouch:true},accesses,file);if(result.delivery==='sent'&&result.messageId)acceptedHere++;}
   catch(e:any){failures.push({personId:j.person_id,...normalizeMailError(e)});if(['GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_PERMISSION_REQUIRED','GMAIL_SEND_FORBIDDEN','GMAIL_RATE_LIMITED','GMAIL_TEMPORARILY_UNAVAILABLE','MAIL_STATUS_UNCONFIRMED'].includes(e.code)||e.uncertain)break;}
  }
  if(acceptedHere)await touchSent(actor).catch(()=>undefined);
  if(selected.length)jobs=await visitJobs(r);
- return {ok:true,acceptedNow:acceptedHere,...((changed||b.revision!==r.revision)?{record:{...r,canWrite:true}}:{}),jobs,summary:mailResult(jobs,kind),failures,from:connection?.from||null,hasMore:failures.length===0&&jobs.some((j:any)=>j.kind===kind&&['pending','failed'].includes(j.status)&&j.attempts<5)};
+ return {ok:true,acceptedNow:acceptedHere,...((changed||b.revision!==r.revision)?{record:{...r,canWrite:true}}:{}),jobs,summary:mailResult(jobs,kind),failures,from:connection?.from||null,hasMore:failures.length===0&&jobs.some((j:any)=>j.kind===kind&&!j.notification_key&&['pending','failed'].includes(j.status)&&j.attempts<5)};
 }
 async function reconcileVisitMail(r:VisitRecord,actor:string,id:string){
  if(!uuidValid(id))throw fail('Envío inválido.');const job=(await visitJobs(r,id))[0];if(!job)throw fail('Envío no disponible.',404);
@@ -383,6 +393,7 @@ export async function visitMinutesHandler(req: any, res: any) {
         record,
         person
       } = await accessRecord(String(b.token || ''), ['portal', 'portal-command', 'portal-pdf'].includes(action) ? String(b.session || '') : undefined);
+      if(record.state.content.workflow==='3.1'&&b.clientVersion!=='3.1')throw fail('Actualiza GestionProfea para revisar esta versión del acta.',409);
       if (action === 'challenge') {
         if (access.requests >= 10 || new Date(access.otp_requested_at || 0).getTime() > Date.now() - 60000) throw fail('Espera un minuto antes de pedir otro código. El enlace admite un máximo de diez solicitudes.', 429);
         const connection = await gmailToken(record.owner_id);
@@ -420,13 +431,15 @@ export async function visitMinutesHandler(req: any, res: any) {
       });
       if (action === 'portal-pdf') {
         const [file] = await database(`visit_minutes_files?${query({
-          select: 'base64,sha256',
+          select: 'base64,storage_path,sha256',
           record_id: `eq.${record.id}`,
           version: `eq.${record.version}`,
           limit: '1'
         })}`);
         verifiedStoredPdf(file, record.state);
-        const bytes = file ? Buffer.from(file.base64, 'base64') : await generateVisitMinutesPdf(record.state, record.number);
+        if(file)return res.json({ok:true,...await visitFileDescriptor(file,`${record.number}_v${record.version}.pdf`)});
+        if(record.state.content.workflow==='3.1')return res.json({ok:true,...await visitDraftDescriptor(database,record)});
+        const bytes = await generateVisitMinutesPdf(record.state, record.number);
         return res.json({
           ok: true,
           base64: Buffer.from(bytes).toString('base64'),
@@ -470,8 +483,25 @@ export async function visitMinutesHandler(req: any, res: any) {
     const user = await activeUser(req),
       auth = String(req.headers?.authorization || '');
     if(isOrderAction(action))return await handleVisitOrders(req,b,res,user,auth,{database,digest,validateAttachments});
+    if(action==='store-attachment'){
+      if(!uuidValid(b.worksiteId)||!await database('rpc/visit_minutes_can_create_work',{p_id:b.worksiteId},auth))throw fail('No tienes permiso para incorporar anexos en esta obra.',403);
+      if(typeof b.base64!=='string'||b.base64.length>2000000||!/^[a-z0-9+/]+={0,2}$/i.test(b.base64)||b.base64.length%4)throw fail('Archivo inválido o superior a 1,5 MB.');
+      if(!['image/png','image/jpeg','application/pdf'].includes(b.mime))throw fail('Formato no permitido.');
+      const bytes=Buffer.from(b.base64,'base64');if(!bytes.length||bytes.length>1500000)throw fail('Cada archivo debe ocupar como máximo 1,5 MB.');
+      await validateAttachments({content:{attachments:[{mime:b.mime,base64:b.base64}]}} as VisitState);
+      const sha=digest(bytes),params={select:'id,sha256,bytes,mime',owner_id:'eq.'+user.id,obra_id:'eq.'+b.worksiteId,sha256:'eq.'+sha,limit:'1'};
+      const existing=(await database('visit_minutes_assets?'+query(params)))[0];
+      if(existing)return res.json({ok:true,asset:existing});
+      const seed=digest(user.id+':'+b.worksiteId+':'+sha);const fileId=seed.slice(0,8)+'-'+seed.slice(8,12)+'-4'+seed.slice(13,16)+'-8'+seed.slice(17,20)+'-'+seed.slice(20,32);
+      const path=`${user.id}/assets/${b.worksiteId}_${sha}.${b.mime==='application/pdf'?'pdf':b.mime==='image/png'?'png':'jpg'}`;
+      await putVisitObject(path,bytes,b.mime);
+      try{await database('visit_minutes_assets',{id:fileId,owner_id:user.id,obra_id:b.worksiteId,sha256:sha,bytes:bytes.length,mime:b.mime,storage_path:path});}
+      catch(e:any){if(e.status!==409)throw e;}
+      return res.json({ok:true,asset:{id:fileId,sha256:sha,bytes:bytes.length,mime:b.mime}});
+    }
     if (action === 'works') return res.json({
       ok: true,
+      visitWorkflow:'3.1',attachmentLimits:{perFile:1500000,total:visitTotalLimit(),count:8},
       works: await database('obras?select=id,nombre,codigo,municipio,descripcion&order=nombre.asc&limit=1000', undefined, auth)
     });
     if (action === 'contacts') {
@@ -536,7 +566,7 @@ export async function visitMinutesHandler(req: any, res: any) {
       const limit = 30,
         offset = Math.max(0, Math.min(100000, Number(b.offset) || 0));
       const params: any = {
-        select: 'id,owner_id,obra_id,number,revision,version,status,worksite,visit_date,updated_at',
+        select: 'id,owner_id,obra_id,number,revision,version,status,worksite,visit_date,updated_at,action_summary',
         order: 'visit_date.desc,id.desc',
         limit: String(limit + 1),
         offset: String(offset)
@@ -549,6 +579,10 @@ export async function visitMinutesHandler(req: any, res: any) {
       if (b.status) {
         if (!['draft', 'review', 'changes', 'rejected', 'signing', 'signed', 'cancelled'].includes(b.status)) throw fail('Estado inválido.');
         params.status = `eq.${b.status}`;
+      }
+      if(b.fromDate||b.toDate){
+        for(const value of [b.fromDate,b.toDate].filter(Boolean))if(!/^\d{4}-\d{2}-\d{2}$/.test(value))throw fail('Filtro de fecha inválido.');
+        if(b.fromDate&&b.toDate)params.and=`(visit_date.gte.${b.fromDate},visit_date.lte.${b.toDate})`;else params.visit_date=b.fromDate?`gte.${b.fromDate}`:`lte.${b.toDate}`;
       }
       if (b.search) {
         const term = String(b.search).slice(0, 100).replace(/[^\p{L}\p{N}\s-]/gu, '').toLowerCase();
@@ -577,6 +611,7 @@ export async function visitMinutesHandler(req: any, res: any) {
         municipality: work.municipio || b.content.municipality || ''
       });
       const state = newVisit(content, b.participants, new Date().toISOString());
+      await visitAssetRows(database,state,user.id);
       await validateAttachments(state);
       const result = await committed({
         id: b.id,
@@ -595,9 +630,10 @@ export async function visitMinutesHandler(req: any, res: any) {
       });
     }
     const r = await ownerRecord(b.id, user.id, auth, !['get', 'history', 'pdf'].includes(action));
+    if(r.state.content.workflow==='3.1'&&b.clientVersion!=='3.1')throw fail('Actualiza GestionProfea para trabajar con este modelo de acta.',409);
     if (action === 'get') {
       const jobs = await database(`visit_minutes_mail_jobs?${query({
-        select: 'id,version,person_id,kind,status,attempts,message_id,error_code',
+        select: 'notification_key,id,version,person_id,kind,status,attempts,message_id,error_code',
         record_id: `eq.${r.id}`,
         order: 'updated_at.desc',
         limit: '300'
@@ -640,12 +676,14 @@ export async function visitMinutesHandler(req: any, res: any) {
         state = v.state;
       }
       const [file] = await database(`visit_minutes_files?${query({
-        select: 'base64,sha256',
+        select: 'base64,storage_path,sha256',
         record_id: `eq.${r.id}`,
         version: `eq.${version}`,
         limit: '1'
       })}`);
       verifiedStoredPdf(file, state);
+      if(file)return res.json({ok:true,...await visitFileDescriptor(file,`${r.number}_v${version}_FIRMADA.pdf`)});
+      if(state.content.workflow==='3.1')return res.json({ok:true,...await visitDraftDescriptor(database,{...r,state,version})});
       const base64 = file?.base64 || Buffer.from(await generateVisitMinutesPdf(state, r.number)).toString('base64');
       return res.json({
         ok: true,
@@ -656,16 +694,25 @@ export async function visitMinutesHandler(req: any, res: any) {
     }
     if (action === 'preview-mail') {
       if (!['review', 'signing', 'final'].includes(b.kind)) throw fail('Tipo de correo inválido.');
-      const recipients = r.state.participants.filter(p => b.kind === 'final' ? p.receiveFinal : b.kind === 'review' ? p.reviewRequired : p.signing !== 'none');
+      const draftOnly=b.kind==='review'&&r.state.content.workflow==='3.1';
+      const recipients = r.state.participants.filter(p => draftOnly?!!p.email&&p.reviewRequired:visitNeedsMail(p,b.kind,r.state));
       return res.json({
         ok: true,
         sender: (await database('gmail_connections?'+query({select:'email',user_id:'eq.'+user.id,limit:'1'})))[0]?.email||'',
         messages: recipients.map(p => ({
           personId: p.id,
           email: p.email,
-          ...visitMail(r.state, r.number, b.kind, p, b.kind === 'final' ? '' : '[Enlace personal verificado generado al enviar]')
+          ...visitMail(r.state, r.number, b.kind, p, b.kind === 'final'||draftOnly ? '' : '[Enlace personal verificado generado al enviar]')
         }))
       });
+    }
+    if(action==='remind'){
+      const person=r.state.participants.find(p=>p.id===b.personId),kind=b.kind==='signing'||r.status==='signing'?'signing':'review';
+      if(!uuidValid(b.operation)||!person||!visitNeedsMail(person,kind,r.state)||!['review','changes','rejected','signing'].includes(r.status)||r.state.signatures[person.id]||kind==='review'&&r.state.responses[person.id])throw fail('No hay actuación remota pendiente para esta persona.');
+      const connection=await gmailToken(user.id);
+      const token=freshToken();
+      const job=await database('rpc/visit_minutes_reminder',{p_id:r.id,p_expected:r.revision,p_person:person.id,p_kind:kind,p_operation:b.operation,p_actor:user.id,p_token_hash:digest(token),p_token_encrypted:encryptToken(token)});
+      return res.json({ok:true,...await deliverVisitJob(r,user.id,job,connection),jobs:await visitJobs(r)});
     }
     if(action==='send-mail')return res.json(await sendVisitBatch(r,user.id,b));
     if(action==='reconcile-mail')return res.json(await reconcileVisitMail(r,user.id,b.jobId));
@@ -677,7 +724,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     }
     if (action === 'link') {
       const p = r.state.participants.find(p => p.id === b.personId);
-      if (!p?.email || !p.reviewRequired || !['review', 'changes', 'rejected', 'signing'].includes(r.status)) throw fail('La persona necesita correo y una revisión abierta.');
+      if (!p?.email || !p.reviewRequired || p.modality==='in-person' || p.modality==='none' || !['review', 'changes', 'rejected', 'signing'].includes(r.status)) throw fail('La persona necesita correo y una revisión abierta.');
       const token = freshToken();
       await database('visit_minutes_access?' + query({
         record_id: `eq.${r.id}`,
@@ -764,7 +811,7 @@ export async function visitMinutesHandler(req: any, res: any) {
       let event = 'queue-final';
       if (action === 'command') {
         const command = b.command as VisitCommand;
-        if (['respond', 'sign'].includes(command.type)) {
+        if (['respond', 'sign','onsite-sign'].includes(command.type)) {
           if (b.inPersonConfirmed !== true) throw fail('La persona debe confirmar su identidad y actuar presencialmente en este dispositivo.');
           (command as any).mode = 'in-person';
         }
@@ -776,19 +823,33 @@ export async function visitMinutesHandler(req: any, res: any) {
             code: r.state.content.code
           });
         }
-        if (command.type === 'sign') await validateSignature(command.image);
+        if (command.type === 'sign'||command.type==='onsite-sign') await validateSignature(command.image);
         state = applyVisitCommand(r.state, command, new Date().toISOString());
         event = command.type;
-        if (command.type === 'save') { await validateAttachments(state);await assertVisitOrders(database,state,r.id,true); }
+        if(['respond','sign','onsite-sign'].includes(command.type)){const personId=(command as any).personId;state.identityChecks={...state.identityChecks,[personId]:{actor:user.id,at:new Date().toISOString()}};}
+        if(command.type==='modality'){extras.details={personId:command.personId,modality:command.modality};}
+        if (command.type === 'save') {
+          // Existing immutable references were checked on the previous save;
+          // SQL still validates owner/work/hash on every commit atomically.
+          // Only new or changed references need another REST metadata lookup.
+          if(state.content.attachments.reduce((n,a)=>n+(a.bytes||Buffer.from(a.base64,'base64').length),0)>visitTotalLimit())throw fail('Los anexos superan el máximo total configurado.');
+          if(state.content.worksiteId!==r.obra_id||state.content.attachments.some(a=>a.fileId&&!r.state.content.attachments.some(old=>old.fileId===a.fileId&&old.sha256===a.sha256&&old.bytes===a.bytes&&old.mime===a.mime)))await visitAssetRows(database,state,user.id);
+          await validateAttachments(state);await assertVisitOrders(database,state,r.id,true);
+        }
         if(['review','finalize'].includes(command.type))await assertVisitOrders(database,state,r.id);
         if (command.type === 'review' || command.type === 'open-signing') extras = await linksAndJobs(r, state, command.type === 'review' ? 'review' : 'signing');
         if (command.type === 'finalize') {
-          const bytes = await generateVisitMinutesPdf(state, r.number);
-          extras.pdf = Buffer.from(bytes).toString('base64');
+          const bytes = await generateVisitMinutesPdf(await hydrateVisitAssets(database,state,user.id), r.number);
+          extras.pdf = state.content.workflow==='3.1'?null:Buffer.from(bytes).toString('base64');
           extras.sha = digest(bytes);
           state.finalSha256 = extras.sha;
+          if(state.content.workflow==='3.1'){
+            const path=`${user.id}/final/${r.id}_v${state.version}_${extras.sha}.pdf`;
+            await putVisitObject(path,bytes,'application/pdf');extras.details={finalStoragePath:path};
+          }
+          const finalJobs=await linksAndJobs(r,state,'final');extras.jobs=finalJobs.jobs;
         }
-        if (command.type === 'respond' || command.type === 'sign') extras.details={personId:command.personId,mode:'in-person'};
+        if (command.type === 'respond' || command.type === 'sign'||command.type==='onsite-sign') extras.details={personId:command.personId,mode:'in-person',identityCheckedBy:user.id};
         if (command.type === 'followup') extras.details={agreementId:command.agreementId,done:command.done};
       } else {
         if (r.status !== 'signed') throw fail('El acta debe estar firmada.');
@@ -797,6 +858,7 @@ export async function visitMinutesHandler(req: any, res: any) {
       const result = await committed(r, state, b.operation, hash, user.id, event, extras);
       return res.json({
         ok: true,
+        ...(event==='finalize'?{jobs:await visitJobs(result)}:{}),
         record: {
           ...result,
           canWrite: true

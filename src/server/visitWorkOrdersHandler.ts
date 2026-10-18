@@ -1,3 +1,4 @@
+import {visitFileDescriptor} from './visitFileStorage.js';
 import {
   uuidValid,
   type VisitState,
@@ -497,7 +498,7 @@ export async function handleVisitOrders(
     const [file] = await db(
       "visit_minutes_files?" +
         q({
-          select: "base64,sha256",
+          select: "base64,storage_path,sha256",
           record_id: "eq." + p.record_id,
           version: "eq." + p.version,
           limit: "1",
@@ -506,20 +507,17 @@ export async function handleVisitOrders(
     if (
       !file ||
       file.sha256 !== p.sha256 ||
-      digest(Buffer.from(file.base64, "base64")) !== file.sha256
+      (!file.storage_path&&digest(Buffer.from(file.base64, "base64")) !== file.sha256)
     )
       throw error(
         "El archivo firmado no supera la comprobación de integridad.",
         409,
       );
+    if(file.storage_path&&b.clientVersion!=='3.1')throw error('Actualiza GestionProfea para abrir este documento.',409);
     // Never regenerate or alter a signed file; return the verified original bytes.
     return res.json({
       ok: true,
-      file: {
-        base64: file.base64,
-        sha256: file.sha256,
-        filename: p.number + "_v" + p.version + "_FIRMADA.pdf",
-      },
+      file: await visitFileDescriptor(file,p.number + "_v" + p.version + "_FIRMADA.pdf"),
     });
   }
   if (

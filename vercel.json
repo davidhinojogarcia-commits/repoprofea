@@ -58,7 +58,15 @@
       "fix/visit-mail-preview-scroll": false,
       "feat/visit-work-orders": false,
       "fix/visit-review-mail-delivery": false,
-      "fix/visit-minutes-edit-delete": false
+      "fix/visit-minutes-edit-delete": false,
+      "feat/visit-minutes-2-mobile-mixed": false,
+      "feat/visit-minutes-3-1": false,
+      "feat/blue-signatures-quality": false,
+      "fix/foreman-contracts-label": false,
+      "fix/foreman-signed-attendance-pdf": false,
+      "fix/global-confirmation-layer": false,
+      "fix/prevention-photo-adaptive-compression": false,
+      "release/2026-10-18-pending": false
     }
   }
 }

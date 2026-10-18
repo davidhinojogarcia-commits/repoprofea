@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { VisitWorkOrdersEditor } from './VisitWorkOrdersEditor';
 import { visitRequest } from '../src/services/visitMinutesService';
 import { cleanContact, personName, type VisitContact } from '../src/lib/visitMinutes';
 export const visitInput = 'min-h-[46px] w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
@@ -22,6 +23,7 @@ export function VisitContactsPanel() {
     [error, setError] = useState(''),
     [loaded, setLoaded] = useState(false);
   const guard = useRef(false);
+  const [permissionsWork,setPermissionsWork]=useState('');
   useEffect(() => {
     const c = new AbortController();
     Promise.all([visitRequest({
@@ -98,5 +100,6 @@ export function VisitContactsPanel() {
       <div className="flex gap-2"><button disabled={busy} className="rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white">{busy ? 'Guardando…' : 'Guardar contacto'}</button><button type="button" disabled={busy} className="rounded-xl border px-4 py-3" onClick={() => setDraft(null)}>Cancelar</button></div>
     </form>}
     <div className="space-y-2">{contacts.map(c => <button type="button" disabled={busy} key={c.id} onClick={() => setDraft(structuredClone(c))} className="block w-full rounded-xl border border-slate-200 p-4 text-left dark:border-slate-700"><strong>{personName(c)}</strong><span className="ml-2 text-xs">{c.active ? 'Activo' : 'Inactivo'}</span><p>{c.role} · {c.entity}</p><p className="text-sm break-all">{c.email || 'Sin correo'} · {c.phone}</p><p className="text-xs">{c.assignments.length} obra(s) asociada(s) · Editar</p></button>)}{loaded && !contacts.length && <p>No hay personas registradas todavía.</p>}</div>
+    <details className="rounded-xl border p-3"><summary className="min-h-[44px] font-bold cursor-pointer">Competencias y comprobación de órdenes</summary><p className="my-2 text-sm">Estas autorizaciones se configuran por obra y se reutilizan. El cargo o la asistencia por sí solos no conceden competencia.</p><label>Obra para configurar competencias<select className={visitInput} value={permissionsWork} onChange={e=>setPermissionsWork(e.target.value)}><option value="">Selecciona una obra…</option>{works.map(w=><option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>{permissionsWork&&<VisitWorkOrdersEditor permissionsOnly content={{worksiteId:permissionsWork,attachments:[],orders:[]} as any} people={contacts.filter(c=>c.active&&c.assignments.some(a=>a.worksiteId===permissionsWork)).map(c=>({...c,attended:true,reviewRequired:true,signing:'required' as const,receiveFinal:!!c.email}))} onChange={()=>undefined}/>}</details>
   </section>;
 }

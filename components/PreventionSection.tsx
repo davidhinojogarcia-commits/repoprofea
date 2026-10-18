@@ -12,18 +12,31 @@ const freshDraft = (obra: string, kind: PreventionDraft['kind']): PreventionDraf
 
 async function readPhoto(file: File): Promise<string> {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Utiliza una fotografía JPG, PNG o WebP.');
-  if (file.size > 15 * 1024 * 1024) throw new Error('La fotografía no puede superar 15 MB.');
+  // Input size and persisted payload are different limits: large camera originals
+  // should be reduced before storing them with the incident.
+  if (file.size > 30 * 1024 * 1024) throw new Error('La fotografía original supera 30 MB.');
   const bitmap = await createImageBitmap(file);
   try {
-    const scale = Math.min(1, 1000 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
     const context = canvas.getContext('2d');
     if (!context) throw new Error('No se pudo preparar la fotografía.');
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const result = canvas.toDataURL('image/jpeg', 0.65);
-    if (result.length > 400000) throw new Error('La fotografía es demasiado grande. Utiliza otra imagen.');
-    return result;
+    const maxDataUrlLength = 400000;
+    let maxDimension = 1200;
+    // Try lower JPEG quality at each resolution before reducing dimensions.
+    // Never submit a photo whose encoded size exceeds the storage limit.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.75, 0.6, 0.45]) {
+        const result = canvas.toDataURL('image/jpeg', quality);
+        if (result.startsWith('data:image/jpeg;base64,') && result.length <= maxDataUrlLength) return result;
+      }
+      maxDimension = Math.round(maxDimension * 0.75);
+    }
+    throw new Error('No se pudo comprimir la fotografía al tamaño permitido. Prueba con otra imagen.');
   } finally { bitmap.close(); }
 }
 

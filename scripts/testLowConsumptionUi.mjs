@@ -36,12 +36,12 @@ const plugin={name:'dashboard-dependencies',setup(builder){
     return {path:args.path,namespace:'test-stubs'};
   });
   builder.onLoad({filter:/.*/,namespace:'test-stubs'},args=>{
-    const declaration=source.split('\n').find(line=>line.startsWith('import ')&&line.includes("'"+args.path+"'"));
-    if(!declaration||declaration.startsWith('import type '))return {contents:'export {};'};
+    const declarations=source.split('\n').filter(line=>line.startsWith('import ')&&!line.startsWith('import type ')&&line.includes("'"+args.path+"'"));
+    if(!declarations.length)return {contents:'export {};'};
     if(args.path.endsWith('/supabase'))return {contents:'export const {supabase,getSessionUser}=globalThis.__dashboardTest;'};
-    const named=declaration.match(/\{([^}]+)\}/)?.[1].split(',').map(s=>s.trim()).filter(s=>!s.startsWith('type '))||[];
+    const named=[...new Set(declarations.flatMap(declaration=>declaration.match(/\{([^}]+)\}/)?.[1].split(',').map(s=>s.trim()).filter(s=>!s.startsWith('type '))||[]))];
     let contents=named.map(name=>`export const ${name}= ${name==='ADDITIONAL_WORKSITE_DOCUMENTS'?'{}':name==='processAdministrativeMandatoryInbox'?'async()=>({importedDocuments:0,warnings:[]})':'()=>null'};`).join('\n');
-    if(!declaration.includes('{'))contents+='\nexport default ()=>null;';
+    if(declarations.some(declaration=>!declaration.includes('{')))contents+='\nexport default ()=>null;';
     return {contents,loader:'js'};
   });
 }};

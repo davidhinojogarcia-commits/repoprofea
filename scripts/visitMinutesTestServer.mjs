@@ -4,10 +4,11 @@ import {PGlite} from '@electric-sql/pglite';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {build} from 'esbuild';
 import {id,content,person} from './visitMinutesFixture.mjs';
-export async function visitTestServer({sourceRef,gmailConnection}={}){
+export async function visitTestServer({sourceRef,gmailConnection,handlerSource}={}){
  process.env.SUPABASE_SERVICE_ROLE_KEY='service-test';process.env.GOOGLE_GMAIL_CLIENT_ID=gmailConnection?.clientId||'client-test';process.env.GOOGLE_GMAIL_CLIENT_SECRET=gmailConnection?.clientSecret||'client-secret-test';process.env.GMAIL_TOKEN_ENCRYPTION_KEY=gmailConnection?randomBytes(32).toString('base64url'):'visit-tests-encryption-key-32-bytes';
  const db=new PGlite(),out=new URL(`./.visit-handler-test-${randomUUID()}.mjs`,import.meta.url);
- await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema private;
+ await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema private;create schema storage;
+ create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create table profiles(id uuid primary key,email text,active boolean default true,role text default 'user');
  create table obras(id uuid primary key,owner_id uuid,nombre text,codigo text,municipio text,descripcion text);
@@ -23,20 +24,22 @@ export async function visitTestServer({sourceRef,gmailConnection}={}){
  grant execute on function private.has_obra_permission(uuid,text,text) to authenticated;`);
  await db.exec(await fs.readFile(new URL('../supabase/migrations/20261016102205_worksite_visit_minutes.sql',import.meta.url),'utf8'));
  await db.exec(await fs.readFile(new URL('../supabase/migrations/20261017083229_visit_work_orders.sql',import.meta.url),'utf8'));
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261017160440_visit_minutes_mixed_signatures.sql',import.meta.url),'utf8'));
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261018085541_visit_minutes_points_assets.sql',import.meta.url),'utf8'));
  for(const n of [1,2,3,4])await db.query('insert into profiles(id,email,active) values($1,$2,$3)',[id(n),`supervisor${n}@example.test`,n!==4]);
  await db.query('insert into obras values($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)',[id(10),id(1),content.worksite,content.code,content.municipality,'Obra sintética',id(11),id(2),'Obra ajena','99999GR','Otra localidad','']);
  await db.query('insert into data_permissions(user_id,resource_type,resource_id,can_read) values($1,$2,$3,true)',[id(3),'obra',id(10)]);
- await build({stdin:{contents:"export {default as gmailHandler} from './api/gmail'; export {default as callbackHandler} from './api/gmail-oauth-callback'; export {encryptToken,decryptToken,apiError} from './src/server/gmailOAuth';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,platform:'node',format:'esm',packages:'external',plugins:sourceRef?[{name:'baseline-source',setup(b){b.onLoad({filter:/src\/server\/(visitMinutesHandler|gmailOAuth)\.ts$/},args=>({contents:execFileSync('git',['show',sourceRef+':src/server/'+args.path.split('/').at(-1)],{cwd:new URL('../',import.meta.url).pathname,encoding:'utf8'}),loader:'ts',resolveDir:new URL('../src/server/',import.meta.url).pathname}));}}]:[]});
+ await build({stdin:{contents:"export {default as gmailHandler} from './api/gmail'; export {default as callbackHandler} from './api/gmail-oauth-callback'; export {encryptToken,decryptToken,apiError} from './src/server/gmailOAuth';",resolveDir:new URL('../',import.meta.url).pathname},outfile:out.pathname,bundle:true,platform:'node',format:'esm',packages:'external',plugins:sourceRef||handlerSource?[{name:'baseline-source',setup(b){b.onLoad({filter:/src\/server\/(visitMinutesHandler|gmailOAuth)\.ts$/},args=>({contents:handlerSource&&args.path.endsWith('/visitMinutesHandler.ts')?handlerSource:execFileSync('git',['show',(sourceRef||'HEAD')+':src/server/'+args.path.split('/').at(-1)],{cwd:new URL('../',import.meta.url).pathname,encoding:'utf8'}),loader:'ts',resolveDir:new URL('../src/server/',import.meta.url).pathname}));}}]:[]});
  const {gmailHandler,callbackHandler,encryptToken,decryptToken,apiError}=await import(out.href+'?t='+Date.now());
  await db.query('insert into gmail_connections(user_id,email,refresh_token_encrypted,scope,last_sent_at) values($1,$2,$3,$4,null)',[id(1),gmailConnection?.email||'supervisor@example.test',encryptToken(gmailConnection?.refreshToken||'test-refresh-token'),'https://www.googleapis.com/auth/gmail.send']);
- const sent=[],calls=[],problems=[],originalFetch=globalThis.fetch;let googleMode='ok',persistSentFailure=false,googleQueue=[];let serialized=Promise.resolve();
+ const sent=[],calls=[],problems=[],originalFetch=globalThis.fetch,objects=new Map(),storageTokens=new Map();let failStorage=false,googleMode='ok',persistSentFailure=false,googleQueue=[];let serialized=Promise.resolve();
  const sqlIdentifier=value=>{if(!/^[a-z_][a-z_0-9]*$/.test(value))throw Error('Unsafe test identifier '+value);return '"'+value+'"';};
  const handleDatabase=async(url,init)=>{
   const u=new URL(url),table=u.pathname.split('/rest/v1/')[1],auth=new Headers(init.headers).get('authorization'),service=auth==='Bearer service-test',user=auth?.match(/^Bearer user-(\d)$/)?.[1];
   await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[user?id(Number(user)):'']);await db.exec('set role '+(service?'service_role':user?'authenticated':'anon'));
   const args=[],where=[];let body=init.body?JSON.parse(init.body):undefined;
   if(table.startsWith('rpc/')){const fn=table.slice(4);if(persistSentFailure&&fn==='visit_minutes_finish_mail'&&body.p_status==='sent'){persistSentFailure=false;throw Error('Simulated acknowledgement persistence failure');}const fields=Object.entries(body);const sql='select public.'+sqlIdentifier(fn)+'('+fields.map(([key,value])=>{args.push(key==='p_scopes'?'{'+value.join(',')+'}':typeof value==='object'&&value!==null?JSON.stringify(value):value);return sqlIdentifier(key)+'=> $'+args.length;}).join(',')+') result';return(await db.query(sql,args)).rows[0].result;}
-  for(const [key,value]of u.searchParams){if(['select','order','limit','offset','on_conflict'].includes(key))continue;if(value.startsWith('eq.')){const v=value.slice(3);args.push(v==='true'?true:v==='false'?false:v);where.push(sqlIdentifier(key)+'=$'+args.length);}else if(value.startsWith('ilike.')){args.push(value.slice(6).replaceAll('*','%'));where.push(sqlIdentifier(key)+' ilike $'+args.length);}else if(value.startsWith('in.(')||value.startsWith('not.in.(')){const neg=value.startsWith('not.');const entries=value.slice(neg?8:4,-1).split(',');where.push(sqlIdentifier(key)+(neg?' not in (':' in (')+entries.map(v=>{args.push(v);return '$'+args.length;}).join(',')+')');}else if(value.startsWith('lt.')){args.push(value.slice(3));where.push(sqlIdentifier(key)+'<$'+args.length);}else throw Error('Unknown filter '+value);}
+  for(const [key,value]of u.searchParams){if(['select','order','limit','offset','on_conflict'].includes(key))continue;if(value.startsWith('eq.')){const v=value.slice(3);args.push(v==='true'?true:v==='false'?false:v);where.push(sqlIdentifier(key)+'=$'+args.length);}else if(value.startsWith('ilike.')){args.push(value.slice(6).replaceAll('*','%'));where.push(sqlIdentifier(key)+' ilike $'+args.length);}else if(value.startsWith('in.(')||value.startsWith('not.in.(')){const neg=value.startsWith('not.');const entries=value.slice(neg?8:4,-1).split(',');where.push(sqlIdentifier(key)+(neg?' not in (':' in (')+entries.map(v=>{args.push(v);return '$'+args.length;}).join(',')+')');}else if(value.startsWith('gte.')||value.startsWith('lte.')){args.push(value.slice(4));where.push(sqlIdentifier(key)+(value.startsWith('gte.')?'>=':'<=')+'$'+args.length);}else if(key==='and'){const filters=value.slice(1,-1).split(',');for(const f of filters){const [field,op,v]=f.split('.');if(!['gte','lte'].includes(op))throw Error('Unknown range');args.push(v);where.push(sqlIdentifier(field)+(op==='gte'?'>=':'<=')+'$'+args.length);}}else if(value.startsWith('lt.')){args.push(value.slice(3));where.push(sqlIdentifier(key)+'<$'+args.length);}else throw Error('Unknown filter '+value);}
   const clause=where.length?' where '+where.join(' and '):'';
   if((init.method||'GET')==='GET'){
     const select=(u.searchParams.get('select')||'*').split(',').map(v=>v==='*'?'*':sqlIdentifier(v)).join(',');
@@ -55,6 +58,22 @@ export async function visitTestServer({sourceRef,gmailConnection}={}){
  };
  globalThis.fetch=async(url,init={})=>{
    const target=String(url);calls.push({url:target,method:init.method||'GET'});
+   if(target.includes('/storage/v1/object/')){
+     const u=new URL(target),signed=u.pathname.startsWith('/storage/v1/object/sign/'),path=u.pathname.split(signed?'/storage/v1/object/sign/':'/storage/v1/object/')[1];
+     const service=new Headers(init.headers).get('authorization')==='Bearer service-test';
+     if(signed&&init.method==='POST'){
+       if(!service||!objects.has(path))return new Response('{}',{status:403});
+       const token=randomUUID();storageTokens.set(token,{path,expires:Date.now()+300000});return new Response(JSON.stringify({signedURL:'/object/sign/'+path+'?token='+token}),{status:200});
+     }
+     if(signed){const grant=storageTokens.get(u.searchParams.get('token'));if(!grant||grant.path!==path||grant.expires<Date.now())return new Response('{}',{status:403});}
+     else if(!service)return new Response('{}',{status:403});
+     if(init.method==='POST'){
+       if(failStorage){failStorage=false;return new Response('{}',{status:503});}
+       if(objects.has(path))return new Response(JSON.stringify({statusCode:'409'}),{status:409});
+       objects.set(path,Buffer.from(init.body));return new Response('{}',{status:200});
+     }
+     const bytes=objects.get(path);return bytes?new Response(bytes,{status:200,headers:{'Content-Type':path.endsWith('.pdf')?'application/pdf':path.endsWith('.png')?'image/png':'image/jpeg'}}):new Response('{}',{status:404});
+   }
    if(target.includes('/auth/v1/user')){const n=new Headers(init.headers).get('authorization')?.match(/^Bearer user-(\d)$/)?.[1];return new Response(JSON.stringify(n?{id:id(Number(n)),email:`supervisor${n}@example.test`}:{}),{status:n?200:401});}
    if(target.includes('/rest/v1/')){
      let resolve;const before=serialized;serialized=new Promise(r=>{resolve=r;});await before;
@@ -79,5 +98,5 @@ export async function visitTestServer({sourceRef,gmailConnection}={}){
  };
  const invoke=async(body,user=1)=>{let status=200,headers={};const res={setHeader(k,v){headers[k]=v;},status(s){status=s;return this;},json(data){return{status,data,headers};}};return gmailHandler({method:'POST',query:{action:'visit-minutes'},headers:user?{authorization:'Bearer user-'+user}:{},body},res);};
  const cleanup=async()=>{globalThis.fetch=originalFetch;await db.exec('reset role');await db.close();await fs.rm(out,{force:true});};
- return{db,invoke,sent,calls,problems,cleanup,apiError,gmailHandler,callbackHandler,decryptToken,setGoogleMode:v=>{googleMode=v;},setGoogleQueue:v=>{googleQueue=[...v];},failNextSentPersist:()=>{persistSentFailure=true;}};
+ return{db,invoke,sent,calls,problems,objects,storageTokens,fetchStorage:(url)=>globalThis.fetch(url),failNextStorageWrite:()=>{failStorage=true;},cleanup,apiError,gmailHandler,callbackHandler,decryptToken,setGoogleMode:v=>{googleMode=v;},setGoogleQueue:v=>{googleQueue=[...v];},failNextSentPersist:()=>{persistSentFailure=true;}};
 }
