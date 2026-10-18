@@ -1,6 +1,6 @@
 import { ORDERS_NOTICE, ORDER_NATURE_LABELS, ORDER_STATUS_LABELS } from './visitWorkOrders.js';
 import { jsPDF } from 'jspdf';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFDict, PDFName } from 'pdf-lib';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData.js';
 import { VISIT_NOTICE, madridTimestamp, personName, type VisitState } from './visitMinutes.js';
 
@@ -13,6 +13,10 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     unit: 'mm',
     format: 'a4'
   });
+  doc.setCreationDate(new Date(state.createdAt));
+  // A deterministic PDF identifier, not the cryptographic integrity evidence.
+  const fileSeed=Array.from(number+state.version+state.createdAt).reduce((h,ch)=>Math.imul(h^ch.charCodeAt(0),16777619)>>>0,2166136261).toString(16).padStart(8,'0');
+  doc.setFileId(fileSeed.repeat(4));
   const blue = '#00548E',
     ink = '#243447';
   let y = 47;
@@ -34,6 +38,9 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.text('ACTA DE VISITA DE OBRA', 18, 38);
+    if(c.workflow==='3.1'&&state.status!=='signed'){
+      doc.setFontSize(8);doc.setTextColor('#9A3412');doc.text('BORRADOR — PENDIENTE DE REVISIÓN Y FIRMA',18,46);
+    }
     y = 49;
   };
   const room = (height: number) => {
@@ -67,19 +74,23 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     doc.text(title, 21, y + 1);
     y += 8;
   };
+  let sectionNumber=0;
+  const mainSection=(title:string,minimum=18)=>section(`${++sectionNumber}. ${title}`,minimum);
   heading();
   paragraph(`${number} · Versión ${state.version} · ${state.status === 'signed' ? 'FIRMADA' : state.status === 'cancelled' ? 'ANULADA' : 'BORRADOR / EN TRAMITACIÓN'}`, 10, true);
   paragraph(`Obra: ${c.worksite}\nCódigo: ${c.code || '-'}\nEmplazamiento: ${c.location || '-'}\nMunicipio: ${c.municipality || '-'}\nPromotor: ${c.promoter || '-'}`);
   paragraph(`Visita: ${c.date} · ${c.start}${c.end ? ' - ' + c.end : ''} (Europe/Madrid)\nRedacción: ${madridTimestamp(state.createdAt)}${state.issuedAt ? '\nEmisión para revisión: ' + madridTimestamp(state.issuedAt) : ''}${state.finalizedAt ? '\nFinalización: ' + madridTimestamp(state.finalizedAt) : ''}`);
   paragraph(`Redacta: ${c.author} · ${c.authorRole}${c.authorEmail ? '\n' + c.authorEmail : ''}${c.authorPhone ? ' · ' + c.authorPhone : ''}`);
-  section('1. Participantes');
-  for (const p of state.participants) paragraph(`${personName(p)} · ${p.role}${p.entity ? ' · ' + p.entity : ''}\n${p.attended ? 'Asistente' : 'No asistente / destinatario'} · ${p.reviewRequired ? 'Revisa' : 'Sin revisión requerida'} · ${p.signing === 'required' ? 'Firma obligatoria' : p.signing === 'optional' ? 'Firma opcional' : 'No firma'}`, 8.5);
-  section('2. Objeto de la visita');
-  paragraph(c.purpose);
-  section('3. Asuntos tratados');
-  paragraph(c.discussion);
+  mainSection('Participantes');
+  for (const p of state.participants) paragraph(`${personName(p)} · ${p.role}${p.entity ? ' · ' + p.entity : ''}\n${p.attended ? 'Asistente presencial' : p.reviewRequired?'Participante remoto':'Destinatario del documento'} · ${p.reviewRequired ? 'Revisa' : 'Sin revisión requerida'} · ${p.modality==='in-person'?'Presencial':p.modality==='remote'?'Remota':p.modality==='none'?'Sin firma: '+p.noSignatureReason:'Modalidad registrada en evidencias'} · ${p.signing === 'required' ? 'Firma obligatoria' : p.signing === 'optional' ? 'Firma opcional' : 'No firma'}`, 8.5);
+  if(c.purpose){mainSection('Objeto histórico de la visita');paragraph(c.purpose);}
+  mainSection('Contenido de la visita');
+  if(c.points)for(const [i,p] of c.points.entries()){
+    paragraph(`Punto ${i+1}${p.title?'. '+p.title:''}`,9,true);paragraph(p.description);
+    if(p.attachmentIds.length)paragraph('Anexos: '+p.attachmentIds.map(id=>c.attachments.find(a=>a.id===id)?.name||id).join(', '),8);
+  }else paragraph(c.discussion);
   if(c.orders!==undefined){
-  section('4. ÓRDENES E INSTRUCCIONES DE OBRA');
+  mainSection('ÓRDENES E INSTRUCCIONES DE OBRA');
   if (!c.orders?.length) paragraph('Sin órdenes nuevas registradas.');
   for(const o of c.orders||[]) {
     room(70);
@@ -91,10 +102,10 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
   if(c.orderReferences?.length){section('Órdenes de visitas anteriores');for(const r of c.orderReferences)paragraph(`${r.originNumber} · Orden ${r.number} · ${r.id}\n${r.description}\nEstado observado: ${ORDER_STATUS_LABELS[r.status]} · Revisión ${r.revision} · ${madridTimestamp(r.recordedAt)}`,8);}
   }
   if(c.agreements.length){section('Actuaciones complementarias / históricas');c.agreements.forEach((a,i)=>{paragraph(`${i+1}. ${a.text}`,9,true);paragraph(`Responsable: ${a.responsible||'No asignado'} · Plazo: ${a.deadline||'No establecido'}${a.source?'\nProcedencia: '+a.source:''}`,8);});}
-  section('5. Incidencias y observaciones');
-  paragraph(c.observations || 'Sin observaciones registradas.');
+  if(c.observations){mainSection('Anotaciones históricas');paragraph(c.observations);}
   if (c.nextVisit) paragraph(`Próxima visita: ${c.nextVisit}`);
-  section('6. Revisión del contenido y firmas', 70);
+  if(state.reviewClosure){section('Tratamiento de observaciones y discrepancias');paragraph(state.reviewClosure.note);}
+  mainSection('Revisión del contenido y firmas', 70);
   for (const p of state.participants.filter(p => p.reviewRequired || p.signing !== 'none')) {
     const r = state.responses[p.id],
       s = state.signatures[p.id];
@@ -117,7 +128,7 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     section('Anulación');
     paragraph(state.cancelledReason);
   }
-  section('7. Anexos');
+  mainSection('Anexos');
   if (!c.attachments.length) paragraph('Sin anexos.');
   for (const [i, a] of c.attachments.entries()) paragraph(`${i + 1}. ${a.name}${a.caption ? ' · ' + a.caption : ''}`, 8);
   paragraph(VISIT_NOTICE, 7);
@@ -154,10 +165,14 @@ export async function generateVisitMinutesPdf(state: VisitState, number: string)
     subject: c.worksite,
     creator: 'GestionProfea'
   });
-  const result = await PDFDocument.load(doc.output('arraybuffer'));
+  const result = await PDFDocument.load(doc.output('arraybuffer'),{updateMetadata:false});
   for (const a of c.attachments.filter(a => a.mime === 'application/pdf')) {
-    const annex = await PDFDocument.load(Uint8Array.from(atob(a.base64), c => c.charCodeAt(0)));
+    const original=Uint8Array.from(atob(a.base64),c=>c.charCodeAt(0));
+    const annex = await PDFDocument.load(original,{updateMetadata:false});
     if (annex.getPageCount() > 30) throw new Error('Un anexo supera treinta páginas.');
+    if(c.workflow==='3.1'&&(annex.catalog.has(PDFName.of('AcroForm'))||annex.context.enumerateIndirectObjects().some(([,obj])=>obj instanceof PDFDict&&obj.has(PDFName.of('ByteRange'))))){
+      await result.attach(original,a.name,{mimeType:'application/pdf',description:'Original protegido conservado sin modificar. '+a.caption});continue;
+    }
     for (const page of await result.copyPages(annex, annex.getPageIndices())) result.addPage(page);
   }
   return result.save();

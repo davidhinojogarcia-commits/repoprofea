@@ -4,6 +4,7 @@ import {
   personName,
   type VisitContent,
   type VisitPerson,
+  type VisitPoint,
 } from "../src/lib/visitMinutes";
 import {
   ORDERS_NOTICE,
@@ -17,10 +18,16 @@ export function VisitWorkOrdersEditor({
   content,
   people,
   onChange,
+  permissionsOnly = false,
+  orderSeed,
+  onOrderSeedHandled,
 }: {
   content: VisitContent;
   people: VisitPerson[];
   onChange: (c: VisitContent) => void;
+  permissionsOnly?: boolean;
+  orderSeed?: VisitPoint | null;
+  onOrderSeedHandled?: () => void;
 }) {
   const [context, setContext] = useState<any>(null),
     [error, setError] = useState(""),
@@ -44,7 +51,7 @@ export function VisitWorkOrdersEditor({
         { action: "orders-context", worksiteId: content.worksiteId },
         { signal: abort.signal },
       ),
-      visitRequest(
+      permissionsOnly ? Promise.resolve({orders:[],hasMore:false,nextOffset:0}) : visitRequest(
         { action: "orders-list", worksiteId: content.worksiteId },
         { signal: abort.signal },
       ),
@@ -59,7 +66,7 @@ export function VisitWorkOrdersEditor({
         if (!abort.signal.aborted) setError(e.message);
       });
     return () => abort.abort();
-  }, [content.worksiteId]);
+  }, [content.worksiteId,permissionsOnly]);
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
@@ -78,7 +85,7 @@ export function VisitWorkOrdersEditor({
       ...content,
       orders: orders.map((o) => (o.id === id ? { ...o, ...patch } : o)),
     });
-  const add = () => {
+  const add = (seed?: VisitPoint) => {
     const a = context?.authorities.find((a: any) => a.active);
     if (!a) {
       setError(
@@ -102,13 +109,13 @@ export function VisitWorkOrdersEditor({
           issuerEntity: a.entity,
           recipientId: "",
           recipient: "",
-          description: "",
+          description: seed?.description || "",
           location: "",
           issuedDate: content.date,
           deadline: "",
           priority: "normal",
           observations: "",
-          attachmentIds: [],
+          attachmentIds: seed?.attachmentIds || [],
           officialReference: "",
           reservedDecision: false,
           authorizationReference: "",
@@ -119,16 +126,20 @@ export function VisitWorkOrdersEditor({
       ],
     });
   };
+  useEffect(()=>{
+    if(!orderSeed||!context)return;
+    add(orderSeed);onOrderSeedHandled?.();
+  },[orderSeed?.id,context]);
   return (
     <section className="space-y-4">
-      <h3 className="text-lg font-black">ÓRDENES E INSTRUCCIONES DE OBRA</h3>
-      <p className="text-sm">{ORDERS_NOTICE}</p>
+      <h3 className="text-lg font-black">{permissionsOnly?'Competencias para órdenes de obra':'ÓRDENES E INSTRUCCIONES DE OBRA'}</h3>
+      {!permissionsOnly&&<p className="text-sm">{ORDERS_NOTICE}</p>}
       {error && (
         <p role="alert" className="text-red-700">
           {error}
         </p>
       )}
-      {context?.canManage && (
+      {permissionsOnly&&context?.canManage && (
         <details className="rounded-xl border p-3">
           <summary className="font-bold cursor-pointer">
             Autorizar emisores y responsables de comprobación
@@ -278,291 +289,33 @@ export function VisitWorkOrdersEditor({
           </ul>
         </details>
       )}
-      {orders.map((o) => (
-        <fieldset key={o.id} className="rounded-xl border p-3 space-y-3">
-          <legend className="font-black">Orden {o.number}</legend>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <label>
-              Número
-              <input
-                className={visitInput}
-                type="number"
-                min="1"
-                value={o.number}
-                onChange={(e) =>
-                  update(o.id, { number: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label>
-              Tipo
-              <select
-                className={visitInput}
-                value={o.type}
-                onChange={(e) =>
-                  update(o.id, {
-                    type: e.target.value as any,
-                    nature:
-                      e.target.value === "recommendation"
-                        ? "recommendation"
-                        : o.nature === "recommendation"
-                          ? "technical"
-                          : o.nature,
-                  })
-                }
-              >
-                <option value="order">Orden</option>
-                <option value="technical_instruction">
-                  Instrucción técnica
-                </option>
-                <option value="recommendation">Recomendación</option>
-              </select>
-            </label>
-            <label>
-              Naturaleza
-              <select
-                className={visitInput}
-                value={o.nature}
-                onChange={(e) =>
-                  update(o.id, {
-                    nature: e.target.value as OrderNature,
-                    type:
-                      e.target.value === "recommendation"
-                        ? "recommendation"
-                        : o.type === "recommendation"
-                          ? "order"
-                          : o.type,
-                  })
-                }
-              >
-                {Object.entries(ORDER_NATURE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Emisor autorizado
-              <select
-                className={visitInput}
-                value={o.issuerId}
-                onChange={(e) => {
-                  const a = context.authorities.find(
-                    (a: any) => a.personId === e.target.value,
-                  );
-                  if (a)
-                    update(o.id, {
-                      issuerId: a.personId,
-                      issuerName: a.name,
-                      issuerRole: a.role,
-                      issuerEntity: a.entity,
-                    });
-                }}
-              >
-                {!context?.authorities.some(
-                  (a: any) => a.personId === o.issuerId,
-                ) && <option value={o.issuerId}>{o.issuerName}</option>}
-                {context?.authorities
-                  .filter((a: any) => a.active && a.scopes.includes(o.nature))
-                  .map((a: any) => (
-                    <option key={a.personId} value={a.personId}>
-                      {a.name} · {a.role} · {a.entity}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Destinatario asistente (opcional)
-              <select
-                className={visitInput}
-                value={o.recipientId}
-                onChange={(e) => {
-                  const p = people.find((p) => p.id === e.target.value);
-                  update(o.id, {
-                    recipientId: p?.id || "",
-                    recipient: p ? personName(p) : o.recipient,
-                  });
-                }}
-              >
-                <option value="">Otro responsable</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {personName(p)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Destinatario o responsable
-              <input
-                className={visitInput}
-                value={o.recipient}
-                onChange={(e) => update(o.id, { recipient: e.target.value })}
-              />
-            </label>
-            <label>
-              Zona de la obra
-              <input
-                className={visitInput}
-                value={o.location}
-                onChange={(e) => update(o.id, { location: e.target.value })}
-              />
-            </label>
-            <label>
-              Fecha de emisión
-              <input
-                type="date"
-                className={visitInput}
-                value={o.issuedDate}
-                onChange={(e) => update(o.id, { issuedDate: e.target.value })}
-              />
-            </label>
-            <label>
-              Plazo de cumplimiento
-              <input
-                type="date"
-                className={visitInput}
-                value={o.deadline}
-                onChange={(e) => update(o.id, { deadline: e.target.value })}
-              />
-            </label>
-            <label>
-              Prioridad
-              <select
-                className={visitInput}
-                value={o.priority}
-                onChange={(e) =>
-                  update(o.id, { priority: e.target.value as any })
-                }
-              >
-                <option value="normal">Normal</option>
-                <option value="high">Alta</option>
-                <option value="urgent">Urgente</option>
-              </select>
-            </label>
-          </div>
-          {(
-            [
-              "description",
-              "observations",
-              "officialReference",
-              "authorizationReference",
-              "correctionReason",
-            ] as const
-          ).map((key, i) => (
-            <label className="block" key={key}>
-              {
-                [
-                  "Descripción detallada",
-                  "Observaciones",
-                  "Referencia al libro o documento oficial",
-                  "Autorización del órgano competente",
-                  "Justificación de corrección de una orden ya emitida",
-                ][i]
-              }
-              <textarea
-                className={visitInput}
-                value={o[key] || ""}
-                onChange={(e) => update(o.id, { [key]: e.target.value })}
-              />
-            </label>
-          ))}
-          <label className="block">
-            <input
-              type="checkbox"
-              checked={o.reservedDecision}
-              onChange={(e) =>
-                update(o.id, { reservedDecision: e.target.checked })
-              }
-            />{" "}
-            Afecta a una decisión reservada a un órgano competente
-          </label>
-          <div>
-            <strong>Fotografías y documentos del acta asociados</strong>
-            {content.attachments.map((a) => (
-              <label className="block" key={a.id}>
-                <input
-                  type="checkbox"
-                  checked={o.attachmentIds.includes(a.id)}
-                  onChange={(e) =>
-                    update(o.id, {
-                      attachmentIds: e.target.checked
-                        ? [...o.attachmentIds, a.id]
-                        : o.attachmentIds.filter((id) => id !== a.id),
-                    })
-                  }
-                />{" "}
-                {a.name}
-              </label>
-            ))}
-          </div>
-          <label className="block">
-            Visibilidad en el portal
-            <select
-              className={visitInput}
-              value={o.visibility}
-              onChange={(e) =>
-                update(o.id, { visibility: e.target.value as any })
-              }
-            >
-              <option value="worksite">Encargados de esta obra</option>
-              <option value="restricted">
-                Confidencial: solo accesos seleccionados
-              </option>
-            </select>
-          </label>
-          {o.visibility === "restricted" && (
-            <p className="text-sm">
-              El PDF completo solo será accesible a encargados autorizados para
-              todas las órdenes que contiene.
-            </p>
-          )}
-          {context?.accesses.map((a: any) => (
-            <label className="block" key={a.id}>
-              <input
-                type="checkbox"
-                checked={o.foremanAccessIds.includes(a.id)}
-                onChange={(e) =>
-                  update(o.id, {
-                    foremanAccessIds: e.target.checked
-                      ? [...o.foremanAccessIds, a.id]
-                      : o.foremanAccessIds.filter((id) => id !== a.id),
-                  })
-                }
-              />{" "}
-              {a.foreman_name}
-            </label>
-          ))}
-          <label className="block">
-            <input
-              type="checkbox"
-              checked={o.foremanCanReport}
-              onChange={(e) =>
-                update(o.id, { foremanCanReport: e.target.checked })
-              }
-            />{" "}
-            Autorizar avances y evidencias del encargado
-          </label>
-          <button
-            type="button"
-            className={btn}
-            onClick={() =>
-              onChange({
-                ...content,
-                orders: orders.filter((x) => x.id !== o.id),
-              })
-            }
-          >
-            Quitar del borrador (las órdenes emitidas se conservan)
-          </button>
-        </fieldset>
-      ))}
+      {!permissionsOnly&&<>{orders.map(o=><fieldset key={o.id} className="rounded-xl border p-3 space-y-3"><legend className="font-black">Orden {o.number}</legend>
+        <label className="block font-bold">Descripción detallada<textarea className={visitInput} required rows={3} value={o.description} onChange={e=>update(o.id,{description:e.target.value})}/></label>
+        <label className="block">Emisor autorizado<select className={visitInput} value={o.issuerId} onChange={e=>{const a=context?.authorities.find((a:any)=>a.personId===e.target.value);if(a)update(o.id,{issuerId:a.personId,issuerName:a.name,issuerRole:a.role,issuerEntity:a.entity});}}>{!context?.authorities.some((a:any)=>a.personId===o.issuerId)&&<option value={o.issuerId}>{o.issuerName}</option>}{context?.authorities.filter((a:any)=>a.active&&a.scopes.includes(o.nature)).map((a:any)=><option key={a.personId} value={a.personId}>{a.name} · {a.role} · {a.entity}</option>)}</select></label>
+        <label className="block">Destinatario o responsable<input className={visitInput} placeholder="Opcional · intervinientes de la obra" value={o.recipient} onChange={e=>update(o.id,{recipient:e.target.value,recipientId:''})}/></label>
+        <div className="grid gap-3 sm:grid-cols-2"><label>Plazo de cumplimiento<input className={visitInput} type="date" value={o.deadline} onChange={e=>update(o.id,{deadline:e.target.value})}/></label><label>Prioridad<select className={visitInput} value={o.priority} onChange={e=>update(o.id,{priority:e.target.value as any})}><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label></div>
+        <details className="rounded-xl border p-3"><summary className="min-h-[44px] font-bold cursor-pointer">Datos técnicos, evidencias y permisos</summary><div className="space-y-3">
+          <label className="block">Número<input className={visitInput} type="number" min="1" value={o.number} onChange={e=>update(o.id,{number:Number(e.target.value)})}/></label>
+          <label className="block">Tipo<select className={visitInput} value={o.type} onChange={e=>update(o.id,{type:e.target.value as any,nature:e.target.value==='recommendation'?'recommendation':o.nature==='recommendation'?'technical':o.nature})}><option value="order">Orden</option><option value="technical_instruction">Instrucción técnica</option><option value="recommendation">Recomendación</option></select></label>
+          <label className="block">Naturaleza<select className={visitInput} value={o.nature} onChange={e=>update(o.id,{nature:e.target.value as OrderNature,type:e.target.value==='recommendation'?'recommendation':o.type==='recommendation'?'order':o.type})}>{Object.entries(ORDER_NATURE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
+          <label className="block">Destinatario asistente (opcional)<select className={visitInput} value={o.recipientId} onChange={e=>{const p=people.find(p=>p.id===e.target.value);update(o.id,{recipientId:p?.id||'',recipient:p?personName(p):''});}}><option value="">Intervinientes de la obra / otro responsable</option>{people.map(p=><option key={p.id} value={p.id}>{personName(p)}</option>)}</select></label>
+          <label className="block">Zona de la obra<input className={visitInput} value={o.location} onChange={e=>update(o.id,{location:e.target.value})}/></label>
+          <label className="block">Fecha de emisión<input className={visitInput} type="date" value={o.issuedDate} onChange={e=>update(o.id,{issuedDate:e.target.value})}/></label>
+          {(['observations','officialReference','authorizationReference','correctionReason'] as const).map((key,i)=><label className="block" key={key}>{['Observaciones','Referencia al libro o documento oficial','Autorización del órgano competente','Justificación de corrección de una orden ya emitida'][i]}<textarea className={visitInput} value={o[key]||''} onChange={e=>update(o.id,{[key]:e.target.value})}/></label>)}
+          <label className="flex min-h-[44px] items-center gap-2"><input type="checkbox" checked={o.reservedDecision} onChange={e=>update(o.id,{reservedDecision:e.target.checked})}/>Afecta a una decisión reservada a un órgano competente</label>
+          <div><strong>Fotografías y documentos del acta asociados</strong>{content.attachments.map(a=><label className="flex min-h-[44px] items-center gap-2" key={a.id}><input type="checkbox" checked={o.attachmentIds.includes(a.id)} onChange={e=>update(o.id,{attachmentIds:e.target.checked?[...o.attachmentIds,a.id]:o.attachmentIds.filter(id=>id!==a.id)})}/>{a.name}</label>)}</div>
+          <label className="block">Visibilidad en el portal<select className={visitInput} value={o.visibility} onChange={e=>update(o.id,{visibility:e.target.value as any})}><option value="worksite">Encargados de esta obra</option><option value="restricted">Confidencial: solo accesos seleccionados</option></select></label>
+          {o.visibility==='restricted'&&<p className="text-sm">El PDF completo solo será accesible a encargados autorizados para todas las órdenes que contiene.</p>}
+          {context?.accesses.map((a:any)=><label className="flex min-h-[44px] items-center gap-2" key={a.id}><input type="checkbox" checked={o.foremanAccessIds.includes(a.id)} onChange={e=>update(o.id,{foremanAccessIds:e.target.checked?[...o.foremanAccessIds,a.id]:o.foremanAccessIds.filter(id=>id!==a.id)})}/>{a.foreman_name}</label>)}
+          <label className="flex min-h-[44px] items-center gap-2"><input type="checkbox" checked={o.foremanCanReport} onChange={e=>update(o.id,{foremanCanReport:e.target.checked})}/>Autorizar avances y evidencias del encargado</label>
+        </div></details>
+        <button type="button" className={btn} onClick={()=>onChange({...content,orders:orders.filter(x=>x.id!==o.id)})}>Quitar del borrador (las órdenes emitidas se conservan)</button>
+      </fieldset>)}
       <button
         type="button"
         className={btn}
         disabled={!context || busy}
-        onClick={add}
+        onClick={()=>add()}
       >
         + AÑADIR ORDEN O INSTRUCCIÓN
       </button>
@@ -628,7 +381,7 @@ export function VisitWorkOrdersEditor({
           </button>
         )}
         {!pending.length && <p>Sin órdenes pendientes.</p>}
-      </section>
+      </section></>}
     </section>
   );
 }

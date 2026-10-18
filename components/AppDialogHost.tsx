@@ -162,7 +162,7 @@ export function AppDialogHost() {
             />
           )}
 
-          <div className={`mt-6 grid gap-2 ${isConfirm ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`profea-app-dialog-actions mt-6 grid gap-2 ${isConfirm ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {isConfirm && (
               <button
                 type="button"

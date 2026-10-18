@@ -352,7 +352,7 @@ export function VisitWorkOrdersFollowup({
                             orderId: o.id,
                             evidenceId: id,
                           });
-                          downloadVisitFile({
+                          await downloadVisitFile({
                             base64: r.file.base64,
                             filename: r.file.name,
                             mime: r.file.mime,

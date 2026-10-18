@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import { InventoryItem, saveInventoryItem } from '../services/inventoryService';
 
 export type ImportedInventoryItem = Partial<InventoryItem> & { nombre: string; categoria: string };
@@ -145,7 +146,7 @@ export const applyInventoryImportPlan = async (parkId: string, baseLocation: str
         if (row.existing) updated += 1;
         else created += 1;
       } catch (error) {
-        console.error('[inventory-excel-import]', row.imported, error);
+        reportOperationalError('[inventory-excel-import] No se pudo guardar una fila', error);
         failed += 1;
       }
     }

@@ -1,0 +1,37 @@
+{
+  "baselineCommit": "49825ad79bea7b4535d57293bb151486f93cb8d5",
+  "photoBytes": 855872,
+  "scope": "Real handler and PostgreSQL/PDF code; mocked HTTP services; not production resource billing or mobile memory",
+  "results": [
+    {
+      "mode": "main-49825ad-handler",
+      "scenario": "One 855 KB PNG, create plus five confirmed edits; includes one asset upload after",
+      "functions": 6,
+      "requestBytes": 6854591,
+      "restRequests": 34,
+      "stateWrites": 6,
+      "logs": 0,
+      "logBytes": 0,
+      "localDurationMs": 1080,
+      "currentStateBytes": 1142458,
+      "storedAssetBytes": 0,
+      "temporaryPdfs": 0,
+      "gmailMessages": 0
+    },
+    {
+      "mode": "3.1",
+      "scenario": "One 855 KB PNG, create plus five confirmed edits; includes one asset upload after",
+      "functions": 7,
+      "requestBytes": 1150536,
+      "restRequests": 39,
+      "stateWrites": 6,
+      "logs": 0,
+      "logBytes": 0,
+      "localDurationMs": 256,
+      "currentStateBytes": 1571,
+      "storedAssetBytes": 855872,
+      "temporaryPdfs": 0,
+      "gmailMessages": 0
+    }
+  ]
+}

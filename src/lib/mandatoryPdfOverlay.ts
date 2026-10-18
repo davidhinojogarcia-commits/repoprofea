@@ -873,6 +873,15 @@ export async function buildSignedMandatoryPdf(input: {
   const PDFLib = await loadPdfLib();
   const originalBytes = base64ToBytes(input.originalPdfBase64);
   const pdfDoc = await PDFLib.PDFDocument.load(originalBytes, { updateMetadata: false });
+  // Refuse to rewrite a cryptographically signed original. Never flatten/recolour it.
+  for (const [, object] of pdfDoc.context.enumerateIndirectObjects()) {
+    if (typeof object?.get === 'function' && typeof object?.has === 'function' &&
+      (object.get(pdfDoc.context.obj('Type'))?.toString() === '/Sig' ||
+       (object.get(pdfDoc.context.obj('FT'))?.toString() === '/Sig' && object.has(pdfDoc.context.obj('V')) && object.get(pdfDoc.context.obj('V'))?.toString() !== 'null') ||
+       (object.has(pdfDoc.context.obj('ByteRange')) && object.has(pdfDoc.context.obj('Contents'))))) {
+      throw new Error('El original contiene una firma digital criptográfica. No se modificará el documento.');
+    }
+  }
   const pages = pdfDoc.getPages();
   const signedAnchors=input.anchors.filter(anchor=>{
     const raw=input.signatures[String(anchor.workerId)];

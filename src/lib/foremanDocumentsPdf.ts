@@ -1,8 +1,10 @@
 import { drawForemanModelSignature } from './drawForemanModelSignature';
 import { enabledForemanTemplate } from './foremanSignaturePolicy';
+import { addSignatureImage } from './signaturePdf';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Person } from '../../types';
+import { signedAttendanceRows } from './signedAttendance';
 import { applyInstitutionalPdfStandard, renderInstitutionalReportHeader } from './exportUtils';
 import {
   generateAdditionalWorksiteDocument,
@@ -47,7 +49,8 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
     const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
     return m?`${m[3]}/${m[2]}/${m[1]}`:String(value||'');
   };
-  const rows=day.rows||[];
+  const rows=signedAttendanceRows(day.rows);
+  if (!rows.length) throw new Error('No hay registros con entrada y salida firmadas para descargar.');
   const doc=new jsPDF({ compress: true,unit:'mm',format:'a4',orientation:'landscape'});
 
   const drawField=(label:string,value:string,x:number,y:number,width:number,labelWidth:number,height=6)=>{
@@ -132,16 +135,12 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
       didDrawCell:(data:any)=>{
         if(data.section!=='body'||data.row.index!==0)return;
         if(data.column.index===3&&row.entrySignature){
-          try{
-            const pad=2;
-            doc.addImage(row.entrySignature,'PNG',data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4,undefined,'FAST');
-          }catch{}
+          const pad=2;
+          try{addSignatureImage(doc,row.entrySignature,data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4);}catch{throw new Error('No se pudo incorporar una firma de entrada. Revisa la jornada antes de descargar el PDF.');}
         }
         if(data.column.index===5&&row.exitSignature){
-          try{
-            const pad=2;
-            doc.addImage(row.exitSignature,'PNG',data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4,undefined,'FAST');
-          }catch{}
+          const pad=2;
+          try{addSignatureImage(doc,row.exitSignature,data.cell.x+pad,data.cell.y+2,data.cell.width-pad*2,data.cell.height-4);}catch{throw new Error('No se pudo incorporar una firma de salida. Revisa la jornada antes de descargar el PDF.');}
         }
       },
     });
@@ -184,13 +183,7 @@ export function generateForemanAttendancePdf(day: ForemanAttendanceDay, obra: st
     doc.text('Registro diario individual conforme al art. 34.9 del Estatuto de los Trabajadores. Conservación: 4 años.',pageW-10,noticeY,{align:'right'});
   };
 
-  if(rows.length){
-    rows.forEach(drawPage);
-  }else{
-    renderInstitutionalReportHeader(doc,'REGISTRO DIARIO DE JORNADA',obra,{subtitle:'COOPERACIÓN · GESTIÓN DE FONDOS PROFEA'});
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...BLUE);
-    doc.text('No hay trabajadores registrados en esta jornada.',20,55);
-  }
+  rows.forEach(drawPage);
 
   applyInstitutionalPdfStandard(doc);
   drawForemanModelSignature(doc,day.foremanSignature,day.foremanTemplate);
@@ -378,7 +371,7 @@ export function generateForemanMandatoryDocumentPdf(
 
       if (signature) {
         const signatureY = rowTop + 1.2;
-        try { doc.addImage(signature, 'PNG', 160, signatureY, signatureWidth, signatureHeight, undefined, 'FAST'); } catch {}
+        addSignatureImage(doc, signature, 160, signatureY, signatureWidth, signatureHeight);
       }
 
       y += rowHeight;
@@ -473,7 +466,7 @@ export function generateForemanMandatoryDocumentPdf(
 
     if (signature) {
       const signatureY = rowTop + 0.8;
-      try { doc.addImage(signature, 'PNG', 132, signatureY, inicioSignatureWidth, inicioSignatureHeight, undefined, 'FAST'); } catch {}
+      addSignatureImage(doc, signature, 132, signatureY, inicioSignatureWidth, inicioSignatureHeight);
     }
 
     // Sin línea horizontal bajo la firma ni separador largo de fila.

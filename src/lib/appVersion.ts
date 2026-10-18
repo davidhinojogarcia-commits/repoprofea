@@ -1,12 +1,18 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.21.2';
-export const APP_RELEASE_DATE = '14/10/2026';
+export const APP_VERSION = '1.21.3';
+export const APP_RELEASE_DATE = '18/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Actas 3.1: contenido por puntos, guardado automático, borrador sin códigos y firma presencial o remota independiente.',
+  'Actas definitivas en el portal y distribución Gmail con reintentos; anexos comprimidos y conservación privada sin duplicar el PDF.',
+  'Fotografías de incidencias reducidas antes de adjuntarlas; registro diario descargable con firmas de entrada y salida completas.',
+  'Control, inicios y contratos en dos líneas y confirmaciones accesibles en móvil.',
+  'Nuevas firmas en azul de bolígrafo y fondo transparente; proporción conservada en los PDF y reintento sin perder el trazo.',
+  'Refrescos concurrentes agrupados y recursos PDF liberados; registros saneados en importaciones y Gmail.',
   'Renovación de Gmail desde la revisión de documentos y comprobación real del permiso de Google.',
   'Corrección de formularios SAE escaneados: trabajador separado de DNI/fecha y PDF visible al ajustar firmas aunque falte identificar la persona.',
   'Contratos y Prórrogas en Importar documento: original intacto, revisión del trabajador y zona de firma antes del envío manual.',

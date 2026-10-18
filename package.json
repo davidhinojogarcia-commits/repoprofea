@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.21.2",
+  "version": "1.21.3",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -10,8 +10,8 @@
     "lint": "tsc --noEmit",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
     "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs && node scripts/testForemanPublicationReceipt.mjs && node --import tsx scripts/testForemanDocumentPeriod.ts && node --import tsx scripts/testForemanRepeatSignature.ts && node scripts/testIndependentForemanSql.mjs && node scripts/testIndependentForemanPdf.mjs",
-    "test:visit-minutes": "node scripts/testVisitMinutesDomain.mjs && node scripts/testVisitMinutesPdf.mjs && node scripts/testVisitMinutesIntegration.mjs",
-    "test:visit-minutes-browser": "node scripts/testVisitMinutesBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitMinutesBrowser.mjs",
+    "test:visit-minutes": "node scripts/testVisitMinutesDomain.mjs && node scripts/testVisitMinutesPdf.mjs && node scripts/testVisitMinutesIntegration.mjs && node scripts/testVisitMinutesMixed.mjs && node scripts/testVisitMinutes31.mjs",
+    "test:visit-minutes-browser": "node scripts/testVisitMinutesBrowser.mjs && node scripts/testVisitAttachmentsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitMinutesBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitAttachmentsBrowser.mjs",
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
     "test:relation-ordering": "tsx scripts/testRelationExportOrdering.ts",
     "test:mandatory-worker-detection": "tsx scripts/testMandatoryWorkerDetection.ts",
@@ -49,7 +49,10 @@
     "test:pdf-signature-workspace-browser": "node scripts/testPdfSignatureWorkspaceBrowser.mjs",
     "test:foreman-repeat-signature": "node --import tsx scripts/testForemanRepeatSignature.ts && node scripts/testIndependentForemanSql.mjs && node scripts/testIndependentForemanPdf.mjs",
     "test:visit-work-orders": "node --import tsx scripts/testVisitWorkOrdersDomain.ts && node scripts/testVisitWorkOrders.mjs",
-    "test:visit-mail": "node scripts/testVisitMailDelivery.mjs"
+    "test:visit-mail": "node scripts/testVisitMailDelivery.mjs",
+    "test:signed-attendance": "node scripts/testSignedAttendancePdf.mjs && node scripts/testForemanPublicationUi.mjs",
+    "test:signature-quality": "node --import tsx scripts/testSignatureQuality.ts",
+    "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

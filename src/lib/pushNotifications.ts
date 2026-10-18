@@ -73,7 +73,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
       scope: '/',
       updateViaCache: 'none'
     });
-    console.log('[SW] Service Worker registrado exitosamente con scope:', registration.scope);
+    if (import.meta.env.DEV) console.debug('[SW] Service Worker registrado exitosamente con scope:', registration.scope);
     
     // Verificar si hay actualizaciones
     registration.onupdatefound = () => {
@@ -82,9 +82,9 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         installingWorker.onstatechange = () => {
           if (installingWorker.state === 'installed') {
             if (navigator.serviceWorker.controller) {
-              console.log('[SW] Nueva versión de Service Worker disponible');
+              if (import.meta.env.DEV) console.debug('[SW] Nueva versión de Service Worker disponible');
             } else {
-              console.log('[SW] Contenido en caché para uso offline');
+              if (import.meta.env.DEV) console.debug('[SW] Contenido en caché para uso offline');
             }
           }
         };
@@ -134,7 +134,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 
   try {
     const permission = await window.Notification.requestPermission();
-    console.log('[Notificaciones] Permiso de notificación concedido:', permission);
+    if (import.meta.env.DEV) console.debug('[Notificaciones] Permiso de notificación concedido:', permission);
     return permission;
   } catch (error) {
     console.error('[Notificaciones] Error solicitando permisos de notificación:', error);

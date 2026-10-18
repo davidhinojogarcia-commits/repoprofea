@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import {
@@ -207,7 +208,7 @@ export const FileUploaderIA: React.FC<Props> = ({
       extractedText = result.text;
       extractionSource = result.source;
     } catch (error) {
-      console.warn(`[CAE] extracción local omitida para ${file.name}`, error);
+      reportOperationalError('[CAE] extracción local no disponible', error, 'warn');
     }
 
     return {

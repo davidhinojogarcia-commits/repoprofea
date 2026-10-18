@@ -97,6 +97,11 @@ jobs:
           npm run test:pdf-signature-workspace
           npm run test:pdf-signature-workspace-browser
           node scripts/testSignatureEditorLayeringBrowser.mjs
+      - name: Signature ink, capture, PDF and consumption regression
+        run: |
+          npm run test:signature-quality
+          npm run test:signature-browser
+          node scripts/testPreventionPhotoBrowser.mjs
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
       - name: Supervisor signed PDF download regression
@@ -126,6 +131,8 @@ jobs:
           node scripts/testVisitMailLocal.mjs
       - name: Worksite visit minutes browser workflow
         run: npm run test:visit-minutes-browser
+      - name: Signed attendance PDFs
+        run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
         run: npm run test:mandatory-persistence
       - name: SAE code position persistence

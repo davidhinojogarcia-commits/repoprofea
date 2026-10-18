@@ -20,3 +20,12 @@ html.dark canvas.visit-signature-surface {
 .visit-mail-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-top: 1px solid #cbd5e1; }
 .visit-mail-actions button { min-height: 48px; flex: 1 1 180px; }
 .dark .visit-mail-dialog { background: #0f172a; color: #f8fafc; }
+
+/* Mobile forms remain readable when the browser keyboard changes the viewport. */
+.visit-minutes-mobile { min-width: 0; overflow-wrap: anywhere; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.visit-minutes-mobile input:not([type=checkbox]), .visit-minutes-mobile select, .visit-minutes-mobile textarea { font-size: 16px; max-width: 100%; min-width: 0; scroll-margin-block: 96px; }
+.visit-minutes-mobile button, .visit-minutes-mobile summary { min-height: 44px; }
+.visit-minutes-mobile label:has(input[type=checkbox]) { min-height: 44px; align-items: center; }
+.visit-minutes-mobile [aria-current=step] { background: #00548e; color: white; }
+.visit-draft-actions { display:flex; flex-wrap:wrap; gap:8px; padding:12px 0 max(12px,env(safe-area-inset-bottom)); }
+.visit-draft-actions button { flex:1 1 140px; }
