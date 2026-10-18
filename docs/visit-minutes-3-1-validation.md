@@ -94,7 +94,9 @@ Fallos encontrados y corregidos: código de recordatorio legado con condición S
 
 ## 8. Regresiones superadas en este trabajo
 
-`test:prevention`, `test:tutor-agent`, `test:employment-documents`, `test:employment-worksites`, firmas/anclajes obligatorios, detección de trabajadores, `test:mandatory-persistence`, `test:sae-alignment`, `test:gmail-authorization`, inventario/invitaciones/uso/Gmail, `test:foreman-publication`, trazabilidad SQL y corrección/versionado E2E, órdenes de obra, correos y actas legadas.
+`test:prevention`, `test:tutor-agent`, `test:employment-documents`, `test:employment-worksites`, firmas/anclajes obligatorios, detección de trabajadores, `test:mandatory-persistence`, `test:sae-alignment`, `test:gmail-authorization`, inventario/invitaciones/uso/Gmail, `test:foreman-publication`, trazabilidad SQL y corrección/versionado E2E, órdenes de obra, correos y actas legadas. También consumo bajo/modelo/UI, consumo fase 2 y caché, contraste claro/oscuro, descarga firmada del supervisor, clasificación de obra/periodo y ordenación de relaciones.
+
+La prueba UI de bajo consumo tenía un stub obsoleto: solo leía la primera de varias importaciones del mismo servicio y no podía compilar el dashboard actual. Se corrigió únicamente el stub para reunir sus exports, sin relajar aserciones; la prueba de horarios, pestaña oculta, peticiones mínimas, actualización manual y parada por cuota vuelve a pasar. No se cambió el comportamiento productivo del dashboard para adaptar la prueba.
 
 En Chromium: confirmaciones globales, visor continuo/firma PDF, contratos/prórrogas, firma independiente del encargado. Incluyen originales, contratos/inicios/presencia excluidos de firma de encargado, EPIs/formación/maquinaria/control horario, colores, posiciones, recargas y dimensiones de móvil/tableta/escritorio. La compatibilidad de firma se conserva por defecto: `MandatoryPdfViewport` solo cambia al solicitar expresamente modo lectura.
 
@@ -132,4 +134,4 @@ Solo en el entorno de prueba autorizado con migraciones y Gmail conectado:
 7. Comparar SHA/bytes del PDF supervisor y encargado. Cambiar a otra obra/encargado: sin mezcla de documentos. Comprobar lectura y órdenes sin permitir al encargado verificarlas.
 8. Rectificar una versión emitida: nueva revisión/firmas y enlaces antiguos revocados; PDF final anterior intacto. Anular con justificación, sin eliminar su evidencia.
 
-**Estado de aceptación: parcial y verificable, no completado ni listo para producción.** El código y las pruebas disponibles quedan en rama/PR para continuar las validaciones pendientes.
+**Estado de aceptación: parcial y verificable, no completado ni listo para producción.** PR en borrador: https://github.com/davidhinojogarcia-commits/repoprofea/pull/289 . CI remoto iniciado; su resultado no se presupone por los verdes locales. El código y las pruebas disponibles quedan en rama/PR para continuar las validaciones pendientes.
