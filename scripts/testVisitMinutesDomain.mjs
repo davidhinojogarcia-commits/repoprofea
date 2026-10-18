@@ -38,5 +38,19 @@ try{
  assert(madridTimestamp('2026-03-29T01:30:00Z').includes('3:30'));assert(madridTimestamp('2026-10-25T01:30:00Z').includes('2:30'));
  const mail=visitMail(snapshot,'AV-2026-000001','final',person());assert(mail.body.includes(content.agreements[0].text));assert(!mail.body.includes(person(21).email));
  const cancelled=act(snapshot,{type:'cancel',reason:'Visita duplicada'},now);assert.throws(()=>act(cancelled,{type:'revise'},now),/anulada/);assert.deepEqual(cancelled.signatures,snapshot.signatures);
- console.log('PASS: visit state machine, consent/version/signature isolation, required and optional data, snapshots, follow-up, DST, recipient privacy and immutable cancellation.');
+ const point={id:id(801),title:'Seguridad',description:'Se revisa la señalización.',attachmentIds:[]};
+ const modern={...content,workflow:'3.1',purpose:'',observations:'',end:'',discussion:'',agreements:[],points:[point]},onsitePerson={...person(),email:'',receiveFinal:false,modality:'in-person'};
+ const draft=newVisit(modern,[onsitePerson],now);const review=act(draft,{type:'review',recipientIds:[]},now);
+ const asset=n=>({id:id(810+n),fileId:id(850+n),name:'Foto.png',mime:'image/png',base64:'',caption:'',sha256:'a'.repeat(64),bytes:1_100_000});
+ assert.throws(()=>cleanVisit({...modern,attachments:Array.from({length:8},(_,i)=>asset(i))},[onsitePerson]),/total|8 MB/i);
+ assert.throws(()=>cleanVisit({...modern,attachments:Array.from({length:9},(_,i)=>({...asset(i),bytes:10}))},[onsitePerson]),/ocho|8 anexo/i);
+ assert.equal(review.status,'review','onsite-only review requires no email');assert.deepEqual(review.reviewRecipients,[]);
+ assert.throws(()=>act(newVisit({...modern,points:[{...point,description:''}]},[onsitePerson],now),{type:'review',recipientIds:[]},now),/punto|descripci/i);
+ assert.throws(()=>cleanVisit({...modern,points:[point,point]},[onsitePerson]),/puntos|identificadores/i);
+ assert.throws(()=>cleanVisit({...modern,points:[{...point,attachmentIds:[id(999)]}]},[onsitePerson]),/anexo/i);
+ assert.throws(()=>act(review,{type:'onsite-sign',personId:onsitePerson.id,decision:'reject',comment:'Reservas expresas',image:png,intent:'agreement',note:''},now),/discrepancia/i);
+ const witnessed=act(review,{type:'onsite-sign',personId:onsitePerson.id,decision:'reject',comment:'Reservas expresas',image:png,intent:'knowledge',note:''},now);
+ assert.equal(witnessed.responses[onsitePerson.id].decision,'reject');assert.equal(witnessed.signatures[onsitePerson.id].intent,'knowledge');assert.throws(()=>act(witnessed,{type:'finalize'},now),/observaciones|discrepancias/i);
+ const final=act(witnessed,{type:'finalize',reviewClosure:'Se conserva la discrepancia expresa sin convertirla en conformidad.'},now);assert.equal(final.status,'signed');assert.equal(final.responses[onsitePerson.id].decision,'reject');
+ console.log('PASS: legacy and 3.1 state machine, structured point validation, no retired required fields, onsite without email, dissent/signature intent, consent/version isolation, snapshots, follow-up, DST, recipient privacy and immutable cancellation.');
 }finally{await fs.rm(output,{force:true});}

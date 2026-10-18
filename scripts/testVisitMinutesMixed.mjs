@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import {randomUUID,createHash} from 'node:crypto';
+import {visitTestServer} from './visitMinutesTestServer.mjs';
+import {content,person,png,id} from './visitMinutesFixture.mjs';
+const env=await visitTestServer();
+const call=async(body,user=1)=>{const x=await env.invoke(body,user);assert.equal(x.status,200,JSON.stringify({action:body.action,message:x.data.message,problems:env.problems.slice(-2)}));return x.data;};
+const direct=async(sql,args=[])=>{await env.db.exec('reset role');return(await env.db.query(sql,args)).rows;};
+try{
+ const onsite={...person(),email:'',receiveFinal:false,modality:'in-person'},remote={...person(21),modality:'remote'};
+ const noSign={...person(22),modality:'none',signing:'none',reviewRequired:false,receiveFinal:false,email:'',noSignatureReason:'Asistencia informativa sin obligación de firma'};
+ let r=(await call({action:'create',id:id(300),operation:randomUUID(),content:{...content,agreements:[],purpose:'',end:''},participants:[onsite,remote,noSign]})).record;
+ const command=async(command,extra={})=>r=(await call({action:'command',id:r.id,revision:r.revision,operation:randomUUID(),command,...extra})).record;
+ const opening=await call({action:'send-mail',id:r.id,revision:r.revision,version:r.version,operation:randomUUID(),kind:'review'});r=opening.record;
+ assert.equal(opening.summary.total,1);assert.equal(env.sent.length,1,'only remote review gets email');
+ assert.equal((await env.invoke({action:'link',id:r.id,personId:onsite.id})).status,400);
+ const token=(await call({action:'link',id:r.id,personId:remote.id})).url.split('=')[1];
+ await call({action:'challenge',token},null);const code=env.sent.at(-1).body.match(/es: (\d{6})/)[1];
+ const session=(await call({action:'verify',token,code},null)).session;
+ await command({type:'respond',personId:onsite.id,decision:'reject',comment:'Discrepo del replanteo indicado.',mode:'in-person'},{inPersonConfirmed:true});
+ const response=await call({action:'portal-command',token,session,revision:r.revision,operation:randomUUID(),command:{type:'respond',personId:onsite.id,decision:'agree',comment:''}},null);
+ r=(await call({action:'get',id:r.id})).record;assert.equal(r.state.responses[remote.id].decision,'agree');assert.equal(r.state.responses[onsite.id].decision,'reject','remote identity cannot override another person');
+ assert.equal(response.record.state.participants.find(p=>p.id===onsite.id).email,'');
+ assert.equal((await env.invoke({action:'command',id:r.id,revision:r.revision,operation:randomUUID(),command:{type:'open-signing'}})).status,400,'discrepancy requires documented treatment');
+ await command({type:'open-signing',reviewClosure:'Se conserva la discrepancia original. Se firma únicamente como constancia de conocimiento por la persona disconforme.'});
+ assert.equal((await env.invoke({action:'command',id:r.id,revision:r.revision,operation:randomUUID(),inPersonConfirmed:true,command:{type:'sign',personId:onsite.id,image:png,intent:'agreement'}})).status,400,'rejection never becomes agreement');
+ await command({type:'sign',personId:onsite.id,image:png,intent:'knowledge',mode:'in-person'},{inPersonConfirmed:true});
+ assert.equal(r.state.identityChecks[onsite.id].actor,id(1));
+ const afterSign=r.revision;
+ assert.equal((await env.invoke({action:'command',id:r.id,revision:r.revision,operation:randomUUID(),command:{type:'modality',personId:onsite.id,modality:'remote'}})).status,400,'signed evidence cannot be replaced by a modality switch');
+ assert.equal((await env.invoke({action:'command',id:r.id,revision:r.revision,operation:randomUUID(),inPersonConfirmed:true,command:{type:'sign',personId:remote.id,image:png,intent:'agreement'}})).status,400,'onsite command cannot masquerade as remote participation');
+ await call({action:'portal-command',token,session,revision:r.revision,operation:randomUUID(),command:{type:'sign',image:png,intent:'agreement'}},null);
+ r=(await call({action:'get',id:r.id})).record;assert.equal(r.revision,afterSign+1);assert.equal(r.state.signatures[onsite.id].mode,'in-person');assert.equal(r.state.signatures[remote.id].mode,'email-code');
+ await command({type:'finalize'});
+ const file=await call({action:'pdf',id:r.id}),get=await call({action:'get',id:r.id});
+ assert.equal(createHash('sha256').update(Buffer.from(file.base64,'base64')).digest('hex'),r.state.finalSha256);
+ assert.equal(get.jobs.filter(j=>j.kind==='final').length,1,'final distribution queued transactionally');
+ assert.equal((await direct('select count(*)::integer n from visit_signed_publications where record_id=$1',[r.id]))[0].n,1,'publication exists before any final notification');
+ assert.equal((await direct('select count(*)::integer n from visit_minutes_files where record_id=$1',[r.id]))[0].n,1,'one definitive PDF for both signatures');
+ const final=await call({action:'send-mail',id:r.id,revision:r.revision,version:r.version,operation:randomUUID(),kind:'final'});assert.equal(final.summary.accepted,1);
+ const delivered=env.sent.at(-1);assert(delivered.raw.includes(file.base64.slice(0,60)),'distribution reuses exact stored artifact');
+ await command({type:'revise'});assert.equal((await call({action:'pdf',id:r.id,version:1})).base64,file.base64);assert.deepEqual(r.state.signatures,{});assert.equal((await env.invoke({action:'portal',token,session},null)).status,403);
+
+ // Persistent serialized reminders; a new operation cannot bypass a pending,
+ // uncertain or recently accepted reminder. Same operation is safe to replay.
+ let m=(await call({action:'create',id:id(301),operation:randomUUID(),content:{...content,agreements:[]},participants:[remote]})).record;
+ m=(await call({action:'send-mail',id:m.id,revision:m.revision,version:1,operation:randomUUID(),kind:'review'})).record;
+ const old=(await call({action:'link',id:m.id,personId:remote.id})).url.split('=')[1];
+ const beforeReminder=env.sent.length,reminder={action:'remind',id:m.id,personId:remote.id,operation:randomUUID()};
+ const result=await call(reminder);assert.equal(result.delivery,'sent');assert.equal(env.sent.length,beforeReminder+1);
+ await call(reminder);assert.equal(env.sent.length,beforeReminder+1,'lost response replay does not duplicate reminder');
+ assert.equal((await env.invoke({...reminder,operation:randomUUID()})).status,409,'24-hour persisted cooldown');
+ assert.equal((await env.invoke({action:'challenge',token:old},null)).status,403,'renewal invalidates earlier access');
+ assert.equal((await env.invoke(reminder,2)).status,403,'supervisor isolation');
+ const modeOp={action:'command',id:m.id,revision:m.revision,operation:randomUUID(),command:{type:'modality',personId:remote.id,modality:'in-person'}};
+ m=(await call(modeOp)).record;assert.equal((await env.invoke({action:'link',id:m.id,personId:remote.id})).status,400);
+ m=(await call({action:'command',id:m.id,revision:m.revision,operation:randomUUID(),command:{type:'modality',personId:remote.id,modality:'remote'}})).record;
+ assert.equal((await env.invoke({action:'challenge',token:old},null)).status,403,'returning to remote never revives an old access');
+ const list=(await call({action:'list',fromDate:'2026-10-16',toDate:'2026-10-16'})).records;
+ assert(list.some(x=>x.id===m.id));assert(list.find(x=>x.id===m.id).action_summary.reviews.some(p=>p.id===remote.id));assert(!('state' in list[0]),'summary excludes documents and signature pixels');
+ const privileges=await direct("select has_function_privilege('anon','public.visit_minutes_reminder(uuid,integer,uuid,text,uuid,uuid,text,text)','EXECUTE') exposed");assert.equal(privileges[0].exposed,false);
+ console.log('PASS: mixed onsite/remote per-version review and signatures, documented dissent, identity actor, immutable PDF/publication/final outbox, recipient binding, modality revocation, persistent individual reminder deduplication/cooldown, date filters, minimal pending summaries. Gmail simulated; no real emails.');
+} finally {await env.cleanup();}

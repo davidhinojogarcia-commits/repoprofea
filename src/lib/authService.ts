@@ -91,7 +91,9 @@ export async function signOutUser() {
 export function subscribeToAuth(callback: (user: User | null, event: AuthChangeEvent) => void) {
   const { data } = supabase.auth.onAuthStateChange((event, session) => {
     const user = session?.user ? normalizeSupabaseUser(session.user) : null;
+    const previous=auth.currentUser?.id;
     auth.currentUser = user;
+    if(event==='SIGNED_OUT'&&previous)void import('./visitDraftStore').then(m=>m.forgetVisitDraft(previous)).catch(()=>undefined);
     callback(user, event);
   });
   return () => data.subscription.unsubscribe();

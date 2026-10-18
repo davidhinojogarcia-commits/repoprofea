@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   visitRequest,
   downloadVisitFile,
+  visitFileBytes,
 } from "../src/services/visitMinutesService";
 import { VisitWorkOrdersFollowup } from "./VisitWorkOrdersFollowup";
 const btn =
@@ -118,9 +119,7 @@ export default function ForemanVisitMinutes({
                       void run(async () => {
                         const r = await request("pdf", p);
                         onOpenPdf(
-                          Uint8Array.from(atob(r.file.base64), (c) =>
-                            c.charCodeAt(0),
-                          ),
+                          await visitFileBytes(r.file),
                           p.number + " · PDF firmado",
                         );
                       })
@@ -135,7 +134,7 @@ export default function ForemanVisitMinutes({
                   onClick={() =>
                     void run(async () => {
                       const r = await request("pdf", p);
-                      downloadVisitFile(r.file);
+                      await downloadVisitFile(r.file);
                     })
                   }
                 >

@@ -58,7 +58,9 @@
       "fix/visit-mail-preview-scroll": false,
       "feat/visit-work-orders": false,
       "fix/visit-review-mail-delivery": false,
-      "fix/visit-minutes-edit-delete": false
+      "fix/visit-minutes-edit-delete": false,
+      "feat/visit-minutes-2-mobile-mixed": false,
+      "feat/visit-minutes-3-1": false
     }
   }
 }

@@ -623,4 +623,3 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .profea-app-dialog-panel > :last-child > :last-child { flex-direction: column; }
   .profea-app-dialog-panel > :last-child > :last-child button { width: 100%; overflow-wrap: anywhere; }
 }
-
