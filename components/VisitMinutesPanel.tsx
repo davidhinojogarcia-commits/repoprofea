@@ -87,6 +87,13 @@ export function VisitMinutesPanel({
     [onsiteAck, setOnsiteAck] = useState(false),
     [responseComment, setResponseComment] = useState(''),
     [link, setLink] = useState('');
+  const onsiteRef=useRef<HTMLElement>(null);
+  useEffect(()=>{
+    if(!onsite)return;
+    // Bring the signing/review area into view on narrow mobile screens.
+    const frame=requestAnimationFrame(()=>onsiteRef.current?.scrollIntoView({block:'start',behavior:'smooth'}));
+    return ()=>cancelAnimationFrame(frame);
+  },[onsite?.personId,onsite?.kind]);
   const editorRef=useRef<HTMLElement>(null);
   const [editFocus,setEditFocus]=useState(0);
   useEffect(()=>{if(editFocus){editorRef.current?.focus({preventScroll:true});editorRef.current?.scrollIntoView({block:'start',behavior:'smooth'});}},[editFocus]);
@@ -255,7 +262,10 @@ export function VisitMinutesPanel({
     setRecord(null);
     setCreating(true);
     setContent(c);
-    setPeople([]);
+    const assigned=contacts.filter(c=>c.active&&c.assignments.some(a=>a.worksiteId===work?.id)).map(c=>({...emptyPerson(),...c,role:c.assignments.find(a=>a.worksiteId===work?.id)?.role||c.role,receiveFinal:!!c.email}));
+    // A preloaded contact remains editable and removable before sending.
+    // Deduplicate by stable contact ID, avoiding two entries for the same person.
+    setPeople(assigned.filter((p,i,all)=>all.findIndex(x=>x.id===p.id)===i));
     setJobs([]);
     setHistory(null);
     setOnsite(null);
@@ -363,7 +373,9 @@ export function VisitMinutesPanel({
   const changeWorksite=async(worksiteId:string)=>{
     if(!content)return;const work=works.find(w=>w.id===worksiteId);if(!work)return;
     if((people.length||content.discussion||content.purpose)&&!await appConfirm('Se conservará la redacción y se retirarán los participantes de la obra anterior. Revisa que el contenido corresponda a la nueva obra. ¿Cambiar obra?'))return;
-    setContent({...content,worksiteId:work.id,worksite:work.nombre,code:work.codigo||'',municipality:work.municipio||'',location:''});setPeople([]);
+    setContent({...content,worksiteId:work.id,worksite:work.nombre,code:work.codigo||'',municipality:work.municipio||'',location:''});
+    const assigned=contacts.filter(c=>c.active&&c.assignments.some(a=>a.worksiteId===work.id)).map(c=>({...emptyPerson(),...c,role:c.assignments.find(a=>a.worksiteId===work.id)?.role||c.role,receiveFinal:!!c.email}));
+    setPeople(assigned.filter((p,i,all)=>all.findIndex(x=>x.id===p.id)===i));
   };
   const canEdit = creating || record?.canWrite && record.status === 'draft';
   const canOpenSigning = record?.status === 'review' && record.state.participants.filter(p => p.reviewRequired).every(p => record.state.responses[p.id]?.decision === 'agree');
@@ -389,22 +401,27 @@ export function VisitMinutesPanel({
       <div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
       {canEdit ? <fieldset disabled={busy} className="rounded-2xl border bg-white p-4 sm:p-6 dark:border-slate-700 dark:bg-slate-900 space-y-5">
         <legend className="font-black">Datos de la visita</legend>
-        <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Obra<select disabled={!creating} className={visitInput} value={content.worksiteId} onChange={e => void run(()=>changeWorksite(e.target.value))}>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>{([['date', 'Fecha', 'date'], ['start', 'Hora inicio', 'time'], ['end', 'Hora final', 'time'], ['location', 'Emplazamiento', 'text'], ['municipality', 'Municipio', 'text'], ['promoter', 'Promotor', 'text'], ['author', 'Redacta: nombre y apellidos', 'text'], ['authorRole', 'Cargo del autor', 'text'], ['authorEmail', 'Correo del autor', 'email'], ['authorPhone', 'Teléfono del autor', 'tel'], ['nextVisit', 'Próxima visita (opcional)', 'date']] as const).map(([key, label, type]) => <label className="text-sm font-bold" key={key}>{label}<input className={visitInput} type={type} value={content[key]} onChange={e => setContent({
-              ...content,
-              [key]: e.target.value
-            })} /></label>)}</div>
-        {([['purpose', 'Objeto de la visita', 3], ['discussion', 'Asuntos tratados y decisiones', 8], ['observations', 'Incidencias y observaciones', 4]] as const).map(([key, label, rows]) => <label key={key} className="block text-sm font-bold">{label}<textarea aria-label={label} className={visitInput} rows={rows} value={content[key]} onChange={e => setContent({
-            ...content,
-            [key]: e.target.value
-          })} /></label>)}
-        <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} />
+        <p className="text-sm text-slate-600 dark:text-slate-300">Redacta el contenido, añade órdenes si procede y guarda el borrador antes de revisarlo y firmarlo.</p>
+<label className="block text-sm font-bold">Obra<select disabled={!creating} className={visitInput} value={content.worksiteId} onChange={e => void run(()=>changeWorksite(e.target.value))}>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>
+<label className="block text-sm font-bold">Contenido de la visita<textarea className={visitInput} aria-label="Contenido de la visita" placeholder="Escribe o dicta lo tratado…" rows={7} value={content.discussion} onChange={e=>setContent({...content,discussion:e.target.value})}/></label>
+<details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer py-2 font-bold">Más datos de la visita (objeto y hora final necesarios para revisión)</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
+{([['date','Fecha','date'],['start','Hora de inicio','time'],['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre','text'],['authorRole','Cargo','text'],['authorEmail','Correo','email'],['authorPhone','Teléfono','tel'],['nextVisit','Próxima visita','date']] as const).map(([key,label,type])=><label className="text-sm font-bold" key={key}>{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}
+<label className="block text-sm font-bold sm:col-span-2">Objeto de la visita<textarea className={visitInput} rows={2} value={content.purpose} onChange={e=>setContent({...content,purpose:e.target.value})}/></label>
+<label className="block text-sm font-bold sm:col-span-2">Incidencias y observaciones<textarea className={visitInput} rows={3} value={content.observations} onChange={e=>setContent({...content,observations:e.target.value})}/></label></div></details>
+         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} />
         <section className="space-y-3"><h3 className="font-black">Participantes y destinatarios</h3><p className="text-sm">Revisión, firma, asistencia y distribución son decisiones independientes. Para firmar, la persona debe revisar primero. Sin correo puede responder y firmar presencialmente, pero no recibir el PDF por email.</p>
           <label className="block text-sm font-bold">Añadir desde Dirección facultativa<select className={visitInput} value="" onChange={e => {
               const c = contacts.find(c => c.id === e.target.value);
               if (c) addContact(c);
             }}><option value="">Selecciona una persona asociada a esta obra…</option>{contacts.filter(c => c.active && c.assignments.some(a => a.worksiteId === content.worksiteId)).map(c => <option key={c.id} value={c.id}>{personName(c)} · {c.role}</option>)}</select></label>
           <div className="flex flex-wrap gap-2"><button type="button" className={button} onClick={() => setPeople([...people, emptyPerson()])}>Añadir asistente manual</button><button type="button" className={button} onClick={() => {
-              const names = String(supervisor.nombreApellidos || '').trim().split(/\s+/);
+              const name = String(supervisor.nombreApellidos || '').trim();
+              const email = String(supervisor.email || '').trim().toLowerCase();
+              if(people.some(p => email ? p.email.trim().toLowerCase()===email : (p.firstName+' '+p.lastName).trim().toLocaleLowerCase()===name.toLocaleLowerCase())){
+                setMessage('El supervisor ya está incluido entre los participantes.');
+                return;
+              }
+              const names = name.split(/\s+/);
               setPeople([...people, {
                 ...emptyPerson(),
                 firstName: names.shift() || '',
@@ -528,7 +545,7 @@ export function VisitMinutesPanel({
         {link && <label className="block text-sm font-bold">Enlace personal: entrégalo solo a su destinatario<input className={visitInput} readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>}
         {onsite && (() => {
           const p = record.state.participants.find(p => p.id === onsite.personId)!;
-          return <section className="rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={(image,intent,note) => void run(() => mutate({
+          return <section ref={onsiteRef} aria-label="Revisión y firma presencial" className="scroll-mt-20 rounded-xl border-2 border-amber-300 p-4 space-y-3"><h3 className="font-black">Participación presencial de {personName(p)}</h3><label className="flex gap-2 text-sm"><input type="checkbox" checked={onsiteAck} onChange={e => setOnsiteAck(e.target.checked)} />Como supervisor, confirmo que esta persona está presente, he comprobado su identidad y le entrego el dispositivo para que actúe personalmente.</label>{onsite.kind === 'signature' ? onsiteAck && <VisitSignaturePad name={personName(p)} busy={busy} onCancel={() => setOnsite(null)} onConfirm={(image,intent,note) => void run(() => mutate({
               type: 'sign',
             intent, note,
               personId: p.id,
