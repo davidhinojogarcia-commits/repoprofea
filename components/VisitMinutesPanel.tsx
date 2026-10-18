@@ -10,6 +10,8 @@ import { beginGmailOAuth, getGmailConnectionStatus } from '../src/lib/gmailConne
 import ModalPortal from './ModalPortal';
 import { appConfirm,appPrompt } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
+import { loadObrasRecursosPreventivos } from '../src/services/subcontratasPreferencesService';
+import { visitForemanProfile } from '../src/lib/visitForeman';
 import { supabase } from '../src/lib/supabase';
 import { storeVisitDraft, readVisitDraft, clearVisitDraft, forgetVisitDraft } from '../src/lib/visitDraftStore';
 import { cleanVisit, visitProgress } from '../src/lib/visitMinutes';
@@ -103,6 +105,7 @@ export function VisitMinutesPanel({
   const [draftUser,setDraftUser]=useState(''),[recovery,setRecovery]=useState<any>(null),[syncState,setSyncState]=useState(''),[syncBlocked,setSyncBlocked]=useState(false),[autoSaving,setAutoSaving]=useState(false),[online,setOnline]=useState(navigator.onLine),[reviewClosure,setReviewClosure]=useState('');
   const [orderSeed,setOrderSeed]=useState<VisitPoint|null>(null),[attachmentBusy,setAttachmentBusy]=useState(false),[attachmentTotal,setAttachmentTotal]=useState(8_000_000),[selectedRecipients,setSelectedRecipients]=useState<string[]>([]);
   const assetCache=useRef(new Map<string,any>());
+  const openingParticipation=useRef(false);
   const localPending=useRef<any>(null),draftReady=useRef(false),latestDraft=useRef<any>(null);
   const draftScopeActive=useRef(true);
   const editorRef=useRef<HTMLElement>(null);
@@ -142,10 +145,10 @@ export function VisitMinutesPanel({
       const saved=user?await readVisitDraft<any>(user):null;
       if(saved?.content)setRecovery(saved);
       try {
-        const [w,c,s]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings()]);
+        const [w,c,s,resources]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings(),loadObrasRecursosPreventivos()]);
         if(abort.signal.aborted)return;
         if(w.visitWorkflow!=='3.1')throw new Error('Actualiza GestionProfea: el servidor todavía no admite Actas 3.1. No se ha enviado ningún borrador.');
-        setWorks(w.works);setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
+        setWorks(w.works.map((work:any)=>({...work,visitForeman:visitForemanProfile(work,resources)})));setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
         const exact=w.works.filter((work:any)=>work.id===initialWorksite||work.nombre===initialWorksite);
         setWorkFilter(exact.length===1?exact[0].id:'');setLoaded(true);
       } catch(e) {
@@ -375,10 +378,24 @@ export function VisitMinutesPanel({
     setMailError('');setMailNotice('');setGmailRequired(false);
     const draft=kind==='review'&&target.state.content.workflow==='3.1';
     const pdfBytes=draft?await visitFileBytes(await visitRequest({action:'pdf',id:target.id})):undefined;
-    setSelectedRecipients(target.state.reviewRecipients||target.state.participants.filter(p=>p.reviewEmailSelected&&p.reviewRequired&&p.email).map(p=>p.id));
-    setMail({kind,messages:r.messages,sender:r.sender,pdfBytes});
+    const messages=draft?r.messages.filter((m:any)=>target.state.participants.some(p=>p.id===m.personId&&p.modality==='remote')):r.messages;
+    setSelectedRecipients((target.state.reviewRecipients||target.state.participants.filter(p=>p.reviewEmailSelected&&p.reviewRequired&&p.email).map(p=>p.id)).filter(id=>messages.some((m:any)=>m.personId===id)));
+    setMail({kind,messages,sender:r.sender,pdfBytes});
   });
   const reviewDraft=async()=>{const target=dirty?await persistDraft(false):record;if(target)preview('review',target);};
+  const reviewAndSign=async()=>{
+    if(openingParticipation.current||guard.current||attachmentBusy)return;
+    openingParticipation.current=true;
+    try{
+      const target=dirty?await persistDraft(false):record;
+      if(!target)return;
+      await run(async()=>{
+        const updated=await commitCommand(target,{type:'review',recipientIds:[]});
+        install(updated);setJobs([]);
+        setMessage('Acta preparada. Cada asistente puede revisar y firmar aquí.');
+      });
+    }finally{openingParticipation.current=false;}
+  };
   const deliverMail = async (currentRecord:VisitRecord,pending:NonNullable<typeof mail>)=>{
       const record=currentRecord;
       setMailError('');setMailNotice('');setGmailRequired(false);setMailSending(true);
@@ -425,6 +442,11 @@ export function VisitMinutesPanel({
     const name=String(profile.nombreApellidos||'').trim(),email=String(profile.email||'').trim().toLowerCase();
     if(people.some(p=>email?p.email.trim().toLowerCase()===email:personName(p).toLocaleLowerCase('es')===name.toLocaleLowerCase('es'))){setMessage('Esta persona ya está incluida.');return;}
     const names=name.split(/\s+/);setPeople([...people,{...emptyPerson(),firstName:names.shift()||'',lastName:names.join(' '),role:profile.cargo||role,entity:'Diputación Provincial de Cádiz',email,phone:profile.telefono||'',receiveFinal:!!email}]);
+  };
+  const addForeman=()=>{
+    const work=works.find(w=>w.id===content?.worksiteId);
+    if(!work?.visitForeman){setError('Completa los datos del encargado en Configuración → Obras y Recursos Preventivos de esta obra y vuelve a abrir Actas de visitas.');return;}
+    addProfile(work.visitForeman,'Encargado de obra');
   };
   const saveUsualContact = async (p: VisitPerson) => {
     if (!content) return;
@@ -483,16 +505,17 @@ export function VisitMinutesPanel({
         setHasMore(r.hasMore);
       })}>Cargar siguientes actas</button>}</section>
     {content && <section ref={editorRef} tabIndex={-1} className="space-y-4">
-      <nav aria-label="Etapas del acta" className="grid grid-cols-3 gap-1 text-xs font-bold">{['Redactar','Revisar','Firmar'].map((label,i)=><span key={label} aria-current={(record?.status==='signed'||record?.status==='signing'?2:record&&record.status!=='draft'?1:0)===i?'step':undefined} className="rounded-lg border p-2">{i+1}. {label}</span>)}</nav><div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
+      <nav aria-label="Etapas del acta" className="grid grid-cols-2 gap-1 text-xs font-bold">{['Redactar','Revisar y firmar'].map((label,i)=><span key={label} aria-current={(record&&record.status!=='draft'?1:0)===i?'step':undefined} className="rounded-lg border p-2">{i+1}. {label}</span>)}</nav><div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
       {canEdit ? <fieldset disabled={busy||attachmentBusy} className="rounded-2xl border bg-white p-4 sm:p-6 dark:border-slate-700 dark:bg-slate-900 space-y-5">
         <legend className="font-black">Datos de la visita</legend>
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Obra<select disabled={!creating} className={visitInput} value={content.worksiteId} onChange={e => void run(()=>changeWorksite(e.target.value))}><option value="">Selecciona una obra…</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>{([['date','Fecha','date'],['start','Hora inicio','time']] as const).map(([key,label,type])=><label className="text-sm font-bold" key={key}>{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div>
         <VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed}/>
         <details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer font-bold">Más datos de la visita (opcional)</summary><div className="grid gap-3 sm:grid-cols-2">{([['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre y apellidos','text'],['authorRole','Cargo del autor','text'],['authorEmail','Correo del autor','email'],['authorPhone','Teléfono del autor','tel'],['nextVisit','Próxima visita (opcional)','date']] as const).map(([key,label,type])=><label key={key} className="text-sm font-bold">{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div></details>
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
-        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={()=>setPeople(current=>[...current,{...emptyPerson(),role:'Encargado',attended:true,modality:'in-person',signing:'required'}])} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
+        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={addForeman} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
-        <div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewDraft()}>Enviar borrador para revisión</button></div>
+        <div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewAndSign()}>Revisar y firmar</button></div>
+        {people.some(p=>p.modality==='remote'&&p.reviewRequired)&&<button type="button" className={button} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewDraft()}>Enviar borrador a participantes remotos</button>}
       </fieldset> : record && <VisitMinutesReadView state={record.state} number={record.number} />}
       {record && <div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-4">
         {!record.canWrite && <p className="font-bold">Consulta de obra compartida. Solo el autor puede modificar o distribuir esta acta.</p>}

@@ -21,6 +21,15 @@ export async function loadSubcontratasPreferences(): Promise<SubcontratasPrefere
   return value && typeof value === 'object' ? value : {};
 }
 
+export async function loadObrasRecursosPreventivos(): Promise<Record<string, any>> {
+  const user = await requireUser();
+  const rows = await supabase.query('user_settings', {
+    query: `user_id=eq.${encodeURIComponent(user.id)}&select=resources:settings->subcontratasPreferences->obrasRecursosPreventivos&limit=1`,
+  });
+  const value = rows?.[0]?.resources;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 export async function saveSubcontratasPreferences(patch: SubcontratasPreferences): Promise<SubcontratasPreferences> {
   const current = await loadSubcontratasPreferences();
   const next = { ...current, ...patch };
