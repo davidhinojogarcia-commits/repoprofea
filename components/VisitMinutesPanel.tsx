@@ -10,6 +10,8 @@ import { beginGmailOAuth, getGmailConnectionStatus } from '../src/lib/gmailConne
 import ModalPortal from './ModalPortal';
 import { appConfirm,appPrompt } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
+import { loadObrasRecursosPreventivos } from '../src/services/subcontratasPreferencesService';
+import { visitForemanProfile } from '../src/lib/visitForeman';
 import { supabase } from '../src/lib/supabase';
 import { storeVisitDraft, readVisitDraft, clearVisitDraft, forgetVisitDraft } from '../src/lib/visitDraftStore';
 import { cleanVisit, visitProgress } from '../src/lib/visitMinutes';
@@ -143,10 +145,10 @@ export function VisitMinutesPanel({
       const saved=user?await readVisitDraft<any>(user):null;
       if(saved?.content)setRecovery(saved);
       try {
-        const [w,c,s]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings()]);
+        const [w,c,s,resources]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings(),loadObrasRecursosPreventivos()]);
         if(abort.signal.aborted)return;
         if(w.visitWorkflow!=='3.1')throw new Error('Actualiza GestionProfea: el servidor todavía no admite Actas 3.1. No se ha enviado ningún borrador.');
-        setWorks(w.works);setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
+        setWorks(w.works.map((work:any)=>({...work,visitForeman:visitForemanProfile(work,resources)})));setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
         const exact=w.works.filter((work:any)=>work.id===initialWorksite||work.nombre===initialWorksite);
         setWorkFilter(exact.length===1?exact[0].id:'');setLoaded(true);
       } catch(e) {
@@ -441,6 +443,11 @@ export function VisitMinutesPanel({
     if(people.some(p=>email?p.email.trim().toLowerCase()===email:personName(p).toLocaleLowerCase('es')===name.toLocaleLowerCase('es'))){setMessage('Esta persona ya está incluida.');return;}
     const names=name.split(/\s+/);setPeople([...people,{...emptyPerson(),firstName:names.shift()||'',lastName:names.join(' '),role:profile.cargo||role,entity:'Diputación Provincial de Cádiz',email,phone:profile.telefono||'',receiveFinal:!!email}]);
   };
+  const addForeman=()=>{
+    const work=works.find(w=>w.id===content?.worksiteId);
+    if(!work?.visitForeman){setError('Completa los datos del encargado en Configuración → Obras y Recursos Preventivos de esta obra y vuelve a abrir Actas de visitas.');return;}
+    addProfile(work.visitForeman,'Encargado de obra');
+  };
   const saveUsualContact = async (p: VisitPerson) => {
     if (!content) return;
     const existing = contacts.find(c => c.id === p.id);
@@ -505,7 +512,7 @@ export function VisitMinutesPanel({
         <VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed}/>
         <details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer font-bold">Más datos de la visita (opcional)</summary><div className="grid gap-3 sm:grid-cols-2">{([['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre y apellidos','text'],['authorRole','Cargo del autor','text'],['authorEmail','Correo del autor','email'],['authorPhone','Teléfono del autor','tel'],['nextVisit','Próxima visita (opcional)','date']] as const).map(([key,label,type])=><label key={key} className="text-sm font-bold">{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div></details>
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
-        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={()=>setPeople(current=>[...current,{...emptyPerson(),role:'Encargado',attended:true,modality:'in-person',signing:'required'}])} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
+        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={addForeman} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
         <div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewAndSign()}>Revisar y firmar</button></div>
         {people.some(p=>p.modality==='remote'&&p.reviewRequired)&&<button type="button" className={button} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewDraft()}>Enviar borrador a participantes remotos</button>}

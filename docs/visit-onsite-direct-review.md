@@ -57,3 +57,25 @@ firma; después «Finalizar acta y enviar» para distribuir el documento definit
 
 Preparado para validación, sin publicación en producción en esta tarea.
 Reversión: revertir el commit; no hay cambios de datos que revertir.
+
+## Precarga del encargado desde Configuración
+
+El botón anterior creaba una ficha vacía. Ahora carga los recursos de Configuración
+→ Obras y Recursos Preventivos mediante una proyección limitada de `user_settings`
+del usuario autenticado. La carga se realiza una vez al abrir el módulo, en paralelo
+con los datos existentes; añadir al encargado no genera más consultas.
+
+La obra se selecciona por identificador y la configuración se enlaza por nombre
+completo coincidente, sin aproximaciones por código o fragmentos. Si faltan datos
+o la configuración es ambigua se indica que debe completarse; no se crea una ficha
+vacía ni se utiliza una persona de otra obra. Se rellenan nombre, cargo/categoría
+y teléfono. El correo queda vacío y «Recibe PDF final» desmarcado: puede revisar y
+firmar presencialmente y consultar el documento definitivo en el portal autorizado.
+La instantánea del borrador conserva los datos; no se reescriben actas firmadas al
+modificar la configuración. No se conceden competencias técnicas por asistir.
+
+Pruebas añadidas: selección exacta y ambigua de obra, datos incompletos, nombre/cargo/
+teléfono sin correo, duplicación por pulsación, servicio real de lectura con
+transporte simulado y proyección limitada al usuario, firma presencial del encargado
+en el flujo completo con técnico remoto y publicación del mismo PDF en el portal.
+El test unitario `scripts/testVisitForeman.ts` se incorpora a `test:visit-minutes`.
