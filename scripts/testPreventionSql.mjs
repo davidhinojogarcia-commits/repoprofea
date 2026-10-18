@@ -45,7 +45,7 @@ try {
   await assert.rejects(save(crypto.randomUUID(),{...precheck,checks:{...checks,unknown:'yes'}}),/no válidas/);
   await assert.rejects(save(crypto.randomUUID(),{...precheck,checks:{...checks,weather:'no'},measures:''}),/medidas/);
   assert.equal((await save(crypto.randomUUID(),{...precheck,checks:{...checks,weather:'no'}})).status,'pending');
-  await save(crypto.randomUUID(),{...draft,obra:'Obra B'});
+  const otherWork=await save(crypto.randomUUID(),{...draft,obra:'Obra B'});
   const photo='data:image/jpeg;base64,YWJj';
   const withPhoto=await save(crypto.randomUUID(),{...draft,photo});
   const listed=(await list()).records.find(r=>r.id===withPhoto.id);
@@ -59,6 +59,7 @@ try {
   const details=(await db.query('select public.get_prevention_record_details($1,$2) as result',[withPhoto.id,token])).rows[0].result;
   assert.equal(details.photo,photo); assert.equal(details.events.length,1);
   assert.ok(!('owner_id' in details.events[0]));
+  await assert.rejects(db.query('select public.get_prevention_record_details($1,$2)',[otherWork.id,token]),/no disponible/,'Report photo access must not cross work boundaries');
   await db.exec('reset role');
   await db.query('update foreman_portal_access set active=false');
   await asUser(null,'anon'); await assert.rejects(list(token),/revocado/);

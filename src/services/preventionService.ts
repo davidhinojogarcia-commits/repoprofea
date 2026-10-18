@@ -42,6 +42,24 @@ export async function loadPreventionActHistory(ids: string[], token?: string): P
   return Array.isArray(result) ? result : [];
 }
 
+// Photos stay out of ordinary list reads. Resolve only the filtered report's
+// attachments, using the existing owner/work-authorized details endpoint.
+export async function loadPreventionActPhotos(records: PreventionRecord[], token?: string): Promise<PreventionRecord[]> {
+  if (records.length > 200) throw new Error('El acta no puede incluir más de 200 registros a la vez.');
+  const result = records.map(record => ({ ...record }));
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(3, result.length) }, async () => {
+    while (next < result.length) {
+      const record = result[next++];
+      if (!record.has_photo || record.photo) continue;
+      const details = await getPreventionRecordDetails(record.id, token);
+      if (!details.photo) throw new Error(`No se pudo recuperar la fotografía de «${record.title}». Actualiza el listado y vuelve a intentarlo.`);
+      record.photo = details.photo;
+    }
+  }));
+  return result;
+}
+
 export async function editPreventionRecord(record: PreventionRecord, patch: Partial<PreventionRecord>): Promise<PreventionRecord> {
   return supabase.rpc('edit_prevention_record', {
     p_id: record.id,
