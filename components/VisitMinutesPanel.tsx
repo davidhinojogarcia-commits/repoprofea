@@ -10,6 +10,7 @@ import { beginGmailOAuth, getGmailConnectionStatus } from '../src/lib/gmailConne
 import ModalPortal from './ModalPortal';
 import { appConfirm,appPrompt } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
+import { hydrateStoredSubcontratasPreferences, getStoredObrasRecursosPreventivos } from '../src/lib/subcontratasDefaults';
 import { supabase } from '../src/lib/supabase';
 import { storeVisitDraft, readVisitDraft, clearVisitDraft, forgetVisitDraft } from '../src/lib/visitDraftStore';
 import { cleanVisit, visitProgress } from '../src/lib/visitMinutes';
@@ -75,6 +76,7 @@ export function VisitMinutesPanel({
     [contacts, setContacts] = useState<VisitContact[]>([]),
     [supervisor, setSupervisor] = useState<any>({}),
     [technician, setTechnician] = useState<any>({}),
+    [foremanSettings, setForemanSettings] = useState<Record<string,any>>({}),
     [records, setRecords] = useState<any[]>([]),
     [hasMore, setHasMore] = useState(false),
     [workFilter, setWorkFilter] = useState(''),
@@ -145,7 +147,7 @@ export function VisitMinutesPanel({
         const [w,c,s]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings()]);
         if(abort.signal.aborted)return;
         if(w.visitWorkflow!=='3.1')throw new Error('Actualiza GestionProfea: el servidor todavía no admite Actas 3.1. No se ha enviado ningún borrador.');
-        setWorks(w.works);setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
+        setWorks(w.works);setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});void hydrateStoredSubcontratasPreferences().then(()=>{if(!abort.signal.aborted)setForemanSettings(getStoredObrasRecursosPreventivos());}).catch(()=>{if(!abort.signal.aborted)setForemanSettings({});});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
         const exact=w.works.filter((work:any)=>work.id===initialWorksite||work.nombre===initialWorksite);
         setWorkFilter(exact.length===1?exact[0].id:'');setLoaded(true);
       } catch(e) {
@@ -490,7 +492,13 @@ export function VisitMinutesPanel({
         <VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed}/>
         <details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer font-bold">Más datos de la visita (opcional)</summary><div className="grid gap-3 sm:grid-cols-2">{([['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre y apellidos','text'],['authorRole','Cargo del autor','text'],['authorEmail','Correo del autor','email'],['authorPhone','Teléfono del autor','tel'],['nextVisit','Próxima visita (opcional)','date']] as const).map(([key,label,type])=><label key={key} className="text-sm font-bold">{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div></details>
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
-        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={()=>setPeople(current=>[...current,{...emptyPerson(),role:'Encargado',attended:true,modality:'in-person',signing:'required'}])} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
+        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={()=>{
+          const work=works.find(w=>w.id===content.worksiteId);
+          const assigned=work&&(foremanSettings[work.nombre]||foremanSettings[String(work.nombre||'').trim()]);
+          const name=String(assigned?.recursoPreventivoNombre||'').trim();
+          if(!name){setError('No hay encargado o recurso preventivo configurado para esta obra. Comprueba Configuración → Obras y Recursos Preventivos.');return;}
+          addProfile({nombreApellidos:name,cargo:assigned.recursoPreventivoCategoria||'Encargado de obra',telefono:assigned.recursoPreventivoTelefono||''},'Encargado');
+        }} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
         <div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewDraft()}>Enviar borrador para revisión</button></div>
       </fieldset> : record && <VisitMinutesReadView state={record.state} number={record.number} />}
