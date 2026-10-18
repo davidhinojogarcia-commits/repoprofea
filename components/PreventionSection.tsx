@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardCheck, Pencil, Plus, RefreshCw, Share2, ShieldCheck, Trash2 } from 'lucide-react';
 import { PREVENTION_CATEGORIES, PREVENTION_CHECKS, PREVENTION_STATUS_LABELS, filterPreventionRecords, preventionSummary, preventionToday, type PreventionDraft, type PreventionRecord, type PreventionStatus } from '../src/lib/prevention';
-import { createPreventionRecord, deletePreventionRecord, editPreventionRecord, followUpPreventionRecord, getPreventionRecordDetails, loadPreventionActHistory, loadPreventionRecords } from '../src/services/preventionService';
+import { createPreventionRecord, deletePreventionRecord, editPreventionRecord, followUpPreventionRecord, getPreventionRecordDetails, loadPreventionActHistory, loadPreventionActPhotos, loadPreventionRecords } from '../src/services/preventionService';
 import { appConfirm } from '../src/lib/appDialog';
 import { createPreventionCommunicationActPdf, shareOrDownloadPreventionAct } from '../src/services/preventionActPdf';
 
@@ -237,8 +237,9 @@ export function PreventionSection({ savedObras, token, foremanName, supervisorNa
     setActBusy(true); setError(''); setFeedback('');
     try {
       const history = await loadPreventionActHistory(filtered.map(record => record.id), token);
+      const reportRecords = await loadPreventionActPhotos(filtered, token);
       const { blob, fileName } = await createPreventionCommunicationActPdf(
-        filtered,
+        reportRecords,
         history,
         { obra, status, from, to },
         { supervisorName, supervisorEmail },
@@ -310,7 +311,7 @@ export function PreventionSection({ savedObras, token, foremanName, supervisorNa
       <label>Desde<input type="date" className={inputClass} value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label>Hasta<input type="date" className={inputClass} min={from || undefined} value={to} onChange={e => setTo(e.target.value)} /></label>
     </div>
-    <p className="text-sm text-slate-600 dark:text-slate-300">El acta PDF respeta estos filtros e incluye incidencias, comprobaciones y su historial de seguimiento. Se genera localmente y no se guarda en Supabase.</p>
+    <p className="text-sm text-slate-600 dark:text-slate-300">El acta PDF respeta estos filtros e incluye incidencias, fotografías, comprobaciones y su historial de seguimiento. Se genera localmente y no se guarda en Supabase.</p>
     {truncated && <p role="status">Se muestran los 500 registros más recientes. Los recuentos corresponden únicamente a esos registros.</p>}
     <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">{[['Incidencias', summary.incidents], ['Pendientes', summary.pending], ['Prioridad alta', summary.high], ['Comprobaciones', summary.prechecks]].map(([label, count]) => <div key={label} className="ui-surface rounded-xl p-3 sm:p-4"><p className="text-xs sm:text-sm">{label}</p><b className="text-xl sm:text-2xl">{count}</b></div>)}</div>
     <p className="text-sm">Recuentos según los filtros. No representan una tasa de accidentes ni una comparación de seguridad entre obras.</p>

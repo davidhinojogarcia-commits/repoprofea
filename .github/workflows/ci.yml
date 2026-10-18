@@ -102,6 +102,7 @@ jobs:
           npm run test:signature-quality
           npm run test:signature-browser
           node scripts/testPreventionPhotoBrowser.mjs
+          node scripts/testPreventionReportBrowser.mjs
       - name: Mandatory signature anchoring regression
         run: npm run test:mandatory-signatures
       - name: Supervisor signed PDF download regression

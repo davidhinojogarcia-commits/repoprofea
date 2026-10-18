@@ -69,9 +69,12 @@ export async function createPreventionCommunicationActPdf(
     const color = opts.color ?? [33, 45, 58];
     doc.setTextColor(...color);
     const lines = doc.splitTextToSize(value || '—', contentWidth - indent);
-    ensure(lines.length * 4.4 + (opts.gap ?? 1));
-    doc.text(lines, marginX + indent, y);
-    y += lines.length * 4.4 + (opts.gap ?? 1);
+    for (const line of lines) {
+      ensure(4.4);
+      doc.text(line, marginX + indent, y);
+      y += 4.4;
+    }
+    y += opts.gap ?? 1;
   };
 
   const section = (title: string) => {
@@ -199,6 +202,26 @@ export async function createPreventionCommunicationActPdf(
     if (record.measures) text(`Medidas adoptadas / propuestas: ${record.measures}`, { size: 9 });
     text(`Responsable de actuación: ${record.responsible || 'Pendiente de asignar'} · Plazo: ${record.deadline || 'Sin plazo'}`, { size: 8.8 });
     text(`Registro original: ${record.actor || 'Supervisor'} · Última actualización: ${formatDateTime(record.updated_at)}`, { size: 8.2, color: [90, 100, 112], gap: 2 });
+
+    if (record.has_photo && !record.photo) {
+      throw new Error(`Falta la fotografía de «${record.title}». Vuelve a generar el informe.`);
+    }
+    if (record.photo) {
+      try {
+        if (!/^data:image\/(jpeg|png|webp);base64,/.test(record.photo)) throw new Error('Formato no válido');
+        const image = doc.getImageProperties(record.photo);
+        if (!(image.width > 0 && image.height > 0)) throw new Error('Dimensiones no válidas');
+        const scale = Math.min(contentWidth / image.width, 110 / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        ensure(height + 13);
+        text(`Fotografía del registro ${index + 1}`, { bold: true, size: 9.4, color: [0, 84, 142] });
+        doc.addImage(record.photo, image.fileType, marginX + (contentWidth - width) / 2, y, width, height);
+        y += height + 5;
+      } catch {
+        throw new Error(`No se pudo incorporar la fotografía de «${record.title}». Revisa la imagen antes de generar el informe.`);
+      }
+    }
 
     if (record.kind === 'precheck') {
       ensure(12);
