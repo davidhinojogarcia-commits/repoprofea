@@ -33,6 +33,6 @@ const limited=randomUUID();for(let i=0;i<6;i++)await assistVisitWriting(limited,
 await assert.rejects(assistVisitWriting(limited,'work:a',input,async()=>valid),/límite/);
 const savedKey=process.env.GEMINI_API_KEY,savedModel=process.env.VISIT_WRITING_MODEL;
 delete process.env.GEMINI_API_KEY;delete process.env.VISIT_WRITING_MODEL;
-await assert.rejects(generateVisitWriting(input),/no está configurada/);
+await assert.rejects(generateVisitWriting(input),/no dispone de una credencial/);
 if(savedKey)process.env.GEMINI_API_KEY=savedKey;if(savedModel)process.env.VISIT_WRITING_MODEL=savedModel;
 console.log('PASS visit writing: schema, fidelity guards, stale edits, isolation, merge, append, single-flight, rate limit, missing configuration. Provider output simulated; semantic fidelity still requires human review.');

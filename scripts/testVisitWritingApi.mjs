@@ -5,7 +5,8 @@ import { content, person, id } from './visitMinutesFixture.mjs';
 
 const env = await visitTestServer();
 const fixtureFetch = globalThis.fetch, requests = [];
-const previous = { key:process.env.GEMINI_API_KEY, model:process.env.VISIT_WRITING_MODEL };
+const previous = { key:process.env.GEMINI_API_KEY, model:process.env.VISIT_WRITING_MODEL, google:process.env.GOOGLE_API_KEY, generative:process.env.GOOGLE_GENERATIVE_AI_API_KEY };
+delete process.env.GOOGLE_API_KEY;delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 process.env.GEMINI_API_KEY='synthetic-test-key';process.env.VISIT_WRITING_MODEL='synthetic-test-model';
 let mode='ok';
 globalThis.fetch=async(input,init)=>{
@@ -23,6 +24,19 @@ globalThis.fetch=async(input,init)=>{
 };
 const request={clientVersion:'3.1',action:'assist-writing',worksiteId:id(10),mode:'written',title:'Arqueta',text:'No ejecutar. Pendiente de comprobar 1,50 m.'};
 try {
+  const beforeStatus=requests.length;
+  const status=await env.invoke({action:'writing-status'},null);
+  assert.equal(status.status,200);assert.equal(status.data.writing.configured,true);
+  assert.equal(requests.length,beforeStatus,'readiness never invokes provider');
+  assert(!JSON.stringify(status).includes('synthetic-test-key'),'readiness never exposes credentials');
+  delete process.env.VISIT_WRITING_MODEL;
+  assert.equal((await env.invoke({action:'writing-status'},null)).data.writing.model,'gemini-2.5-flash-lite');
+  process.env.VISIT_WRITING_MODEL='synthetic-test-model';
+  const primary=process.env.GEMINI_API_KEY;delete process.env.GEMINI_API_KEY;
+  assert.equal((await env.invoke({action:'writing-status'},null)).data.writing.configured,false);
+  process.env.GOOGLE_API_KEY=primary;
+  assert.equal((await env.invoke({action:'writing-status'},null)).data.writing.configured,true);
+  delete process.env.GOOGLE_API_KEY;process.env.GEMINI_API_KEY=primary;
   for(const user of [null,2,3,4]){
     const response=await env.invoke(request,user);assert.notEqual(response.status,200,'anonymous, foreign, read-only and inactive users rejected');
   }
@@ -49,5 +63,7 @@ try {
 } finally {
   if(previous.key===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=previous.key;
   if(previous.model===undefined)delete process.env.VISIT_WRITING_MODEL;else process.env.VISIT_WRITING_MODEL=previous.model;
+  if(previous.google===undefined)delete process.env.GOOGLE_API_KEY;else process.env.GOOGLE_API_KEY=previous.google;
+  if(previous.generative===undefined)delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;else process.env.GOOGLE_GENERATIVE_AI_API_KEY=previous.generative;
   globalThis.fetch=fixtureFetch;await env.cleanup();
 }
