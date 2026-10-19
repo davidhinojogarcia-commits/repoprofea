@@ -106,6 +106,7 @@ export function VisitMinutesPanel({
   const [orderSeed,setOrderSeed]=useState<VisitPoint|null>(null),[attachmentBusy,setAttachmentBusy]=useState(false),[attachmentTotal,setAttachmentTotal]=useState(8_000_000),[selectedRecipients,setSelectedRecipients]=useState<string[]>([]);
   const [dictation,setDictation]=useState(''),[writingPending,setWritingPending]=useState(false);
   const assetCache=useRef(new Map<string,any>());
+  const saveEpoch=useRef(0);
   const openingParticipation=useRef(false);
   const localPending=useRef<any>(null),draftReady=useRef(false),latestDraft=useRef<any>(null);
   const draftScopeActive=useRef(true);
@@ -202,7 +203,18 @@ export function VisitMinutesPanel({
   },[draftUser,works,contacts,supervisor,technician]);
   useEffect(()=>{
     if(!dirty||!draftUser||!draftReady.current||recovery)return;
-    const timer=window.setTimeout(()=>{void storeVisitDraft(draftUser,{...latestDraft.current,id:record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor,technician}}).then(()=>setSyncState(navigator.onLine?(latestDraft.current.dictation?.trim()&&!dirtyContent?'Dictado pendiente de incorporar · copia protegida en este dispositivo':'Pendiente de sincronización · copia protegida en este dispositivo'):'Sin conexión · copia protegida en este dispositivo')).catch(e=>setSyncState(e.message));},350);
+    const epoch=saveEpoch.current;
+    const timer=window.setTimeout(()=>{
+      const snapshot=latestDraft.current;
+      void storeVisitDraft(draftUser,{...snapshot,id:record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor,technician}}).then(()=>{
+        const current=latestDraft.current;
+        // A local-copy completion cannot replace the result of a newer server save.
+        if(saveEpoch.current!==epoch||current.content!==snapshot.content||current.people!==snapshot.people||current.dictation!==snapshot.dictation)return;
+        const pendingContent=current.creating||current.record?.status==='draft'&&(current.content!==current.record.state.content||current.people!==current.record.state.participants);
+        if(!pendingContent&&!current.dictation?.trim())return;
+        setSyncState(navigator.onLine?(current.dictation?.trim()&&!pendingContent?'Dictado pendiente de incorporar · copia protegida en este dispositivo':'Pendiente de sincronización · copia protegida en este dispositivo'):'Sin conexión · copia protegida en este dispositivo');
+      }).catch(e=>{if(saveEpoch.current===epoch)setSyncState(e.message);});
+    },350);
     return()=>window.clearTimeout(timer);
   },[content,people,dictation,dirty,draftUser,recovery,record,works,contacts,supervisor]);
   useEffect(()=>{
@@ -335,7 +347,7 @@ export function VisitMinutesPanel({
   };
   const persistDraft=async(automatic=false)=>{
     if(guard.current||!content)return;
-    guard.current=true;setAutoSaving(true);setSyncState('Guardando…');
+    guard.current=true;saveEpoch.current++;setAutoSaving(true);setSyncState('Guardando…');
     let target=record;
     const submitted={content,people};
     try{
