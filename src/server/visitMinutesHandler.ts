@@ -6,6 +6,7 @@ import { applyVisitCommand, visitNeedsMail, cleanContact, newVisit, uuidValid, v
 import { generateVisitMinutesPdf } from '../lib/visitMinutesPdf.js';
 import {visitAssetRows,hydrateVisitAssets,cachedVisitDraft,visitDraftDescriptor,visitTotalLimit} from './visitAssets.js';
 import {putVisitObject,storedVisitBytes,visitFileDescriptor} from './visitFileStorage.js';
+import { assistVisitWriting } from './visitWriting.js';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), {
   status
 });
@@ -483,6 +484,15 @@ export async function visitMinutesHandler(req: any, res: any) {
     const user = await activeUser(req),
       auth = String(req.headers?.authorization || '');
     if(isOrderAction(action))return await handleVisitOrders(req,b,res,user,auth,{database,digest,validateAttachments});
+    if(action==='assist-writing'){
+      if(!uuidValid(b.worksiteId))throw fail('Selecciona una obra válida.',400);
+      if(b.id){
+        const record=await ownerRecord(b.id,user.id,auth);
+        if(record.obra_id!==b.worksiteId||record.status!=='draft')throw fail('Solo puedes redactar un borrador de esta obra.',403);
+      }else if(!await database('rpc/visit_minutes_can_create_work',{p_id:b.worksiteId},auth))throw fail('No tienes permiso para redactar en esta obra.',403);
+      const proposal=await assistVisitWriting(user.id,b.worksiteId+':'+(b.id||'new'),{mode:b.mode,text:b.text,title:b.title});
+      return res.json({ok:true,proposal});
+    }
     if(action==='store-attachment'){
       if(!uuidValid(b.worksiteId)||!await database('rpc/visit_minutes_can_create_work',{p_id:b.worksiteId},auth))throw fail('No tienes permiso para incorporar anexos en esta obra.',403);
       if(typeof b.base64!=='string'||b.base64.length>2000000||!/^[a-z0-9+/]+={0,2}$/i.test(b.base64)||b.base64.length%4)throw fail('Archivo inválido o superior a 1,5 MB.');
