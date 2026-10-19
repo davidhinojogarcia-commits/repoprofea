@@ -17,7 +17,7 @@ Reutiliza `@google/genai` instalado en el proyecto, cargado bajo demanda en serv
 Variables exclusivamente de servidor:
 
 - `GEMINI_API_KEY`: credencial existente del proveedor.
-- `VISIT_WRITING_MODEL`: identificador de un modelo disponible en esa cuenta que admita JSON estructurado. Debe seleccionarse y probarse antes de activar la función; no se impone un modelo ni una tarifa desde el código.
+- `VISIT_WRITING_MODEL`: sustitución opcional del modelo predeterminado `gemini-2.5-flash-lite`. También se reconocen las credenciales existentes `GOOGLE_API_KEY` y `GOOGLE_GENERATIVE_AI_API_KEY`. No se incluyen claves en el código.
 
 Sin configuración, la edición manual sigue funcionando. La asistencia puede consumir cuota o generar cargos del proveedor según modelo, entrada y salida; no se ha verificado una tarifa ni se ha contratado ningún servicio. Configurar el presupuesto/cuota de la cuenta antes de habilitarla.
 
@@ -51,3 +51,7 @@ Los nuevos comandos de dominio/API y de navegador se incluyen en CI. La rama des
 - Dictado real con el teclado, interrupción por llamada/bloqueo y comportamiento del teclado en iPhone/Safari, iPad/Safari y Android/Chrome físicos. No se ha usado un micrófono ni dispositivo físico.
 - Cuentas reales de producción, correo y almacenamiento privados no utilizados en estas pruebas.
 - Revisar el resultado de CI y autorizar expresamente cualquier fusión/despliegue posterior.
+
+## Comprobación de configuración tras la publicación
+
+La acción POST `writing-status` de la ruta existente devuelve únicamente disponibilidad de credencial y nombre de modelo. Es pública, no consulta datos de obras, no devuelve claves y no llama al proveedor. Permite comprobar la configuración real de la función desplegada, en lugar de inferirla a partir de la lista de variables de Vercel. No acredita validez de la credencial ni una generación real.

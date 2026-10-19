@@ -6,7 +6,7 @@ import { applyVisitCommand, visitNeedsMail, cleanContact, newVisit, uuidValid, v
 import { generateVisitMinutesPdf } from '../lib/visitMinutesPdf.js';
 import {visitAssetRows,hydrateVisitAssets,cachedVisitDraft,visitDraftDescriptor,visitTotalLimit} from './visitAssets.js';
 import {putVisitObject,storedVisitBytes,visitFileDescriptor} from './visitFileStorage.js';
-import { assistVisitWriting } from './visitWriting.js';
+import { assistVisitWriting, visitWritingStatus } from './visitWriting.js';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), {
   status
 });
@@ -383,10 +383,11 @@ export async function visitMinutesHandler(req: any, res: any) {
       ok: false,
       message: 'Utiliza POST.'
     });
-    if (!SERVICE_KEY) throw fail('El servidor de actas no está configurado.', 503);
     const b = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     if (Buffer.byteLength(JSON.stringify(b)) > 3100000) throw fail('La solicitud es demasiado grande. Reduce los anexos.', 413);
     const action = String(b.action || '');
+    if(action==='writing-status')return res.json({ok:true,writing:visitWritingStatus()});
+    if (!SERVICE_KEY) throw fail('El servidor de actas no está configurado.', 503);
     if(action.startsWith('foreman-visits-'))return await handleVisitOrders(req,b,res,null,'',{database,digest,validateAttachments});
     if (['challenge', 'verify', 'portal', 'portal-command', 'portal-pdf'].includes(action)) {
       const {

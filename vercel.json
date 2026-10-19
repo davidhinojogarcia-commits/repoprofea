@@ -67,7 +67,8 @@
       "fix/global-confirmation-layer": false,
       "fix/prevention-photo-adaptive-compression": false,
       "release/2026-10-18-pending": false,
-      "feat/visit-writing-assistant": false
+      "feat/visit-writing-assistant": false,
+      "fix/visit-writing-runtime-configuration": false
     }
   }
 }
