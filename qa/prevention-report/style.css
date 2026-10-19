@@ -1,0 +1,4 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body{background:#eef3f7;color:#152e43;font-family:system-ui,sans-serif}button,select,input{font:inherit}svg{flex-shrink:0}button,summary,select{min-height:44px}#root{max-width:1100px;margin:auto;padding:16px}.qa-header{background:#fff;border:1px solid #cbd5e1;border-radius:16px;padding:20px;margin-bottom:20px}.qa-header h1{font-size:24px;font-weight:800}.qa-header p{margin:8px 0}.qa-header select{width:100%;border:1px solid #94a3b8;padding:10px;border-radius:8px}

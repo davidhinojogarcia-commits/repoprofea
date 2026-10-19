@@ -1,0 +1,11 @@
+import {build} from 'esbuild';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+await fs.mkdir('dist',{recursive:true});
+await build({entryPoints:['app.tsx'],bundle:true,outfile:'dist/app.js',format:'iife',nodePaths:[path.resolve('node_modules')],plugins:[{name:'isolated-data',setup(b){b.onResolve({filter:/\/supabase$/},()=>({path:path.resolve('fake-db.ts')}));}}]});
+execFileSync(process.execPath,['node_modules/tailwindcss/lib/cli.js','-i','style.css','-o','dist/style.css','--content','../../components/PreventionSection.tsx,app.tsx','--minify'],{stdio:'inherit'});
+await fs.copyFile('index.html','dist/index.html');
+const source=await fs.readFile('dist/app.js','utf8');
+if(/supabase\.co|sb_publishable_|\/api\/gmail/.test(source)) throw new Error('Production connection found in QA bundle');
+console.log('PASS: isolated bundle contains no production endpoints or keys');
