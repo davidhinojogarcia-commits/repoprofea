@@ -5,7 +5,7 @@ import {
   queueOfflineStorageUpload,
   supabase,
 } from '../lib/supabase';
-import { listOfflineOperations } from '../lib/offlineStore';
+import { listOfflineOperations, offlineCacheKey, readOfflineCache, writeOfflineCache } from '../lib/offlineStore';
 import { loadInventoryZona6Seed } from '../data/inventoryZona6Seed';
 import { inventoryIsInUse } from '../lib/inventoryUsage';
 
@@ -43,6 +43,8 @@ export type InventoryItem = {
   ubicacionActual: string;
   obraActualId?: string | null;
   responsableActual?: string | null;
+  supervisorResponsableId?: string | null;
+  supervisorResponsableNombre?: string | null;
   detalles: Record<string, unknown>;
   observaciones?: string | null;
   activo: boolean;
@@ -335,8 +337,15 @@ export async function seedInventoryIfEmpty(parkId: string) {
 }
 
 export async function listInventoryItems(parkId: string): Promise<InventoryItem[]> {
-  const rows = await supabase.query('inventory_items', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=categoria.asc,nombre.asc,codigo.asc` });
-  const items = (rows || []).map(mapItem);
+  const userId=await currentUserId();
+  const cacheKey=offlineCacheKey(userId,'inventory-supervisors',parkId);
+  const [rows,supervisors]=await Promise.all([
+    supabase.query('inventory_items', { query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=categoria.asc,nombre.asc,codigo.asc` }),
+    offlineNow()?readOfflineCache<any[]>(cacheKey):supabase.rpc('get_inventory_supervisors',{p_park_id:parkId}),
+  ]);
+  const byItem=new Map<string,{supervisor_id:string;supervisor_name:string}>((supervisors||[]).map((row:any)=>[row.item_id,row]));
+  if(!offlineNow())await writeOfflineCache(cacheKey,supervisors||[]).catch(()=>undefined);
+  const items:InventoryItem[] = (rows || []).map((row:any)=>({...mapItem(row),supervisorResponsableId:byItem.get(row.id)?.supervisor_id||null,supervisorResponsableNombre:byItem.get(row.id)?.supervisor_name||null}));
   const pending = await pendingInventoryOperations(parkId);
   for (const operation of pending) {
     const meta = operation.payload?.meta || {};
@@ -344,6 +353,7 @@ export async function listInventoryItems(parkId: string): Promise<InventoryItem[
     if (operation.payload?.name === 'inventory_update_movement' && meta.affectsCurrentState !== true) continue;
     const item = items.find(candidate => candidate.id === meta.itemId);
     if (!item) continue;
+    if(operation.payload?.name!=='inventory_update_movement'){item.supervisorResponsableId=operation.userId;item.supervisorResponsableNombre=null;}
     if (meta.destino) item.ubicacionActual = meta.destino;
     if (meta.estadoNuevo) item.estado = meta.estadoNuevo;
     if (!inventoryIsInUse(item.estado)) item.responsableActual = null;

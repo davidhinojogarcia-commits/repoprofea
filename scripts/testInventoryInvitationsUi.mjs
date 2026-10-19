@@ -33,7 +33,7 @@ let root;
 try {
  await build({entryPoints:[new URL('../components/InventorySection.tsx',import.meta.url).pathname],bundle:true,platform:'node',format:'esm',packages:'external',outfile:output.pathname,define:{'import.meta.env':'{}'},plugins:[{name:'boundaries',setup(b){
   b.onResolve({filter:/(?:\/lib\/|\.\/)supabase$/},()=>({path:'auth',namespace:'test-auth'}));
-  b.onLoad({filter:/.*/,namespace:'test-auth'},()=>({contents:"export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'fixture-session'}}})}};"}));
+  b.onLoad({filter:/.*/,namespace:'test-auth'},()=>({contents:"export const getSessionUser=async()=>({id:'user-a'});export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'fixture-session'}}})}};"}));
   b.onResolve({filter:/inventoryService$/},()=>({path:'service',namespace:'mock'}));
   b.onResolve({filter:/inventoryPdf$|inventoryExcelImport$/},()=>({path:'optional',namespace:'mock'}));
   b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='service'?names.map(name=>`export const ${name}=(...args)=>globalThis.__inventory.${name}?.(...args)??Promise.resolve([]);`).join('\n')+"\nexport const INVENTORY_ZONES=['Zona 6'];export const MACHINE_DOCUMENT_TYPES=[];export const parkBaseLocation=p=>p.nombre;":"export const exportInventoryStatusPdf=async()=>{};export const analyzeInventoryExcel=async()=>[];export const applyInventoryImportPlan=async()=>({});export const buildInventoryImportPlan=()=>({});"}));

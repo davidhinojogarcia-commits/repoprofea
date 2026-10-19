@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { InventoryInvitationLink } from './InventoryInvitationLink';
 import { InventoryUsageBadge } from './InventoryUsageBadge';
-import { filterInventoryItems, inventoryIsInUse, inventorySupervisors, inventorySupervisorColor, inventorySupervisorLabel } from '../src/lib/inventoryUsage';
+import { sendInventoryBreakdownWithConnectedGmail,beginGmailOAuth } from '../src/lib/gmailConnection';
+import { supabase } from '../src/lib/supabase';
+import { filterInventoryItems, inventoryIsInUse, inventorySupervisors, inventorySupervisorColor, inventorySupervisorLabel,inventoryResponsibility } from '../src/lib/inventoryUsage';
 import {
   AlertTriangle,
   Boxes,
@@ -82,10 +84,7 @@ const inputClass = 'w-full rounded-xl border border-slate-200 dark:border-slate-
 
 const supervisorColor = inventorySupervisorColor;
 const supervisorAccessLabel = inventorySupervisorLabel;
-const itemSupervisor = (item: InventoryItem, shares: InventoryParkShare[]) =>
-  item.responsableActual
-    ? shares.find(share => share.status === 'accepted' && share.userId === item.responsableActual) || null
-    : null;
+const itemSupervisor = inventoryResponsibility;
 
 const statusClass = (status: string) => {
   const s = (status || '').toLowerCase();
@@ -101,34 +100,6 @@ const equipmentLabel = (item: InventoryItem) => {
   return [item.codigo, item.nombre, model || null, id || null].filter(Boolean).join(' · ');
 };
 
-const buildBreakdownMail = (item: InventoryItem, destination: string, observations: string, photoCount: number) => {
-  const url = new URL(window.location.href);
-  url.search = '';
-  url.searchParams.set('inventoryItem', item.id);
-  const subject = `AVERÍA MAQUINARIA · ${item.codigo || 'SIN CÓDIGO'} · ${item.nombre} · ${destination}`;
-  const body = [
-    'AVISO DE AVERÍA DE MAQUINARIA / HERRAMIENTA',
-    '',
-    `Equipo: ${item.nombre}`,
-    `Código: ${item.codigo || '-'}`,
-    `Categoría: ${item.categoria || '-'}`,
-    `Marca: ${item.marca || '-'}`,
-    `Modelo: ${item.modelo || '-'}`,
-    `Matrícula: ${item.matricula || '-'}`,
-    `Nº de serie: ${item.numeroSerie || '-'}`,
-    `Ubicación / obra: ${destination || item.ubicacionActual || '-'}`,
-    `Fecha y hora: ${new Date().toLocaleString('es-ES')}`,
-    '',
-    'Descripción de la avería:',
-    observations.trim() || 'Sin observaciones adicionales.',
-    '',
-    photoCount ? `Se han registrado ${photoCount} fotografía(s) de la incidencia en GestionPROFEA.` : 'No se han adjuntado fotografías a la incidencia.',
-    `Trazabilidad del equipo: ${url.toString()}`,
-    '',
-    'Este aviso ha sido generado desde GestionPROFEA.',
-  ].join('\n');
-  return { subject, body };
-};
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => <label className="block min-w-0"><span className="block text-[10px] uppercase tracking-wider font-black text-slate-400 mb-1.5">{label}</span>{children}</label>;
 const Modal = ({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) => <ModalPortal label={title}><div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"><div role="dialog" aria-modal="true" aria-label={title} className="w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur"><h3 className="font-black pr-3">{title}</h3><button onClick={onClose} className="w-10 h-10 grid place-items-center rounded-xl bg-slate-100 dark:bg-slate-800"><X className="w-5 h-5" /></button></div><div className="p-4 sm:p-5">{children}</div></div></div></ModalPortal>;
@@ -145,6 +116,10 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [documents, setDocuments] = useState<InventoryDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actorId,setActorId]=useState('');
+  const [breakdownNotice,setBreakdownNotice]=useState<{movementId:string;message:string;code?:string;sent?:boolean}|null>(null);
+  const [breakdownSending,setBreakdownSending]=useState(false);
+  const breakdownRequest=useRef(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [status, setStatus] = useState('');
@@ -213,7 +188,19 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void reload(); }, []);
+  useEffect(() => { void supabase.auth.getSession().then(({data})=>setActorId(data.session?.user?.id||''));void reload(); }, []);
+  const notifyBreakdown=async(movementId:string)=>{
+    if(breakdownRequest.current)return;
+    if(!navigator.onLine){setBreakdownNotice({movementId,message:'Aviso pendiente de envío. Cuando vuelva la conexión y el movimiento esté sincronizado, envíalo desde Movimientos.'});return;}
+    breakdownRequest.current=true;setBreakdownSending(true);
+    try{const result=await sendInventoryBreakdownWithConnectedGmail(movementId);setBreakdownNotice({movementId,sent:true,message:`Gmail ha aceptado el aviso desde ${result.from}. No se ha confirmado su entrega.`});}
+    catch(e:any){setBreakdownNotice({movementId,message:e.message||'No se pudo confirmar el aviso de avería.',code:e.code});}
+    finally{breakdownRequest.current=false;setBreakdownSending(false);}
+  };
+  const authorizeBreakdownGmail=async()=>{
+    try{const {loadAppBusinessSettings}=await import('../src/services/appSettingsService');const settings=await loadAppBusinessSettings();await beginGmailOAuth(settings.supervisor.email);}
+    catch(e:any){setError(e.message);}
+  };
 
   useEffect(() => {
     const handleSyncState = (event: Event) => {
@@ -382,6 +369,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   return <div className="space-y-4 sm:space-y-6 pb-24 md:pb-10">
     <PageHeader eyebrow={`${park?.zona || 'Zona'} · ${park?.isOwned === false ? 'Parque compartido' : 'Parque propio'}`} title="Herramientas y maquinaria" description="Gestión rápida de equipos, documentación, mantenimiento y trazabilidad." icon={<Wrench className="h-5 w-5" />} />
     {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"><AlertTriangle className="inline w-4 h-4 mr-2" />{error}</div>}
+    {breakdownNotice&&<div role="status" className="rounded-xl border p-4 space-y-2"><p>{breakdownNotice.message}</p>{!breakdownNotice.sent&&<button type="button" disabled={breakdownSending} className="min-h-[44px] rounded-xl border px-3 font-bold" onClick={()=>void notifyBreakdown(breakdownNotice.movementId)}>{breakdownSending?'Enviando…':breakdownNotice.code==='GMAIL_BREAKDOWN_UNCERTAIN'?'Comprobar aviso en Gmail':'Reintentar aviso por Gmail'}</button>}{['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SENDER_MISMATCH','GMAIL_SEND_PERMISSION_REQUIRED'].includes(breakdownNotice.code||'')&&<button type="button" className="min-h-[44px] rounded-xl border px-3 font-bold" onClick={()=>void authorizeBreakdownGmail()}>Autorizar Gmail del supervisor</button>}</div>}
     <div className="flex flex-wrap items-center gap-3 text-xs">
       <button type="button" onClick={() => void reload(park?.id)} className="rounded-xl border border-slate-300 px-3 py-2 font-bold">Actualizar invitaciones y parque</button>
       {!error && requestedInvitationId && !incomingInvitations.some(invitation => invitation.invitationId === requestedInvitationId) && <p role="status">No hay una invitación pendiente de este enlace para tu cuenta. Comprueba que has iniciado sesión con el correo invitado; también puede haber sido respondida o revocada.</p>}
@@ -448,7 +436,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
         {inventorySupervisors(parkShares).map(share => (
           <span key={share.participantKey} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-[11px] font-bold">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: supervisorColor(share.userId, parkShares) }} />
-            {share.displayName} · {supervisorAccessLabel(share, parkShares)} · {inUseItems.filter(item => item.responsableActual === share.userId).length} en uso
+            {share.displayName} · {supervisorAccessLabel(share, parkShares)} · {inUseItems.filter(item => inventoryResponsibility(item, parkShares)?.userId === share.userId).length} en uso
             <button type="button" aria-label={`Ver equipos de ${share.displayName}`} className="underline underline-offset-2 ml-1" onClick={() => { setSupervisorId(share.userId || ''); setSearch(''); setCategory(''); setStatus(''); setTab('inventario'); }}>Ver equipos</button>
           </span>
         ))}
@@ -577,20 +565,19 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
     {tab === 'resumen' && <SummaryView items={activeItems} movements={movements} documents={documents} shares={parkShares} onOpenItem={id => { setTraceItemId(id); setTab('trazabilidad'); }} />}
     {tab === 'inventario' && <InventoryView items={filtered} documents={documents} shares={parkShares} categories={categories} search={search} category={category} status={status} supervisorId={supervisorId} setSupervisorId={setSupervisorId} setSearch={setSearch} setCategory={setCategory} setStatus={setStatus} onMove={setMovementItem} onMaintenance={setMaintenanceItem} onDocument={i => { setDocumentItem(i); setTab('documentacion'); }} onEdit={i => setEditingItem({ ...i })} onQr={openQr} onTrace={i => { setTraceItemId(i.id); setTab('trazabilidad'); }} onDelete={async i => { if (!park || !confirm(`¿Dar de baja ${i.nombre}?`)) return; await softDeleteInventoryItem(i.id); await reload(park.id); }} />}
-    {tab === 'movimientos' && <MovementsView movements={movements} items={items} onTrace={id => { setTraceItemId(id); setTab('trazabilidad'); }} onEdit={setEditingMovement} onDelete={removeMovement} />}
+    {tab === 'movimientos' && <MovementsView actorId={actorId} onNotify={id=>void notifyBreakdown(id)} movements={movements} items={items} onTrace={id => { setTraceItemId(id); setTab('trazabilidad'); }} onEdit={setEditingMovement} onDelete={removeMovement} />}
     {tab === 'mantenimiento' && <MaintenanceView maintenance={maintenance} items={activeItems} onAdd={setMaintenanceItem} />}
     {tab === 'documentacion' && park && <DocumentsView park={park} items={activeItems} documents={documents} selectedItem={documentItem} setSelectedItem={setDocumentItem} onReload={() => reload(park.id)} />}
     {tab === 'trazabilidad' && park && <TraceView park={park} shares={parkShares} items={activeItems} selectedId={traceItemId} setSelectedId={setTraceItemId} movements={traceMovements} onEdit={setEditingMovement} onDelete={removeMovement} />}
 
     {editingItem && park && <ItemModal item={editingItem} categories={categories} baseLocation={baseLocation} onClose={() => setEditingItem(null)} onSave={async draft => { await saveInventoryItem(park.id, draft, baseLocation); setEditingItem(null); await reload(park.id); }} />}
-    {movementItem && park && <MovementModal item={movementItem} shares={parkShares} savedObras={savedObras} baseLocation={baseLocation} maintenanceEmail={park.coordinatorEmail || ''} onClose={() => { movementUploads.current = null; setMovementItem(null); }} onSave={async data => {
+    {movementItem && park && <MovementModal actorId={actorId} item={movementItem} shares={parkShares} savedObras={savedObras} baseLocation={baseLocation} maintenanceEmail={park.coordinatorEmail || ''} onClose={() => { movementUploads.current = null; setMovementItem(null); }} onSave={async data => {
       const previousUpload = movementUploads.current;
       const sameFiles = previousUpload?.id === data.movementId && previousUpload.files.length === data.files.length && previousUpload.files.every((file, index) => file === data.files[index]);
       const paths = sameFiles ? previousUpload.paths : data.files.length ? await uploadInventoryPhotos(park.id, movementItem.id, data.files) : [];
       movementUploads.current = { id: data.movementId, files: data.files, paths };
       const isBreakdown = data.tipo === 'Avería';
-      const shouldPrepareMail = isBreakdown && Boolean(park.coordinatorEmail);
-      const observation = shouldPrepareMail ? `${data.observaciones || ''}${data.observaciones ? '\n' : ''}${BREAKDOWN_NOTICE}` : data.observaciones;
+      const observation = data.observaciones;
       await registerInventoryMovement({
         itemId: movementItem.id,
         parkId: park.id,
@@ -606,11 +593,10 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
         longitud: data.longitud,
         fotoPaths: paths,
       });
-      const mail = shouldPrepareMail ? buildBreakdownMail(movementItem, data.destino, data.observaciones, paths.length) : null;
       movementUploads.current = null;
       setMovementItem(null);
       await reload(park.id);
-      if (mail && park.coordinatorEmail && navigator.onLine) window.location.href = `mailto:${encodeURIComponent(park.coordinatorEmail)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.body)}`;
+      if(isBreakdown)await notifyBreakdown(data.movementId);
     }} />}
     {editingMovement && park && <MovementEditModal movement={editingMovement} item={items.find(i => i.id === editingMovement.itemId) || null} onClose={() => setEditingMovement(null)} onSave={async data => { const newPaths = data.files.length ? await uploadInventoryPhotos(park.id, editingMovement.itemId, data.files) : []; await updateInventoryMovement({ movementId: editingMovement.id, affectsCurrentState: movements.find(m => m.itemId === editingMovement.itemId)?.id === editingMovement.id, responsableId: editingMovement.responsableId || null, itemId: editingMovement.itemId, parkId: park.id, tipo: data.tipo, destino: data.destino, estadoNuevo: data.estadoNuevo, observaciones: data.observaciones, latitud: data.latitud, longitud: data.longitud, fotoPaths: [...data.keptPaths, ...newPaths] }); setEditingMovement(null); await reload(park.id); }} />}
     {maintenanceItem && park && <MaintenanceModal item={maintenanceItem} onClose={() => setMaintenanceItem(null)} onSave={async d => { const paths = d.files.length ? await uploadInventoryDocuments(park.id, maintenanceItem.id, d.files, 'maintenance') : []; await addInventoryMaintenance(park.id, maintenanceItem.id, { tipo: d.tipo, fecha: d.fecha, proximaRevision: d.proximaRevision, proveedor: d.proveedor, mechanicName: d.mechanicName, coste: d.coste, observaciones: d.observaciones, signedDocumentPaths: paths, createdBy: null }); setMaintenanceItem(null); await reload(park.id); }} />}
@@ -624,7 +610,7 @@ const InventoryView = ({ items, documents, shares, categories, search, category,
 
 const QuickAction = ({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) => <button onClick={onClick} className="min-h-16 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1 text-[11px] font-bold [&>svg]:w-5 [&>svg]:h-5">{icon}<span>{label}</span></button>;
 
-const MovementsView = ({ movements, items, onTrace, onEdit, onDelete }: { movements: InventoryMovement[]; items: InventoryItem[]; onTrace: (id: string) => void; onEdit: (m: InventoryMovement) => void; onDelete: (m: InventoryMovement) => void }) => <div className="ui-surface overflow-hidden"><div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800"><h3 className="font-black">Movimientos</h3><p className="text-xs text-slate-500 mt-1">Los errores pueden corregirse o eliminarse. La modificación queda guardada en la auditoría interna.</p></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{movements.map(m => { const item = items.find(i => i.id === m.itemId); return <div key={m.id} className="p-4"><div className="flex gap-3"><button onClick={() => onTrace(m.itemId)} className="flex-1 text-left min-w-0"><div className="font-bold">{item ? equipmentLabel(item) : 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.origen} → {m.destino}</div><div className="text-[10px] text-slate-400 mt-1">{new Date(m.createdAt).toLocaleString('es-ES')}</div>{m.observaciones?.includes(BREAKDOWN_NOTICE) && <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700"><Mail className="w-3 h-3" />Aviso a mantenimiento preparado</div>}</button>{m.fotoUrls?.[0] && <img src={m.fotoUrls[0]} alt="Estado" className="w-20 h-16 rounded-xl object-cover" />}</div><div className="flex gap-2 mt-3"><Action title="Editar movimiento" onClick={() => onEdit(m)} icon={<Edit3 />} /><Action title="Eliminar movimiento" danger onClick={() => onDelete(m)} icon={<Trash2 />} /><Action title="Ver trazabilidad" onClick={() => onTrace(m.itemId)} icon={<MapPinned />} /></div></div>; })}</div></div>;
+const MovementsView = ({ actorId,onNotify,movements, items, onTrace, onEdit, onDelete }: { actorId:string;onNotify:(id:string)=>void; movements: InventoryMovement[]; items: InventoryItem[]; onTrace: (id: string) => void; onEdit: (m: InventoryMovement) => void; onDelete: (m: InventoryMovement) => void }) => <div className="ui-surface overflow-hidden"><div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800"><h3 className="font-black">Movimientos</h3><p className="text-xs text-slate-500 mt-1">Los errores pueden corregirse o eliminarse. La modificación queda guardada en la auditoría interna.</p></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{movements.map(m => { const item = items.find(i => i.id === m.itemId); return <div key={m.id} className="p-4"><div className="flex gap-3"><button onClick={() => onTrace(m.itemId)} className="flex-1 text-left min-w-0"><div className="font-bold">{item ? equipmentLabel(item) : 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.origen} → {m.destino}</div><div className="text-[10px] text-slate-400 mt-1">{new Date(m.createdAt).toLocaleString('es-ES')}</div>{m.observaciones?.includes(BREAKDOWN_NOTICE) && <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700"><Mail className="w-3 h-3" />Aviso a mantenimiento preparado</div>}</button>{m.fotoUrls?.[0] && <img src={m.fotoUrls[0]} alt="Estado" className="w-20 h-16 rounded-xl object-cover" />}</div><div className="flex gap-2 mt-3">{m.tipo==='Avería'&&m.createdBy===actorId&&<button className="min-h-[44px] rounded-xl border px-3 text-sm font-bold" onClick={()=>onNotify(m.id)}>Avisar al mecánico por Gmail</button>}<Action title="Editar movimiento" onClick={() => onEdit(m)} icon={<Edit3 />} /><Action title="Eliminar movimiento" danger onClick={() => onDelete(m)} icon={<Trash2 />} /><Action title="Ver trazabilidad" onClick={() => onTrace(m.itemId)} icon={<MapPinned />} /></div></div>; })}</div></div>;
 
 const MaintenanceView = ({ maintenance, items, onAdd }: { maintenance: InventoryMaintenance[]; items: InventoryItem[]; onAdd: (i: InventoryItem) => void }) => <div className="grid lg:grid-cols-[1fr_320px] gap-4"><div className="ui-surface overflow-hidden"><div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 font-black">Historial de mantenimiento</div><div className="divide-y divide-slate-100 dark:divide-slate-800">{maintenance.map(m => { const item = items.find(i => i.id === m.itemId); return <div key={m.id} className="p-4"><div className="font-bold">{item?.nombre || 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.fecha}{m.proximaRevision ? ` · Próxima: ${m.proximaRevision}` : ''}{m.proveedor ? ` · ${m.proveedor}` : ''}</div>{m.observaciones && <div className="text-xs mt-2">{m.observaciones}</div>}<div className="flex flex-wrap gap-2 mt-3">{m.signedDocumentUrls?.map((d, idx) => <a key={d.path} href={d.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold"><Download className="w-3.5 h-3.5" />Parte {idx + 1}</a>)}</div></div>; })}</div></div><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Registrar actuación</h3><div className="space-y-2">{items.map(i => <button key={i.id} onClick={() => onAdd(i)} className="w-full text-left p-3 rounded-xl border border-slate-200 dark:border-slate-800"><div className="font-bold text-sm">{i.nombre}</div><div className="text-[10px] text-slate-400">{i.codigo} · {i.estado}</div></button>)}</div></div></div>;
 
@@ -676,9 +662,9 @@ const ItemModal = ({ item, categories, baseLocation, onClose, onSave }: { item: 
 
 const LocationButton = ({ onLocation }: { onLocation: (lat: number, lng: number) => void }) => <button type="button" onClick={() => navigator.geolocation?.getCurrentPosition(p => onLocation(p.coords.latitude, p.coords.longitude), () => alert('No se pudo obtener la ubicación. Revisa el permiso de localización.'))} className="w-full rounded-xl border border-brand-primary/30 bg-brand-primary/5 text-brand-primary py-3 text-sm font-bold inline-flex items-center justify-center gap-2"><Navigation className="w-4 h-4" />Ubicación actual</button>;
 
-const MovementModal = ({ item, shares, savedObras, baseLocation, maintenanceEmail, onClose, onSave }: { item: InventoryItem; shares: InventoryParkShare[]; savedObras: string[]; baseLocation: string; maintenanceEmail: string; onClose: () => void; onSave: (d: any) => Promise<void> }) => {
+const MovementModal = ({ actorId, item, shares, savedObras, baseLocation, maintenanceEmail, onClose, onSave }: { actorId:string; item: InventoryItem; shares: InventoryParkShare[]; savedObras: string[]; baseLocation: string; maintenanceEmail: string; onClose: () => void; onSave: (d: any) => Promise<void> }) => {
   const [tipo, setTipo] = useState('Salida a obra'); const [destino, setDestino] = useState(''); const [estadoNuevo, setEstadoNuevo] = useState('Asignada a obra'); const [observaciones, setObservaciones] = useState(''); const [files, setFiles] = useState<File[]>([]); const [coords, setCoords] = useState<{ latitud: number | null; longitud: number | null }>({ latitud: null, longitud: null }); const [saving, setSaving] = useState(false);
-  const [responsableId, setResponsableId] = useState(() => inventorySupervisors(shares).some(share => share.userId === item.responsableActual) ? item.responsableActual! : '');
+  const [responsableId, setResponsableId] = useState(() => inventorySupervisors(shares).some(share => share.userId === actorId) ? actorId : '');
   const [movementId] = useState(() => crypto.randomUUID());
   const [saveError, setSaveError] = useState('');
   const savingRequest = useRef(false);
@@ -692,15 +678,15 @@ const MovementModal = ({ item, shares, savedObras, baseLocation, maintenanceEmai
   return <Modal title={`Movimiento · ${item.nombre}`} onClose={saving ? () => {} : onClose}><form className="space-y-4" onSubmit={async e => { e.preventDefault(); if (savingRequest.current) return; if (!destino.trim() || (inventoryIsInUse(estadoNuevo) && !responsableId)) { setSaveError('Indica el destino y quién está usando el equipo.'); return; } savingRequest.current = true; setSaving(true); setSaveError(''); try { await onSave({ tipo, destino, estadoNuevo, responsableId, movementId, observaciones, files, ...coords }); } catch (error: any) { setSaveError(error?.message || 'No se pudo guardar el movimiento. Reintenta sin cerrar esta ventana.'); } finally { savingRequest.current = false; setSaving(false); } }}>
     <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-3 text-xs"><b>Equipo:</b> {equipmentLabel(item)}<br/><b>Origen:</b> {item.ubicacionActual}</div>
     <Field label="Tipo"><select className={inputClass} value={tipo} onChange={e => setTipo(e.target.value)}>{MOVEMENT_TYPES.map(x => <option key={x}>{x}</option>)}</select></Field>
-    {isBreakdown && <div className={`rounded-xl border p-3 text-xs ${maintenanceEmail ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200' : 'border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200'}`}>{maintenanceEmail ? <><b>Aviso automático preparado.</b><div className="mt-1">Al guardar la avería se abrirá un correo dirigido a <b>{maintenanceEmail}</b> con los datos de la máquina, obra e incidencia.</div></> : <><b>Falta configurar el correo de mantenimiento.</b><div className="mt-1">La avería se registrará igualmente, pero no se podrá preparar el aviso por correo hasta guardar el destinatario en «Parque, zona y uso compartido».</div></>}</div>}
+    {isBreakdown && <div className={`rounded-xl border p-3 text-xs ${maintenanceEmail ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200' : 'border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200'}`}>{maintenanceEmail ? <><b>Aviso automático preparado.</b><div className="mt-1">Al guardar la avería se enviará desde el Gmail autorizado del supervisor a <b>{maintenanceEmail}</b> con los datos de la máquina, obra e incidencia.</div></> : <><b>Falta configurar el correo de mantenimiento.</b><div className="mt-1">La avería se registrará igualmente, pero no se podrá preparar el aviso por correo hasta guardar el destinatario en «Parque, zona y uso compartido».</div></>}</div>}
     <Field label="Destino / obra"><input list="inventory-works" required className={inputClass} value={destino} onChange={e => setDestino(e.target.value)} /><datalist id="inventory-works">{savedObras.map(o => <option key={o} value={o} />)}<option value={baseLocation} /></datalist></Field>
     <Field label="Estado"><select className={inputClass} value={estadoNuevo} onChange={e => setEstadoNuevo(e.target.value)}>{STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></Field>
     <Field label="Responsable / quién está usando el equipo"><select required={inventoryIsInUse(estadoNuevo)} disabled={!inventoryIsInUse(estadoNuevo) || saving} className={inputClass} value={inventoryIsInUse(estadoNuevo) ? responsableId : ''} onChange={event => setResponsableId(event.target.value)}><option value="">{inventoryIsInUse(estadoNuevo) ? 'Selecciona el supervisor que lo usa' : 'Sin usuario asignado'}</option>{inventorySupervisors(shares).map(share => <option key={share.userId} value={share.userId}>{share.displayName}</option>)}</select></Field>
-    <p className="text-xs text-slate-500 dark:text-slate-400">El responsable es quien usa el equipo. Quien registra este movimiento se conserva por separado en la trazabilidad. Al devolverlo o retirarlo de uso se libera la asignación.</p>
+    <p className="text-xs text-slate-500 dark:text-slate-400">El supervisor que registra el movimiento queda asociado al equipo. Puedes indicar quién lo está usando si es otra persona; al devolverlo se libera el uso, conservando al supervisor del movimiento.</p>
     {saveError && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{saveError}</p>}
     <Field label={isBreakdown ? 'Descripción de la avería' : 'Observaciones'}><textarea rows={isBreakdown ? 4 : 2} required={isBreakdown} className={inputClass} value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder={isBreakdown ? 'Describe qué le ocurre a la máquina, síntomas, daños observados…' : ''} /></Field>
     <div className="grid sm:grid-cols-2 gap-3"><label className="rounded-xl border p-3"><span className="text-xs font-bold flex items-center gap-2"><Camera className="w-4 h-4" />{isBreakdown ? 'Fotos de la avería' : 'Foto del estado'}</span><input type="file" accept="image/*" multiple onChange={e => setFiles(Array.from(e.target.files || []).slice(0, 4))} className="mt-3 block w-full text-xs" /><div className="mt-2 text-[10px] text-slate-500">Puedes hacer una foto, elegir de la fototeca o seleccionar imágenes desde Archivos/directorio.</div></label><div><LocationButton onLocation={(lat, lng) => setCoords({ latitud: lat, longitud: lng })} />{coords.latitud != null && <div className="text-[10px] text-emerald-600 mt-2 text-center">Ubicación registrada ✓</div>}</div></div>
-    <button disabled={saving} className="w-full rounded-xl bg-brand-primary text-white py-3.5 font-black inline-flex items-center justify-center gap-2">{isBreakdown && maintenanceEmail ? <Mail className="w-4 h-4" /> : null}{saving ? 'Registrando…' : isBreakdown && maintenanceEmail ? 'Registrar avería y preparar correo' : isBreakdown ? 'Registrar avería' : 'Registrar movimiento'}</button>
+    <button disabled={saving} className="w-full rounded-xl bg-brand-primary text-white py-3.5 font-black inline-flex items-center justify-center gap-2">{isBreakdown && maintenanceEmail ? <Mail className="w-4 h-4" /> : null}{saving ? 'Registrando…' : isBreakdown && maintenanceEmail ? 'Registrar avería y enviar por Gmail' : isBreakdown ? 'Registrar avería' : 'Registrar movimiento'}</button>
   </form></Modal>;
 };
 
