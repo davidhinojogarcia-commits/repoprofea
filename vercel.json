@@ -66,7 +66,8 @@
       "fix/foreman-signed-attendance-pdf": false,
       "fix/global-confirmation-layer": false,
       "fix/prevention-photo-adaptive-compression": false,
-      "release/2026-10-18-pending": false
+      "release/2026-10-18-pending": false,
+      "qa/prevention-report-291": false
     }
   }
 }
