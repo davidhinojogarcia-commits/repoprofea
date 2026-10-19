@@ -8,7 +8,7 @@ try {
  await build({entryPoints:[new URL('../src/services/inventoryService.ts',import.meta.url).pathname],bundle:true,platform:'node',format:'esm',packages:'external',outfile:output.pathname,plugins:[{name:'transport',setup(b){
   b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'transport',namespace:'mock'}));
   b.onResolve({filter:/offlineStore$/},()=>({path:'offline',namespace:'mock'}));
-  b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='transport'?"export const supabase={edgeFunction:(...args)=>globalThis.__inventoryEdge(...args)};export const getSessionUser=async()=>null;export const queueOfflineRpc=async()=>{};export const queueOfflineStorageRemove=async()=>{};export const queueOfflineStorageUpload=async()=>{};":"export const listOfflineOperations=async()=>[];"}));
+  b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:args.path==='transport'?"export const supabase={edgeFunction:(...args)=>globalThis.__inventoryEdge(...args)};export const getSessionUser=async()=>null;export const queueOfflineRpc=async()=>{};export const queueOfflineStorageRemove=async()=>{};export const queueOfflineStorageUpload=async()=>{};":"export const listOfflineOperations=async()=>[];export const offlineCacheKey=(...args)=>args.join(':');export const readOfflineCache=async()=>[];export const writeOfflineCache=async()=>{};"}));
  }}]});
  const {sendInventoryParkInvitationEmail}=await import(output.href);
  for(result of [null,{}, {ok:false,delivery:'not_configured'}, {ok:true,delivery:'not_configured'}])await assert.rejects(()=>sendInventoryParkInvitationEmail('invitation-test'),/No se pudo enviar/);

@@ -43,7 +43,7 @@
     "test:inventory-invitations-browser": "node scripts/testInventoryInvitationsBrowser.mjs",
     "test:inventory-usage": "node --import tsx scripts/testInventoryUsage.ts && node scripts/testInventoryUsageSql.mjs && node scripts/testInventoryUsageService.mjs && node scripts/testInventoryUsageUi.mjs",
     "test:inventory-usage-browser": "node scripts/testInventoryUsageBrowser.mjs",
-    "test:inventory-gmail": "node --import tsx scripts/testInventoryGmail.ts",
+    "test:inventory-gmail": "node --import tsx scripts/testInventoryGmail.ts && node --import tsx scripts/testInventoryBreakdownGmail.ts",
     "test:employment-worksites": "node --import tsx scripts/testEmploymentWorksiteAssignment.ts && node scripts/testEmploymentWorksiteIntake.mjs && node scripts/testEmploymentWorksiteService.mjs && node scripts/testEmploymentWorksiteUi.mjs",
     "test:pdf-signature-workspace": "node --import tsx scripts/testPdfSignatureCoordinates.ts && node scripts/testEmploymentDocumentAnalysis.mjs",
     "test:pdf-signature-workspace-browser": "node scripts/testPdfSignatureWorkspaceBrowser.mjs",

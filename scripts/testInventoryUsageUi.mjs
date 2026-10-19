@@ -36,10 +36,10 @@ try {
  await action(()=>__usage.release());assert(document.querySelector('[role="alert"]').textContent.includes('Error de guardado simulado'));assert.equal(label('Responsable / quién').value,'user-i','choice survives failed save');
  __usage.fail=false;__usage.hold=false;await action(()=>find('Registrar movimiento').click());
  assert.equal(__usage.saves[0].movementId,__usage.saves[1].movementId,'same ID for retry');assert.equal(__usage.uploads,1,'photos uploaded once across retry');
- await mount();await action(()=>find('Inventario').click());assert(rows()[0].textContent.includes('En usoLucía Núñez'),'saved user survives component reload');
+ await mount();await action(()=>find('Inventario').click());assert(rows()[0].textContent.includes('En uso: Lucía Núñez'),'saved user survives component reload');assert(rows()[0].textContent.includes('Álvaro Prueba'),'movement supervisor is shown separately');
  await action(()=>rows()[0].querySelector('[title="Mover"]').click());await set(label('Tipo'),'Devolución a nave');assert.equal(label('Responsable / quién').disabled,true);assert.equal(label('Estado').value,'Disponible');
  await set(label('Tipo'),'Salida a obra');assert.equal(label('Estado').value,'Asignada a obra','return then departure resets state');
- await set(label('Tipo'),'Devolución a nave');await action(()=>find('Registrar movimiento').click());assert(rows()[0].textContent.includes('Sin usuario asignado'));
+ await set(label('Tipo'),'Devolución a nave');await action(()=>find('Registrar movimiento').click());assert(rows()[0].textContent.includes('Supervisor del último movimiento'));assert(!rows()[0].textContent.includes('En uso:'));
  await action(()=>document.querySelector('[aria-label="Ver equipos de Lucía Núñez"]').click());
  await set(label('Parque visible'),'park-b');assert.equal(document.querySelector('[aria-label="Filtrar por responsable"]').value,'');assert.equal(rows().length,1);assert(rows()[0].textContent.includes('Equipo parque B'));
  console.log('PASS real inventory React UI: names/usage/counts, accepted-only selector, search/filter without calls, slow double submit, save failure/retry, single photo upload, persisted selection on reload, return, departure reset and park isolation. JSDOM.');

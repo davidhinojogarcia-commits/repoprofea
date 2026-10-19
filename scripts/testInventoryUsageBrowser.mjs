@@ -28,6 +28,7 @@ try {
  const errors=[];
  for(const width of [390,820,1440])for(const dark of [false,true]){
   const context=await browser.newContext({viewport:{width,height:1000}});const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+  const mailRequests=[];await page.route('**/api/gmail?action=send-inventory-breakdown',async route=>{mailRequests.push(route.request().postDataJSON());await route.fulfill({status:mailRequests.length===1?409:200,contentType:'application/json',body:JSON.stringify(mailRequests.length===1?{ok:false,code:'GMAIL_NOT_CONNECTED',message:'Autoriza Gmail del supervisor.'}:{ok:true,delivery:'sent',provider:'gmail',messageId:'gmail-test',from:'supervisor@example.test'})});});
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.getByRole('button',{name:'Inventario',exact:true}).click();
   await page.getByLabel('Buscar equipo o responsable').fill('nunez');
   const list=width<768?page.locator('.md\\:hidden').filter({hasText:'Hormigonera'}).last():page.locator('tbody');
@@ -45,9 +46,12 @@ try {
   const move=width<768?page.locator('.md\\:hidden [title="Mover"]').last():page.locator('tbody tr').first().getByTitle('Mover',{exact:true});
   await move.click();const modal=page.getByRole('dialog');
   const responsible=modal.getByLabel('Responsable / quién está usando el equipo');await responsible.waitFor();assert.equal(await responsible.locator('option').count(),3);
+  assert.equal(await responsible.inputValue(),'user-a','movement defaults to current supervisor, not previous user');
   await responsible.selectOption('user-i');await modal.getByLabel('Destino / obra').fill('Obra B');
   await modal.getByRole('button',{name:'Registrar movimiento',exact:true}).click();await modal.waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>__usage.saves[0].responsableId),'user-i');
+  await move.click();const breakdown=page.getByRole('dialog');await breakdown.getByLabel('Tipo').selectOption('Avería');await breakdown.getByLabel('Destino / obra',{exact:true}).fill('Taller');await breakdown.getByLabel('Descripción de la avería',{exact:true}).fill('No arranca');await breakdown.getByRole('button',{name:'Registrar avería y enviar por Gmail',exact:true}).click();await breakdown.waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Autorizar Gmail del supervisor',exact:true}).waitFor();const savedCount=await page.evaluate(()=>__usage.saves.length);await page.getByRole('button',{name:'Reintentar aviso por Gmail',exact:true}).click();await page.getByRole('status').filter({hasText:'Gmail ha aceptado'}).waitFor();assert.equal(await page.evaluate(()=>__usage.saves.length),savedCount,'mail retry does not duplicate movement');assert.equal(mailRequests.length,2);assert.equal(mailRequests[0].movementId,mailRequests[1].movementId);assert.deepEqual(Object.keys(mailRequests[0]),['movementId']);assert(page.url().startsWith('http://127.0.0.1:'),'no mail client opened');
   await context.close();
  }
  assert.deepEqual(errors,[]);console.log('PASS Chromium full inventory: desktop/tablet/mobile viewports, light/dark, two distinct colors, names/search/filters, accepted-only user selection, save and no horizontal page overflow. Data transport simulated.');
