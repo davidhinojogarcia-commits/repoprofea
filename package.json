@@ -52,7 +52,9 @@
     "test:visit-mail": "node scripts/testVisitMailDelivery.mjs",
     "test:signed-attendance": "node scripts/testSignedAttendancePdf.mjs && node scripts/testForemanPublicationUi.mjs",
     "test:signature-quality": "node --import tsx scripts/testSignatureQuality.ts",
-    "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs"
+    "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs",
+    "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs",
+    "test:visit-writing-browser": "node scripts/testVisitWritingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitWritingBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

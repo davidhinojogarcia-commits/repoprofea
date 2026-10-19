@@ -124,6 +124,8 @@ jobs:
         run: npm run test:foreman-publication
       - name: Worksite visit minutes data, permissions and PDFs
         run: npm run test:visit-minutes
+      - name: Visit writing permissions, provider adapter and safeguards
+        run: npm run test:visit-writing
       - name: Work orders permissions, follow-up and publication
         run: npm run test:visit-work-orders
       - name: Visit mail OAuth, batching and reconciliation
@@ -132,6 +134,8 @@ jobs:
           node scripts/testVisitMailLocal.mjs
       - name: Worksite visit minutes browser workflow
         run: npm run test:visit-minutes-browser
+      - name: Visit writing mobile browser workflow
+        run: npm run test:visit-writing-browser
       - name: Signed attendance PDFs
         run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
@@ -212,6 +216,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 
