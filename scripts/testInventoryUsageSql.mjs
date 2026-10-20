@@ -64,5 +64,27 @@ try {
   await asUser(owner);await q("update inventory_items set activo=false,estado='Baja' where id=$1",[item]);await assert.rejects(()=>rpc('inventory_register_usage_movement',movement(id(42),owner)),/dado de baja/);
  await db.exec('reset role');assert((await q('select count(*)::int total from inventory_movement_audit'))[0].total>=4);
  for(const name of ['inventory_register_usage_movement','inventory_register_movement','inventory_update_movement','inventory_delete_movement'])assert.equal((await q("select bool_or(has_function_privilege('anon',oid,'EXECUTE')) allowed from pg_proc where proname=$1",[name]))[0].allowed,false,name+' denies anon');
- console.log('PASS inventory usage SQL: separate actor/user, pending/foreign/revoked rejection, idempotent retries, handover, return, breakdown, correction/deletion, audit, RLS, legacy clients, no migration backfill.');
+ await db.exec('reset role;create role service_role bypassrls;');
+ const correction=fs.readFileSync(new URL('../supabase/migrations/20261019134751_inventory_supervisor_breakdown_mail.sql',import.meta.url),'utf8');await db.exec(correction);await db.exec(correction);
+ await asUser(owner);
+ let supervisors=await q('select * from get_inventory_supervisors($1)',[park]);assert.equal(supervisors.find(r=>r.item_id===item).supervisor_id,owner,'existing movement identifies recorder, not actual user or later metadata editor');
+ await asUser(stranger);assert.equal((await q('select * from get_inventory_supervisors($1)',[park])).length,0,'supervisor projection obeys park RLS');
+ await asUser(null);await assert.rejects(()=>q('select * from get_inventory_supervisors($1)',[park]),/permission denied/);
+ await db.exec('reset role');await q('update inventory_park_members set active=true where park_id=$1 and user_id=$2',[park,guest]);await q('update inventory_items set activo=true where id=$1',[item]);
+ await asUser(guest);await rpc('inventory_register_usage_movement',movement(id(89),owner));supervisors=await q('select * from get_inventory_supervisors($1)',[park]);assert.equal(supervisors.find(r=>r.item_id===item).supervisor_id,guest,'movement actor becomes supervisor even if another user uses the item');
+ await asUser(owner);await rpc('inventory_update_movement',[id(89),'Traslado','Obra corregida','En traslado','',null,null,[]]);supervisors=await q('select * from get_inventory_supervisors($1)',[park]);assert.equal(supervisors.find(r=>r.item_id===item).supervisor_id,guest,'history editor is not the movement actor');
+ await rpc('inventory_delete_movement',[id(89)]);supervisors=await q('select * from get_inventory_supervisors($1)',[park]);assert.equal(supervisors.find(r=>r.item_id===item).supervisor_id,owner,'deleting latest movement restores previous supervisor');
+ await asUser(owner);await q("update inventory_items set activo=true where id=$1",[item]);
+ await rpc('inventory_register_usage_movement',[item,'Avería','Taller','Averiada',null,'No arranca',null,null,[],null,id(90)]);
+ supervisors=await q('select * from get_inventory_supervisors($1)',[park]);assert.equal(supervisors.find(r=>r.item_id===item).supervisor_id,owner,'breakdown preserves supervisor even when no longer in use');
+ await assert.rejects(()=>rpc('inventory_claim_breakdown_mail',[id(90),owner]),/permission denied/);
+ await db.exec('reset role;set role service_role');
+ let claim=await rpc('inventory_claim_breakdown_mail',[id(90),owner]);assert.equal(claim.claimed,true);
+ assert.equal((await rpc('inventory_claim_breakdown_mail',[id(90),owner])).claimed,false,'concurrent/repeated attempt cannot claim twice');
+ await rpc('inventory_finish_breakdown_mail',[id(90),owner,'failed',null,'GMAIL_RATE_LIMITED']);assert.equal((await rpc('inventory_claim_breakdown_mail',[id(90),owner])).claimed,true,'confirmed failure may retry');
+ await rpc('inventory_finish_breakdown_mail',[id(90),owner,'uncertain',null,'GMAIL_BREAKDOWN_UNCERTAIN']);assert.equal((await rpc('inventory_claim_breakdown_mail',[id(90),owner])).claimed,false,'uncertain is never automatically resent');
+ await rpc('inventory_finish_breakdown_mail',[id(90),owner,'sent','gmail-accepted',null]);claim=await rpc('inventory_claim_breakdown_mail',[id(90),owner]);assert.equal(claim.status,'sent');assert.equal(claim.messageId,'gmail-accepted');assert.equal(claim.claimed,false);
+ await assert.rejects(()=>rpc('inventory_claim_breakdown_mail',[id(90),stranger]),/no disponible/);
+ await asUser(owner);await assert.rejects(()=>q('select * from inventory_breakdown_mail'),/permission denied/);
+ console.log('PASS inventory SQL: legacy use/recorder separation, history/permissions, derived current supervisor including breakdowns, private outbox, duplicate prevention, safe retries and uncertain reconciliation.');
 } finally {await db.close();}

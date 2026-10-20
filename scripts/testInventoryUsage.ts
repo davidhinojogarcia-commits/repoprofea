@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {inventoryIsInUse, inventorySupervisorColor, inventorySupervisors, inventoryUsage, filterInventoryItems} from '../src/lib/inventoryUsage';
+import {inventoryIsInUse, inventorySupervisorColor, inventorySupervisors, inventoryUsage, filterInventoryItems,inventoryResponsibility} from '../src/lib/inventoryUsage';
 import type {InventoryItem, InventoryParkShare} from '../src/services/inventoryService';
 const shares = [
  {userId:'user-2',displayName:'Lucía Núñez',status:'accepted',isOwner:false},
@@ -28,4 +28,7 @@ assert.deepEqual(filter({supervisorId:'user-2'}).map(i=>i.id),['2']);
 assert.deepEqual(filter({supervisorId:'__UNASSIGNED__'}).map(i=>i.id),['4']);
 assert.equal(filter({supervisorId:'user-2',search:'Obra A'}).length,0);
 assert.equal(filter({status:'__IN_USE__'}).length,3);assert.equal(filter({status:'Disponible'}).length,1);
+const broken={...items[4],supervisorResponsableId:'user-1',supervisorResponsableNombre:'Álvaro Prueba'};
+assert.equal(inventoryResponsibility(broken,shares)?.userId,'user-1');assert.equal(inventoryUsage(broken,shares).inUse,false);
+assert.equal(filterInventoryItems([broken],shares,{search:'alvaro',category:'',status:'',supervisorId:'user-1'}).length,1,'broken equipment remains searchable by movement supervisor');
 console.log('PASS usage semantics, separate stable colors, no guessed responsibility, accent-insensitive search, user/status/location filters.');

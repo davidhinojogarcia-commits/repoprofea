@@ -71,6 +71,14 @@ export async function sendInventoryInvitationWithConnectedGmail(invitationId: st
   return result;
 }
 
+export async function sendInventoryBreakdownWithConnectedGmail(movementId: string) {
+  let result:{ok:boolean;delivery:string;provider:string;messageId:string;from:string};
+  try{result=await api<typeof result>('/api/gmail?action=send-inventory-breakdown',{method:'POST',body:JSON.stringify({movementId})});}
+  catch(e:any){if(e.status)throw e;throw Object.assign(new Error('No se pudo confirmar el aviso. Comprueba su estado en Gmail antes de repetirlo.'),{code:'GMAIL_BREAKDOWN_UNCERTAIN'});}
+  if(result.ok!==true||result.delivery!=='sent'||result.provider!=='gmail'||!result.messageId?.trim())throw new Error('Gmail no confirmó el aviso. Comprueba Enviados antes de reintentarlo.');
+  return result;
+}
+
 const fileToBase64 = async (file: File) => {
   const buffer = new Uint8Array(await file.arrayBuffer());
   let binary = '';

@@ -33,13 +33,22 @@ export function inventoryUsage(item: Pick<InventoryItem, 'estado' | 'responsable
   };
 }
 
+export function inventoryResponsibility(item: Pick<InventoryItem,'estado'|'responsableActual'|'supervisorResponsableId'|'supervisorResponsableNombre'>, shares:InventoryParkShare[]) {
+  if(item.supervisorResponsableId){
+    const member=inventorySupervisors(shares).find(share=>share.userId===item.supervisorResponsableId);
+    return {userId:item.supervisorResponsableId,displayName:member?.displayName||item.supervisorResponsableNombre||'Supervisor registrado en el movimiento'};
+  }
+  return inventoryUsage(item,shares).responsible;
+}
+
 export function filterInventoryItems(items: InventoryItem[], shares: InventoryParkShare[], filters: { search: string; category: string; status: string; supervisorId: string }) {
   const search = normalize(filters.search);
   return items.filter(item => {
     const usage = inventoryUsage(item, shares);
-    const text = normalize([item.codigo, item.nombre, item.categoria, item.marca, item.modelo, item.numeroSerie, item.matricula, item.ubicacionActual, item.estado, usage.label, usage.responsibleName].filter(Boolean).join(' '));
+    const responsible=inventoryResponsibility(item,shares);
+    const text = normalize([item.codigo, item.nombre, item.categoria, item.marca, item.modelo, item.numeroSerie, item.matricula, item.ubicacionActual, item.estado, usage.label, usage.responsibleName,responsible?.displayName].filter(Boolean).join(' '));
     return (!search || text.includes(search)) && (!filters.category || item.categoria === filters.category)
       && (!filters.status || (filters.status === '__IN_USE__' ? usage.inUse : item.estado === filters.status))
-      && (!filters.supervisorId || (usage.inUse && (filters.supervisorId === '__UNASSIGNED__' ? !usage.responsible : usage.responsible?.userId === filters.supervisorId)));
+      && (!filters.supervisorId || (filters.supervisorId === '__UNASSIGNED__' ? usage.inUse&&!responsible : responsible?.userId === filters.supervisorId));
   });
 }

@@ -10,7 +10,8 @@ import { beginGmailOAuth, getGmailConnectionStatus } from '../src/lib/gmailConne
 import ModalPortal from './ModalPortal';
 import { appConfirm,appPrompt } from '../src/lib/appDialog';
 import { loadAppBusinessSettings } from '../src/services/appSettingsService';
-import { hydrateStoredSubcontratasPreferences, getStoredObrasRecursosPreventivos } from '../src/lib/subcontratasDefaults';
+import { loadObrasRecursosPreventivos } from '../src/services/subcontratasPreferencesService';
+import { visitForemanProfile } from '../src/lib/visitForeman';
 import { supabase } from '../src/lib/supabase';
 import { storeVisitDraft, readVisitDraft, clearVisitDraft, forgetVisitDraft } from '../src/lib/visitDraftStore';
 import { cleanVisit, visitProgress } from '../src/lib/visitMinutes';
@@ -76,7 +77,6 @@ export function VisitMinutesPanel({
     [contacts, setContacts] = useState<VisitContact[]>([]),
     [supervisor, setSupervisor] = useState<any>({}),
     [technician, setTechnician] = useState<any>({}),
-    [foremanSettings, setForemanSettings] = useState<Record<string,any>>({}),
     [records, setRecords] = useState<any[]>([]),
     [hasMore, setHasMore] = useState(false),
     [workFilter, setWorkFilter] = useState(''),
@@ -104,7 +104,10 @@ export function VisitMinutesPanel({
     [link, setLink] = useState('');
   const [draftUser,setDraftUser]=useState(''),[recovery,setRecovery]=useState<any>(null),[syncState,setSyncState]=useState(''),[syncBlocked,setSyncBlocked]=useState(false),[autoSaving,setAutoSaving]=useState(false),[online,setOnline]=useState(navigator.onLine),[reviewClosure,setReviewClosure]=useState('');
   const [orderSeed,setOrderSeed]=useState<VisitPoint|null>(null),[attachmentBusy,setAttachmentBusy]=useState(false),[attachmentTotal,setAttachmentTotal]=useState(8_000_000),[selectedRecipients,setSelectedRecipients]=useState<string[]>([]);
+  const [dictation,setDictation]=useState(''),[writingPending,setWritingPending]=useState(false);
   const assetCache=useRef(new Map<string,any>());
+  const saveEpoch=useRef(0);
+  const openingParticipation=useRef(false);
   const localPending=useRef<any>(null),draftReady=useRef(false),latestDraft=useRef<any>(null);
   const draftScopeActive=useRef(true);
   const editorRef=useRef<HTMLElement>(null);
@@ -123,10 +126,11 @@ export function VisitMinutesPanel({
       id: string;
     } | null>(null),
     createId = useRef('');
-  latestDraft.current={record,content,people,creating};
+  latestDraft.current={record,content,people,creating,dictation};
   // Form updates are immutable. Reference changes avoid serializing megabytes
   // of attachments on every keystroke just to show the unsaved-changes badge.
-  const dirty = !!content && (creating || record?.state.status === 'draft' && (content !== record.state.content || people !== record.state.participants));
+  const dirtyContent = !!content && (creating || record?.state.status === 'draft' && (content !== record.state.content || people !== record.state.participants));
+  const dirty = dirtyContent || !!dictation.trim();
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -144,10 +148,10 @@ export function VisitMinutesPanel({
       const saved=user?await readVisitDraft<any>(user):null;
       if(saved?.content)setRecovery(saved);
       try {
-        const [w,c,s]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings()]);
+        const [w,c,s,resources]=await Promise.all([visitRequest({action:'works'},{signal:abort.signal}),visitRequest({action:'contacts'},{signal:abort.signal}),loadAppBusinessSettings(),loadObrasRecursosPreventivos()]);
         if(abort.signal.aborted)return;
         if(w.visitWorkflow!=='3.1')throw new Error('Actualiza GestionProfea: el servidor todavía no admite Actas 3.1. No se ha enviado ningún borrador.');
-        setWorks(w.works);setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});void hydrateStoredSubcontratasPreferences().then(()=>{if(!abort.signal.aborted)setForemanSettings(getStoredObrasRecursosPreventivos());}).catch(()=>{if(!abort.signal.aborted)setForemanSettings({});});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
+        setWorks(w.works.map((work:any)=>({...work,visitForeman:visitForemanProfile(work,resources)})));setContacts(c.contacts);setSupervisor(s.supervisor);setTechnician(s.technician||{});setAttachmentTotal(w.attachmentLimits?.total||8_000_000);
         const exact=w.works.filter((work:any)=>work.id===initialWorksite||work.nombre===initialWorksite);
         setWorkFilter(exact.length===1?exact[0].id:'');setLoaded(true);
       } catch(e) {
@@ -183,14 +187,14 @@ export function VisitMinutesPanel({
   useEffect(()=>{
     const connected=()=>{setOnline(true);setSyncBlocked(false);},disconnected=()=>{setOnline(false);setSyncState('Sin conexión · pendiente de sincronización');};
     window.addEventListener('online',connected);window.addEventListener('offline',disconnected);
-    const subscription=supabase.auth.onAuthStateChange?.((event:string)=>{if(event==='SIGNED_OUT'&&draftUser){draftScopeActive.current=false;void forgetVisitDraft(draftUser);setContent(null);setPeople([]);setRecord(null);setRecovery(null);setDraftUser('');}});
+    const subscription=supabase.auth.onAuthStateChange?.((event:string)=>{if(event==='SIGNED_OUT'&&draftUser){draftScopeActive.current=false;void forgetVisitDraft(draftUser);setContent(null);setDictation('');setPeople([]);setRecord(null);setRecovery(null);setDraftUser('');}});
     return()=>{window.removeEventListener('online',connected);window.removeEventListener('offline',disconnected);subscription?.data.subscription.unsubscribe();};
   },[draftUser]);
   useEffect(()=>{
     if(!draftUser)return;
     const flush=()=>{
       const d=latestDraft.current;
-      if(!draftScopeActive.current||!d?.content||!(d.creating||d.record?.status==='draft'&&(d.content!==d.record.state.content||d.people!==d.record.state.participants)))return;
+      if(!draftScopeActive.current||!d?.content||!(d.dictation?.trim()||d.creating||d.record?.status==='draft'&&(d.content!==d.record.state.content||d.people!==d.record.state.participants)))return;
       void storeVisitDraft(draftUser,{...d,id:d.record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor,technician}}).catch(e=>setSyncState(e.message));
     };
     const hidden=()=>{if(document.visibilityState==='hidden')flush();};
@@ -199,17 +203,31 @@ export function VisitMinutesPanel({
   },[draftUser,works,contacts,supervisor,technician]);
   useEffect(()=>{
     if(!dirty||!draftUser||!draftReady.current||recovery)return;
-    const timer=window.setTimeout(()=>{void storeVisitDraft(draftUser,{...latestDraft.current,id:record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor,technician}}).then(()=>setSyncState(navigator.onLine?'Pendiente de sincronización · copia protegida en este dispositivo':'Sin conexión · copia protegida en este dispositivo')).catch(e=>setSyncState(e.message));},350);
+    const epoch=saveEpoch.current;
+    const timer=window.setTimeout(()=>{
+      const snapshot=latestDraft.current;
+      void storeVisitDraft(draftUser,{...snapshot,id:record?.id||createId.current,pending:localPending.current,configuration:{works,contacts,supervisor,technician}}).then(()=>{
+        const current=latestDraft.current;
+        // A local-copy completion cannot replace the result of a newer server save.
+        if(saveEpoch.current!==epoch||current.content!==snapshot.content||current.people!==snapshot.people||current.dictation!==snapshot.dictation)return;
+        const pendingContent=current.creating||current.record?.status==='draft'&&(current.content!==current.record.state.content||current.people!==current.record.state.participants);
+        if(!pendingContent&&!current.dictation?.trim())return;
+        setSyncState(navigator.onLine?(current.dictation?.trim()&&!pendingContent?'Dictado pendiente de incorporar · copia protegida en este dispositivo':'Pendiente de sincronización · copia protegida en este dispositivo'):'Sin conexión · copia protegida en este dispositivo');
+      }).catch(e=>{if(saveEpoch.current===epoch)setSyncState(e.message);});
+    },350);
     return()=>window.clearTimeout(timer);
-  },[content,people,dirty,draftUser,recovery,record,works,contacts,supervisor]);
+  },[content,people,dictation,dirty,draftUser,recovery,record,works,contacts,supervisor]);
   useEffect(()=>{
-    if(!dirty||!online||syncBlocked||!draftUser||recovery||busy||autoSaving||attachmentBusy)return;
+    if(content&&!dirty&&draftUser&&draftReady.current&&!recovery)void clearVisitDraft(draftUser).catch(e=>setSyncState(e.message));
+  },[content,dirty,draftUser,recovery]);
+  useEffect(()=>{
+    if(!dirtyContent||!online||syncBlocked||!draftUser||recovery||busy||autoSaving||attachmentBusy)return;
     const timer=window.setTimeout(()=>{
       try{cleanVisit(visitDraftValidationContent(content),people);}catch{setSyncState('Pendiente de sincronización · completa los datos del borrador');return;}
       void persistDraft(true);
     },3500);
     return()=>window.clearTimeout(timer);
-  },[content,people,dirty,online,syncBlocked,draftUser,recovery,busy,autoSaving,attachmentBusy]);
+  },[content,people,dirtyContent,online,syncBlocked,draftUser,recovery,busy,autoSaving,attachmentBusy]);
   const run = async (task: () => Promise<void>) => {
     if (guard.current || attachmentBusy) return;
     guard.current = true;
@@ -232,6 +250,7 @@ export function VisitMinutesPanel({
     setRecords(rows=>{const other=rows.filter(r=>r.id!==target.id);return matches?[card,...other].sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))||b.id.localeCompare(a.id)):other;});
   };
   const install = (r: VisitRecord) => {
+    setDictation('');setWritingPending(false);setEditFocus(v=>v+1);
     setRecord(r);updateCard(r);
     const c=r.state.content;
     setContent(r.canWrite&&r.status==='draft'&&(c.workflow!=='3.1'||!c.points||c.agreements.length)?{...c,workflow:'3.1',agreements:[],discussion:'',points:c.points||[{id:crypto.randomUUID(),title:'',description:c.discussion,attachmentIds:[]}]}:c);
@@ -316,9 +335,9 @@ export function VisitMinutesPanel({
     if (dirty && !(await appConfirm('Hay cambios sin guardar. ¿Abrir otra acta?'))) return;
     const work = works.find(w => w.id === (source?.obra_id || workFilter)) || (works.length===1?works[0]:undefined);
     const c = blankContent(work, supervisor);
-    setRecord(null);
+    setRecord(null);setEditFocus(v=>v+1);
     setCreating(true);
-    setContent(c);
+    setDictation('');setWritingPending(false);setContent(c);
     setPeople(usualPeople(c.worksiteId));
     setJobs([]);
     setHistory(null);
@@ -328,7 +347,7 @@ export function VisitMinutesPanel({
   };
   const persistDraft=async(automatic=false)=>{
     if(guard.current||!content)return;
-    guard.current=true;setAutoSaving(true);setSyncState('Guardando…');
+    guard.current=true;saveEpoch.current++;setAutoSaving(true);setSyncState('Guardando…');
     let target=record;
     const submitted={content,people};
     try{
@@ -350,7 +369,15 @@ export function VisitMinutesPanel({
       setRecord(target);setCreating(false);setSyncBlocked(false);
       // Typing during the request must never be replaced by the saved snapshot.
       const unchanged=latestDraft.current.content===submitted.content&&latestDraft.current.people===submitted.people;
-      if(unchanged){latestDraft.current={record:target,content:target.state.content,people:target.state.participants,creating:false};setContent(target.state.content);setPeople(target.state.participants);if(draftUser)await clearVisitDraft(draftUser);setRecovery(null);setSyncState('Guardado · confirmado en el servidor');}
+      if(unchanged){
+        latestDraft.current={...latestDraft.current,record:target,content:target.state.content,people:target.state.participants,creating:false};
+        setContent(target.state.content);setPeople(target.state.participants);
+        if(draftUser){
+          if(latestDraft.current.dictation?.trim())await storeVisitDraft(draftUser,{...latestDraft.current,id:target.id,pending:null,configuration:{works,contacts,supervisor,technician}});
+          else await clearVisitDraft(draftUser);
+        }
+        setRecovery(null);setSyncState(latestDraft.current.dictation?.trim()?'Acta guardada en servidor · dictado pendiente conservado solo en este dispositivo':'Guardado · confirmado en el servidor');
+      }
       else setSyncState('Pendiente de sincronización · hay cambios posteriores');
       updateCard(target);
       if(!automatic)setMessage('Acta guardada. Los datos están confirmados por el servidor.');
@@ -365,7 +392,7 @@ export function VisitMinutesPanel({
   };
   const save=()=>void persistDraft();
   const restoreDraft=()=>{
-    if(!recovery)return;setRecord(recovery.record);setContent(recovery.content);setPeople(recovery.people);setCreating(recovery.creating);createId.current=recovery.id;localPending.current=recovery.pending;setRecovery(null);setSyncBlocked(false);setSyncState('Borrador recuperado del dispositivo · pendiente de confirmar en el servidor');setEditFocus(v=>v+1);
+    if(!recovery)return;setRecord(recovery.record);setDictation(recovery.dictation||'');setContent(recovery.content);setPeople(recovery.people);setCreating(recovery.creating);createId.current=recovery.id;localPending.current=recovery.pending;setRecovery(null);setSyncBlocked(false);setSyncState('Borrador recuperado del dispositivo · pendiente de confirmar en el servidor');setEditFocus(v=>v+1);
   };
   const preview = (kind: 'review' | 'signing' | 'final',target:VisitRecord|null=record) => void run(async () => {
     if (!target) return;
@@ -377,10 +404,24 @@ export function VisitMinutesPanel({
     setMailError('');setMailNotice('');setGmailRequired(false);
     const draft=kind==='review'&&target.state.content.workflow==='3.1';
     const pdfBytes=draft?await visitFileBytes(await visitRequest({action:'pdf',id:target.id})):undefined;
-    setSelectedRecipients(target.state.reviewRecipients||target.state.participants.filter(p=>p.reviewEmailSelected&&p.reviewRequired&&p.email).map(p=>p.id));
-    setMail({kind,messages:r.messages,sender:r.sender,pdfBytes});
+    const messages=draft?r.messages.filter((m:any)=>target.state.participants.some(p=>p.id===m.personId&&p.modality==='remote')):r.messages;
+    setSelectedRecipients((target.state.reviewRecipients||target.state.participants.filter(p=>p.reviewEmailSelected&&p.reviewRequired&&p.email).map(p=>p.id)).filter(id=>messages.some((m:any)=>m.personId===id)));
+    setMail({kind,messages,sender:r.sender,pdfBytes});
   });
-  const reviewDraft=async()=>{const target=dirty?await persistDraft(false):record;if(target)preview('review',target);};
+  const reviewDraft=async()=>{if(writingPending||dictation.trim())return;const target=dirty?await persistDraft(false):record;if(target)preview('review',target);};
+  const reviewAndSign=async()=>{
+    if(openingParticipation.current||guard.current||attachmentBusy||writingPending||dictation.trim())return;
+    openingParticipation.current=true;
+    try{
+      const target=dirty?await persistDraft(false):record;
+      if(!target)return;
+      await run(async()=>{
+        const updated=await commitCommand(target,{type:'review',recipientIds:[]});
+        install(updated);setJobs([]);
+        setMessage('Acta preparada. Cada asistente puede revisar y firmar aquí.');
+      });
+    }finally{openingParticipation.current=false;}
+  };
   const deliverMail = async (currentRecord:VisitRecord,pending:NonNullable<typeof mail>)=>{
       const record=currentRecord;
       setMailError('');setMailNotice('');setGmailRequired(false);setMailSending(true);
@@ -425,8 +466,14 @@ export function VisitMinutesPanel({
   };
   const addProfile=(profile:any,role:string)=>{
     const name=String(profile.nombreApellidos||'').trim(),email=String(profile.email||'').trim().toLowerCase();
+    if(!name){setError('No se puede añadir una persona sin nombre. Completa su configuración y vuelve a abrir Actas de visitas.');return;}
     if(people.some(p=>email?p.email.trim().toLowerCase()===email:personName(p).toLocaleLowerCase('es')===name.toLocaleLowerCase('es'))){setMessage('Esta persona ya está incluida.');return;}
     const names=name.split(/\s+/);setPeople([...people,{...emptyPerson(),firstName:names.shift()||'',lastName:names.join(' '),role:profile.cargo||role,entity:'Diputación Provincial de Cádiz',email,phone:profile.telefono||'',receiveFinal:!!email}]);
+  };
+  const addForeman=()=>{
+    const work=works.find(w=>w.id===content?.worksiteId);
+    if(!work?.visitForeman){setError('Completa los datos del encargado en Configuración → Obras y Recursos Preventivos de esta obra y vuelve a abrir Actas de visitas.');return;}
+    addProfile(work.visitForeman,'Encargado de obra');
   };
   const saveUsualContact = async (p: VisitPerson) => {
     if (!content) return;
@@ -485,22 +532,17 @@ export function VisitMinutesPanel({
         setHasMore(r.hasMore);
       })}>Cargar siguientes actas</button>}</section>
     {content && <section ref={editorRef} tabIndex={-1} className="space-y-4">
-      <nav aria-label="Etapas del acta" className="grid grid-cols-3 gap-1 text-xs font-bold">{['Redactar','Revisar','Firmar'].map((label,i)=><span key={label} aria-current={(record?.status==='signed'||record?.status==='signing'?2:record&&record.status!=='draft'?1:0)===i?'step':undefined} className="rounded-lg border p-2">{i+1}. {label}</span>)}</nav><div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
+      <nav aria-label="Etapas del acta" className="grid grid-cols-2 gap-1 text-xs font-bold">{['Redactar','Revisar y firmar'].map((label,i)=><span key={label} aria-current={(record&&record.status!=='draft'?1:0)===i?'step':undefined} className="rounded-lg border p-2">{i+1}. {label}</span>)}</nav><div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
       {canEdit ? <fieldset disabled={busy||attachmentBusy} className="rounded-2xl border bg-white p-4 sm:p-6 dark:border-slate-700 dark:bg-slate-900 space-y-5">
         <legend className="font-black">Datos de la visita</legend>
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Obra<select disabled={!creating} className={visitInput} value={content.worksiteId} onChange={e => void run(()=>changeWorksite(e.target.value))}><option value="">Selecciona una obra…</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>{([['date','Fecha','date'],['start','Hora inicio','time']] as const).map(([key,label,type])=><label className="text-sm font-bold" key={key}>{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div>
-        <VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed}/>
+        <div key={editFocus+':'+content.worksiteId}><VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed} recordId={record?.id} dictation={dictation} onDictationChange={setDictation} onPending={setWritingPending}/></div>
         <details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer font-bold">Más datos de la visita (opcional)</summary><div className="grid gap-3 sm:grid-cols-2">{([['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre y apellidos','text'],['authorRole','Cargo del autor','text'],['authorEmail','Correo del autor','email'],['authorPhone','Teléfono del autor','tel'],['nextVisit','Próxima visita (opcional)','date']] as const).map(([key,label,type])=><label key={key} className="text-sm font-bold">{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div></details>
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
-        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={()=>{
-          const work=works.find(w=>w.id===content.worksiteId);
-          const assigned=work&&(foremanSettings[work.nombre]||foremanSettings[String(work.nombre||'').trim()]);
-          const name=String(assigned?.recursoPreventivoNombre||'').trim();
-          if(!name){setError('No hay encargado o recurso preventivo configurado para esta obra. Comprueba Configuración → Obras y Recursos Preventivos.');return;}
-          addProfile({nombreApellidos:name,cargo:assigned.recursoPreventivoCategoria||'Encargado de obra',telefono:assigned.recursoPreventivoTelefono||''},'Encargado');
-        }} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
+        <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={addForeman} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
-        <div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||!online} onClick={()=>void reviewDraft()}>Enviar borrador para revisión</button></div>
+        {writingPending&&<p className="text-sm">Aplica o descarta la propuesta y el dictado pendiente antes de revisar y firmar.</p>}<div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewAndSign()}>Revisar y firmar</button></div>
+        {people.some(p=>p.modality==='remote'&&p.reviewRequired)&&<button type="button" className={button} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewDraft()}>Enviar borrador a participantes remotos</button>}
       </fieldset> : record && <VisitMinutesReadView state={record.state} number={record.number} />}
       {record && <div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-4">
         {!record.canWrite && <p className="font-bold">Consulta de obra compartida. Solo el autor puede modificar o distribuir esta acta.</p>}

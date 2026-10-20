@@ -13,6 +13,7 @@ import {
   touchSent,
 } from '../src/server/gmailOAuth.js';
 import { sendInventoryInvitationGmail } from '../src/server/inventoryInvitationGmail.js';
+import { sendInventoryBreakdownGmail } from '../src/server/inventoryBreakdownGmail.js';
 
 const cleanHeader = (value: unknown) => String(value || '').replace(/[\r\n]+/g, ' ').trim();
 const encodeHeader = (value: string) => `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
@@ -108,6 +109,11 @@ export default async function handler(req: any, res: any) {
     }
 
     requireServerConfig();
+
+    if(action==='send-inventory-breakdown'&&req.method==='POST'){
+      let body:any;try{body=typeof req.body==='string'?JSON.parse(req.body):(req.body||{});}catch{return res.status(400).json({ok:false,message:'Solicitud de avería no válida.'});}
+      return res.status(200).json(await sendInventoryBreakdownGmail(user,String(req.headers?.authorization||''),String(body.movementId||'')));
+    }
 
     if (action === 'send-inventory-invite' && req.method === 'POST') {
       let body: any;

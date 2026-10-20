@@ -10,7 +10,7 @@
     "lint": "tsc --noEmit",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
     "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs && node scripts/testForemanPublicationReceipt.mjs && node --import tsx scripts/testForemanDocumentPeriod.ts && node --import tsx scripts/testForemanRepeatSignature.ts && node scripts/testIndependentForemanSql.mjs && node scripts/testIndependentForemanPdf.mjs",
-    "test:visit-minutes": "node scripts/testVisitMinutesDomain.mjs && node scripts/testVisitMinutesPdf.mjs && node scripts/testVisitMinutesIntegration.mjs && node scripts/testVisitMinutesMixed.mjs && node scripts/testVisitMinutes31.mjs",
+    "test:visit-minutes": "node --import tsx scripts/testVisitForeman.ts && node scripts/testVisitMinutesDomain.mjs && node scripts/testVisitMinutesPdf.mjs && node scripts/testVisitMinutesIntegration.mjs && node scripts/testVisitMinutesMixed.mjs && node scripts/testVisitMinutes31.mjs",
     "test:visit-minutes-browser": "node scripts/testVisitMinutesBrowser.mjs && node scripts/testVisitAttachmentsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitMinutesBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitAttachmentsBrowser.mjs",
     "test:mandatory-signatures": "tsx scripts/testMandatorySignatureAnchoring.ts",
     "test:relation-ordering": "tsx scripts/testRelationExportOrdering.ts",
@@ -43,7 +43,7 @@
     "test:inventory-invitations-browser": "node scripts/testInventoryInvitationsBrowser.mjs",
     "test:inventory-usage": "node --import tsx scripts/testInventoryUsage.ts && node scripts/testInventoryUsageSql.mjs && node scripts/testInventoryUsageService.mjs && node scripts/testInventoryUsageUi.mjs",
     "test:inventory-usage-browser": "node scripts/testInventoryUsageBrowser.mjs",
-    "test:inventory-gmail": "node --import tsx scripts/testInventoryGmail.ts",
+    "test:inventory-gmail": "node --import tsx scripts/testInventoryGmail.ts && node --import tsx scripts/testInventoryBreakdownGmail.ts",
     "test:employment-worksites": "node --import tsx scripts/testEmploymentWorksiteAssignment.ts && node scripts/testEmploymentWorksiteIntake.mjs && node scripts/testEmploymentWorksiteService.mjs && node scripts/testEmploymentWorksiteUi.mjs",
     "test:pdf-signature-workspace": "node --import tsx scripts/testPdfSignatureCoordinates.ts && node scripts/testEmploymentDocumentAnalysis.mjs",
     "test:pdf-signature-workspace-browser": "node scripts/testPdfSignatureWorkspaceBrowser.mjs",
@@ -52,7 +52,9 @@
     "test:visit-mail": "node scripts/testVisitMailDelivery.mjs",
     "test:signed-attendance": "node scripts/testSignedAttendancePdf.mjs && node scripts/testForemanPublicationUi.mjs",
     "test:signature-quality": "node --import tsx scripts/testSignatureQuality.ts",
-    "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs"
+    "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs",
+    "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs",
+    "test:visit-writing-browser": "node scripts/testVisitWritingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitWritingBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

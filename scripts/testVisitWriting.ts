@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { applyWritingPoints, mergeWritingPoints, pointSource, writingInput, writingProposal } from '../src/lib/visitWriting';
+import { assistVisitWriting, generateVisitWriting } from '../src/server/visitWriting';
+
+const source = { id:randomUUID(),title:'Arqueta',description:'No ejecutar. Pendiente de comprobar 1,50 m.',attachmentIds:[randomUUID()] };
+const other = { id:randomUUID(),title:'Pavimento',description:'Se propone revisar.',attachmentIds:[] };
+const input = writingInput({mode:'written',text:source.description,title:source.title});
+const valid = {points:[{title:'Arqueta',description:'No ejecutar. Pendiente de comprobar 1,50 m.'}],warnings:[]};
+assert.deepEqual(writingProposal(valid,input),valid);
+for(const invalid of [null,{}, {...valid,orders:[]}, {...valid,points:[]}, {...valid,points:[...valid.points,...valid.points]}, {...valid,warnings:['']}, {...valid,points:[{title:'Arqueta',description:'Ejecutar 1,50 m.'}]}, {...valid,points:[{title:'Arqueta',description:'No ejecutar. Pendiente de comprobar 2 m.'}]}]) assert.throws(()=>writingProposal(invalid,input));
+for(const text of ['', 'x'.repeat(12001)])assert.throws(()=>writingInput({mode:'written',text,title:''}));
+const current=[source,other];
+const applied=applyWritingPoints(current,valid.points,{id:source.id,snapshot:pointSource(source)});
+assert.equal(applied[1],other);assert.equal(applied[0].id,source.id);assert.deepEqual(applied[0].attachmentIds,source.attachmentIds);assert.deepEqual(current,[source,other]);
+assert.throws(()=>applyWritingPoints([{...source,description:'Cambio posterior'},other],valid.points,{id:source.id,snapshot:pointSource(source)}));
+assert.throws(()=>applyWritingPoints([other],valid.points,{id:source.id,snapshot:pointSource(source)}));
+const dictation=writingInput({mode:'dictated',text:'Arqueta pendiente. Pavimento terminado.',title:''});
+const split=writingProposal({points:[{title:'Arqueta',description:'Arqueta pendiente.'},{title:'Pavimento',description:'Pavimento terminado.'}],warnings:[]},dictation);
+const appended=applyWritingPoints(current,split.points);assert.equal(appended.length,4);assert.equal(appended[0],source);assert.equal(appended[1],other);assert.notEqual(appended[2].id,appended[3].id);assert.deepEqual(appended[2].attachmentIds,[]);
+assert.equal(applyWritingPoints([{id:randomUUID(),title:'',description:'',attachmentIds:[]}],split.points).length,2);
+const merged=mergeWritingPoints([source,{...other,attachmentIds:[...source.attachmentIds,randomUUID()]}],1);assert.equal(merged.length,1);assert.equal(merged[0].id,source.id);assert.equal(merged[0].attachmentIds.length,2);assert(merged[0].description.includes(other.description));
+
+let calls=0,release!:()=>void;
+const gate=new Promise<void>(resolve=>release=resolve),user=randomUUID();
+const generate=async()=>{calls++;await gate;return valid;};
+const first=assistVisitWriting(user,'work:a',input,generate),second=assistVisitWriting(user,'work:a',input,generate);
+await assert.rejects(assistVisitWriting(user,'work:b',input,generate),/curso/);release();
+assert.deepEqual(await first,await second);assert.equal(calls,1,'double request reuses in-flight operation within account/scope');
+await assistVisitWriting(randomUUID(),'work:a',input,async()=>{calls++;return valid;});assert.equal(calls,2,'another account never reuses a proposal');
+await assert.rejects(assistVisitWriting(randomUUID(),'work:a',input,async()=>({points:[],warnings:[]})),/válida/);
+const limited=randomUUID();for(let i=0;i<6;i++)await assistVisitWriting(limited,'work:a',input,async()=>valid);
+await assert.rejects(assistVisitWriting(limited,'work:a',input,async()=>valid),/límite/);
+const savedKey=process.env.GEMINI_API_KEY,savedModel=process.env.VISIT_WRITING_MODEL;
+delete process.env.GEMINI_API_KEY;delete process.env.VISIT_WRITING_MODEL;
+await assert.rejects(generateVisitWriting(input),/no dispone de una credencial/);
+if(savedKey)process.env.GEMINI_API_KEY=savedKey;if(savedModel)process.env.VISIT_WRITING_MODEL=savedModel;
+console.log('PASS visit writing: schema, fidelity guards, stale edits, isolation, merge, append, single-flight, rate limit, missing configuration. Provider output simulated; semantic fidelity still requires human review.');
