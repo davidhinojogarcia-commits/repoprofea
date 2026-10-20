@@ -1,3 +1,4 @@
+import ForemanDocumentChanges from './ForemanDocumentChanges';
 import ForemanModelSettings from './ForemanModelSettings';
 import { allowsForemanSignature } from '../src/lib/foremanSignaturePolicy';
 import { saveAttendanceForemanTemplate, getSupervisorForemanEvidence } from '../src/services/foremanPortalService';
@@ -869,6 +870,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const incompleteCount=visibleMandatory.filter(i=>i.status==='pending'||i.status==='in_progress'||i.status==='returned').length+attendance.filter(i=>i.status==='draft').length;
   const reviewCount=visibleMandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
   return <div className="foreman-documents-dashboard min-w-0 space-y-5">
+    <ForemanDocumentChanges documents={mandatory} onResolved={()=>void refresh()}/>
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento documental</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Hasta tres comprobaciones automáticas al día entre las 08:00 y las 14:00 (hora de España), solo con esta pantalla visible. Pulsa Actualizar para consultar cambios a cualquier hora.</p></div>
@@ -1210,5 +1212,6 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     </div></ModalPortal>}
   </div>;
 };
+
 
 

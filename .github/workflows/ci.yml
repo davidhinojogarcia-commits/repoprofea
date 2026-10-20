@@ -92,6 +92,7 @@ jobs:
           npx playwright install --with-deps chromium webkit
           npm run test:employment-browser
           npm run test:independent-foreman-browser
+          npm run test:foreman-offline
           node scripts/testAppDialogBrowser.mjs
           BROWSER_ENGINE=webkit node scripts/testAppDialogBrowser.mjs
           npm run test:pdf-signature-workspace
@@ -216,6 +217,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 

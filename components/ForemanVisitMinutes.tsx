@@ -1,3 +1,5 @@
+import { foremanVault } from '../src/lib/foremanLocalVault';
+import { bytesToBase64 } from '../src/lib/mandatoryPdfOverlay';
 import React, { useEffect, useRef, useState } from "react";
 import {
   visitRequest,
@@ -22,16 +24,44 @@ export default function ForemanVisitMinutes({
     [busy, setBusy] = useState(false),
     [work, setWork] = useState("");
   const guard = useRef(false);
+  const [availableOffline,setAvailableOffline]=useState<Record<string,boolean>>({});
+  const pdfKey=(p:any)=>'visit-pdf:'+p.recordId+':'+p.version;
+  const getPdf=async(p:any)=>{
+    const vault=await foremanVault(token);
+    if(!navigator.onLine){
+      if(!await vault.authorized())throw new Error('Conéctate para verificar tu acceso.');
+      const local=await vault.get<any>(pdfKey(p));
+      if(!local)throw new Error('Descarga esta acta con conexión antes de abrirla sin cobertura.');
+      return local;
+    }
+    const r=await request('pdf',p);
+    const bytes=await visitFileBytes(r.file);
+    const file={base64:bytesToBase64(bytes),filename:r.file.filename||p.number+'.pdf',sha256:r.file.sha256};
+    await vault.put(pdfKey(p),file);
+    setAvailableOffline(previous=>({...previous,[pdfKey(p)]:true}));
+    return file;
+  };
   const request = (action: string, extra: any = {}) =>
     visitRequest(
       { action: "foreman-visits-" + action, token, ...extra },
       { public: true },
     );
   const load = async (next = 0, signal?: AbortSignal) => {
+    const vault=await foremanVault(token);
+    if(!navigator.onLine){
+      if(!await vault.authorized())throw new Error('Conéctate para verificar tu acceso.');
+      const saved=await vault.get<any>('visit-list');
+      if(!saved)throw new Error('Todavía no se han descargado actas en este dispositivo.');
+      setRows(saved.publications);setWork(saved.worksite);setMore(false);
+      const flags:Record<string,boolean>={};for(const p of saved.publications)if(await vault.get(pdfKey(p)))flags[pdfKey(p)]=true;
+      setAvailableOffline(flags);return;
+    }
     const r = await visitRequest(
       { action: "foreman-visits-list", token, offset: next },
       { public: true, signal },
     );
+    const prior=next?await vault.get<any>('visit-list'):null;
+    await vault.put('visit-list',{publications:[...(prior?.publications||[]),...r.publications],worksite:r.worksite});
     setRows((old) => (next ? [...old, ...r.publications] : r.publications));
     setMore(r.hasMore);
     setOffset(r.nextOffset);
@@ -110,6 +140,8 @@ export default function ForemanVisitMinutes({
                 {p.number} · Versión {p.version}
               </h3>
               <p>{p.visitDate}</p>
+              {availableOffline[pdfKey(p)]&&<p className="text-sm font-bold">Disponible offline</p>}
+              <button type="button" className={btn} disabled={busy||!navigator.onLine} onClick={()=>void run(async()=>{await getPdf(p);})}>Guardar acta sin conexión</button>
               <div className="flex flex-wrap gap-2">
                 {onOpenPdf && (
                   <button
@@ -117,9 +149,9 @@ export default function ForemanVisitMinutes({
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
-                        const r = await request("pdf", p);
+                        const file = await getPdf(p);
                         onOpenPdf(
-                          await visitFileBytes(r.file),
+                          await visitFileBytes(file),
                           p.number + " · PDF firmado",
                         );
                       })
@@ -133,8 +165,8 @@ export default function ForemanVisitMinutes({
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
-                      const r = await request("pdf", p);
-                      await downloadVisitFile(r.file);
+                      const file = await getPdf(p);
+                      await downloadVisitFile(file);
                     })
                   }
                 >
@@ -176,3 +208,4 @@ export default function ForemanVisitMinutes({
     </section>
   );
 }
+
