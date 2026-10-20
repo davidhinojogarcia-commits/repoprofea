@@ -1,3 +1,7 @@
+import ForemanSignedDocuments from './ForemanSignedDocuments';
+import ForemanOfflinePanel from './ForemanOfflinePanel';
+import { reconcilePortalDownloads, prepareOfflineAttendance, queueOfflineAttendance, queuePortalSignature, synchronizePortalSignatures } from '../src/services/foremanOfflineService';
+import { foremanVault, type ForemanVault } from '../src/lib/foremanLocalVault';
 import { getAttendanceForemanEvidence, signAttendanceAsForeman } from '../src/services/foremanPortalService';
 import { effectiveForemanTemplate, enabledForemanTemplate } from '../src/lib/foremanSignaturePolicy';
 import { SIGNATURE_INK } from '../src/lib/signatureInk';
@@ -71,17 +75,22 @@ const isIosDevice = () => {
 const isAndroidDevice = () => /android/i.test(navigator.userAgent);
 
 
-export const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void | Promise<void>; onCancel: () => void }> = ({ title, onSave, onCancel }) => {
+export const SignaturePad: React.FC<{ title: string; onSave: (data: string) => void | Promise<void>; onCancel: () => void; draft?: {vault:ForemanVault|null;key:string} }> = ({ title, onSave, onCancel, draft }) => {
   const savingRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const { ref, handlers, clear, exportPng, error } = useHandwrittenSignature({ disabled: busy });
+  const [draftValue,setDraftValue]=useState('');
+  const [draftReady,setDraftReady]=useState(!draft?.vault);
+  useEffect(()=>{let active=true;if(!draft?.vault){setDraftReady(true);return;}setDraftReady(false);void (draft.vault as ForemanVault).get<string>('signature-draft:'+draft.key).then(value=>{if(active&&value)setDraftValue(value);}).catch(()=>setSaveError('No se pudo recuperar el borrador de firma.')).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[draft?.vault,draft?.key]);
+  const { ref, handlers, clear, exportPng, error } = useHandwrittenSignature({ disabled: busy||!draftReady, value:draftValue, onChange:image=>{
+    setDraftValue(image);void draft?.vault?.put('signature-draft:'+draft.key,image).catch(()=>setSaveError('No se pudo guardar el borrador en este dispositivo.'));
+  } });
   const exportSignature = async () => {
-    if (savingRef.current) return;
+    if (savingRef.current||!draftReady) return;
     const image = exportPng(true);
     if (!image) { setSaveError('Realiza la firma antes de guardarla.'); return; }
     savingRef.current = true; setBusy(true); setSaveError('');
-    try { await onSave(image); }
+    try { await onSave(image); await draft?.vault?.remove('signature-draft:'+draft.key).catch(()=>undefined); }
     catch (error:any) { setSaveError(error?.message || 'No se pudo guardar. Tu firma se conserva para reintentar.'); }
     finally { savingRef.current = false; setBusy(false); }
   };
@@ -100,7 +109,8 @@ export const SignaturePad: React.FC<{ title: string; onSave: (data: string) => v
   </div></ModalPortal>;
 };
 
-const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: string; onClose: () => void }> = ({ bytes, title, notice, onClose }) => {
+const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: string; vault?: ForemanVault|null; onClose: () => void }> = ({ bytes, title, notice, vault, onClose }) => {
+  const scrollRef=useRef<HTMLDivElement>(null);
   const hostRef=useRef<HTMLDivElement>(null);
   const [renderError,setRenderError]=useState('');
   const [rendering,setRendering]=useState(true);
@@ -119,6 +129,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
         if(!pdfjs.GlobalWorkerOptions.workerSrc)pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
         loadingTask=pdfjs.getDocument({data:bytes.slice(),useSystemFonts:true});
         pdf=await loadingTask.promise;
+        const savedScroll=await vault?.get('pdf-scroll:'+title);
         const host=hostRef.current;
         if(!host||cancelled)return;
         host.innerHTML='';
@@ -146,6 +157,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
           if(!ctx)throw new Error('No se pudo preparar la vista del PDF.');
           await page.render({canvas,canvasContext:ctx,viewport}).promise;
         }
+        if(!cancelled&&scrollRef.current)scrollRef.current.scrollTop=savedScroll||0;
       }catch(e:any){
         if(!cancelled)setRenderError(e?.message||'No se pudo mostrar el PDF.');
       }finally{
@@ -153,7 +165,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
       }
     })();
     return()=>{cancelled=true;void Promise.resolve(loadingTask?.destroy?.()).catch(()=>undefined);};
-  },[bytes,zoom]);
+  },[bytes,zoom,vault,title]);
 
   return <ModalPortal label={title} layout="fullscreen"><div className="foreman-pdf-viewer">
     <div className="foreman-pdf-viewer-header dark:bg-slate-900" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
@@ -169,7 +181,7 @@ const PdfCanvasPreview: React.FC<{ bytes: Uint8Array; title: string; notice?: st
       <button type="button" aria-label="Ampliar PDF" disabled={zoom>=3} onClick={()=>setZoom(value=>Math.min(3,value+.5))}>+</button>
       <button type="button" onClick={()=>setZoom(1)}>Ajustar a pantalla</button>
     </div>
-    <div className="foreman-pdf-viewer-pages" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}>
+    <div ref={scrollRef} onScroll={event=>{void vault?.put('pdf-scroll:'+title,event.currentTarget.scrollTop).catch(()=>undefined);}} className="foreman-pdf-viewer-pages" style={{paddingBottom:'max(16px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}>
       {notice&&<div className="mx-auto mb-3 max-w-[900px] rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold leading-5 text-amber-900 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">{notice}</div>}
       {rendering&&<div className="mx-auto mt-8 max-w-md rounded-2xl bg-white p-5 text-center text-sm font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-200">Cargando PDF…</div>}
       {renderError&&<div className="mx-auto mt-8 max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800 dark:border-rose-700 dark:bg-rose-950/80 dark:text-rose-100">{renderError}</div>}
@@ -206,7 +218,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [installPromptAvailable,setInstallPromptAvailable]=useState(Boolean(window.__profeaInstallPrompt));
   const [installHelpVisible,setInstallHelpVisible]=useState(false);
   const [installedStandalone,setInstalledStandalone]=useState(isStandaloneDisplay());
-  const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string;notice?:string}|null>(null);
+  const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string;notice?:string;documentId?:string}|null>(null);
   const [operationFeedback,setOperationFeedback]=useState('');
   const [focusDocumentId,setFocusDocumentId]=useState('');
   const [pushActive,setPushActive]=useState(false);
@@ -241,6 +253,77 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
   const [refreshingDocuments,setRefreshingDocuments]=useState(false);
   const [documentsUpdatedAt,setDocumentsUpdatedAt]=useState('');
+  const vaultRef=useRef<ForemanVault|null>(null);
+  const workspaceRestoredRef=useRef(false);
+  const localRowsRef=useRef<{date:string;rows:ForemanAttendanceRow[]}|null>(null);
+  const storageBlockedRef=useRef(false);
+  const [workspaceReady,setWorkspaceReady]=useState(false);
+  const [localSaveStatus,setLocalSaveStatus]=useState('Recuperando trabajo…');
+  const [connectionOnline,setConnectionOnline]=useState(navigator.onLine);
+  const workspaceRef=useRef<any>(null);
+  workspaceRef.current={signing,mandatorySigning,foremanDocumentSigning,docSigning,attendanceSigning,rowDraft:localRowsRef.current,tab,date,rows,trainingAction,trainingDuration,epiSelection,machineryByWorker,globalMachinery,docType,workerId,answers,docSignatures,correctionDocumentId,
+    selectedPeriodKeys:[...selectedPeriodKeys],selectedMandatoryPeriodKeys:[...selectedMandatoryPeriodKeys],expandedMandatoryDocuments:[...expandedMandatoryDocuments],mandatoryWorkerChoice};
+  const restoreWorkspace=async(vault:ForemanVault)=>{
+    if(workspaceRestoredRef.current)return;
+    const draft=await vault.get<any>('workspace');
+    if(draft){
+      setTab(draft.tab);setDate(draft.date);setRows(draft.rows||[]);
+      setSigning(draft.signing||null);setMandatorySigning(draft.mandatorySigning||null);setForemanDocumentSigning(draft.foremanDocumentSigning||null);setDocSigning(draft.docSigning||null);setAttendanceSigning(Boolean(draft.attendanceSigning));
+      localRowsRef.current=draft.rowDraft||null;
+      setTrainingAction(draft.trainingAction);setTrainingDuration(draft.trainingDuration);
+      setEpiSelection(draft.epiSelection);setMachineryByWorker(draft.machineryByWorker);setGlobalMachinery(draft.globalMachinery);
+      setDocType(draft.docType);setWorkerId(draft.workerId);setAnswers(draft.answers);setDocSignatures(draft.docSignatures);setCorrectionDocumentId(draft.correctionDocumentId);
+      setSelectedPeriodKeys(new Set(draft.selectedPeriodKeys));setSelectedMandatoryPeriodKeys(new Set(draft.selectedMandatoryPeriodKeys));
+      setExpandedMandatoryDocuments(new Set(draft.expandedMandatoryDocuments));setMandatoryWorkerChoice(draft.mandatoryWorkerChoice||{});
+    }
+    const preview=await vault.get<any>('preview');
+    if(preview&&preview.documentId)setPdfPreview({...preview,bytes:base64ToBytes(preview.base64)});
+    workspaceRestoredRef.current=true;setWorkspaceReady(true);setLocalSaveStatus('Trabajo recuperado');
+  };
+  useEffect(()=>{
+    if(!workspaceReady||storageBlockedRef.current)return;
+    let active=true;
+    setLocalSaveStatus('Guardando en este dispositivo…');
+    void vaultRef.current?.put('workspace',workspaceRef.current).then(()=>{if(active)setLocalSaveStatus('Guardado en este dispositivo');})
+      .catch(()=>{if(active)setLocalSaveStatus('No se pudo guardar en este dispositivo. Comprueba el espacio disponible.');});
+    return()=>{active=false;};
+  },[signing,mandatorySigning,foremanDocumentSigning,docSigning,attendanceSigning,workspaceReady,tab,date,rows,trainingAction,trainingDuration,epiSelection,machineryByWorker,globalMachinery,docType,workerId,answers,docSignatures,correctionDocumentId,selectedPeriodKeys,selectedMandatoryPeriodKeys,expandedMandatoryDocuments,mandatoryWorkerChoice]);
+  useEffect(()=>{
+    if(!workspaceReady||storageBlockedRef.current)return;
+    void vaultRef.current?.put('preview',pdfPreview?{base64:bytesToBase64(pdfPreview.bytes),title:pdfPreview.title,notice:pdfPreview.notice,documentId:pdfPreview.documentId}:null)
+      .catch(()=>setLocalSaveStatus('No se pudo conservar el visor en este dispositivo.'));
+  },[workspaceReady,pdfPreview]);
+  useEffect(()=>{
+    const flush=()=>{
+      if(!workspaceRestoredRef.current||storageBlockedRef.current)return;
+      void vaultRef.current?.put('workspace',workspaceRef.current).catch(()=>setLocalSaveStatus('No se pudo guardar en este dispositivo.'));
+    };
+    window.addEventListener('pagehide',flush);document.addEventListener('visibilitychange',flush);
+    return()=>{window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',flush);};
+  },[]);
+  useEffect(()=>{
+    if(!workspaceReady||!data)return;
+    let cancelled=false;
+    void vaultRef.current?.get<number>('main-scroll').then(value=>{
+      if(!cancelled&&value!=null)requestAnimationFrame(()=>{if(!cancelled)window.scrollTo(0,value);});
+    });
+    return()=>{cancelled=true;};
+  },[workspaceReady]);
+  useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const save=()=>{if(!storageBlockedRef.current&&workspaceRestoredRef.current)void vaultRef.current?.put('main-scroll',window.scrollY).catch(()=>undefined);};
+    const scroll=()=>{clearTimeout(timer);timer=setTimeout(save,150);};
+    window.addEventListener('scroll',scroll,{passive:true});window.addEventListener('pagehide',save);
+    return()=>{clearTimeout(timer);window.removeEventListener('scroll',scroll);window.removeEventListener('pagehide',save);};
+  },[]);
+  useEffect(()=>{
+    const check=()=>{
+      setConnectionOnline(navigator.onLine);
+      if(!navigator.onLine)void vaultRef.current?.authorized().then(valid=>{if(!valid){setData(null);setError('Conéctate para verificar tu acceso. Tu trabajo local se conserva.');}}).catch(()=>setError('No se pudo comprobar el acceso local.'));
+    };
+    window.addEventListener('online',check);window.addEventListener('offline',check);document.addEventListener('visibilitychange',check);
+    return()=>{window.removeEventListener('online',check);window.removeEventListener('offline',check);document.removeEventListener('visibilitychange',check);};
+  },[]);
   const lastPortalRefreshRef=useRef(0);
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);
@@ -286,6 +369,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     });
     if(!ok)return;
     try{await disableForemanPush(token);}catch{await appAlert('No se pudieron desactivar los avisos. Comprueba la conexión y vuelve a intentarlo.',{title:'Dispositivo pendiente de desvincular'});return;}
+    storageBlockedRef.current=true;
+    await vaultRef.current?.clear();
     try{localStorage.removeItem(FOREMAN_DEVICE_TOKEN_KEY);}catch{}
     try{document.cookie=`${FOREMAN_DEVICE_TOKEN_KEY}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;}catch{}
     window.location.href='/';
@@ -298,9 +383,24 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       setError('');
       setRefreshingDocuments(true);
       try{
+        const vault=vaultRef.current||(typeof indexedDB!=='undefined'&&globalThis.crypto?.subtle?await foremanVault(token):null);vaultRef.current=vault;
+        if(navigator.onLine===false){
+          if(!vault||!await vault.authorized())throw new Error('Conéctate para verificar tu acceso y recuperar el trabajo.');
+          const cached=await vault.get<ForemanPortalPayload>('portal');
+          if(!cached)throw new Error('Abre primero el portal con conexión para preparar este dispositivo.');
+          await restoreWorkspace(vault);setData(cached);return;
+        }
         const next=await resolveForemanPortal(token);
-        if(!next.valid)throw new Error('Este acceso no es válido o ha sido revocado.');
+        if(!next.valid){storageBlockedRef.current=true;await vault?.clear();setData(null);throw new Error('Este acceso no es válido o ha sido revocado.');}
+        if(vault){
+          try{await vault.authorize();await restoreWorkspace(vault);if(navigator.locks)await reconcilePortalDownloads(token,next.mandatoryDocuments.map(d=>d.id));}
+          catch{setLocalSaveStatus('Almacenamiento local no disponible. Necesitas conexión para guardar en el servidor.');}
+        }else setLocalSaveStatus('Almacenamiento local no disponible. Necesitas conexión para guardar en el servidor.');
+        setMandatorySigning(current=>current&&!next.mandatoryDocuments.some(d=>d.id===current.documentId)?null:current);
+        setForemanDocumentSigning(current=>current&&!next.mandatoryDocuments.some(d=>d.id===current)?null:current);
+        setPdfPreview(current=>current?.documentId&&!next.mandatoryDocuments.some(d=>d.id===current.documentId)?null:current);
         setData(next);
+        void vault?.put('portal',next).catch(()=>setLocalSaveStatus('No se pudo preparar el portal sin conexión.'));
         lastPortalRefreshRef.current=Date.now();
         setDocumentsUpdatedAt(new Date().toLocaleTimeString('es-ES'));
       }catch(e:any){
@@ -315,6 +415,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     return task;
   },[token]);
   useEffect(()=>{void refresh();},[refresh]);
+  useEffect(()=>{if(workspaceReady&&navigator.onLine)void synchronizePortalSignatures(token).then(()=>refresh()).catch(()=>setLocalSaveStatus('No se pudo sincronizar. Las firmas locales se conservan.'));},[workspaceReady,token]);
   useEffect(()=>{
     if(!('serviceWorker' in navigator))return;
     const received=(event:MessageEvent)=>{if(event.data?.type!=='FOREMAN_DOCUMENT_AVAILABLE')return;void refresh();};
@@ -337,7 +438,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   useEffect(()=>{
     const resume=()=>{
       if(document.visibilityState==='hidden'||navigator.onLine===false||Date.now()-lastPortalRefreshRef.current<30_000)return;
-      void refresh();
+      void synchronizePortalSignatures(token).then(()=>refresh()).catch(()=>setLocalSaveStatus('No se pudo sincronizar. Las firmas locales se conservan.'));
     };
     document.addEventListener('visibilitychange',resume);
     window.addEventListener('online',resume);
@@ -346,7 +447,13 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(()=>{
     if(!data)return;
+    const local=localRowsRef.current;
     const saved=data.attendance.find(a=>String(a.workDate).slice(0,10)===date);
+    if(local?.date===date){
+      const conflicting=local.rows.some(row=>{const remote=saved?.rows?.find(item=>item.workerId===row.workerId);return remote&&((remote.entrySignature&&remote.entryTime!==row.entryTime)||(remote.exitSignature&&remote.exitTime!==row.exitTime));});
+      if(!conflicting){setRows(local.rows.map(row=>({...row,...(saved?.rows?.find(item=>item.workerId===row.workerId)?{entrySignature:saved!.rows.find(item=>item.workerId===row.workerId)?.entrySignature,exitSignature:saved!.rows.find(item=>item.workerId===row.workerId)?.exitSignature}:{})})));return;}
+      setError('El control horario ha cambiado en otro dispositivo. Se muestran los datos confirmados; el borrador local se conserva para su revisión.');
+    }
     if(saved?.rows?.length){
       setRows(saved.rows.map(row=>({
         ...row,
@@ -382,6 +489,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     try{
       if(status==='completed'&&effectiveForemanTemplate('control_horario',attendanceEvidence?.workDate===date?attendanceEvidence.layout:undefined)?.required&&!(attendanceEvidence?.workDate===date&&attendanceEvidence.signed))throw new Error('Falta la firma obligatoria del encargado.');
       await saveForemanAttendance(token,date,nextRows,status);
+      localRowsRef.current=null;
       setRows(nextRows);
       setError('');
       if(status==='completed')await refresh();
@@ -402,6 +510,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     }:r);
     setSaving(true);
     try{
+      if(!navigator.onLine){
+        await queueOfflineAttendance(token,date,rows,currentSigning.kind,image,currentSigning.workerId);
+        setSigning(null);setOperationFeedback('Firma de jornada guardada en este dispositivo. Pendiente de sincronizar.');return;
+      }
       await signForemanAttendance(token,date,next,currentSigning.workerId,currentSigning.kind,image);
 
       const verified=await resolveForemanPortal(token);
@@ -416,6 +528,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       }
 
       setSigning(null);
+      localRowsRef.current=null;
       setData(verified);
       setRows(savedDay?.rows?.map(row=>({
         ...row,
@@ -579,8 +692,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     autorizacion_uso_maquinaria:'Autorización al uso de maquinaria',
   } as Record<string,string>)[type]||type;
 
-  const showPdfPreview=(bytes:Uint8Array,title:string,notice?:string)=>{
-    setPdfPreview({bytes,title,notice});
+  const showPdfPreview=(bytes:Uint8Array,title:string,notice?:string,documentId?:string)=>{
+    setPdfPreview({bytes,title,notice,documentId});
   };
 
   const closePdfPreview=()=>setPdfPreview(null);
@@ -620,7 +733,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     setOperationFeedback('');
     try{
       const file=await getCompletedMandatoryPdf(doc);
-      showPdfPreview(file.bytes,`${mandatoryLabel(doc.documentType)} · PDF firmado`);
+      showPdfPreview(file.bytes,`${mandatoryLabel(doc.documentType)} · PDF firmado`,undefined,doc.id);
       setError('');
     }catch(e:any){
       const message=e?.message||'No se pudo abrir el PDF firmado.';
@@ -719,10 +832,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       if(variant==='original'){
         const source=await getForemanMandatoryPdf(token,doc.id,'original');
         await assertStoredOriginalIntegrity(source);
-        showPdfPreview(base64ToBytes(source.base64),`${mandatoryLabel(doc.documentType)} · Original`);
+        showPdfPreview(base64ToBytes(source.base64),`${mandatoryLabel(doc.documentType)} · Original`,undefined,doc.id);
       }else{
         const prepared=await buildExactSignedPreview(doc,false);
-        showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`);
+        showPdfPreview(prepared.bytes,`${mandatoryLabel(doc.documentType)} · Previsualización firmada`,undefined,doc.id);
       }
       setError('');
     }catch(e:any){
@@ -1201,6 +1314,9 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       </div>
     </header>
     <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-28 sm:pb-6 space-y-4">
+      {operationFeedback&&/dispositivo|preparada/.test(operationFeedback)&&<p role="status" className="rounded-xl border bg-white p-3 text-sm font-bold">{operationFeedback}</p>}
+      <ForemanOfflinePanel token={token} documents={data.mandatoryDocuments} onPreview={(bytes,title,documentId)=>setPdfPreview({bytes,title,documentId})} onSynchronized={()=>void refresh()}/>
+      <div role="status" className="rounded-2xl border bg-white p-3 text-sm font-bold">{connectionOnline?'Con conexión':'Sin conexión'} · {localSaveStatus}</div>
       <section className="rounded-3xl border bg-white dark:bg-slate-900 p-4 space-y-3" aria-label="Avisos móviles">
         <h2 className="text-lg font-black">Avisos de mi obra</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">{pushActive?`Avisos activos en este dispositivo para ${data.obra}.`:'Activa las notificaciones para saber cuándo el supervisor envía un documento nuevo a tu obra.'}</p>
@@ -1256,6 +1372,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       {tab==='visits' && <Suspense fallback={<p>Cargando actas de visitas…</p>}><ForemanVisitMinutes token={token} onOpenPdf={showPdfPreview} /></Suspense>}
       {tab==='prevention' && <PreventionSection token={token} savedObras={[data.obra]} foremanName={data.foremanName} />}
       {tab==='control'&&<section className="space-y-3">
+        <button type="button" disabled={saving||!connectionOnline} onClick={()=>{setSaving(true);void saveForemanAttendance(token,date,controlRows,'draft').then(()=>prepareOfflineAttendance(token,date)).then(()=>setOperationFeedback('Jornada preparada para firmar sin conexión. Conserva las horas configuradas hasta sincronizar.')).catch(e=>setError(e.message)).finally(()=>setSaving(false));}} className="min-h-[52px] rounded-xl border bg-white p-3 font-bold disabled:opacity-50">Preparar jornada sin conexión</button>
+
         <div className="rounded-2xl bg-white border p-4 space-y-4">
           <div><h2 className="text-lg font-black">Control horario</h2><p className="text-sm text-slate-600">Selecciona quincenas, meses o ambos. Los trabajadores del periodo aparecen debajo para firmar entrada y salida.</p></div>
           {renderPeriodSelector()}
@@ -1276,7 +1394,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
                 value={row.entryTime || data.defaultWorkStartHour || '08:00'}
                 onChange={e=>{
                   const value=e.target.value;
-                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item));
+                  setRows(current=>{const next=current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item);localRowsRef.current={date,rows:next};return next;});
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
@@ -1291,7 +1409,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
                 value={row.exitTime || data.defaultWorkEndHour || '15:00'}
                 onChange={e=>{
                   const value=e.target.value;
-                  setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item));
+                  setRows(current=>{const next=current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item);localRowsRef.current={date,rows:next};return next;});
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
@@ -1496,48 +1614,41 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         </button>
       </section>}
 
-      {tab==='completed'&&<section className="space-y-3">
-        <button onClick={()=>void refresh()} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-black touch-manipulation"><RefreshCw className="w-4 h-4"/>Actualizar</button>
-        {data.mandatoryDocuments.filter(d=>d.status==='completed'||d.status==='reviewed').map(d=><div key={'m-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm">
-          <div className="text-base font-black">{mandatoryLabel(d.documentType)}</div>
-          <div className="mt-1 truncate text-sm font-bold text-[#00548E]" title={String(d.details?.sourceFilename||'')}>{String(d.details?.sourceFilename||'Documento firmado')}</div>
-          <div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}{d.details?.periodoLabel?' · '+String(d.details.periodoLabel):''}</div>
-          <span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button type="button" disabled={saving} onClick={()=>void previewCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-black text-[#00548E] disabled:opacity-50"><FileDown className="mr-2 inline h-4 w-4"/>Ver PDF</button>
-            <button type="button" disabled={saving} onClick={()=>void shareCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl bg-[#00548E] px-3 py-3 text-sm font-black text-white disabled:opacity-50"><Share2 className="mr-2 inline h-4 w-4"/>Compartir</button>
-          </div>
-        </div>)}
-        {data.attendance.filter(day=>day.status==='completed'||day.status==='reviewed').map(day=><div key={'a-'+day.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">Control horario</div><div className="mt-1 text-sm text-slate-500">{String(day.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{day.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span></div>)}
-        {data.documents.filter(d=>!d.correctionPending&&d.status!=='draft').map(d=><div key={'d-'+d.id} className="rounded-2xl bg-white border p-4 shadow-sm"><div className="text-base font-black">{ADDITIONAL_WORKSITE_DOCUMENTS[d.documentType as AdditionalWorksiteDocumentType]?.short||d.documentType}</div><div className="mt-1 text-sm text-slate-500">{d.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(d.workDate).slice(0,10)}</div><span className="mt-3 inline-flex rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-800">Enviado al supervisor</span></div>)}
-        {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.attendance.some(day=>day.status==='completed'||day.status==='reviewed')&&!data.documents.some(d=>!d.correctionPending&&d.status!=='draft')&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
-      </section>}
+      {tab==='completed'&&<ForemanSignedDocuments refresh={()=>void refresh()} token={token} data={data} busy={saving} label={mandatoryLabel} preview={doc=>void previewCompletedMandatoryPdf(doc)} share={doc=>void shareCompletedMandatoryPdf(doc)}/>}
     </main>
-    {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>} 
-    {attendanceSigning&&<SignaturePad title="Firma del encargado · Control horario" onCancel={()=>setAttendanceSigning(false)} onSave={async image=>{
+    {pdfPreview&&<PdfCanvasPreview vault={vaultRef.current} bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>}
+    {attendanceSigning&&<SignaturePad draft={{vault:vaultRef.current,key:'attendance-foreman:'+date}} title="Firma del encargado · Control horario" onCancel={()=>setAttendanceSigning(false)} onSave={async image=>{
       setSaving(true);
-      try{await saveForemanAttendance(token,date,controlRows,'draft');await signAttendanceAsForeman(token,date,image);const evidence=await getAttendanceForemanEvidence(token,date);if(!evidence.signed)throw new Error('No se pudo verificar la firma.');setAttendanceEvidence({...evidence,workDate:date});setError('');setAttendanceSigning(false);}
+      try{if(!navigator.onLine){await queueOfflineAttendance(token,date,controlRows,'foreman',image);setAttendanceSigning(false);setOperationFeedback('Firma del encargado guardada en este dispositivo. Pendiente de sincronizar.');return;}await saveForemanAttendance(token,date,controlRows,'draft');await signAttendanceAsForeman(token,date,image);const evidence=await getAttendanceForemanEvidence(token,date);if(!evidence.signed)throw new Error('No se pudo verificar la firma.');setAttendanceEvidence({...evidence,workDate:date});setError('');setAttendanceSigning(false);}
       catch(e:any){setError(e.message);throw e;}finally{setSaving(false);}
     }}/>}
-    {signing&&<SignaturePad title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>applySignature(img)} onCancel={()=>setSigning(null)}/>}
-    {docSigning&&<SignaturePad title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
-    {foremanDocumentSigning&&<SignaturePad title="Firma del encargado (todas las páginas)" onSave={async img=>{
+    {signing&&<SignaturePad draft={{vault:vaultRef.current,key:'attendance:'+date+':'+signing.workerId+':'+signing.kind}} title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>applySignature(img)} onCancel={()=>setSigning(null)}/>}
+    {docSigning&&<SignaturePad draft={{vault:vaultRef.current,key:'additional:'+docType+':'+workerId+':'+date+':'+docSigning}} title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
+    {foremanDocumentSigning&&<SignaturePad draft={{vault:vaultRef.current,key:'foreman:'+foremanDocumentSigning}} title="Firma del encargado (todas las páginas)" onSave={async img=>{
       const documentId=foremanDocumentSigning;
-      setForemanDocumentSigning(null);setSaving(true);
+      setSaving(true);
       try{
+        if(!navigator.onLine){
+          await queuePortalSignature(token,{documentId,signature:img,foreman:true});
+          setForemanDocumentSigning(null);setOperationFeedback('Firma del encargado guardada en este dispositivo. Pendiente de sincronizar.');return;
+        }
         await signImportedDocumentAsForeman(token,documentId,img);
         const evidence=await getImportedForemanSignature(token,documentId);
         if(!evidence.signed||!evidence.signature)throw new Error('No ha sido posible verificar la firma guardada.');
         setForemanEvidence(current=>({...current,[documentId]:evidence}));
         await refresh();
-        setError('');setOperationFeedback('Firma del encargado guardada. Se aplicará a todas las páginas.');
-      }catch(e:any){setError(e?.message||'Error al firmar como encargado.');}
+        setForemanDocumentSigning(null);setError('');setOperationFeedback('Firma del encargado guardada. Se aplicará a todas las páginas.');
+      }catch(e:any){setError(e?.message||'Error al firmar como encargado.');throw e;}
       finally{setSaving(false);}
     }} onCancel={()=>setForemanDocumentSigning(null)}/>}
-    {mandatorySigning&&<SignaturePad title={'Firma de '+mandatorySigning.name} onSave={async img=>{
+    {mandatorySigning&&<SignaturePad draft={{vault:vaultRef.current,key:'worker:'+mandatorySigning.documentId+':'+mandatorySigning.workerId}} title={'Firma de '+mandatorySigning.name} onSave={async img=>{
       const current=mandatorySigning;
       setSaving(true);
       try{
+        if(!navigator.onLine){
+          await queuePortalSignature(token,{documentId:current.documentId,workerId:current.workerId,documentWorkerId:current.documentWorkerId,signature:img});
+          setMandatorySigning(null);setOperationFeedback('Firma guardada en este dispositivo. Pendiente de sincronizar.');return;
+        }
         const currentDoc=(data?.mandatoryDocuments||[]).find(doc=>doc.id===current.documentId);
         if(currentDoc&&['inicio','control_presencia','contrato','prorroga'].includes(String(currentDoc.documentType))){
           if(!current.documentWorkerId)throw new Error('No se ha podido identificar de forma estable a esta persona dentro del documento.');
@@ -1597,3 +1708,4 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
 // A portal token defines the full security scope of this screen and its local images.
 export const ForemanMobilePortal: React.FC<{ token: string }> = ({token}) => <ForemanMobilePortalContent key={token} token={token}/>;
+

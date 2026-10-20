@@ -61,7 +61,7 @@ try{
   assert(await page.evaluate(()=>window.testApi.checkWorkers()),'worker signatures untouched');
  }
  const fidelity=await page.evaluate(()=>window.checkOriginalFidelity());assert.equal(fidelity.ok,true,JSON.stringify(fidelity));
- await page.reload();await page.getByRole('button',{name:'EPIs',exact:true}).click();await page.getByRole('button').filter({hasText:'epis.pdf'}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor();
+ await page.reload();await page.getByRole('button',{name:'EPIs',exact:true}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor(); // Expanded document is now restored from IndexedDB.
  await page.getByRole('button',{name:'PERIODO DE PRUEBA',exact:true}).click();
  await page.getByRole('button',{name:/Preparar relación para firmas/}).click();await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();assert(await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'new document auto-expands with foreman panel');
  await page.getByRole('button',{name:'Control horario',exact:true}).click();await page.getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();
@@ -69,7 +69,7 @@ try{
  await page.evaluate(()=>{document.getElementById('root').style.cssText='position:relative;z-index:22000';});
  await page.evaluate(()=>window.finishFixtures());await page.getByRole('button',{name:'Finalizados',exact:true}).click();await page.getByRole('button',{name:'Actualizar',exact:true}).click();
  for(const [type,label] of [['epis','Entrega de EPIs'],['formacion','Formación e información'],['maquinaria','Autorización de maquinaria'],['stored-contract','Contrato de trabajo']]){
-  const card=page.locator('section > div').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
+  const card=page.locator('article').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
   await card.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.getByText(label+' · PDF firmado',{exact:true}).waitFor();await page.locator('canvas').first().waitFor();
   for(const [width,height] of [[390,844],[820,1180],[1440,900]])for(const dark of [false,true]){
    await page.setViewportSize({width,height});await page.evaluate(d=>document.documentElement.classList.toggle('dark',d),dark);
@@ -87,7 +87,7 @@ try{
   assert(shared.pages>0);assert(shared.name.endsWith('.pdf'));
   if(type==='stored-contract')assert.equal(shared.base64,await page.evaluate(()=>window.importedPdf),'imported signed bytes preserved exactly');else assert(shared.images>=2,'native PDF contains separate worker and foreman images');
  }
- const importedCard=page.locator('section > div').filter({has:page.getByText('Contrato de trabajo',{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
+ const importedCard=page.locator('article').filter({has:page.getByText('Contrato de trabajo',{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
  await page.evaluate(()=>{window.unsignedFallback=true;});await importedCard.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.waitForFunction(()=>window.lastAlert==='No se ha encontrado el PDF firmado de este documento.');assert.equal(await page.getByRole('button',{name:'Cerrar',exact:true}).count(),0,'unsigned original is never presented as signed');
  assert.deepEqual(await page.evaluate(()=>window.pdfCalls),[['stored-contract','signed'],['stored-contract','signed'],['stored-contract','signed']],'only imported documents use stored PDF RPC');
  await page.evaluate(()=>window.showSettings());await page.getByRole('button',{name:'Cargar plantilla guardada',exact:true}).click();await page.getByLabel('Corresponde firma del encargado').waitFor();
@@ -104,3 +104,4 @@ try{
  assert(await page.getByRole('button',{name:'Segunda ventana',exact:true}).evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'last workspace modal is above earlier modal and background');
  assert.deepEqual(errors,[]);console.log('PASS: real Chromium portal navigation, 4 exclusions despite stale metadata, 3 operational types, blue canvas capture, separate read-after-write evidence, reload, attendance capture, original PDF raster fidelity, completed native PDF viewing/sharing with both signatures and exact stored contract PDF, model reuse/save and mobile/tablet/desktop light/dark signing controls.');console.log('Screenshots:',out);
 }finally{await browser?.close();await server.close();}
+

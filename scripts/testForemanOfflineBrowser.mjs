@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import fs from 'node:fs';
+import {build} from 'esbuild';
+import {chromium} from 'playwright';
+const root=new URL('../',import.meta.url).pathname;
+const bundle=(await build({stdin:{contents:`import {foremanVault} from './src/lib/foremanLocalVault';import * as offline from './src/services/foremanOfflineService';window.api={foremanVault,...offline};`,resolveDir:root,loader:'ts'},bundle:true,format:'iife',write:false,plugins:[{name:'boundary',setup(b){b.onResolve({filter:/\?url$/},()=>({path:'asset',namespace:'asset'}));b.onLoad({filter:/.*/,namespace:'asset'},()=>({contents:"export default '/worker.mjs'"}));b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'rpc',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const getSessionUser=async()=>null;export const supabase={query:async()=>[],rpc:async(...args)=>window.rpc(...args)};'}));}}]})).outputFiles[0].text;
+const server=http.createServer((req,res)=>{res.setHeader('Content-Type',(req.url==='/assets/app.js'||req.url==='/service-worker.js')?'application/javascript':'text/html');res.end(req.url==='/service-worker.js'?fs.readFileSync(new URL('../public/service-worker.js',import.meta.url)):req.url==='/assets/app.js'?bundle:'<!doctype html><script src="/assets/app.js"></script>');});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
+try{
+ browser=await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.CHROMIUM_PATH});
+ const context=await browser.newContext();const page=await context.newPage();const url='http://127.0.0.1:'+server.address().port;
+ await page.goto(url);
+ await page.evaluate(async()=>{await navigator.serviceWorker.register('/service-worker.js');await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller)await new Promise(r=>navigator.serviceWorker.addEventListener('controllerchange',r,{once:true}));});
+ await page.reload();
+ await page.evaluate(async()=>{const vault=await window.api.foremanVault('access-A');await vault.authorize();await vault.put('workspace',{tab:'documents',answers:{reason:'Visita'},signature:'private-ink'});});
+ await page.reload();
+ assert.deepEqual(await page.evaluate(async()=>(await window.api.foremanVault('access-A')).get('workspace')),{tab:'documents',answers:{reason:'Visita'},signature:'private-ink'});
+ assert.equal(await page.evaluate(async()=>(await window.api.foremanVault('access-B')).get('workspace')),null,'isolated scopes');
+ assert.equal(await page.evaluate(async()=>{const db=await new Promise(r=>{const req=indexedDB.open('profea-foreman-v3');req.onsuccess=()=>r(req.result);});const rows=await new Promise(r=>{const req=db.transaction('records').objectStore('records').getAll();req.onsuccess=()=>r(req.result);});return JSON.stringify(rows).includes('private-ink');}),false,'no plaintext ink in IndexedDB');
+ const createFixture=async target=>target.evaluate(async()=>{
+  const raw=new TextEncoder().encode('%PDF-fixture');const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',raw)),n=>n.toString(16).padStart(2,'0')).join('');
+  window.snapshot={id:'doc-A',version:'version-1',downloadedAt:new Date().toISOString(),document:{id:'doc-A',periodKey:'2026-10-1Q',workDate:'2026-10-01',documentType:'epis'},pdf:{base64:btoa('%PDF-fixture'),sha256:hash,filename:'fixture.pdf',variant:'original'}};
+  window.receipts=[];window.rpc=async(name,args)=>{if(name==='get_foreman_offline_snapshot')return window.snapshot;window.receipts.push(args.p_operation_id);return {ok:true};};
+ });
+ await createFixture(page);await page.evaluate(()=>window.api.downloadPortalDocument('access-A','doc-A'));
+ await context.setOffline(true);
+ await page.evaluate(()=>window.api.queuePortalSignature('access-A',{documentId:'doc-A',workerId:7,signature:'data:image/png;base64,'+'A'.repeat(120)}));
+ await page.reload();await page.waitForFunction(()=>window.api);
+ assert.equal(await page.evaluate(async()=>(await window.api.pendingPortalSignatures('access-A')).length),1,'queue survives reload');
+ await context.setOffline(false);await createFixture(page);
+ const op=await page.evaluate(async()=>(await window.api.pendingPortalSignatures('access-A'))[0].id);
+ await page.evaluate(()=>window.api.synchronizePortalSignatures('access-A',true));
+ assert.deepEqual(await page.evaluate(()=>window.receipts),[op]);
+ assert.equal(await page.evaluate(async()=>(await window.api.pendingPortalSignatures('access-A')).length),0);
+ await page.evaluate(()=>window.api.synchronizePortalSignatures('access-A',true));assert.deepEqual(await page.evaluate(()=>window.receipts),[op]);
+ await page.evaluate(async()=>{await window.api.queuePortalSignature('access-A',{documentId:'doc-A',workerId:8,signature:'data:image/png;base64,'+'B'.repeat(120)});window.rpc=async()=>{throw Error('Documento modificado. Es necesario revisarlo.');};await window.api.synchronizePortalSignatures('access-A',true);});
+ assert.equal(await page.evaluate(async()=>(await window.api.pendingPortalSignatures('access-A'))[0].blocked),true,'conflict preserves ink');
+ await page.evaluate(async()=>{const vault=await window.api.foremanVault('access-A');await vault.put('lease',Date.now()-1);});
+ await assert.rejects(page.evaluate(()=>window.api.queuePortalSignature('access-A',{documentId:'doc-A',workerId:9,signature:'ink'})),/verificar/);
+ await page.evaluate(async()=>(await window.api.foremanVault('access-A')).clear());assert.equal(await page.evaluate(async()=>(await window.api.foremanVault('access-A')).get('workspace')),null);
+ console.log('PASS Chromium IndexedDB: encrypted persistence, reload, isolation, offline queue, one synchronization, conflict, expiry, unlink cleanup');
+}finally{await browser?.close();await new Promise(r=>server.close(r));}

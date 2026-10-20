@@ -1,3 +1,4 @@
+import { offlineDocuments } from './foremanOfflineService';
 import type { Person } from '../../types';
 import { supabase } from '../lib/supabase';
 import { addMissingMandatoryDocumentWorkerV2, initializeMandatoryTraceabilityV2, reviewMandatoryDocumentWorkerV2, updateMandatoryDocumentWorkerGeometryV2, type MandatoryV2WorkerInput } from './mandatoryTraceabilityServiceV2';
@@ -403,6 +404,11 @@ export async function getForemanMandatoryPdf(
   documentId: string,
   variant: 'original' | 'signed' = 'original',
 ) {
+  if(navigator.onLine===false){
+    const cached=(await offlineDocuments(token)).find(document=>document.id===documentId);
+    if(!cached||cached.pdf.variant!==variant)throw new Error('Esta versión del PDF no se ha descargado en este dispositivo.');
+    return cached.pdf;
+  }
   return withForemanTimeout(
     supabase.rpc('get_foreman_mandatory_pdf', {
       p_token: token,
@@ -865,3 +871,4 @@ export function getSupervisorForemanEvidence(documentId:string){
 export function getReusableForemanLayout(modelKey:string){
   return supabase.rpc('get_reusable_foreman_layout',{p_model_key:modelKey});
 }
+
