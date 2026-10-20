@@ -47,7 +47,7 @@ try{
  const missingContext=await createContext(),missingPage=await missingContext.newPage();
  missingPage.on('pageerror',e=>errors.push(e.message));
  await missingPage.goto(base+'/?missingResources=1');
- await missingPage.getByRole('button',{name:'Nueva acta de visita',exact:true}).waitFor();
+ await missingPage.locator('button:enabled').filter({hasText:'Nueva acta de visita'}).waitFor();
  await missingContext.setOffline(true);
  await missingPage.getByRole('button',{name:'Nueva acta de visita',exact:true}).click();
  const missingPeople=missingPage.locator('section[aria-label="Participantes y destinatarios"]');
