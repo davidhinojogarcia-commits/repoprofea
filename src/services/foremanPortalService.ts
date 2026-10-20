@@ -184,7 +184,7 @@ export async function resolveForemanPortal(token: string): Promise<ForemanPortal
     workers: Array.isArray(result?.workers) ? result.workers : [],
     attendance: Array.isArray(result?.attendance) ? result.attendance : [],
     documents: Array.isArray(result?.documents) ? result.documents : [],
-    mandatoryDocuments: Array.isArray(result?.mandatoryDocuments) ? result.mandatoryDocuments : [],
+    mandatoryDocuments: Array.isArray(result?.mandatoryDocuments) ? result.mandatoryDocuments.filter((document:any)=>String(document.lifecycleStatus||document.details?.lifecycleStatus||'')!=='ARCHIVED') : [],
   };
 }
 

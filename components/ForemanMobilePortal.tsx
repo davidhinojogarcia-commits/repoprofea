@@ -324,6 +324,15 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     window.addEventListener('online',check);window.addEventListener('offline',check);document.addEventListener('visibilitychange',check);
     return()=>{window.removeEventListener('online',check);window.removeEventListener('offline',check);document.removeEventListener('visibilitychange',check);};
   },[]);
+  useEffect(()=>{
+    if(!workspaceReady||!data)return;
+    let cancelled=false;let timer:ReturnType<typeof setTimeout>|undefined;
+    void vaultRef.current?.get<number>('lease').then(expires=>{
+      if(cancelled||!expires)return;
+      timer=setTimeout(()=>{if(!navigator.onLine){setData(null);setError('Conéctate para verificar tu acceso. El trabajo local se conserva.');}},Math.max(0,expires-Date.now())+1);
+    });
+    return()=>{cancelled=true;clearTimeout(timer);};
+  },[workspaceReady,data]);
   const lastPortalRefreshRef=useRef(0);
   const refreshInFlightRef=useRef<Promise<void>|null>(null);
   const hasDataRef=useRef(false);

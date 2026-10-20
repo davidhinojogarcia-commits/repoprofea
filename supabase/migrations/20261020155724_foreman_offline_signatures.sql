@@ -34,7 +34,7 @@ begin
  p:=public.get_foreman_mandatory_pdf(p_token,p_document_id,case when d.status in ('completed','reviewed') then 'signed' else 'original' end);
  elsif d.details->>'originalPdfMode'='overlay' then raise exception 'No se encuentra el PDF original';
  end if;
- return jsonb_build_object('id',d.id,'version',foreman_private.document_version(d.id),'pdf',p,'document',jsonb_build_object('id',d.id,'documentType',d.document_type,'periodKey',d.period_key,'workDate',d.work_date,'workers',d.workers,'signatures',d.signatures,'status',d.status,'details',d.details||jsonb_build_object('foremanSignature',(select signature from public.foreman_document_signatures where document_id=d.id)),'obra',d.obra),'downloadedAt',now());
+ return jsonb_build_object('id',d.id,'version',foreman_private.document_version(d.id),'pdf',p,'document',jsonb_build_object('id',d.id,'documentType',d.document_type,'periodKey',d.period_key,'workDate',d.work_date,'workers',d.workers,'signatures',d.signatures,'status',d.status,'details',coalesce(d.details,'{}'::jsonb)||jsonb_build_object('foremanSignature',(select signature from public.foreman_document_signatures where document_id=d.id)),'obra',d.obra),'downloadedAt',now());
 end $$;
 
 create or replace function public.sync_foreman_offline_signature(
