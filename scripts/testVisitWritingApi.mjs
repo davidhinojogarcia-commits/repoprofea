@@ -5,6 +5,8 @@ import { content, person, id } from './visitMinutesFixture.mjs';
 
 const env = await visitTestServer();
 const fixtureFetch = globalThis.fetch, requests = [];
+const previousProvider=process.env.VISIT_WRITING_PROVIDER;
+process.env.VISIT_WRITING_PROVIDER='gemini';
 const previous = { key:process.env.GEMINI_API_KEY, model:process.env.VISIT_WRITING_MODEL, google:process.env.GOOGLE_API_KEY, generative:process.env.GOOGLE_GENERATIVE_AI_API_KEY };
 delete process.env.GOOGLE_API_KEY;delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 process.env.GEMINI_API_KEY='synthetic-test-key';process.env.VISIT_WRITING_MODEL='synthetic-test-model';
@@ -72,6 +74,7 @@ try {
   mode='failure';response=await env.invoke(request);assert.equal(response.status,502);assert(!JSON.stringify(response.data).includes('PRIVATE_PROVIDER_ERROR'));assert(!JSON.stringify(response.data).includes('synthetic-test-key'));
   console.log('PASS writing API: authenticated permissions/RLS in PGlite, draft-only access, minimized provider payload, SDK HTTP adapter, invalid/truncated/failing provider, no mail/files/orders. Provider HTTP simulated.');
 } finally {
+  if(previousProvider===undefined)delete process.env.VISIT_WRITING_PROVIDER;else process.env.VISIT_WRITING_PROVIDER=previousProvider;
   if(previous.key===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=previous.key;
   if(previous.model===undefined)delete process.env.VISIT_WRITING_MODEL;else process.env.VISIT_WRITING_MODEL=previous.model;
   if(previous.google===undefined)delete process.env.GOOGLE_API_KEY;else process.env.GOOGLE_API_KEY=previous.google;
