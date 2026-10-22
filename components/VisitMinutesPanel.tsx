@@ -466,6 +466,7 @@ export function VisitMinutesPanel({
   };
   const addProfile=(profile:any,role:string)=>{
     const name=String(profile.nombreApellidos||'').trim(),email=String(profile.email||'').trim().toLowerCase();
+    if(!name){setError('No se puede añadir una persona sin nombre. Completa su configuración y vuelve a abrir Actas de visitas.');return;}
     if(people.some(p=>email?p.email.trim().toLowerCase()===email:personName(p).toLocaleLowerCase('es')===name.toLocaleLowerCase('es'))){setMessage('Esta persona ya está incluida.');return;}
     const names=name.split(/\s+/);setPeople([...people,{...emptyPerson(),firstName:names.shift()||'',lastName:names.join(' '),role:profile.cargo||role,entity:'Diputación Provincial de Cádiz',email,phone:profile.telefono||'',receiveFinal:!!email}]);
   };
