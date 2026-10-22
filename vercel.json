@@ -69,7 +69,8 @@
       "release/2026-10-18-pending": false,
       "feat/visit-writing-assistant": false,
       "fix/visit-writing-runtime-configuration": false,
-      "fix/visit-writing-server-secret-isolation": false
+      "fix/visit-writing-server-secret-isolation": false,
+      "validation/visit-writing-gateway-live": false
     }
   }
 }

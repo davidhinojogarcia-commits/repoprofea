@@ -61,7 +61,28 @@ function buildMime(input: {
   return parts.join('\r\n');
 }
 
+let gatewayValidationRun: Promise<any> | undefined;
 export default async function handler(req: any, res: any) {
+  // TEMPORARY validation branch only. Protected preview, synthetic text, no DB.
+  if (String(req.query?.action || '') === 'visit-writing-validation') {
+    res.setHeader('Cache-Control', 'no-store');
+    if(process.env.VERCEL_ENV!=='preview')return res.status(404).json({ok:false});
+    if(!gatewayValidationRun)gatewayValidationRun=(async()=>{
+      const {generateVisitWriting,visitWritingStatus}=await import('../src/server/visitWriting.js');
+      const {writingInput,writingProposal}=await import('../src/lib/visitWriting.js');
+      const status=visitWritingStatus();
+      let creditStatus=0,creditBalance:number|null=null;
+      const token=process.env.AI_GATEWAY_API_KEY?.trim()||process.env.VERCEL_OIDC_TOKEN?.trim();
+      if(token){try{const response=await fetch('https://ai-gateway.vercel.sh/v1/credits',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});creditStatus=response.status;const data=await response.json();const v=data.balance??data.remaining_balance;if(typeof v==='number'||typeof v==='string'&&/^[0-9.]+$/.test(v))creditBalance=Number(v);}catch{}}
+      const checks=[];
+      for(const input of [writingInput({mode:'written',title:'Arqueta',text:'No ejecutar. Pendiente de comprobar 1,50 m.'}),writingInput({mode:'dictated',title:'',text:'Arqueta: no ejecutar. Pendiente de comprobar 1,50 m. Pavimento: se propone revisar el acabado.'})]){
+        try{checks.push({mode:input.mode,ok:true,proposal:writingProposal(await generateVisitWriting(input),input)});}
+        catch(e:any){checks.push({mode:input.mode,ok:false,status:e.status||502,code:e.code||'ERROR',message:e.message});break;}
+      }
+      return {ok:checks.length===2&&checks.every(c=>c.ok),writing:status,creditStatus,creditBalance,checks};
+    })();
+    return res.json(await gatewayValidationRun);
+  }
   // Share the existing function budget; visit routes perform their own auth,
   // including the participant email-code flow before a session exists.
   if (String(req.query?.action || '') === 'visit-minutes') {
@@ -332,3 +353,4 @@ export default async function handler(req: any, res: any) {
     return apiError(res, error, 'No se pudo completar la operación con Gmail.');
   }
 }
+

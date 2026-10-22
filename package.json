@@ -53,11 +53,12 @@
     "test:signed-attendance": "node scripts/testSignedAttendancePdf.mjs && node scripts/testForemanPublicationUi.mjs",
     "test:signature-quality": "node --import tsx scripts/testSignatureQuality.ts",
     "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs",
-    "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs",
+    "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs && node --import tsx scripts/testVisitWritingGateway.mjs",
     "test:visit-writing-browser": "node scripts/testVisitWritingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitWritingBrowser.mjs",
     "test:calendar-dates": "node scripts/testIntegratedCalendarDates.mjs"
   },
   "dependencies": {
+    "ai": "7.0.149",
     "@google/genai": "^2.10.0",
     "@supabase/supabase-js": "^2.57.4",
     "date-fns": "^4.1.0",
@@ -93,3 +94,4 @@
     "vite": "^6.2.0"
   }
 }
+
