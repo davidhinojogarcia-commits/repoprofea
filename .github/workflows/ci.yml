@@ -37,6 +37,8 @@ jobs:
         run: npm run test:prevention
       - name: Validate Tutor PROFEA local agent policy
         run: npm run test:tutor-agent
+      - name: Integrated calendar civil-date regression
+        run: npm run test:calendar-dates
       - name: Validate auth session architecture
         run: |
           grep -q '"@supabase/supabase-js"' package.json
