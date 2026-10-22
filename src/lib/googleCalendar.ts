@@ -143,6 +143,13 @@ export async function connectGoogleCalendar(expectedEmail?: string): Promise<Goo
   return { ...connectionCache };
 }
 
+// A calendar day must be formatted using its local civil date, never UTC.
+const formatCivilDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const formatCivilDateTime = (date: Date) =>
+  `${formatCivilDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+
 const toGoogleDateTime = (date: string, time: string) => {
   const safeTime = /^\d{2}:\d{2}$/.test(time) ? time : '09:00';
   return `${date}T${safeTime}:00`;
@@ -165,15 +172,13 @@ export async function createGoogleCalendarEvent(
 
   if (hasTime) {
     const start = new Date(startDateTime);
-    endDateTime = new Date(start.getTime() + durationMinutes * 60_000)
-      .toISOString()
-      .slice(0, 19);
+    endDateTime = formatCivilDateTime(new Date(start.getTime() + durationMinutes * 60_000));
   }
 
   const endAllDay = eventInput.endIsoDate || eventInput.startIsoDate;
   const endAllDayDate = new Date(`${endAllDay}T00:00:00`);
   endAllDayDate.setDate(endAllDayDate.getDate() + 1);
-  const exclusiveEndDate = endAllDayDate.toISOString().slice(0, 10);
+  const exclusiveEndDate = formatCivilDate(endAllDayDate);
 
   const body: any = {
     summary: eventInput.summary,
