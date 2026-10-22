@@ -55,3 +55,31 @@ Los nuevos comandos de dominio/API y de navegador se incluyen en CI. La rama des
 ## Comprobación de configuración tras la publicación
 
 La acción POST `writing-status` de la ruta existente devuelve únicamente disponibilidad de credencial y nombre de modelo. Es pública, no consulta datos de obras, no devuelve claves y no llama al proveedor. Permite comprobar la configuración real de la función desplegada, en lugar de inferirla a partir de la lista de variables de Vercel. No acredita validez de la credencial ni una generación real.
+
+## Activación pendiente y comprobación reproducible (22/10/2026)
+
+Revisión de main `7099001723dbfcbabfeb6c80f842eb89c93ce4e6` y de producción:
+- Despliegue `dpl_32hxBwgnZ5NYVfYAtk7dCfKsSaeP`, READY y asociado a ese commit.
+- POST público `/api/visit-minutes`, cuerpo `{"action":"writing-status"}`: HTTP 200, `configured=false`, `providerConfigured=false`, modelo `gemini-2.5-flash-lite`.
+- Vercel registra `GEMINI_API_KEY` como secreto para Production y Preview. Su valor no es recuperable; la presencia en la lista no acredita contenido ni validez.
+- El código rechaza con 503/`VISIT_WRITING_NOT_CONFIGURED` si las tres variables están ausentes, vacías o solo contienen espacios. La primera no vacía tiene prioridad; una clave inválida no activa el alias siguiente y se informa como fallo del proveedor.
+- Se elimina la sustitución de claves de servidor en `vite.config.ts`. Una compilación Vite con claves sintéticas verifica que sus valores no llegan al navegador.
+- No se ha sustituido ningún secreto ni redesplegado. No se ha ejecutado generación real ni usado una cuenta de producción.
+
+Para completar la activación:
+1. El titular debe guardar una clave Gemini válida como secreto `GEMINI_API_KEY` en Vercel, proyecto GestionProfea, ámbito Production, sin publicarla en chat, código ni capturas. No utilizar prefijos VITE_.
+2. Una vez incorporada la protección de compilación y superada la CI, publicar el commit aprobado con la nueva variable.
+3. Preparar un archivo local privado (permisos 0600) con un access token vigente obtenido de una sesión autorizada, sin compartirlo. Seleccionar el UUID real de una obra propia.
+4. Ejecutar desde el repositorio:
+
+```bash
+VISIT_WRITING_TEST_TOKEN_FILE=/ruta/privada/sesion.txt \
+VISIT_WRITING_TEST_WORKSITE_ID=UUID_DE_OBRA_PROPIA \
+node --import tsx scripts/verifyVisitWritingProduction.ts
+```
+
+El script comprueba estado sin caché, denegación anónima y dos propuestas reales (escrito/dictado), esquema, cifras y reservas. Usa texto sintético; no crea ni guarda actas, correos, firmas ni PDF, y no imprime token, clave o contenido de la propuesta. Dos propuestas pueden consumir cuota. Para una vista previa autorizada, `VISIT_WRITING_TEST_ORIGIN` permite indicar su origen HTTPS.
+
+Criterio de cierre: script real satisfactorio más revisión humana de la propuesta, incorporación explícita al borrador y persistencia tras guardar/reabrir desde la interfaz. La prueba con proveedor simulado y el indicador `configured=true` no acreditan por sí solos generación real ni calidad semántica.
+
+Validación local de esta corrección: pasan `node scripts/testClientSecretIsolation.mjs`, `node --import tsx scripts/testVisitWriting.ts` y `node scripts/testVisitWritingApi.mjs` (proveedor simulado y PGlite). El verificador de producción compila con esbuild. No se ha ejecutado la CI completa ni el flujo real autenticado en esta revisión.

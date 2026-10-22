@@ -36,7 +36,18 @@ try {
   assert.equal((await env.invoke({action:'writing-status'},null)).data.writing.configured,false);
   process.env.GOOGLE_API_KEY=primary;
   assert.equal((await env.invoke({action:'writing-status'},null)).data.writing.configured,true);
-  delete process.env.GOOGLE_API_KEY;process.env.GEMINI_API_KEY=primary;
+  delete process.env.GOOGLE_API_KEY;
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY=primary;
+  assert.equal((await env.invoke({action:'writing-status'},null)).data.writing.configured,true);
+  delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  for(const name of ['GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_GENERATIVE_AI_API_KEY'])process.env[name]='   ';
+  const emptyStatus=await env.invoke({action:'writing-status'},null);
+  assert.deepEqual(emptyStatus.data.writing,{configured:false,providerConfigured:false,model:'synthetic-test-model'});
+  const missing=await env.invoke(request);
+  assert.equal(missing.status,503);
+  assert.equal(missing.data.code,'VISIT_WRITING_NOT_CONFIGURED');
+  assert.equal(requests.length,beforeStatus,'blank credentials fail before the provider');
+  delete process.env.GOOGLE_API_KEY;delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;process.env.GEMINI_API_KEY=primary;
   for(const user of [null,2,3,4]){
     const response=await env.invoke(request,user);assert.notEqual(response.status,200,'anonymous, foreign, read-only and inactive users rejected');
   }
@@ -67,3 +78,4 @@ try {
   if(previous.generative===undefined)delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;else process.env.GOOGLE_GENERATIVE_AI_API_KEY=previous.generative;
   globalThis.fetch=fixtureFetch;await env.cleanup();
 }
+

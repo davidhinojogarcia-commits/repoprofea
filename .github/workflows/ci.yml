@@ -186,6 +186,8 @@ jobs:
           path: tsc-output.log
           if-no-files-found: ignore
           retention-days: 3
+      - name: Ensure server AI credentials stay out of browser bundles
+        run: node scripts/testClientSecretIsolation.mjs
       - name: Build application
         run: npm run build
       - name: Smoke test production server
