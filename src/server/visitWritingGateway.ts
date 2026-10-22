@@ -1,8 +1,14 @@
 import { writingError, type WritingInput, type WritingProposal } from '../lib/visitWriting.js';
+import { getVercelOidcTokenSync } from '@vercel/oidc';
 
 // The deployed project authenticates with its short-lived Vercel OIDC identity.
 // A Gateway key is optional for explicitly configured local/non-Vercel runtimes.
-export const visitGatewayReady = () => !!(process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim());
+export function visitGatewayReady() {
+  if (process.env.AI_GATEWAY_API_KEY?.trim()) return true;
+  // On deployed functions OIDC can arrive through the trusted request context.
+  // The synchronous accessor neither refreshes credentials nor calls a provider.
+  try { return !!getVercelOidcTokenSync()?.trim(); } catch { return false; }
+}
 export const visitGatewayModel = () => process.env.VISIT_WRITING_GATEWAY_MODEL?.trim() || 'openai/gpt-5.4-mini';
 
 export async function generateVisitWritingGateway(input: WritingInput, instruction: string): Promise<unknown> {

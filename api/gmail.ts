@@ -72,7 +72,7 @@ export default async function handler(req: any, res: any) {
       const {writingInput,writingProposal}=await import('../src/lib/visitWriting.js');
       const status=visitWritingStatus();
       let creditStatus=0,creditBalance:number|null=null;
-      const token=process.env.AI_GATEWAY_API_KEY?.trim()||process.env.VERCEL_OIDC_TOKEN?.trim();
+      const {getVercelOidcTokenSync}=await import('@vercel/oidc');let token=process.env.AI_GATEWAY_API_KEY?.trim();try{token=token||getVercelOidcTokenSync();}catch{}
       if(token){try{const response=await fetch('https://ai-gateway.vercel.sh/v1/credits',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});creditStatus=response.status;const data=await response.json();const v=data.balance??data.remaining_balance;if(typeof v==='number'||typeof v==='string'&&/^[0-9.]+$/.test(v))creditBalance=Number(v);}catch{}}
       const checks=[];
       for(const input of [writingInput({mode:'written',title:'Arqueta',text:'No ejecutar. Pendiente de comprobar 1,50 m.'}),writingInput({mode:'dictated',title:'',text:'Arqueta: no ejecutar. Pendiente de comprobar 1,50 m. Pavimento: se propone revisar el acabado.'})]){
