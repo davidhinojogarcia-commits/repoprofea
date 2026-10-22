@@ -79,7 +79,16 @@ export default async function handler(req: any, res: any) {
         try{checks.push({mode:input.mode,ok:true,proposal:writingProposal(await generateVisitWriting(input),input)});}
         catch(e:any){checks.push({mode:input.mode,ok:false,status:e.status||502,code:e.code||'ERROR',message:e.message});break;}
       }
-      return {ok:checks.length===2&&checks.every(c=>c.ok),writing:status,creditStatus,creditBalance,checks};
+      let diagnostic:any=null;
+      if(token&&!checks[0]?.ok){
+        try{
+          const response=await fetch('https://ai-gateway.vercel.sh/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-5.4-mini',messages:[{role:'user',content:'Responde OK.'}],max_tokens:8,providerOptions:{gateway:{zeroDataRetention:true,only:['openai','azure']}}}),signal:AbortSignal.timeout(20000)});
+          const payload=await response.json();const serialized=JSON.stringify(payload);
+          const safe=(value:any)=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value)?value:null;
+          diagnostic={http:response.status,type:safe(payload.error?.type),code:safe(payload.error?.code),requiresVerification:/customer_verification_required|payment method|verify your account|verify your identity/i.test(serialized),insufficientFunds:/insufficient_funds|insufficient credits|no credits|credit balance/i.test(serialized)};
+        }catch{diagnostic={unavailable:true};}
+      }
+      return {ok:checks.length===2&&checks.every(c=>c.ok),writing:status,creditStatus,creditBalance,checks,diagnostic};
     })();
     return res.json(await gatewayValidationRun);
   }
