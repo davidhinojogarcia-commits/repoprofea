@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,9 +89,12 @@ jobs:
         run: npm run test:employment-documents
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
+      - name: Install browser runtimes
+        run: npx playwright install --with-deps chromium webkit
+      - name: SAE fortnight automation (PostgreSQL + Chromium + WebKit)
+        run: npm run test:sae-fortnights
       - name: Employment PDF and responsive browser regression
         run: |
-          npx playwright install --with-deps chromium webkit
           npm run test:employment-browser
           npm run test:independent-foreman-browser
           node scripts/testAppDialogBrowser.mjs
@@ -218,6 +221,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 

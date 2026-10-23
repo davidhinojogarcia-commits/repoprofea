@@ -401,6 +401,10 @@ export async function updateSaeReportStatus(
   snapshot?: SaeReportVersionCandidate[],
 ): Promise<number | null> {
   const ownerId = await uid();
+  if (status === 'finalized') {
+    if (!snapshot) throw new Error('Debe comprobar la versión del informe antes de finalizarlo.');
+    return await supabase.rpc('sae_finalize_report_version', { p_report_id: id, p_snapshot: snapshot });
+  }
   const rows = await supabase.query("sae_reports", {
     query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
   });
@@ -414,20 +418,6 @@ export async function updateSaeReportStatus(
   const previousVersions = Array.isArray((legend as any).__finalized_versions)
     ? (legend as any).__finalized_versions
     : [];
-  let versionNumber: number | null = null;
-  let nextVersions = previousVersions;
-
-  if (status === "finalized" && snapshot) {
-    versionNumber = previousVersions.length + 1;
-    nextVersions = [
-      ...previousVersions,
-      {
-        version: versionNumber,
-        finalizedAt: new Date().toISOString(),
-        candidates: snapshot,
-      },
-    ];
-  }
 
   // La tabla de producción restringe processing_status y no admite el valor
   // funcional "finalized". Mantenemos el estado técnico existente y guardamos
@@ -440,12 +430,12 @@ export async function updateSaeReportStatus(
       detected_legend: {
         ...legend,
         __workflow_state: status,
-        __finalized_versions: nextVersions,
+        __finalized_versions: previousVersions,
       },
       updated_by: ownerId,
     },
   });
-  return versionNumber;
+  return null;
 }
 
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
@@ -718,9 +708,11 @@ export async function updateSaeCandidate(
 ) {
   const ownerId = await uid();
   const currentRows = await supabase.query("sae_candidates", {
-    query: `select=source_position,status,fortnight&id=eq.${encodeURIComponent(id)}&limit=1`,
+    query: `select=id,source_position,status,fortnight,updated_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    networkOnly: true,
   });
-  const current = currentRows?.[0] || {};
+  const current = currentRows?.[0];
+  if (!current) throw new Error('El candidato ya no existe o no tiene permiso para modificarlo.');
   const body: any = { updated_by: ownerId };
   if (patch.normalizedName !== undefined)
     body.normalized_full_name = patch.normalizedName;
@@ -775,12 +767,14 @@ export async function updateSaeCandidate(
     if (patch.overlayY !== undefined) pos.y = patch.overlayY;
     body.source_position = pos;
   }
-  await supabase.query("sae_candidates", {
+  const saved = await supabase.query("sae_candidates", {
     method: "PATCH",
-    prefer: "return=minimal",
-    query: `id=eq.${encodeURIComponent(id)}`,
+    prefer: "return=representation",
+    query: `id=eq.${encodeURIComponent(id)}&owner_id=eq.${encodeURIComponent(ownerId)}&updated_at=eq.${encodeURIComponent(current.updated_at)}`,
+    networkOnly: true,
     body,
   });
+  if (!saved?.length) throw new Error('El candidato ha cambiado en otro dispositivo. Actualice el informe antes de continuar.');
 }
 
 export const SAE_RESULT_CODES = [
@@ -795,4 +789,5 @@ export const SAE_RESULT_CODES = [
   ["2212", "Otros motivos"],
   ["2500", "Ya estaba ocupado el puesto de trabajo"],
 ] as const;
+
 
