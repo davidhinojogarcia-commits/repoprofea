@@ -68,6 +68,8 @@ try {
     assert.equal((await list()).length,0,scope+' scope');
   }
   for(const fields of [{category:'Peón'},{category:''},{fortnight:1},{fortnight:2}]) {await reset();await patch(b,fields);assert.equal((await list()).length,0,'monthly qualified targets only');}
+  await reset();await patch(a,{category:'Peón'});item=await state();assert.equal(item.matches[0].overlap,null,'a peon without a fortnight has no invented monthly dates');
+  await patch(a,{fortnight:1});assert.equal((await state()).canApply,true,'a defined first fortnight is compared with the qualified monthly target');
   await reset();await q(`insert into sae_candidates select $1,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,work_code,work_name,hiring_month,fortnight,'Otra categoría',dni_nie,status,result_code,result_label,existing_worker_id,existing_worker_owner_id,updated_by,created_at,updated_at from sae_candidates where id=$2`,[id(32),a]);
   item=await state();assert.equal(item.ambiguous,true);assert.equal(item.canApply,false);await assert.rejects(apply(item.signature),/Revise la identidad/);
   await reset();await q(`insert into sae_candidates select $1,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,work_code,work_name,hiring_month,fortnight,category,dni_nie,status,result_code,result_label,existing_worker_id,existing_worker_owner_id,updated_by,created_at,updated_at from sae_candidates where id=$2`,[id(32),b]);assert.equal((await state()).ambiguous,true);
@@ -75,6 +77,8 @@ try {
   const late={annualHiringPeriods:[{year:2026,months:[{month:10,period1Start:'2026-10-16',period1End:'2026-10-20',period2Start:'2026-10-21',period2End:'2026-10-31'}]}]};
   await q('update user_settings set settings=$1',[late]);item=await state();assert.equal(item.matches[0].overlap,false);assert.equal(item.canApply,false,'same month without overlapping dates is only an antecedent');
   await reset();await q("update user_settings set settings='{}'");item=await state();assert.equal(item.matches[0].overlap,null);assert.equal(item.canApply,false,'unknown dates require review');
+  await reset();await q('update user_settings set settings=$1',[{annualHiringPeriods:[{year:2026,periods:[{month:10,startDate:'2026-10-01',endDate:'2026-10-31'}]}]}]);
+  item=await state();assert.equal(item.start,'2026-10-01');assert.equal(item.end,'2026-10-31');assert.equal(item.canApply,true,'legacy annual periods agree with the existing service normalization');
   await reset();await register();await q("update trabajadores set periodo_inicio='2026-02-30'");assert.equal((await state()).matches[0].overlap,null,'invalid dates do not crash or invent an overlap');
   await reset();item=await state();await patch(a,{result_code:null});await assert.rejects(apply(item.signature),/ha cambiado/);
   await reset();await patch(a,{result_code:null});

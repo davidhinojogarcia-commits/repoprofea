@@ -22,15 +22,16 @@ returns jsonb language sql stable security definer set search_path='' as $$
     cross join lateral jsonb_array_elements(case when jsonb_typeof(us.settings->'annualHiringPeriods')='array'
       then us.settings->'annualHiringPeriods' else '[]'::jsonb end) y
     cross join lateral jsonb_array_elements(case when jsonb_typeof(y.value->'months')='array'
-      then y.value->'months' else '[]'::jsonb end) m
+      then y.value->'months' when jsonb_typeof(y.value->'periods')='array'
+      then y.value->'periods' else '[]'::jsonb end) m
     where us.user_id=owner and y.value->>'year'=year_number::text and m.value->>'month'=month_number::text
   ), resolved as (
     select case when fortnight_number=2 then month->>'period2Start'
-      when fortnight_number=1 then month->>'period1Start'
-      else coalesce(nullif(month->>'period1Start',''),month->>'period2Start') end as starts,
-      case when fortnight_number=1 then month->>'period1End'
+      when fortnight_number=1 then coalesce(nullif(month->>'period1Start',''),month->>'startDate')
+      else coalesce(nullif(month->>'period1Start',''),nullif(month->>'period2Start',''),month->>'startDate') end as starts,
+      case when fortnight_number=1 then coalesce(nullif(month->>'period1End',''),month->>'endDate')
       when fortnight_number=2 then month->>'period2End'
-      else coalesce(nullif(month->>'period2End',''),month->>'period1End') end as ends
+      else coalesce(nullif(month->>'period2End',''),nullif(month->>'period1End',''),month->>'endDate') end as ends
     from periods where (select count(*) from periods)=1
   ) select coalesce((select jsonb_build_object('start',sae_private.iso_date(starts),'end',sae_private.iso_date(ends))
     from resolved),'{}'::jsonb)
@@ -85,7 +86,9 @@ begin
         starts := coalesce(sae_private.iso_date(source.periodo_inicio),sae_private.iso_date(source.worker_data->>'periodoInicio'));
         ends := coalesce(sae_private.iso_date(source.periodo_fin),sae_private.iso_date(source.worker_data->>'periodoFin'));
       else
-        source_period := sae_private.planned_period(owner,n.hiring_year,n.hiring_month,source.fortnight);
+        source_period := case when source.fortnight in (1,2) or (source.fortnight is null
+          and nullif(trim(source.category),'') is not null and sae_private.name_key(source.category) !~ '\mpeon(es)?\M')
+          then sae_private.planned_period(owner,n.hiring_year,n.hiring_month,source.fortnight) else '{}'::jsonb end;
         starts := sae_private.iso_date(source_period->>'start'); ends := sae_private.iso_date(source_period->>'end');
       end if;
       overlap := case when starts is null or ends is null or starts>ends
