@@ -8,7 +8,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 cannot install Chromium/WebKit on Ubuntu 26.04.
+    # Keep the supported OS explicit instead of following ubuntu-latest.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
