@@ -47,7 +47,36 @@ try {
     create trigger sae_candidates_touch_updated_at before update on sae_candidates for each row execute function touch_candidate();`);
   const migration=fs.readdirSync(new URL('../supabase/migrations',import.meta.url)).find(n=>n.endsWith('_sae_fortnight_codes.sql'));
   await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
-  await reset(); await patch(a,{result_code:'2001',status:'preseleccionado'}); assert.equal(await code(),null,'selection is not confirmation');
+  // Reproduce the published bug and the upgrade using six audited result-only edits.
+  await reset();
+  await q('delete from sae_candidates');
+  for(let i=0;i<6;i++) {
+    await candidate(id(100+i),first,1,`Oficial de prueba ${i}`);
+    await candidate(id(200+i),second,2,`OFICIAL DE PRUEBA ${i}`,need,owner,{created_at:'2020-01-01'});
+  }
+  await q("update sae_candidates set result_code='2001' where fortnight=1");
+  assert.equal((await q("select count(*)::int n from sae_candidates where fortnight=2 and result_code is null"))[0].n,6,'published confirmation requirement reproduces the reported failure');
+  await db.exec('reset role');
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261023195934_sae_code_selection_trigger.sql',import.meta.url),'utf8'));
+  await asUser(owner);await sync();
+  assert.equal((await q("select count(*)::int n from sae_candidates where fortnight=2 and result_code='2500'"))[0].n,6);
+  assert.equal((await q('select count(*)::int n from sae_candidates where existing_worker_id is not null'))[0].n,0);
+  await q("update sae_candidates set result_code='2100' where fortnight=1");
+  assert.equal((await q("select count(*)::int n from sae_candidates where fortnight=2 and result_code='2212'"))[0].n,6,'other codes work without registration too');
+  await reset(); await patch(b,{created_at:'2020-01-01'});
+  await patch(a,{result_code:'2001'});assert.equal(await code(),'2500','new result edit activates an existing draft');
+  await patch(b,{result_code:'2200'});let resultOnlyDecision=await state();
+  await sync(need,b,resultOnlyDecision.signature,false);
+  await confirm();assert.equal((await state()).issue,null,'later registration does not invalidate a keep decision');
+  await patch(a,{result_code:'2100'});let previousProposal=await state();
+  await patch(a,{result_code:'2001'});await patch(a,{result_code:'2100'});
+  await assert.rejects(sync(need,b,previousProposal.signature,true),/propuesta ha cambiado/,'changing away and back invalidates an obsolete decision');
+  await reset();await patch(b,{result_code:'2200'});await patch(b,{result_code:null});
+  await patch(a,{result_code:'2001'});assert.equal(await code(),null,'a deliberate manual blank is preserved');
+  assert.equal((await state()).pendingCode,'2500');
+  await reset(); await patch(a,{status:'preseleccionado'}); assert.equal(await code(),null,'preselection without result does not assign a code');
+  await patch(a,{result_code:'2001'}); assert.equal(await code(),'2500','saving 2001 without registration applies 2500');
+  assert.equal((await q('select existing_worker_id from sae_candidates where id=$1',[a]))[0].existing_worker_id,null);
   await confirm(); assert.equal(await code(),'2500'); assert.equal((await state()).automaticCode,'2500');
   await sync(); assert.equal(await code(),'2500','reopening retains server value');
   await db.exec('reset role'); let events=(await q("select count(*)::int n from sae_private.code_audit where action='automatic'"))[0].n;
@@ -60,7 +89,7 @@ try {
   await assert.rejects(sync(need,b,'stale',true),/propuesta ha cambiado/); assert.equal(await code(),'2200');
   await sync(need,b,pending.signature,true); assert.equal(await code(),'2500'); assert.equal((await state()).manual,false);
   await assert.rejects(sync(need,b,pending.signature,true),/propuesta ha cambiado/,'duplicate decisions cannot apply twice');
-  await patch(a,{status:'primera_quincena',existing_worker_id:null,result_code:null}); assert.equal(await code(),'2500'); assert.match((await state()).issue,/anulada/);
+  await patch(a,{status:'primera_quincena',existing_worker_id:null,result_code:null}); assert.equal(await code(),'2500'); assert.match((await state()).issue,/retirado/);
   await confirm('2001'); assert.equal((await state()).issue,null);
   await assert.rejects(patch(a,{existing_worker_id:999}),/otro dispositivo/,'a second registration cannot replace the confirmed worker');
   await reset(); await patch(b,{result_code:'2101'}); await confirm(); assert.equal(await code(),'2101'); assert.equal((await state()).issue,'manual_confirmation','preexisting manual values protected');

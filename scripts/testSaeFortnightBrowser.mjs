@@ -37,6 +37,7 @@ try {
     create trigger touch_candidate before update on sae_candidates for each row execute function touch_candidate();`);
   const migration=(await fs.readdir(root+'supabase/migrations')).find(n=>n.endsWith('_sae_fortnight_codes.sql'));
   await db.exec(await fs.readFile(root+'supabase/migrations/'+migration,'utf8'));
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261023195934_sae_code_selection_trigger.sql','utf8'));
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
   const reset=async()=>{
     await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores cascade');
@@ -108,6 +109,14 @@ try {
     const page=await context.newPage();lastPage=page;page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
     const result=()=>page.locator('select').filter({has:page.locator('option[value="2001"]')});
     await result().waitFor();await result().selectOption('2001');
+    await page.waitForFunction(()=>!document.querySelector('select:disabled option[value="2001"]'));
+    await page.getByRole('button',{name:/Segunda quincena.pdf/}).first().click();
+    await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    assert.equal(await result().inputValue(),'2500','code selection alone updates the second fortnight');
+    assert.equal((await q('select count(*)::int n from trabajadores'))[0].n,0,'no worker is created');
+    assert.equal((await q('select existing_worker_id from sae_candidates where id=$1',[a]))[0].existing_worker_id,null);
+    await page.reload();await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    await page.getByRole('button',{name:/Primera quincena.pdf/}).first().click();
     await page.getByRole('button',{name:'Registrar trabajador',exact:true}).click();
     await page.getByText('Contratado · 2001',{exact:true}).waitFor();
     assert.equal((await q('select result_code from sae_candidates where id=$1',[b]))[0].result_code,'2500');

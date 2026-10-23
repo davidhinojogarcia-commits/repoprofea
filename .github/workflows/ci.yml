@@ -90,7 +90,11 @@ jobs:
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
       - name: Install browser runtimes
-        run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 8
+        run: |
+          # The Azure Ubuntu mirror stalled package downloads on hosted runners.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chromium webkit
       - name: SAE fortnight automation (PostgreSQL + Chromium + WebKit)
         run: npm run test:sae-fortnights
       - name: Employment PDF and responsive browser regression

@@ -21,7 +21,7 @@ export default function SaeCodeNotice({ state, currentCode, onDecision }: {
   if (state.issue === 'manual_confirmation' && state.pendingCode) return (
     <div role="alert" className="w-full rounded-xl border border-amber-400 bg-amber-50 p-3 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"
       onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); void decide(false); } }}>
-      <p>Se ha detectado un cambio en la contratación de la primera quincena. El código actual fue modificado manualmente. ¿Quieres mantenerlo o sustituirlo por el nuevo código propuesto?</p>
+      <p>Se ha detectado un cambio en el resultado SAE de la primera quincena. El código actual fue modificado manualmente. ¿Quieres mantenerlo o sustituirlo por el nuevo código propuesto?</p>
       <p className="mt-1 font-bold">Actual: {currentCode || 'sin asignar'} · Propuesto: {state.pendingCode}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void decide(false)} className="rounded-lg border px-3 py-2 font-bold">Mantener código actual</button>
@@ -34,8 +34,8 @@ export default function SaeCodeNotice({ state, currentCode, onDecision }: {
   );
   if (state.issue) return <p role="alert" className="w-full rounded-lg border border-amber-400 p-2 text-xs">{state.issue}</p>;
   if (!state.manual && state.automaticCode === currentCode) return (
-    <p className="w-full text-xs text-slate-600 dark:text-slate-300" title={`Contratación confirmada de la primera quincena: código ${state.sourceCode}`}>
-      Código {currentCode === '2500' ? '2500' : `${currentCode} · Otros motivos`} asignado automáticamente por contratación en la primera quincena.
+    <p className="w-full text-xs text-slate-600 dark:text-slate-300" title={`Resultado guardado en la primera quincena: código ${state.sourceCode}`}>
+      Código {currentCode === '2500' ? '2500' : `${currentCode} · Otros motivos`} asignado automáticamente por el código de la primera quincena.
     </p>
   );
   return null;
