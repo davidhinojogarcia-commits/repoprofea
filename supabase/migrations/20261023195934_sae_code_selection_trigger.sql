@@ -1,5 +1,7 @@
 -- Saving a first-fortnight result now activates reconciliation without creating
 -- or linking a worker. Preserve owner locks, manual decisions and issued reports.
+-- Prevent an edit between audit recovery and replacing the trigger function.
+lock table public.sae_candidates in access exclusive mode;
 alter table sae_private.code_state add column code_applied_at timestamptz;
 
 -- Recover only explicit result edits already audited since the feature launch.
