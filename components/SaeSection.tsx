@@ -2164,7 +2164,9 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               </select>
                               <span className="mt-1 block text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                 {c.resultCode === "2001"
-                                  ? "Candidato marcado para contratar"
+                                  ? c.quincena === "1ª Quincena"
+                                    ? "2001 guardado: aplica 2500 al mismo candidato en la segunda quincena, si procede. No requiere registrar trabajador."
+                                    : "Candidato marcado para contratar"
                                   : c.resultCode
                                     ? "Resultado asignado"
                                     : "Pendiente de asignar"}
@@ -2197,8 +2199,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       <div className="ui-surface p-4 text-xs text-slate-500 flex gap-2">
         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
         <span>
-          2001 significa “Contratará al candidato”. Los no contratados requieren
-          selección expresa del motivo. Las reversiones eliminan únicamente el
+          Guardar 2001 en la primera quincena asigna 2500 al mismo candidato en la
+          segunda; otro código válido propone Otros motivos. No hace falta registrar
+          al trabajador. Se respetan los códigos manuales y los informes emitidos.
+          Los informes mensuales sin división en quincenas quedan fuera de esta regla.
+          Las reversiones eliminan únicamente el
           registro creado desde SAE y restablecen el candidato.
         </span>
       </div>
