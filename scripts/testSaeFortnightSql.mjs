@@ -32,7 +32,7 @@ try {
     create function public.sae_has_permission(action text) returns boolean language sql stable as $$select coalesce(current_setting('test.sae.update',true),'true')<>'false' or action='read'$$;
     grant usage on schema auth to anon,authenticated;
     create table sae_needs(id uuid primary key,owner_id uuid,work_code text,work_name text,hiring_month smallint,hiring_year smallint,status text default 'en_contratacion');
-    create table sae_reports(id uuid primary key,need_id uuid,owner_id uuid,processing_status text default 'review',detected_legend jsonb default '{}');
+    create table sae_reports(id uuid primary key,need_id uuid,owner_id uuid,updated_by uuid,processing_status text default 'review',detected_legend jsonb default '{}');
     create table sae_candidates(id uuid primary key,need_id uuid,source_report_id uuid,owner_id uuid,
       original_full_name text,normalized_full_name text,dni_nie text,work_code text,work_name text,
       hiring_month smallint,fortnight smallint,status text default 'sin_asignar',result_code text,result_label text,
@@ -116,6 +116,14 @@ try {
   await db.exec('reset role; drop trigger reject_code on sae_candidates'); await asUser(owner); await confirm(); assert.equal(await code(),'2500','retry recovers without duplicates');
   await db.exec('reset role'); const audits=await q("select * from sae_private.code_audit where action='automatic'");
   assert.equal(audits.length,1); assert.equal(audits[0].actor_id,owner); assert.equal(audits[0].source_report_id,first); assert.equal(audits[0].target_report_id,second);
+  await asUser(owner);const snapshot=[{id:b,resultCode:'2500',orderNumber:1,pageNumber:1,overlayX:184,overlayY:50}];
+  await confirm('2100');
+  const finalize=async rows=>(await q('select sae_finalize_report_version($1,$2) version',[second,rows]))[0].version;
+  await assert.rejects(finalize(snapshot),/han cambiado/,'cannot finalize stale code while building PDF');
+  snapshot[0].resultCode='2212';assert.equal(await finalize(snapshot),1);assert.equal(await finalize(snapshot),1,'finalization retry does not duplicate the version');
+  await confirm('2001');assert.equal(await code(),'2212','finalized version cannot be silently changed');
+  await asUser(other);await assert.rejects(finalize(snapshot),/no accesible/);
+  await asUser(null);await assert.rejects(finalize(snapshot),/permission denied/);
   // Count calls around the actual function to catch accidental per-row work on
   // bulk imports. The implementation under test remains the migration's SQL.
   await reset(); await db.exec('reset role');

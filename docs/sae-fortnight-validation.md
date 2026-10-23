@@ -35,6 +35,7 @@ Se inspeccionaron en producción únicamente metadatos de columnas, restriccione
 - Anulación o desaparición del origen después de una asignación: se conserva el resultado y se muestra incidencia. No se borra ni reinventa silenciosamente un resultado anterior.
 - La migración no modifica filas SAE existentes. Abrir una pareja histórica no activa un backfill. Una nueva confirmación/corrección explícita de origen o una nueva importación de destino sí puede activar un borrador apto, nunca un informe emitido.
 - Bloqueos de transacción por supervisor antes de las escrituras de candidatos, informes, solicitudes y documentos SAE; actualización condicional de candidatos por versión. Las asignaciones sin cambios no escriben de nuevo. La auditoría registra actor autenticado, servidor, códigos, candidatos e informes; no hay logs por trabajador.
+- La finalización verifica en el servidor todos los identificadores y códigos del PDF antes de permitir su descarga. Comparte bloqueo con las asignaciones; rechaza una versión obsoleta y una repetición idéntica no duplica el archivo histórico. Las importaciones por lotes concilian una vez por solicitud afectada.
 - El esquema `sae_private` no se expone al cliente: RLS sin políticas públicas y sin permisos de tablas ni funciones para `anon`/`authenticated`. La RPC pública valida sesión, permiso y propietario antes de acceder. Las funciones privilegiadas tienen `search_path` vacío y referencias calificadas.
 
 ## Reproducción
@@ -53,7 +54,7 @@ npm run build
 
 La suite SQL comprueba asignación, confirmación auténtica frente a selección, no coincidencia, nombres/acentos, homónimos, DNI, obra/mes/año, periodos excluidos, edición manual anterior y posterior, mantener/aplicar, propuesta obsoleta y repetida, anulaciones, importación posterior, documentos emitidos, histórico, ACL/RLS y rollback íntegro ante fallo seguido de recuperación sin duplicación de asignaciones.
 
-La suite de navegador usa la pantalla completa `SaeSection`, `saeService` y `saeFortnightService` reales, y ejecuta la migración real en PGlite. Autenticación, configuración anual, parser de importación y creación de la ficha se sustituyen por fronteras sintéticas. Comprueba registro y enlace, actualización del segundo informe, persistencia al recargar, modificación manual, mantener/aplicar/Escape/Enter, error y reintento, doble clic y actualización al recuperar el foco, en 390/820/1440 px. Carga Tailwind y el CSS de la aplicación y comprueba que la acción cabe en la pantalla. No acredita importación de un PDF real, Supabase remoto ni Safari/iOS físico.
+La suite de navegador usa la pantalla completa `SaeSection`, `saeService` y `saeFortnightService` reales, y ejecuta la migración real en PGlite. Autenticación, configuración anual, parser de importación y creación de la ficha se sustituyen por fronteras sintéticas. Comprueba registro y enlace, actualización del segundo informe, persistencia al recargar, modificación manual, mantener/aplicar/Escape/Enter, error y reintento, doble clic y actualización al recuperar el foco, en 390/820/1440 px. Genera un PDF representativo con pdf-lib, utiliza el generador SAE real, provoca una corrección concurrente, verifica que la versión obsoleta no se descarga y después extrae del PDF descargado el código confirmado. Una corrección posterior del origen no cambia ese informe finalizado. Carga Tailwind y el CSS de la aplicación y comprueba que la acción cabe en la pantalla. No acredita la importación de un PDF SAE institucional, Supabase remoto ni Safari/iOS físico.
 
 ## Evidencia local y CI
 
@@ -63,6 +64,7 @@ La suite de navegador usa la pantalla completa `SaeSection`, `saeService` y `sae
 - TypeScript y build: satisfactorios. El build conserva las advertencias previas sobre tamaño de chunks y la referencia existente a `directorio-toolbar.css`.
 - Regresiones de alineación SAE, asignación de obras en contratos, calendario en cinco zonas horarias y redacción de Actas (proveedor simulado): satisfactorias.
 - CI remota: consultar el resultado del commit final en el PR. No sustituirlo por el de otro commit.
+- La primera ejecución `39970390669` se detuvo al instalar navegadores: `ubuntu-latest` ejecutó Ubuntu 26.04 y Playwright 1.56.1 no lo admite. Se fija `ubuntu-24.04`; no se eliminan pruebas ni se actualiza Playwright fuera del alcance del cambio.
 
 ## Pendientes y criterio de fusión/publicación
 

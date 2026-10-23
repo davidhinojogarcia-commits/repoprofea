@@ -298,6 +298,43 @@ begin
 end $$;
 
 revoke all on all functions in schema sae_private from public, anon, authenticated;
+-- Confirm the exact version before a PDF is downloaded. This shares the same
+-- owner lock as automatic codes, so a stale PDF cannot become an official one.
+create function public.sae_finalize_report_version(p_report_id uuid,p_snapshot jsonb) returns integer
+language plpgsql security definer set search_path = '' as $$
+declare owner uuid := auth.uid(); report public.sae_reports; versions jsonb; version_number integer;
+begin
+  if owner is null or not public.sae_has_permission('update') then
+    raise exception 'No tiene permiso para finalizar el informe.' using errcode='42501';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(owner::text,6291));
+  select * into report from public.sae_reports where id=p_report_id and owner_id=owner for update;
+  if report.id is null or not exists(select 1 from public.sae_needs where id=report.need_id and owner_id=owner) then
+    raise exception 'Informe SAE no accesible.' using errcode='42501';
+  end if;
+  if p_snapshot is null or jsonb_typeof(p_snapshot)<>'array' or jsonb_array_length(p_snapshot)=0 then
+    raise exception 'La versión del informe está vacía.';
+  end if;
+  if (select count(*) from public.sae_candidates where source_report_id=p_report_id and owner_id=owner)<>jsonb_array_length(p_snapshot)
+    or (select count(distinct item->>'id') from jsonb_array_elements(p_snapshot) item)<>jsonb_array_length(p_snapshot)
+    or exists(select 1 from jsonb_array_elements(p_snapshot) item left join public.sae_candidates c
+      on c.id=(item->>'id')::uuid and c.source_report_id=p_report_id and c.owner_id=owner
+      where c.id is null or nullif(c.result_code,'') is null or c.result_code is distinct from item->>'resultCode') then
+    raise exception 'Los candidatos o códigos han cambiado. Actualice el informe antes de generar el PDF.' using errcode='40001';
+  end if;
+  versions := coalesce(report.detected_legend->'__finalized_versions','[]'::jsonb);
+  if report.detected_legend->>'__workflow_state'='finalized' and versions->-1->'candidates'=p_snapshot then
+    return (versions->-1->>'version')::integer;
+  end if;
+  version_number := jsonb_array_length(versions)+1;
+  update public.sae_reports set detected_legend=coalesce(detected_legend,'{}'::jsonb) ||
+    jsonb_build_object('__workflow_state','finalized','__finalized_versions',versions || jsonb_build_array(
+      jsonb_build_object('version',version_number,'finalizedAt',clock_timestamp(),'candidates',p_snapshot))),updated_by=owner
+    where id=p_report_id;
+  return version_number;
+end $$;
+revoke all on function public.sae_finalize_report_version(uuid,jsonb) from public,anon;
+grant execute on function public.sae_finalize_report_version(uuid,jsonb) to authenticated;
 revoke all on function public.sae_sync_fortnight_codes(uuid,uuid,text,boolean) from public,anon;
 grant execute on function public.sae_sync_fortnight_codes(uuid,uuid,text,boolean) to authenticated;
 

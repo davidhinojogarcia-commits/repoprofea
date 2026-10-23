@@ -151,6 +151,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const activeNeedRef = useRef(selectedNeedId);
   activeNeedRef.current = selectedNeedId;
   const registrationsInFlight = useRef(new Set<string>());
+  const reportFinalizationsInFlight = useRef(new Set<string>());
   const candidateWrites = useRef(new Set<string>());
   const [savingCandidates, setSavingCandidates] = useState<Set<string>>(() => new Set());
   const codeStateById = useMemo(() => new Map(codeStates.map(state => [state.candidateId, state])), [codeStates]);
@@ -1204,18 +1205,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     return await pdf.save();
   };
   const generateReturnPdf = async (report: SaeReport) => {
+    if (reportFinalizationsInFlight.current.has(report.id)) return;
+    reportFinalizationsInFlight.current.add(report.id);
     setBusy(true);
     setProgress("Generando devolución SAE…");
     try {
       const bytes = await buildReturnPdfBytes(report);
-      const url = URL.createObjectURL(bytesToBlob(bytes));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `SAE_CUMPLIMENTADO_${report.offerNumber || report.id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
       const reportRows = candidates.filter((candidate) => candidate.reportId === report.id);
       const snapshot = reportRows.map((candidate) => ({
         id: candidate.id,
@@ -1229,6 +1224,14 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       const versionNumber =
         (await updateSaeReportStatus(report.id, "finalized", snapshot)) ||
         (report.versions?.length || 0) + 1;
+      const url = URL.createObjectURL(bytesToBlob(bytes));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SAE_CUMPLIMENTADO_${report.offerNumber || report.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       setReports((previous) =>
         previous.map((item) =>
           item.id === report.id
@@ -1257,6 +1260,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     } catch (e: any) {
       onToast(e.message || "No se pudo generar el documento.", "error");
     } finally {
+      reportFinalizationsInFlight.current.delete(report.id);
       setBusy(false);
       setProgress("");
     }

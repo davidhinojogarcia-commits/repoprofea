@@ -401,6 +401,10 @@ export async function updateSaeReportStatus(
   snapshot?: SaeReportVersionCandidate[],
 ): Promise<number | null> {
   const ownerId = await uid();
+  if (status === 'finalized') {
+    if (!snapshot) throw new Error('Debe comprobar la versión del informe antes de finalizarlo.');
+    return await supabase.rpc('sae_finalize_report_version', { p_report_id: id, p_snapshot: snapshot });
+  }
   const rows = await supabase.query("sae_reports", {
     query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
   });
@@ -414,20 +418,6 @@ export async function updateSaeReportStatus(
   const previousVersions = Array.isArray((legend as any).__finalized_versions)
     ? (legend as any).__finalized_versions
     : [];
-  let versionNumber: number | null = null;
-  let nextVersions = previousVersions;
-
-  if (status === "finalized" && snapshot) {
-    versionNumber = previousVersions.length + 1;
-    nextVersions = [
-      ...previousVersions,
-      {
-        version: versionNumber,
-        finalizedAt: new Date().toISOString(),
-        candidates: snapshot,
-      },
-    ];
-  }
 
   // La tabla de producción restringe processing_status y no admite el valor
   // funcional "finalized". Mantenemos el estado técnico existente y guardamos
@@ -440,12 +430,12 @@ export async function updateSaeReportStatus(
       detected_legend: {
         ...legend,
         __workflow_state: status,
-        __finalized_versions: nextVersions,
+        __finalized_versions: previousVersions,
       },
       updated_by: ownerId,
     },
   });
-  return versionNumber;
+  return null;
 }
 
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
