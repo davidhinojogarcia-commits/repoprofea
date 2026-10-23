@@ -400,41 +400,14 @@ export async function updateSaeReportStatus(
   status: "review" | "finalized",
   snapshot?: SaeReportVersionCandidate[],
 ): Promise<number | null> {
-  const ownerId = await uid();
+  await uid();
   if (status === 'finalized') {
     if (!snapshot) throw new Error('Debe comprobar la versión del informe antes de finalizarlo.');
     return await supabase.rpc('sae_finalize_report_version', { p_report_id: id, p_snapshot: snapshot });
   }
-  const rows = await supabase.query("sae_reports", {
-    query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
-  });
-  const legend =
-    rows?.[0]?.detected_legend &&
-    typeof rows[0].detected_legend === "object" &&
-    !Array.isArray(rows[0].detected_legend)
-      ? { ...rows[0].detected_legend }
-      : {};
-
-  const previousVersions = Array.isArray((legend as any).__finalized_versions)
-    ? (legend as any).__finalized_versions
-    : [];
-
-  // La tabla de producción restringe processing_status y no admite el valor
-  // funcional "finalized". Mantenemos el estado técnico existente y guardamos
-  // el estado de trabajo + histórico en detected_legend, que ya es JSON.
-  await supabase.query("sae_reports", {
-    method: "PATCH",
-    prefer: "return=minimal",
-    query: `id=eq.${encodeURIComponent(id)}`,
-    body: {
-      detected_legend: {
-        ...legend,
-        __workflow_state: status,
-        __finalized_versions: previousVersions,
-      },
-      updated_by: ownerId,
-    },
-  });
+  // The server preserves archived versions and reconciles the reopened draft
+  // atomically, without trusting a cached copy of the report history.
+  await supabase.rpc('sae_reopen_report', { p_report_id: id });
   return null;
 }
 

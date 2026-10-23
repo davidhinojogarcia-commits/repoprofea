@@ -1299,14 +1299,10 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const reopenReport = async (report: SaeReport) => {
     try {
       await updateSaeReportStatus(report.id, "review");
-      setReports((previous) =>
-        previous.map((item) =>
-          item.id === report.id ? { ...item, status: "review" } : item,
-        ),
-      );
+      await refresh(report.needId);
       setReturnedReportIds((previous) => previous.filter((id) => id !== report.id));
       setSelectedReportId(report.id);
-      onToast("Informe reabierto para revisión y modificación.", "success");
+      onToast("Borrador reabierto y códigos revisados. Las versiones archivadas se conservan.", "success");
     } catch (error: any) {
       onToast(error.message || "No se pudo reabrir el informe SAE.", "error");
     }

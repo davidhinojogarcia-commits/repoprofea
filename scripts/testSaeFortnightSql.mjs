@@ -58,6 +58,7 @@ try {
   assert.equal((await q("select count(*)::int n from sae_candidates where fortnight=2 and result_code is null"))[0].n,6,'published confirmation requirement reproduces the reported failure');
   await db.exec('reset role');
   await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261023195934_sae_code_selection_trigger.sql',import.meta.url),'utf8'));
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261023210429_sae_reopened_draft_codes.sql',import.meta.url),'utf8'));
   await asUser(owner);await sync();
   assert.equal((await q("select count(*)::int n from sae_candidates where fortnight=2 and result_code='2500'"))[0].n,6);
   assert.equal((await q('select count(*)::int n from sae_candidates where existing_worker_id is not null'))[0].n,0);
@@ -97,7 +98,7 @@ try {
   for(const issued of ['finalized','versions','document']) {
     await reset();
     if(issued==='document'){await db.exec('reset role');await q('insert into sae_generated_documents values($1,$2)',[id(70),second]);await asUser(owner);}
-    else await q('update sae_reports set detected_legend=detected_legend || $1::jsonb where id=$2',[issued==='versions'?{__workflow_state:'review',__finalized_versions:[{version:1}]}:{__workflow_state:'finalized'},second]);
+    else await q('update sae_reports set detected_legend=detected_legend || $1::jsonb where id=$2',[issued==='versions'?{__finalized_versions:[{version:1}]}:{__workflow_state:'finalized'},second]);
     await confirm(); assert.equal(await code(),null); assert.match((await state()).issue,/rectificación/);
   }
   await reset(); await candidate(id(32),first,1); await confirm(); assert.equal(await code(),null); assert.match((await state()).issue,/ambigua/);
@@ -153,6 +154,26 @@ try {
   await confirm('2001');assert.equal(await code(),'2212','finalized version cannot be silently changed');
   await asUser(other);await assert.rejects(finalize(snapshot),/no accesible/);
   await asUser(null);await assert.rejects(finalize(snapshot),/permission denied/);
+  // A reopened draft may change while the archived PDF snapshot stays intact.
+  await asUser(owner);
+  const archived=(await q("select detected_legend->'__finalized_versions' versions from sae_reports where id=$1",[second]))[0].versions;
+  await patch(b,{result_code:null});
+  assert.match((await state()).issue,/rectificación/,'closed report still blocks automatic results');
+  await asUser(other);await assert.rejects(q('select sae_reopen_report($1)',[second]),/no accesible/);
+  await asUser(null);await assert.rejects(q('select sae_reopen_report($1)',[second]),/permission denied/);
+  await asUser(owner);await q('select sae_reopen_report($1)',[second]);
+  let reopened=await state();assert.equal(reopened.pendingCode,'2500','reopened report proposes the current source code');
+  assert.equal(await code(),null,'deliberate manual blank still requires a decision');
+  await q('select sae_reopen_report($1)',[second]);
+  assert.deepEqual((await q("select detected_legend->'__finalized_versions' versions from sae_reports where id=$1",[second]))[0].versions,archived,'reopening twice preserves the server archive');
+  await sync(need,b,reopened.signature,true);assert.equal(await code(),'2500');
+  assert.equal(await finalize([{...snapshot[0],resultCode:'2500'}]),2,'correction creates version 2');
+  assert.deepEqual((await q("select detected_legend->'__finalized_versions'->0 version from sae_reports where id=$1",[second]))[0].version,archived[0]);
+  await reset();await patch(a,{result_code:'2001'});await finalize([{...snapshot[0],resultCode:'2500'}]);
+  await patch(a,{result_code:'2100'});assert.equal(await code(),'2500');
+  await q('select sae_reopen_report($1)',[second]);assert.equal(await code(),'2212','untouched automatic draft recalculates immediately on explicit reopen');
+  await db.exec('reset role');await q('insert into sae_generated_documents values($1,$2)',[id(70),second]);await asUser(owner);
+  await patch(a,{result_code:'2001'});assert.equal(await code(),'2212');assert.match((await state()).issue,/rectificación/,'generated official documents remain protected after reopening');
   // Count calls around the actual function to catch accidental per-row work on
   // bulk imports. The implementation under test remains the migration's SQL.
   await reset(); await db.exec('reset role');

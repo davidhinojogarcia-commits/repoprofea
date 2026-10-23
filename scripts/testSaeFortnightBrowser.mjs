@@ -38,6 +38,7 @@ try {
   const migration=(await fs.readdir(root+'supabase/migrations')).find(n=>n.endsWith('_sae_fortnight_codes.sql'));
   await db.exec(await fs.readFile(root+'supabase/migrations/'+migration,'utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023195934_sae_code_selection_trigger.sql','utf8'));
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261023210429_sae_reopened_draft_codes.sql','utf8'));
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
   const reset=async()=>{
     await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores cascade');
@@ -70,6 +71,7 @@ try {
           return res.end('null');
         }
         if(data.name){
+          if(data.name==='sae_reopen_report'){await q('select sae_reopen_report($1)',[data.body.p_report_id]);return res.end('null');}
           if(data.name==='sae_finalize_report_version'){
             if(staleFinalization){staleFinalization=false;await q("update sae_candidates set result_code='2210' where id=$1",[b]);}
             try {
@@ -159,6 +161,20 @@ try {
     assert(text.includes('2210'),'downloaded PDF contains the confirmed code');
     await q("update sae_candidates set result_code='2001' where id=$1",[a]);
     assert.equal((await q('select result_code from sae_candidates where id=$1',[b]))[0].result_code,'2210','official result is immutable under automation');
+    await page.reload();await page.getByRole('button',{name:'Reabrir para modificar',exact:true}).click();
+    await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).waitFor();
+    assert.equal(await result().inputValue(),'2210','reopening preserves a manual result until accepted');
+    await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).click();
+    await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    assert.equal(await result().inputValue(),'2500','reopened draft accepts the new automatic result');
+    await page.reload();await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    const archivedDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Versión 1',exact:true}).click();
+    const archivedFile=await archivedDownload,archivedStream=await archivedFile.createReadStream(),archivedChunks=[];
+    for await(const chunk of archivedStream)archivedChunks.push(chunk);
+    const archivedTask=getDocument({data:new Uint8Array(Buffer.concat(archivedChunks)),useSystemFonts:true});
+    const archivedPdf=await archivedTask.promise;
+    const archivedText=(await(await archivedPdf.getPage(1)).getTextContent()).items.map(item=>item.str).join(' ');await archivedTask.destroy();
+    assert(archivedText.includes('2210'),'archived PDF retains its original code after the draft changes to 2500');
     await context.close();
   }
   assert.deepEqual(errors,[]);
