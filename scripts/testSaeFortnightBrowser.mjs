@@ -17,6 +17,7 @@ const owner=id(1),need=id(10),first=id(20),second=id(21),a=id(30),b=id(31);
 const db=new PGlite();
 const q=async(sql,args=[]) => (await db.query(sql,args,{parsers:{1184:value=>value}})).rows;
 let server,browser,lastPage,failDecision=false,decisionCalls=0,staleFinalization=false,finalizationComplete=false;
+let failMonthly=false,monthlyCalls=0;
 const errors=[];
 const engine=process.env.BROWSER_ENGINE==='webkit'?'webkit':'chromium';
 try {
@@ -32,16 +33,18 @@ try {
       existing_worker_id bigint,existing_worker_owner_id uuid,source_page int default 1,source_row_text text,source_position jsonb default '{}',alignment_offset_x numeric default 0,alignment_offset_y numeric default 0,confidence text default 'alta',
       created_by uuid,updated_by uuid,created_at timestamptz default clock_timestamp(),updated_at timestamptz default clock_timestamp());
     create table sae_generated_documents(id uuid,source_report_id uuid);
-    create table trabajadores(id bigint primary key,data jsonb);
+    create table trabajadores(id bigint primary key,owner_id uuid,periodo_inicio text,periodo_fin text,data jsonb,apellidos_nombre text,obra text,categoria text);
+    create table user_settings(user_id uuid primary key,settings jsonb);
     create function touch_candidate() returns trigger language plpgsql as $$begin new.updated_at=clock_timestamp();return new;end$$;
     create trigger touch_candidate before update on sae_candidates for each row execute function touch_candidate();`);
   const migration=(await fs.readdir(root+'supabase/migrations')).find(n=>n.endsWith('_sae_fortnight_codes.sql'));
   await db.exec(await fs.readFile(root+'supabase/migrations/'+migration,'utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023195934_sae_code_selection_trigger.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023210429_sae_reopened_draft_codes.sql','utf8'));
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261023214422_sae_monthly_work_matches.sql','utf8'));
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
   const reset=async()=>{
-    await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores cascade');
+    await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores,user_settings cascade');
     await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11002 GR','Obra A',10,2026)",[need,owner]);
     for(const [r,name] of [[first,'Primera quincena.pdf'],[second,'Segunda quincena.pdf']]) await q("insert into sae_reports(id,need_id,owner_id,file_name,storage_path,detected_legend) values($1,$2,$3,$4,$4,$5)",[r,need,owner,name,{'2001':'Contratará al candidato','2100':'Rechazo voluntario','2212':'Otros motivos','2500':'Ya estaba ocupado el puesto de trabajo','2200':'No cumple los requisitos','2210':'No corresponde al perfil por otros motivos'}]);
     for(const [c,r,f,name] of [[a,first,1,'Juan Hinojo García'],[b,second,2,'JUAN HINOJO GARCIA']]) await q("insert into sae_candidates(id,need_id,source_report_id,owner_id,original_full_name,normalized_full_name,work_code,work_name,hiring_month,fortnight,source_position) values($1,$2,$3,$4,$5,$5,'11002 GR','Obra A',10,$6,'{\"orderNumber\":1}')",[c,need,r,owner,name,f]);
@@ -67,10 +70,16 @@ try {
       if(req.url==='/db'||req.url==='/worker'){
         const chunks=[];for await(const chunk of req)chunks.push(chunk);const data=JSON.parse(Buffer.concat(chunks).toString());res.setHeader('Content-Type','application/json');
         if(req.url==='/worker'){
-          if(data.remove)await q('delete from trabajadores where id=$1',[data.id]);else await q('insert into trabajadores values($1,$2)',[data.id,data.data]);
+          if(data.remove)await q('delete from trabajadores where id=$1',[data.id]);else await q('insert into trabajadores(id,owner_id,periodo_inicio,periodo_fin,data) values($1,$2,$3,$4,$5)',[data.id,owner,data.data.periodoInicio,data.data.periodoFin,data.data]);
           return res.end('null');
         }
         if(data.name){
+          if(data.name==='list_sae_monthly_matches'){return res.end(JSON.stringify((await q('select list_sae_monthly_matches($1) result',[data.body.p_need_id]))[0].result));}
+          if(data.name==='sae_apply_monthly_2500'){
+            monthlyCalls++;if(failMonthly){res.statusCode=503;return res.end(JSON.stringify({message:'Sin conexión mensual de prueba. Se conserva el código.'}));}
+            try{await q('select sae_apply_monthly_2500($1,$2)',[data.body.p_candidate_id,data.body.p_signature]);return res.end('null');}
+            catch(error){res.statusCode=409;return res.end(JSON.stringify({message:error.message}));}
+          }
           if(data.name==='sae_reopen_report'){await q('select sae_reopen_report($1)',[data.body.p_report_id]);return res.end('null');}
           if(data.name==='sae_finalize_report_version'){
             if(staleFinalization){staleFinalization=false;await q("update sae_candidates set result_code='2210' where id=$1",[b]);}
@@ -175,9 +184,50 @@ try {
     const archivedPdf=await archivedTask.promise;
     const archivedText=(await(await archivedPdf.getPage(1)).getTextContent()).items.map(item=>item.str).join(' ');await archivedTask.destroy();
     assert(archivedText.includes('2210'),'archived PDF retains its original code after the draft changes to 2500');
+    // Monthly qualified workforce: another work/category, using names only.
+    await reset();const monthlyNeed=id(11),monthlyReport=id(22);
+    await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11003 GR','Obra de destino',10,2026)",[monthlyNeed,owner]);
+    await q("insert into sae_reports(id,need_id,owner_id,file_name,storage_path,detected_legend) values($1,$2,$3,'Mensual destino.pdf','mensual-destino.pdf',$4)",[monthlyReport,monthlyNeed,owner,{'2001':'Contratará al candidato','2500':'Ya estaba ocupado el puesto de trabajo','2200':'No cumple los requisitos'}]);
+    await q("update sae_candidates set category='Oficial de albañilería',fortnight=null,result_code='2001',dni_nie='11111111A' where id=$1",[a]);
+    await q("update sae_candidates set need_id=$2,source_report_id=$3,work_code='11003 GR',work_name='Obra de destino',category='Encofrador',fortnight=null,result_code='2200',dni_nie='22222222B' where id=$1",[b,monthlyNeed,monthlyReport]);
+    await q("update sae_private.code_state set issue='Incidencia antigua de quincena' where candidate_id=$1",[b]);
+    await q('insert into user_settings values($1,$2)',[owner,{annualHiringPeriods:[{year:2026,months:[{month:10,period1Start:'2026-10-01',period1End:'2026-10-15',period2Start:'2026-10-16',period2End:'2026-10-31'}]}]}]);
+    const openMonthly=async()=>{await page.evaluate(({need,report})=>{sessionStorage.setItem('profea-sae-selected-need',need);sessionStorage.setItem('profea-sae-selected-report',report);},{need:monthlyNeed,report:monthlyReport});await page.reload();await page.getByText(/Coincidencia por apellidos y nombre/).waitFor();};
+    await openMonthly();await page.getByText('Previsto para contratar · 2001',{exact:true}).waitFor();
+    assert.equal(await page.getByText('Incidencia antigua de quincena',{exact:true}).count(),0,'a monthly row does not show stale fortnight notices');
+    assert.equal(await result().inputValue(),'2200','monthly warning preserves a manual result');
+    await page.getByRole('button',{name:'Consultar contratación de origen',exact:true}).click();
+    await page.getByRole('heading',{name:/Trabajadores del informe · Primera quincena.pdf/}).waitFor();
+    assert.equal(await result().inputValue(),'2001','consult opens the source report');await openMonthly();
+    const monthlyApply=()=>page.getByRole('button',{name:'Aplicar 2500 por coincidencia mensual',exact:true});
+    await monthlyApply().scrollIntoViewIfNeeded();const monthlyBounds=await monthlyApply().boundingBox();
+    assert(monthlyBounds.x>=0&&monthlyBounds.x+monthlyBounds.width<=width+1,'monthly action fits the viewport');
+    await monthlyApply().focus();await page.keyboard.press('Enter');assert.equal(await result().inputValue(),'2200','Enter cannot apply the monthly code');
+    await q("update sae_candidates set result_code=null where id=$1",[a]);await monthlyApply().click();
+    await page.getByText(/coincidencia mensual ha cambiado/).waitFor();assert.equal(await result().inputValue(),'2200');
+    await q("update sae_candidates set result_code='2001' where id=$1",[a]);await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await page.getByText(/coincidencia mensual ha cambiado/).waitFor({state:'hidden'});
+    failMonthly=true;await monthlyApply().click();await page.getByText(/Sin conexión mensual de prueba/).waitFor();assert.equal(await result().inputValue(),'2200');failMonthly=false;
+    const monthlyBefore=monthlyCalls;await monthlyApply().evaluate(el=>{el.click();el.click();});
+    await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();assert.equal(monthlyCalls,monthlyBefore+1);
+    await page.reload();await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();assert.equal(await result().inputValue(),'2500');
+    await q("insert into trabajadores(id,owner_id,periodo_inicio,periodo_fin,data) values(55501,$1,'2026-10-01','2026-10-31','{}')",[owner]);
+    await q("update sae_candidates set status='contratado',existing_worker_id=55501,existing_worker_owner_id=$2 where id=$1",[a,owner]);
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByText('Contratación registrada',{exact:true}).waitFor();
+    await q("update trabajadores set periodo_inicio='2026-11-01',periodo_fin='2026-11-30' where id=55501");
+    await q("update sae_candidates set result_code='2200' where id=$1",[b]);
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByText(/las fechas no se solapan/).waitFor();assert.equal(await monthlyApply().count(),0);
+    await q(`insert into sae_candidates(id,need_id,source_report_id,owner_id,original_full_name,normalized_full_name,work_code,work_name,hiring_month,category,result_code)
+      values($1,$2,$3,$4,'Juan Hinojo Garcia','JUAN HINOJO GARCIA','11002 GR','Obra A',10,'Carpintero','2001')`,[id(32),need,first,owner]);
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByText(/varias entradas con el mismo nombre/).waitFor();assert.equal(await monthlyApply().count(),0);
+    await q('delete from sae_candidates where id in($1,$2)',[a,id(32)]);
+    await q("update trabajadores set apellidos_nombre='JUAN HINOJO GARCÍA',obra='11002 GR',categoria='Carpintero',periodo_inicio='2026-10-01',periodo_fin='2026-10-31' where id=55501");
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await monthlyApply().waitFor();
+    await page.getByText('Consultar ficha de origen',{exact:true}).click();await page.getByText(/Directorio de trabajadores · JUAN HINOJO/).waitFor();
+    await monthlyApply().click();await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();
     await context.close();
   }
   assert.deepEqual(errors,[]);
-  console.log(`PASS SAE ${engine} 390/820/1440: real selection + services + PostgreSQL, register, automatic code, reopen, manual keep/apply/Escape/Enter, focus synchronization, retry, duplicate-click protection, stale PDF rejection and real PDF code/finalization.`);
+  console.log(`PASS SAE ${engine} 390/820/1440: fortnight rules, register, reopen/archive PDF, manual decisions and monthly name-only matching across works/categories, source consultation, planned/registered/Directory origins, stale/retry/double-click/Enter guards, non-overlap, ambiguity and persistence.`);
 }catch(error){console.error(error.message,errors);if(lastPage)console.error((await lastPage.locator('body').innerText().catch(()=>'' )).slice(-5000));process.exitCode=1;}
 finally {if(browser)await browser.close();if(server)await new Promise(r=>server.close(r));await db.close();}
