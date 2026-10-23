@@ -27,6 +27,7 @@
     "validate:mandatory-traceability-v2": "node scripts/validateMandatoryTraceabilityReleaseV2.mjs",
     "test:mandatory-persistence": "node scripts/testMandatoryPersistence.mjs && node scripts/testMandatoryNetworkVerification.mjs",
     "test:sae-alignment": "node scripts/testSaeAlignmentPersistence.mjs",
+    "test:sae-fortnights": "node scripts/testSaeFortnightSql.mjs && node scripts/testSaeFortnightBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testSaeFortnightBrowser.mjs",
     "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
     "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs",
     "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs",
@@ -93,3 +94,4 @@
     "vite": "^6.2.0"
   }
 }
+

@@ -138,6 +138,8 @@ jobs:
         run: npm run test:visit-minutes-browser
       - name: Visit writing mobile browser workflow
         run: npm run test:visit-writing-browser
+      - name: SAE fortnight automation (PostgreSQL + Chromium + WebKit)
+        run: npm run test:sae-fortnights
       - name: Signed attendance PDFs
         run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
@@ -218,6 +220,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 

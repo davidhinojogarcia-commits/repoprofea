@@ -718,9 +718,11 @@ export async function updateSaeCandidate(
 ) {
   const ownerId = await uid();
   const currentRows = await supabase.query("sae_candidates", {
-    query: `select=source_position,status,fortnight&id=eq.${encodeURIComponent(id)}&limit=1`,
+    query: `select=id,source_position,status,fortnight,updated_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    networkOnly: true,
   });
-  const current = currentRows?.[0] || {};
+  const current = currentRows?.[0];
+  if (!current) throw new Error('El candidato ya no existe o no tiene permiso para modificarlo.');
   const body: any = { updated_by: ownerId };
   if (patch.normalizedName !== undefined)
     body.normalized_full_name = patch.normalizedName;
@@ -775,12 +777,14 @@ export async function updateSaeCandidate(
     if (patch.overlayY !== undefined) pos.y = patch.overlayY;
     body.source_position = pos;
   }
-  await supabase.query("sae_candidates", {
+  const saved = await supabase.query("sae_candidates", {
     method: "PATCH",
-    prefer: "return=minimal",
-    query: `id=eq.${encodeURIComponent(id)}`,
+    prefer: "return=representation",
+    query: `id=eq.${encodeURIComponent(id)}&owner_id=eq.${encodeURIComponent(ownerId)}&updated_at=eq.${encodeURIComponent(current.updated_at)}`,
+    networkOnly: true,
     body,
   });
+  if (!saved?.length) throw new Error('El candidato ha cambiado en otro dispositivo. Actualice el informe antes de continuar.');
 }
 
 export const SAE_RESULT_CODES = [
@@ -795,4 +799,5 @@ export const SAE_RESULT_CODES = [
   ["2212", "Otros motivos"],
   ["2500", "Ya estaba ocupado el puesto de trabajo"],
 ] as const;
+
 
