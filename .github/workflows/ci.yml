@@ -90,6 +90,9 @@ jobs:
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
       - name: Install browser runtimes
+        timeout-minutes: 8
+        env:
+          PLAYWRIGHT_DOWNLOAD_HOST: https://playwright.download.prss.microsoft.com/dbazure/download/playwright
         run: npx playwright install --with-deps chromium webkit
       - name: SAE fortnight automation (PostgreSQL + Chromium + WebKit)
         run: npm run test:sae-fortnights
