@@ -6,43 +6,45 @@ El supervisor crea los asuntos escritos manualmente y puede mejorar cada asunto 
 
 La asistencia conserva el original, rechaza cifras o reservas omitidas detectables y evita aplicar una respuesta sobre un asunto modificado mientras se esperaba. El dictado pendiente se conserva en el almacén local cifrado existente. Una propuesta o dictado pendiente bloquea el paso a firma hasta incorporarlo o descartarlo. Los filtros de fidelidad no sustituyen la revisión técnica y semántica del supervisor.
 
-## Proveedor y autenticación
+## Proveedor y cuenta gratuita
 
-El proveedor predeterminado es Vercel AI Gateway con `openai/gpt-5.4-mini`. Modelo y endpoints comprobados en el catálogo completo de Gateway el 22/10/2026: salida estructurada y endpoints OpenAI/Azure con ZDR y exclusión de entrenamiento.
+Groq es el proveedor predeterminado, con `openai/gpt-oss-20b` y salida JSON estructurada estricta. Se utiliza HTTPS directamente desde servidor, sin SDK adicional ni Vercel AI Gateway. La ruta Gateway anterior se ha retirado.
 
-- Vercel: habilitar OIDC en el proyecto GestionProfea. La identidad temporal se obtiene del contexto de la petición mediante `@vercel/oidc`, con alternativa a la variable de entorno de Vercel. No se copia ni se imprime el token.
-- Fuera de Vercel: puede configurarse explícitamente una clave de Gateway en `AI_GATEWAY_API_KEY`, solo en servidor.
-- `VISIT_WRITING_PROVIDER`: `gateway` por defecto. `gemini` permite seleccionar expresamente la integración anterior.
-- `VISIT_WRITING_GATEWAY_MODEL`: sustitución opcional del modelo de Gateway. La antigua `VISIT_WRITING_MODEL` solo afecta a Gemini, evitando que su valor existente rompa la nueva ruta.
-- Las claves `GEMINI_API_KEY`, `GOOGLE_API_KEY` y `GOOGLE_GENERATIVE_AI_API_KEY` únicamente se utilizan cuando se selecciona Gemini expresamente.
+- `GROQ_API_KEY`: clave exclusivamente de servidor, sin prefijo VITE_. Nunca compartirla por chat ni incluirla en el repositorio.
+- `VISIT_WRITING_PROVIDER`: `groq` por defecto. `gemini` mantiene la integración anterior únicamente si se selecciona expresamente; no es un respaldo automático.
+- `VISIT_WRITING_GROQ_MODEL`: sustitución opcional del modelo. El antiguo `VISIT_WRITING_MODEL` no afecta a Groq.
 
-No existe cambio automático a Gemini ante un fallo de Gateway. La clave anterior se conserva y no se ha recuperado su contenido.
+Para coste cero, crear una cuenta en https://console.groq.com y mantenerla en **Free**, sin añadir método de pago ni actualizar a Developer. Los límites dependen del modelo/cuenta; al agotarlos Groq devuelve 429. El código no puede consultar ni acreditar el plan de facturación asociado a una clave: una clave de una cuenta actualizada a pago podría generar cargos. No se configura ninguna cuenta, secreto ni facturación automáticamente.
+
+La IA funciona en nube y la interfaz existente se utiliza desde móvil/tablet; no requiere ordenador encendido. No es un servicio ilimitado ni una garantía de disponibilidad futura.
+
+Fuentes oficiales revisadas el 23/10/2026:
+- https://console.groq.com/docs/billing-faqs
+- https://console.groq.com/docs/rate-limits
+- https://console.groq.com/docs/structured-outputs
+- https://console.groq.com/docs/your-data
 
 ## Datos, permisos y consumo
 
-Se reutiliza POST `/api/visit-minutes`, encaminado a la función existente Gmail, sin añadir funciones serverless, tablas ni migraciones. La generación exige sesión, cuenta activa, permiso de escritura en la obra y, si existe acta, propiedad y estado borrador.
+Se reutiliza POST `/api/visit-minutes`, encaminado a la función existente Gmail. La generación exige sesión, cuenta activa, permiso de escritura en la obra y, si existe acta, propiedad y estado borrador. Solo se envían modo, título y texto, sin fotos, PDF, firmas, asistentes ni datos completos de obra.
 
-Solo se envían modo, título y texto. No se adjuntan fotos, PDF, firmas, asistentes ni datos completos de obra. Conviene evitar datos personales innecesarios dentro del texto libre.
+Groq permite activar Zero Data Retention en los controles de datos de la organización, también para clientes gratuitos. Debe comprobarlo el administrador antes de utilizar textos reales: este código no puede activar ni verificar esa opción. Sin ella existen excepciones de retención para fiabilidad/abuso. La documentación no acredita residencia europea; los datos retenidos se alojan en EE. UU. No equivale a la exigencia ZDR por petición de la propuesta Gateway anterior. Usar texto sintético hasta verificar estos controles y la adecuación del servicio a los datos de Actas.
 
-Cada petición a Gateway exige `zeroDataRetention: true` y restringe proveedores mediante `only: ['openai','azure']`. Si la política no puede cumplirse, falla; no se relaja ni se cambia a otro modelo automáticamente. Retención cero y exclusión de entrenamiento son políticas del proveedor, no una garantía sobre la exactitud de la redacción ni acreditación de residencia europea.
-
-El SDK y el código de proveedor se cargan bajo demanda únicamente en servidor. Vite no sustituye claves de servidor en el navegador. Los errores devueltos son mensajes y códigos fijos, sin imprimir errores crudos del SDK, prompts, tokens ni respuestas privadas. No se activa telemetría de contenido ni Custom Reporting.
-
-Entrada máxima de 12.000 caracteres, título de 200, salida de 7.000 tokens/40.000 caracteres, plazo de 25 s. No hay reintentos automáticos del SDK ni modelos de respaldo. Se conserva una operación en curso por usuario, unión de solicitudes idénticas y seis propuestas por minuto por instancia. Esto no es un presupuesto global: el límite monetario global debe configurarse y comprobarse en Gateway. No se han comprado créditos ni activado recargas automáticas.
+Vite no sustituye claves de servidor en el navegador. Los errores usan mensajes/códigos fijos: no se leen errores del proveedor ni se registran claves, prompts o respuestas privadas. Entrada máxima 12.000 caracteres, título 200, salida 7.000 tokens/40.000 caracteres y plazo 25 s. No hay reintentos, herramientas ni cambio automático de proveedor. Se conservan una operación en curso por usuario, unión de solicitudes idénticas y seis propuestas por minuto por instancia; no es un límite global de cuenta.
 
 ## Estado y errores
 
-La acción pública `writing-status` responde con `configured`, `providerConfigured` y `model`, con `Cache-Control: no-store`. Comprueba presencia de autenticación mediante un acceso síncrono al contexto: no refresca tokens, consulta datos ni llama al proveedor. Un valor true no acredita validez, saldo ni generación.
+`writing-status` devuelve únicamente `configured`, `providerConfigured` y `model`, sin caché. Solo comprueba que exista una clave no vacía para el proveedor seleccionado. No llama al proveedor ni demuestra validez, plan gratuito, cuota disponible o ZDR.
 
 | Situación | Respuesta |
 | --- | --- |
-| Sin identidad/clave o proveedor inválido | 503 / VISIT_WRITING_NOT_CONFIGURED |
-| Gateway 401/403 | 503 / VISIT_WRITING_AUTH_REQUIRED |
-| Gateway 402 por saldo o presupuesto | 503 / VISIT_WRITING_QUOTA |
-| Límite del proveedor | 429 / VISIT_WRITING_RATE_LIMIT |
-| Fallo, respuesta incompleta o inválida | 502 / VISIT_WRITING_PROVIDER_FAILED o validación de propuesta |
+| Sin clave o proveedor inválido (incluido gateway) | 503 / VISIT_WRITING_NOT_CONFIGURED |
+| Groq 401/403 | 503 / VISIT_WRITING_AUTH_REQUIRED |
+| Groq 402 | 503 / VISIT_WRITING_QUOTA |
+| Límite de Groq | 429 / VISIT_WRITING_RATE_LIMIT |
+| Red, respuesta incompleta, JSON inválido o proveedor | 502 / VISIT_WRITING_PROVIDER_FAILED |
 
-En todos los casos el original permanece disponible y se puede continuar manualmente.
+El original se conserva y se puede continuar manualmente en todos los casos.
 
 ## Comprobaciones reproducibles
 
@@ -55,7 +57,7 @@ npm run test:visit-minutes
 npm run test:visit-writing-browser
 ```
 
-`testVisitWritingGateway.mjs` usa el SDK real con HTTP simulado y PostgreSQL/PGlite: identidad OIDC por contexto/entorno, permisos, escrito/dictado, política ZDR, proveedores permitidos, fidelidad, ausencia de fallback, límites y errores sin secretos. No demuestra por sí solo acceso a la cuenta real ni saldo.
+`testVisitWritingGroq.mjs` simula HTTP y usa PostgreSQL/PGlite: permisos previos, escrito/dictado, aislamiento de datos, fidelidad, ausencia de clave, errores 401/403/402/429/500, red/JSON/truncamiento, sin reintentos ni fallback. No demuestra generación real.
 
 Para la generación real con una sesión autorizada, guardar un access token vigente en un archivo privado (permisos 0600) y elegir el UUID de una obra propia. No compartirlo por chat ni ponerlo en argumentos:
 
@@ -65,13 +67,14 @@ VISIT_WRITING_TEST_WORKSITE_ID=UUID_DE_OBRA_PROPIA \
 node --import tsx scripts/verifyVisitWritingProduction.ts
 ```
 
-El verificador comprueba el estado sin caché, rechazo sin sesión y dos propuestas reales, escrita y dictada, con esquema/cifras/reservas. No crea ni guarda actas, no genera PDF, no envía correo ni imprime credenciales o contenido privado. Las dos propuestas pueden consumir saldo. `VISIT_WRITING_TEST_ORIGIN` permite utilizar una vista previa HTTPS autorizada.
+El verificador comprueba el estado sin caché, rechazo sin sesión y dos propuestas reales, escrita y dictada, con esquema/cifras/reservas. No crea ni guarda actas, no genera PDF, no envía correo ni imprime credenciales o contenido privado. Las dos propuestas consumen cuota del plan de la cuenta; verificar Free antes de ejecutarlas. `VISIT_WRITING_TEST_ORIGIN` permite utilizar una vista previa HTTPS autorizada.
 
-## Evidencia y cierre
+## Evidencia y criterio de cierre
 
-En esta revisión pasan TypeScript, build completo, dominio/API de redacción, SDK Gateway con HTTP simulado, aislamiento de secretos y regresiones de Actas con PostgreSQL/PDF reales. El flujo React de redacción pasa en Chromium a 390/820/1440 px. WebKit local está bloqueado por dependencias del sistema que este entorno no permite instalar; debe acreditarse en CI.
+Validación local de Groq: pasan TypeScript, compilación completa, dominio/API/redacción con HTTP simulado, aislamiento de claves y regresiones completas de Actas con PostgreSQL/PDF reales. No se ha realizado generación real.
 
-La rama temporal `validation/visit-writing-gateway-live` contiene una comprobación exclusivamente de vista previa protegida y texto sintético, sin acceso a obras, base de datos ni sesiones privadas. Ese punto de comprobación no forma parte de la rama final de producto.
+La CI anterior del commit 5ea900d corresponde a Gateway y no valida este cambio a Groq. Registrar la CI del nuevo commit separadamente.
 
-Criterio de cierre: CI del commit final satisfactoria, generación real con identidad/saldo disponibles y revisión humana de la propuesta; además, incorporación expresa y persistencia al guardar/reabrir con una sesión autorizada. No se acreditan iPhone/Safari, Android o iPad físicos mediante emulación ni pruebas automatizadas.
+Para cerrar: CI del commit final satisfactoria; cuenta confirmada Free sin método de pago; controles de datos revisados (ZDR); generación real escrita y dictada con el verificador y revisión humana; incorporación expresa, guardado y reapertura desde cuenta autorizada. Las pruebas automatizadas no acreditan dispositivos físicos iPhone/Android/iPad.
 
+No se ha configurado una clave Groq ni ejecutado generación real. No fusionar/publicar automáticamente. Desde tablet se puede crear la cuenta y, cuando proceda configurar, introducir la clave directamente en la variable sensible GROQ_API_KEY del proyecto Vercel, nunca aquí; después será necesario un despliegue autorizado para que el runtime reciba la variable.
