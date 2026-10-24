@@ -47,7 +47,7 @@ try {
     create policy self on trabajadores to authenticated using(owner_id=auth.uid()) with check(owner_id=auth.uid());
     create policy self on user_settings to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
     grant select,insert,update,delete on sae_needs,sae_reports,sae_candidates,trabajadores,user_settings to authenticated;`);
-  for(const name of ['20261023140416_sae_fortnight_codes.sql','20261023195934_sae_code_selection_trigger.sql','20261023210429_sae_reopened_draft_codes.sql','20261023214422_sae_monthly_work_matches.sql'])
+  for(const name of ['20261023140416_sae_fortnight_codes.sql','20261023195934_sae_code_selection_trigger.sql','20261023210429_sae_reopened_draft_codes.sql','20261023214422_sae_monthly_work_matches.sql','20261024201222_sae_reverse_fortnight_suggestions.sql'])
     await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
   await reset();await patch(b,{source_position:{orderNumber:1}});
   let ranked=await state();assert.equal(ranked.proposedCode,'2212');assert.equal(ranked.currentCode,null);
@@ -140,3 +140,4 @@ try {
   console.log('PASS monthly SAE: name-only identity, category changes, owner/work/month/year scope, planned/registered status, periods, overlap/unknown dates, ambiguity, explicit/stale/double decisions, issued reports, archive and ACL/RLS.');
 }catch(e){console.error(e.message,e.where||'',e.detail||'');process.exitCode=1;}
 finally{await db.close();}
+

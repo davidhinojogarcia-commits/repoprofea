@@ -28,7 +28,7 @@
     "test:mandatory-persistence": "node scripts/testMandatoryPersistence.mjs && node scripts/testMandatoryNetworkVerification.mjs",
     "test:sae-alignment": "node scripts/testSaeAlignmentPersistence.mjs && node scripts/testSaePreviewBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testSaePreviewBrowser.mjs",
     "test:sae-monthly": "node scripts/testSaeMonthlySql.mjs",
-    "test:sae-fortnights": "node scripts/testSaeFortnightSql.mjs && node scripts/testSaeMonthlySql.mjs && node scripts/testSaeFortnightBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testSaeFortnightBrowser.mjs",
+    "test:sae-fortnights": "node scripts/testSaeReportPeriodSql.mjs && node scripts/testSaeFortnightSql.mjs && node scripts/testSaeMonthlySql.mjs && node scripts/testSaeFortnightBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testSaeFortnightBrowser.mjs",
     "test:mandatory-missing-worker": "node scripts/testMandatoryMissingWorkerRecovery.mjs",
     "test:low-consumption": "node --import tsx scripts/testLowConsumption.ts && node scripts/testLowConsumptionUi.mjs",
     "test:consumption-phase2": "node scripts/testConsumptionPhase2.mjs",

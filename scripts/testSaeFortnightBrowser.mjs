@@ -45,7 +45,9 @@ try {
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023195934_sae_code_selection_trigger.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023210429_sae_reopened_draft_codes.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023214422_sae_monthly_work_matches.sql','utf8'));
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261024201410_sae_report_manual_period.sql','utf8'));
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261024201222_sae_reverse_fortnight_suggestions.sql','utf8'));
   const reset=async()=>{
     await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores,user_settings cascade');
     await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11002 GR','Obra A',10,2026)",[need,owner]);
@@ -80,6 +82,12 @@ try {
           return res.end('null');
         }
         if(data.name){
+          if(data.name==='sae_set_report_period') {
+            const p=data.body;
+            await q('select sae_set_report_period($1,$2,$3)',[p.p_report_id,p.p_period,p.p_expected_revision]);
+            return res.end('null');
+          }
+
           if(data.name==='list_sae_monthly_matches'){return res.end(JSON.stringify((await q('select list_sae_monthly_matches($1) result',[data.body.p_need_id]))[0].result));}
           if(data.name==='sae_apply_monthly_2500'){
             monthlyCalls++;if(failMonthly){res.statusCode=503;return res.end(JSON.stringify({message:'Sin conexión mensual de prueba. Se conserva el código.'}));}
@@ -117,7 +125,7 @@ try {
     }catch(error){errors.push(error.message);res.statusCode=500;res.end(JSON.stringify({message:error.message}));}
   });
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}`;
-  browser=await(engine==='webkit'?webkit:chromium).launch({headless:true});
+  browser=await(engine==='webkit'?webkit:chromium).launch({headless:true,...(process.env.SAE_BROWSER_EXECUTABLE ? {executablePath:process.env.SAE_BROWSER_EXECUTABLE} : {})});
   for(const width of [390,820,1440]) {
     await reset();
     const context=await browser.newContext({viewport:{width,height:900}});
@@ -125,26 +133,54 @@ try {
     await context.addInitScript(({need,first})=>{if(!sessionStorage.getItem('profea-sae-selected-need')){sessionStorage.setItem('profea-sae-selected-need',need);sessionStorage.setItem('profea-sae-selected-report',first);}},{need,first});
     const page=await context.newPage();lastPage=page;page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
     const result=()=>page.locator('select').filter({has:page.locator('option[value="2001"]')});
-    await result().waitFor();await result().selectOption('2001');
+    // Correct an unrecognized report, then check real SQL persistence after reload.
+    await result().waitFor();
+    await q('update sae_candidates set fortnight=null where id=$1',[a]);
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');
+    const firstCard=()=>page.getByRole('button',{name:/Primera quincena.pdf/}).first().locator('..');
+    await firstCard().getByRole('button',{name:'Añadir periodo',exact:true}).click();
+    let dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('1ª Quincena');
+    await dialog.getByRole('button',{name:'Guardar periodo',exact:true}).click();
+    await dialog.waitFor({state:'hidden'});
+    assert.equal((await q('select fortnight from sae_candidates where id=$1',[a]))[0].fortnight,1);
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await firstCard().getByRole('button',{name:'Editar periodo',exact:true}).click();
+    dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    assert.equal(await dialog.getByLabel('Periodo',{exact:true}).inputValue(),'1ª Quincena');
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('2ª Quincena');
+    await dialog.getByRole('button',{name:'Guardar periodo',exact:true}).click();await dialog.waitFor({state:'hidden'});
+    assert.equal((await q('select fortnight from sae_candidates where id=$1',[a]))[0].fortnight,2);
+    await firstCard().getByRole('button',{name:'Editar periodo',exact:true}).click();
+    dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('Mensual');
+    await dialog.getByRole('button',{name:'Guardar periodo',exact:true}).click();await dialog.waitFor({state:'hidden'});
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await firstCard().getByRole('button',{name:'Editar periodo',exact:true}).click();
+    dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    assert.equal(await dialog.getByLabel('Periodo',{exact:true}).inputValue(),'Mensual');
+    const periodBounds=await dialog.boundingBox();assert.ok(periodBounds.x>=0&&periodBounds.x+periodBounds.width<=width+1,'period editor fits mobile/tablet');
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('1ª Quincena');
+    await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();
+    assert.equal((await q("select detected_legend->'__manual_period'->>'label' label from sae_reports where id=$1",[first]))[0].label,'Mensual');
+    await reset();await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await result().waitFor();await result().selectOption('2001');
     await page.waitForFunction(()=>!document.querySelector('select:disabled option[value="2001"]'));
     await page.getByRole('button',{name:/Segunda quincena.pdf/}).first().click();
-    await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    await page.getByText(/Código 2500 asignado a partir/).waitFor();
     assert.equal(await result().inputValue(),'2500','code selection alone updates the second fortnight');
     assert.equal((await q('select count(*)::int n from trabajadores'))[0].n,0,'no worker is created');
     assert.equal((await q('select existing_worker_id from sae_candidates where id=$1',[a]))[0].existing_worker_id,null);
-    await page.reload();await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText(/Código 2500 asignado a partir/).waitFor();
     await page.getByRole('button',{name:/Primera quincena.pdf/}).first().click();
     await page.getByRole('button',{name:'Registrar trabajador',exact:true}).click();
     await page.getByText('Contratado · 2001',{exact:true}).waitFor();
     assert.equal((await q('select result_code from sae_candidates where id=$1',[b]))[0].result_code,'2500');
     assert.equal((await q('select count(*)::int n from trabajadores'))[0].n,1);
     await page.getByRole('button',{name:/Segunda quincena.pdf/}).first().click();
-    await page.getByText(/Código 2500 asignado automáticamente/).waitFor();assert.equal(await result().inputValue(),'2500');
-    await page.reload();await page.getByText(/Código 2500 asignado automáticamente/).waitFor();assert.equal(await result().inputValue(),'2500');
+    await page.getByText(/Código 2500 asignado a partir/).waitFor();assert.equal(await result().inputValue(),'2500');
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText(/Código 2500 asignado a partir/).waitFor();assert.equal(await result().inputValue(),'2500');
     await result().selectOption('2200');await page.getByRole('button',{name:'Mantener código actual',exact:true}).waitFor();
     await page.getByRole('button',{name:'Mantener código actual',exact:true}).click();
     await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).waitFor({state:'hidden'});
-    await page.reload();await result().waitFor();assert.equal(await result().inputValue(),'2200');assert.equal(await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).count(),0);
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await result().waitFor();assert.equal(await result().inputValue(),'2200');assert.equal(await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).count(),0);
     // A source correction arrives while this view is open; focus refreshes it.
     await q("update sae_candidates set result_code='2100' where id=$1",[a]);await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     const apply=page.getByRole('button',{name:'Aplicar nuevo código',exact:true});await apply.waitFor();
@@ -155,17 +191,17 @@ try {
     await apply.focus();await page.keyboard.press('Enter');assert.equal(await result().inputValue(),'2200','Enter does not confirm replacement');
     failDecision=true;await apply.click();await page.getByText(/Sin conexión de prueba/).waitFor();assert.equal(await result().inputValue(),'2200');failDecision=false;
     const before=decisionCalls;await apply.evaluate(el=>{el.click();el.click();});
-    await page.getByText(/Código 2212 · Otros motivos asignado automáticamente/).waitFor();assert.equal(await result().inputValue(),'2212');assert.equal(decisionCalls,before+1);
-    await page.reload();await page.getByText(/Código 2212 · Otros motivos asignado automáticamente/).waitFor();
+    await page.getByText(/Código 2212 · Otros motivos asignado a partir/).waitFor();assert.equal(await result().inputValue(),'2212');assert.equal(decisionCalls,before+1);
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText(/Código 2212 · Otros motivos asignado a partir/).waitFor();
     await result().selectOption('2200');await page.getByRole('button',{name:'Mantener código actual',exact:true}).waitFor();
     await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).focus();await page.keyboard.press('Escape');
     await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).waitFor({state:'hidden'});
-    await page.reload();await result().waitFor();assert.equal(await result().inputValue(),'2200');assert.equal(await apply.count(),0,'Escape conserves the manual code and records the decision');
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await result().waitFor();assert.equal(await result().inputValue(),'2200');assert.equal(await apply.count(),0,'Escape conserves the manual code and records the decision');
     let downloads=0;page.on('download',()=>{downloads++;assert(finalizationComplete,'download follows server confirmation');});
     const finalize=()=>page.getByRole('button',{name:'Finalizar y descargar',exact:true}).nth(1);
     staleFinalization=true;finalizationComplete=false;await finalize().click();
     await page.locator('#toast').filter({hasText:/han cambiado/}).waitFor();assert.equal(downloads,0,'stale PDF is not downloaded');
-    await page.reload();await page.getByRole('button',{name:'Mantener código actual',exact:true}).waitFor();
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByRole('button',{name:'Mantener código actual',exact:true}).waitFor();
     await page.getByRole('button',{name:'Mantener código actual',exact:true}).click();
     await page.waitForFunction(()=>!document.querySelector('[role="alert"]'));
     const downloadPromise=page.waitForEvent('download');await finalize().click();const download=await downloadPromise;
@@ -176,13 +212,13 @@ try {
     assert(text.includes('2210'),'downloaded PDF contains the confirmed code');
     await q("update sae_candidates set result_code='2001' where id=$1",[a]);
     assert.equal((await q('select result_code from sae_candidates where id=$1',[b]))[0].result_code,'2210','official result is immutable under automation');
-    await page.reload();await page.getByRole('button',{name:'Reabrir para modificar',exact:true}).click();
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByRole('button',{name:'Reabrir para modificar',exact:true}).click();
     await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).waitFor();
     assert.equal(await result().inputValue(),'2210','reopening preserves a manual result until accepted');
     await page.getByRole('button',{name:'Aplicar nuevo código',exact:true}).click();
-    await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    await page.getByText(/Código 2500 asignado a partir/).waitFor();
     assert.equal(await result().inputValue(),'2500','reopened draft accepts the new automatic result');
-    await page.reload();await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText(/Código 2500 asignado a partir/).waitFor();
     const archivedDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Versión 1',exact:true}).click();
     const archivedFile=await archivedDownload,archivedStream=await archivedFile.createReadStream(),archivedChunks=[];
     for await(const chunk of archivedStream)archivedChunks.push(chunk);
@@ -198,10 +234,19 @@ try {
     await page.waitForFunction(()=>document.querySelector('canvas[aria-label="Vista previa documento SAE"]')?.width>300);
     const closePreview=page.getByRole('button',{name:'Cerrar',exact:true});
     const box=await closePreview.boundingBox();assert(box.x>=0 && box.x+box.width<=width+1,'preview controls fit screen');
-    await closePreview.click();await page.reload();
+    await closePreview.click();await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');
     await page.getByRole('button',{name:'Consultar / ajustar',exact:true}).last().click();
     await dx.waitFor();assert.equal(await dx.inputValue(),'-6.5');assert.equal(await dy.inputValue(),'-2');
     await closePreview.click();
+    await reset();await q("update sae_candidates set category='Peón',result_code=null where id=$1",[a]);
+    await q("update sae_candidates set category='Peón',result_code='2001' where id=$1",[b]);
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByRole('button',{name:/Primera quincena.pdf/}).first().click();
+    await page.getByText(/resultado SAE de la segunda quincena/).waitFor();
+    const reverseApply=page.getByRole('button',{name:'Aplicar nuevo código',exact:true});
+    await reverseApply.focus();await page.keyboard.press('Enter');assert.equal(await result().inputValue(),'');
+    await reverseApply.click();await reverseApply.waitFor({state:'hidden'});assert.equal(await result().inputValue(),'2500');
+    assert.equal((await q('select result_code from sae_candidates where id=$1',[b]))[0].result_code,'2001');
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await result().waitFor();assert.equal(await result().inputValue(),'2500');
     // Monthly qualified workforce: another work/category, using names only.
     await reset();const monthlyNeed=id(11),monthlyReport=id(22);
     await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11003 GR','Obra de destino',10,2026)",[monthlyNeed,owner]);
@@ -210,7 +255,7 @@ try {
     await q("update sae_candidates set need_id=$2,source_report_id=$3,work_code='11003 GR',work_name='Obra de destino',category='Encofrador',source_position='{\"orderNumber\":2}',fortnight=null,result_code='2200',dni_nie='22222222B' where id=$1",[b,monthlyNeed,monthlyReport]);
     await q("update sae_private.code_state set issue='Incidencia antigua de quincena' where candidate_id=$1",[b]);
     await q('insert into user_settings values($1,$2)',[owner,{annualHiringPeriods:[{year:2026,months:[{month:10,period1Start:'2026-10-01',period1End:'2026-10-15',period2Start:'2026-10-16',period2End:'2026-10-31'}]}]}]);
-    const openMonthly=async()=>{await page.evaluate(({need,report})=>{sessionStorage.setItem('profea-sae-selected-need',need);sessionStorage.setItem('profea-sae-selected-report',report);},{need:monthlyNeed,report:monthlyReport});await page.reload();await page.getByText(/Coincidencia por apellidos y nombre/).waitFor();};
+    const openMonthly=async()=>{await page.evaluate(({need,report})=>{sessionStorage.setItem('profea-sae-selected-need',need);sessionStorage.setItem('profea-sae-selected-report',report);},{need:monthlyNeed,report:monthlyReport});await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText(/Coincidencia por apellidos y nombre/).waitFor();};
     await openMonthly();await page.getByText('Previsto para contratar · 2001',{exact:true}).waitFor();
     assert.equal(await page.getByText('Incidencia antigua de quincena',{exact:true}).count(),0,'a monthly row does not show stale fortnight notices');
     assert.equal(await result().inputValue(),'2200','monthly warning preserves a manual result');
@@ -228,7 +273,7 @@ try {
     failMonthly=true;await monthlyApply().click();await page.getByText(/Sin conexión mensual de prueba/).waitFor();assert.equal(await result().inputValue(),'2200');failMonthly=false;
     const monthlyBefore=monthlyCalls;await monthlyApply().evaluate(el=>{el.click();el.click();});
     await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();assert.equal(monthlyCalls,monthlyBefore+1);
-    await page.reload();await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();assert.equal(await result().inputValue(),'2500');
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();assert.equal(await result().inputValue(),'2500');
     await q("insert into trabajadores(id,owner_id,periodo_inicio,periodo_fin,data) values(55501,$1,'2026-10-01','2026-10-31','{}')",[owner]);
     await q("update sae_candidates set status='contratado',existing_worker_id=55501,existing_worker_owner_id=$2 where id=$1",[a,owner]);
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByText('Contratación registrada',{exact:true}).waitFor();
@@ -248,8 +293,8 @@ try {
     const firstPosition=page.getByRole('button',{name:'Aplicar 2212 · Otros motivos por coincidencia mensual',exact:true});
     await firstPosition.waitFor();await firstPosition.focus();await page.keyboard.press('Enter');assert.equal(await result().inputValue(),'2200');
     await firstPosition.click();await page.getByText('Resultado 2212 guardado.',{exact:true}).waitFor();
-    await page.reload();await page.getByText('Resultado 2212 guardado.',{exact:true}).waitFor();assert.equal(await result().inputValue(),'2212');
-    await context.close();
+    await page.waitForLoadState('networkidle');await page.reload();await page.waitForLoadState('networkidle');await page.getByText('Resultado 2212 guardado.',{exact:true}).waitFor();assert.equal(await result().inputValue(),'2212');
+    await page.waitForLoadState('networkidle');await context.close();
   }
   assert.deepEqual(errors,[]);
   console.log(`PASS SAE ${engine} 390/820/1440: fortnight rules, register, reopen/archive PDF, manual decisions and monthly name-only matching across works/categories, source consultation, planned/registered/Directory origins, stale/retry/double-click/Enter guards, non-overlap, ambiguity and persistence.`);

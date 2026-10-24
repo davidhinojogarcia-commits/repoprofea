@@ -185,6 +185,37 @@ try {
   await q(`insert into sae_candidates(id,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,work_code,work_name,hiring_month,fortnight,created_by,updated_by)
     select md5('bulk-'||i)::uuid,$1,$2,$3,'Worker '||i,'Worker '||i,'11002 GR','Obra A',10,2,$3,$3 from generate_series(1,50) i`,[need,second,owner]);
   await db.exec('reset role');assert.equal((await q('select count(*)::int n from sae_private.test_calls'))[0].n,1,'bulk import reconciles once per scope, not once per candidate');
+  // Reverse direction: explicit second-fortnight 2001 proposes first-fortnight 2500.
+  await db.exec('reset role; alter table sae_candidates add column category text');
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261024201222_sae_reverse_fortnight_suggestions.sql',import.meta.url),'utf8'));
+  await reset();await patch(a,{category:'Peón'});await patch(b,{category:'Peón'});
+  await patch(b,{result_code:'2001'});
+  let reverse=(await sync()).find(s=>s.candidateId===a);
+  assert.equal(reverse.pendingCode,'2500');assert.equal(reverse.sourceFortnight,2);
+  assert.equal((await q('select result_code from sae_candidates where id=$1',[a]))[0].result_code,null,'reverse read never writes');
+  await sync(need,a,reverse.signature,true);
+  assert.equal((await q('select result_code from sae_candidates where id=$1',[a]))[0].result_code,'2500');
+  assert.equal(await code(),'2001','reverse decision preserves the explicit source');
+  await sync();assert.equal((await state()).pendingCode,null,'generated reverse result cannot feed back');
+  await assert.rejects(sync(need,a,reverse.signature,true),/ha cambiado/);
+  await reset();await patch(a,{category:'Peón',result_code:'2200'});await patch(b,{category:'Peón',result_code:'2001'});
+  reverse=(await sync()).find(s=>s.candidateId===a);assert.equal(reverse.pendingCode,'2500');
+  await sync(need,a,reverse.signature,false);assert.equal((await sync()).find(s=>s.candidateId===a).issue,null,'keep decision persists');
+  assert.equal((await q('select result_code from sae_candidates where id=$1',[a]))[0].result_code,'2200');
+  await patch(a,{status:'contratado',existing_worker_id:100});assert.equal((await sync()).find(s=>s.candidateId===a).pendingCode,null,'registered target protected');
+  await reset();await patch(a,{category:'Oficial'});await patch(b,{category:'Peón',result_code:'2001'});
+  assert.equal((await sync()).find(s=>s.candidateId===a)?.pendingCode??null,null,'monthly/qualified reverse is not enabled');
+  await reset();await patch(a,{category:'Peón',created_at:'2020-01-01'});await patch(b,{category:'Peón',result_code:'2001'});
+  reverse=(await sync()).find(s=>s.candidateId===a);assert.equal(reverse.pendingCode,'2500','historical reverse drafts receive a proposal');
+  await patch(b,{result_code:'2100'});await assert.rejects(sync(need,a,reverse.signature,true),/ha cambiado/);
+  await reset();await patch(a,{category:'Peón'});await patch(b,{category:'Peón',result_code:'2001'});
+  reverse=(await sync()).find(s=>s.candidateId===a);
+  await asUser(other);await assert.rejects(sync(need,a,reverse.signature,true),/no accesible/);
+  await asUser(null);await assert.rejects(sync(need,a,reverse.signature,true),/permission denied/);
+  await asUser(owner);await q("select set_config('test.sae.update','false',false)");
+  await assert.rejects(sync(need,a,reverse.signature,true),/permitida/);
+  await q("select set_config('test.sae.update','true',false)");
+  console.log('PASS reverse SAE: second-to-first 2500 proposal, explicit apply/keep, stale/repeat, no feedback, old drafts, qualified exclusion and registered target protection.');
   console.log('PASS SAE PostgreSQL: confirmation, 2500/2212, manual decisions, stale/double requests, cancellation, homonyms/DNI, work/month/year isolation, issued reports, late import, historical exclusion, RLS/ACL, rollback/recovery and protected audit.');
 } catch (error) { console.error(error.message, error.detail || '', error.where || '', error.internalQuery || ''); process.exitCode=1; }
 finally { await db.close(); }
