@@ -187,9 +187,9 @@ try {
     // Monthly qualified workforce: another work/category, using names only.
     await reset();const monthlyNeed=id(11),monthlyReport=id(22);
     await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11003 GR','Obra de destino',10,2026)",[monthlyNeed,owner]);
-    await q("insert into sae_reports(id,need_id,owner_id,file_name,storage_path,detected_legend) values($1,$2,$3,'Mensual destino.pdf','mensual-destino.pdf',$4)",[monthlyReport,monthlyNeed,owner,{'2001':'Contratará al candidato','2500':'Ya estaba ocupado el puesto de trabajo','2200':'No cumple los requisitos'}]);
+    await q("insert into sae_reports(id,need_id,owner_id,file_name,storage_path,detected_legend) values($1,$2,$3,'Mensual destino.pdf','mensual-destino.pdf',$4)",[monthlyReport,monthlyNeed,owner,{'2001':'Contratará al candidato','2500':'Ya estaba ocupado el puesto de trabajo','2200':'No cumple los requisitos','2212':'Otros motivos'}]);
     await q("update sae_candidates set category='Oficial de albañilería',fortnight=null,result_code='2001',dni_nie='11111111A' where id=$1",[a]);
-    await q("update sae_candidates set need_id=$2,source_report_id=$3,work_code='11003 GR',work_name='Obra de destino',category='Encofrador',fortnight=null,result_code='2200',dni_nie='22222222B' where id=$1",[b,monthlyNeed,monthlyReport]);
+    await q("update sae_candidates set need_id=$2,source_report_id=$3,work_code='11003 GR',work_name='Obra de destino',category='Encofrador',source_position='{\"orderNumber\":2}',fortnight=null,result_code='2200',dni_nie='22222222B' where id=$1",[b,monthlyNeed,monthlyReport]);
     await q("update sae_private.code_state set issue='Incidencia antigua de quincena' where candidate_id=$1",[b]);
     await q('insert into user_settings values($1,$2)',[owner,{annualHiringPeriods:[{year:2026,months:[{month:10,period1Start:'2026-10-01',period1End:'2026-10-15',period2Start:'2026-10-16',period2End:'2026-10-31'}]}]}]);
     const openMonthly=async()=>{await page.evaluate(({need,report})=>{sessionStorage.setItem('profea-sae-selected-need',need);sessionStorage.setItem('profea-sae-selected-report',report);},{need:monthlyNeed,report:monthlyReport});await page.reload();await page.getByText(/Coincidencia por apellidos y nombre/).waitFor();};
@@ -225,6 +225,12 @@ try {
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await monthlyApply().waitFor();
     await page.getByText('Consultar ficha de origen',{exact:true}).click();await page.getByText(/Directorio de trabajadores · JUAN HINOJO/).waitFor();
     await monthlyApply().click();await page.getByText('Resultado 2500 guardado.',{exact:true}).waitFor();
+    await q("update sae_candidates set source_position='{\"orderNumber\":1}',result_code='2200' where id=$1",[b]);
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    const firstPosition=page.getByRole('button',{name:'Aplicar 2212 · Otros motivos por coincidencia mensual',exact:true});
+    await firstPosition.waitFor();await firstPosition.focus();await page.keyboard.press('Enter');assert.equal(await result().inputValue(),'2200');
+    await firstPosition.click();await page.getByText('Resultado 2212 guardado.',{exact:true}).waitFor();
+    await page.reload();await page.getByText('Resultado 2212 guardado.',{exact:true}).waitFor();assert.equal(await result().inputValue(),'2212');
     await context.close();
   }
   assert.deepEqual(errors,[]);

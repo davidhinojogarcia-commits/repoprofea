@@ -10,13 +10,13 @@ export type SaeMonthlyMatch = {
 export type SaeMonthlyState = {
   candidateId: string; month: number; year: number; matches: SaeMonthlyMatch[];
   ambiguous: boolean; locked: boolean; canApply: boolean; signature: string;
-  currentCode: string | null; start: string | null; end: string | null;
+  position: number | null; proposedCode: string | null; currentCode: string | null; start: string | null; end: string | null;
 };
 
 export async function listSaeMonthlyMatches(needId: string): Promise<SaeMonthlyState[]> {
   return await supabase.rpc('list_sae_monthly_matches', { p_need_id: needId }, { fresh: true });
 }
 
-export async function applySaeMonthly2500(candidateId: string, signature: string): Promise<void> {
+export async function applySaeMonthlyCode(candidateId: string, signature: string): Promise<void> {
   await supabase.rpc('sae_apply_monthly_2500', { p_candidate_id: candidateId, p_signature: signature });
 }

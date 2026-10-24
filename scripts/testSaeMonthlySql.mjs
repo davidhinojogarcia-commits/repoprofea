@@ -32,7 +32,7 @@ try {
     create table sae_needs(id uuid primary key,owner_id uuid,work_code text,work_name text,hiring_month int,hiring_year int,status text);
     create table sae_reports(id uuid primary key,need_id uuid,owner_id uuid,updated_by uuid,processing_status text default 'review',detected_legend jsonb);
     create table sae_candidates(id uuid primary key,need_id uuid,source_report_id uuid,owner_id uuid,normalized_full_name text,original_full_name text,
-      work_code text,work_name text,hiring_month int,fortnight int,category text,dni_nie text,status text default 'sin_asignar',result_code text,result_label text,
+      source_position jsonb default '{"orderNumber":2}',work_code text,work_name text,hiring_month int,fortnight int,category text,dni_nie text,status text default 'sin_asignar',result_code text,result_label text,
       existing_worker_id bigint,existing_worker_owner_id uuid,updated_by uuid,created_at timestamptz default clock_timestamp(),updated_at timestamptz default clock_timestamp());
     create table trabajadores(owner_id uuid,id bigint,periodo_inicio text,periodo_fin text,data jsonb,apellidos_nombre text,obra text,categoria text,primary key(owner_id,id));
     create table user_settings(user_id uuid primary key,settings jsonb);
@@ -49,6 +49,26 @@ try {
     grant select,insert,update,delete on sae_needs,sae_reports,sae_candidates,trabajadores,user_settings to authenticated;`);
   for(const name of ['20261023140416_sae_fortnight_codes.sql','20261023195934_sae_code_selection_trigger.sql','20261023210429_sae_reopened_draft_codes.sql','20261023214422_sae_monthly_work_matches.sql'])
     await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+  await reset();await patch(b,{source_position:{orderNumber:1}});
+  let ranked=await state();assert.equal(ranked.proposedCode,'2212');assert.equal(ranked.currentCode,null);
+  await apply(ranked.signature);assert.equal(await code(),'2212');
+  await db.exec('reset role');assert.equal((await q("select new_code from sae_private.code_audit where action='monthly_accepted'"))[0].new_code,'2212');await user(owner);
+  await reset();ranked=await state();await patch(b,{source_position:{orderNumber:1}});
+  await assert.rejects(apply(ranked.signature),/ha cambiado/,'rank changes invalidate the decision');
+  ranked=await state();await q("update sae_reports set detected_legend=detected_legend-'2212'||'{\"2299\":\"Otros motivos\"}' where id=$1",[r2]);
+  await assert.rejects(apply(ranked.signature),/ha cambiado/,'catalog changes invalidate the decision');
+  ranked=await state();assert.equal(ranked.proposedCode,'2299');await apply(ranked.signature);assert.equal(await code(),'2299');
+  for(const legend of [{}, {'2212':'Otros motivos','2299':'Otros motivos'}]) {
+    await reset();await patch(b,{source_position:{orderNumber:1}});await q('update sae_reports set detected_legend=$1 where id=$2',[legend,r2]);
+    ranked=await state();assert.equal(ranked.proposedCode,null);assert.equal(ranked.canApply,false);await assert.rejects(apply(ranked.signature),/Revise/);
+  }
+  for(const pos of [null,{}, {orderNumber:3},{orderNumber:'incorrecta'}]) {
+    await reset();await patch(b,{source_position:pos});ranked=await state();assert.equal(ranked.canApply,false);await assert.rejects(apply(ranked.signature),/Revise/);
+  }
+  await reset();await patch(b,{source_position:{orderNumber:1}});await register();
+  ranked=await state();assert.equal(ranked.matches[0].status,'registered');await apply(ranked.signature);assert.equal(await code(),'2212');
+  await reset();await patch(b,{source_position:{orderNumber:1}});await register();await q("update trabajadores set periodo_inicio='2026-11-01',periodo_fin='2026-11-30'");
+  ranked=await state();assert.equal(ranked.canApply,false);await assert.rejects(apply(ranked.signature),/Revise/);
   await reset();let item=await state();assert.equal(item.matches[0].status,'planned');assert.equal(item.matches[0].workCode,'A');
   assert.equal(item.matches[0].category,'Oficial de albañilería');assert.equal(item.canApply,true);assert.equal(await code(),null,'reading never changes a code');
   await apply(item.signature);assert.equal(await code(),'2500');await assert.rejects(apply(item.signature),/ha cambiado/,'duplicate request is rejected');
@@ -70,9 +90,9 @@ try {
   for(const fields of [{category:'Peón'},{category:''},{fortnight:1},{fortnight:2}]) {await reset();await patch(b,fields);assert.equal((await list()).length,0,'monthly qualified targets only');}
   await reset();await patch(a,{category:'Peón'});item=await state();assert.equal(item.matches[0].overlap,null,'a peon without a fortnight has no invented monthly dates');
   await patch(a,{fortnight:1});assert.equal((await state()).canApply,true,'a defined first fortnight is compared with the qualified monthly target');
-  await reset();await q(`insert into sae_candidates select $1,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,work_code,work_name,hiring_month,fortnight,'Otra categoría',dni_nie,status,result_code,result_label,existing_worker_id,existing_worker_owner_id,updated_by,created_at,updated_at from sae_candidates where id=$2`,[id(32),a]);
+  await reset();await q(`insert into sae_candidates select $1,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,source_position,work_code,work_name,hiring_month,fortnight,'Otra categoría',dni_nie,status,result_code,result_label,existing_worker_id,existing_worker_owner_id,updated_by,created_at,updated_at from sae_candidates where id=$2`,[id(32),a]);
   item=await state();assert.equal(item.ambiguous,true);assert.equal(item.canApply,false);await assert.rejects(apply(item.signature),/Revise la identidad/);
-  await reset();await q(`insert into sae_candidates select $1,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,work_code,work_name,hiring_month,fortnight,category,dni_nie,status,result_code,result_label,existing_worker_id,existing_worker_owner_id,updated_by,created_at,updated_at from sae_candidates where id=$2`,[id(32),b]);assert.equal((await state()).ambiguous,true);
+  await reset();await q(`insert into sae_candidates select $1,need_id,source_report_id,owner_id,normalized_full_name,original_full_name,source_position,work_code,work_name,hiring_month,fortnight,category,dni_nie,status,result_code,result_label,existing_worker_id,existing_worker_owner_id,updated_by,created_at,updated_at from sae_candidates where id=$2`,[id(32),b]);assert.equal((await state()).ambiguous,true);
   await reset();await register();await q("update trabajadores set periodo_inicio='2026-10-01',periodo_fin='2026-10-15'");
   const late={annualHiringPeriods:[{year:2026,months:[{month:10,period1Start:'2026-10-16',period1End:'2026-10-20',period2Start:'2026-10-21',period2End:'2026-10-31'}]}]};
   await q('update user_settings set settings=$1',[late]);item=await state();assert.equal(item.matches[0].overlap,false);assert.equal(item.canApply,false,'same month without overlapping dates is only an antecedent');

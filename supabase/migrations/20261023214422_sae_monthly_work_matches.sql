@@ -1,5 +1,6 @@
 -- Name-only monthly availability: read warnings across the owner's works;
--- changing a result to 2500 always requires an explicit, current decision.
+-- Position 1 uses the report catalogue for Otros motivos; position 2 uses 2500.
+-- Every replacement requires an explicit, current decision.
 alter table sae_private.code_audit add column source_worker_id bigint, add column source_context jsonb;
 -- Directory registrations and date corrections share the same owner lock as
 -- candidate decisions, preventing a second device from changing the evidence
@@ -43,6 +44,7 @@ declare n public.sae_needs; target record; source record; matches jsonb; result 
   target_period jsonb; source_period jsonb; starts date; ends date; target_start date; target_end date;
   month_start date; month_end date;
   registered boolean; overlap boolean; ambiguous boolean; locked boolean; signature text;
+  proposed_code text; position_number int;
 begin
   if owner is distinct from auth.uid() or not public.sae_has_permission('read') then
     raise exception 'Solicitud SAE no accesible.' using errcode='42501';
@@ -128,12 +130,21 @@ begin
       where c.owner_id=owner and c.source_report_id=target.source_report_id
         and sae_private.name_key(c.normalized_full_name)=sae_private.name_key(target.normalized_full_name))>1;
     locked := target.status='contratado' or target.existing_worker_id is not null or sae_private.report_locked(target.source_report_id);
-    signature := md5(concat_ws('|',target.id,target.updated_at,target_period::text,matches::text,ambiguous,locked));
+    position_number := case target.source_position->>'orderNumber' when '1' then 1 when '2' then 2 end;
+    proposed_code := null;
+    if position_number=1 then
+      select case when count(*)=1 then min(e.key) end into proposed_code
+      from public.sae_reports r cross join lateral jsonb_each_text(r.detected_legend) e
+      where r.id=target.source_report_id and r.owner_id=owner
+        and e.key ~ '^[0-9]+$' and sae_private.name_key(e.value)='otros motivos';
+    elsif position_number=2 then proposed_code := '2500'; end if;
+    signature := md5(concat_ws('|',target.id,target.updated_at,target_period::text,matches::text,ambiguous,locked,
+      position_number,proposed_code));
     result := result || jsonb_build_array(jsonb_build_object('candidateId',target.id,'month',n.hiring_month,
       'year',n.hiring_year,'matches',matches,'ambiguous',ambiguous,'locked',locked,'signature',signature,
-      'currentCode',target.result_code,'start',target_start,'end',target_end,
+      'position',position_number,'proposedCode',proposed_code,'currentCode',target.result_code,'start',target_start,'end',target_end,
       'canApply',public.sae_has_permission('update') and not locked and not ambiguous
-        and target.result_code is distinct from '2500' and (matches->0->>'overlap')::boolean is true));
+        and proposed_code is not null and target.result_code is distinct from proposed_code and (matches->0->>'overlap')::boolean is true));
   end loop;
   return result;
 end $$;
@@ -155,6 +166,10 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(owner::text,6291));
   select * into target from public.sae_candidates where id=p_candidate_id and owner_id=owner for update;
   if target.id is null then raise exception 'Candidato SAE no accesible.' using errcode='42501'; end if;
+  -- Keep the target report catalogue stable while deriving Otros motivos.
+  perform 1 from public.sae_reports where id=target.source_report_id and owner_id=owner for share;
+  -- Keep the annual dates stable while revalidating and saving the decision.
+  perform 1 from public.user_settings where user_id=owner for share;
   -- Keep actual contract dates stable until this decision commits.
   perform w.id from public.trabajadores w where w.owner_id=owner and (
     sae_private.name_key(coalesce(nullif(w.apellidos_nombre,''),w.data->>'apellidosNombre'))=sae_private.name_key(target.normalized_full_name)
@@ -168,14 +183,14 @@ begin
     raise exception 'La coincidencia mensual ha cambiado. Actualice el informe y vuelva a revisarla.' using errcode='40001';
   end if;
   if not coalesce((proposal->>'canApply')::boolean,false) then
-    raise exception 'Revise la identidad, las fechas o el estado del informe antes de aplicar 2500.' using errcode='40001';
+    raise exception 'Revise la identidad, las fechas o el estado del informe antes de aplicar el resultado mensual.' using errcode='40001';
   end if;
   source := proposal->'matches'->0;
-  update public.sae_candidates set result_code='2500',result_label='no_contratado',updated_by=owner where id=target.id;
+  update public.sae_candidates set result_code=proposal->>'proposedCode',result_label='no_contratado',updated_by=owner where id=target.id;
   insert into sae_private.code_audit(candidate_id,owner_id,actor_id,source_id,source_report_id,target_report_id,
     previous_code,new_code,action,signature,source_worker_id,source_context)
     values(target.id,owner,owner,(source->>'candidateId')::uuid,(source->>'reportId')::uuid,target.source_report_id,
-      target.result_code,'2500','monthly_accepted',p_signature,(source->>'workerId')::bigint,source);
+      target.result_code,proposal->>'proposedCode','monthly_accepted',p_signature,(source->>'workerId')::bigint,source);
 end $$;
 revoke all on function public.sae_apply_monthly_2500(uuid,text) from public,anon;
 grant execute on function public.sae_apply_monthly_2500(uuid,text) to authenticated;

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
 import SaeCodeNotice from './SaeCodeNotice';
 import { syncSaeFortnightCodes, type SaeCodeState } from '../src/services/saeFortnightService';
-import { applySaeMonthly2500 } from '../src/services/saeMonthlyService';
+import { applySaeMonthlyCode } from '../src/services/saeMonthlyService';
 import SaeMonthlyNotice from './SaeMonthlyNotice';
 import { appConfirm } from '../src/lib/appDialog';
 import {
@@ -2183,7 +2183,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               onApply={async () => {
                                 const monthly = codeStateById.get(c.id)?.monthly;
                                 if (!monthly) throw new Error('Actualice las coincidencias mensuales.');
-                                await applySaeMonthly2500(c.id, monthly.signature);
+                                await applySaeMonthlyCode(c.id, monthly.signature);
                                 const states = await syncSaeFortnightCodes(c.needId);
                                 const fresh = await listSaeCandidates(c.needId, { networkOnly: true });
                                 if (activeNeedRef.current === c.needId) { setCodeStates(states); setCandidates(fresh); }

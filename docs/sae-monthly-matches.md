@@ -10,8 +10,8 @@ La detección anterior solo cruzaba primera y segunda quincena de la misma obra.
 - Un 2001 sin registro se describe como **Previsto para contratar**. La contratación vinculada o el registro de Directorio con fechas se describe como **Contratación registrada**; esto no afirma que exista un contrato firmado.
 - Fechas previstas: configuración anual del supervisor, usando los mismos extremos de periodo que el registro SAE existente. Contratos registrados: campos contractuales del trabajador, con compatibilidad con `data.periodoInicio/periodoFin`. No se infieren fechas de contrato desde la fecha de alta en la aplicación.
 - La lectura solo muestra avisos y referencias. No asigna códigos, crea candidatos ni cambia contrataciones. Si las fechas conocidas no se solapan, se presenta un antecedente. Fechas ausentes, inválidas o configuración anual duplicada requieren revisión y deshabilitan la acción propuesta.
-- Varias coincidencias de origen o entradas duplicadas del nombre en el informe de destino se muestran como ambiguas. Se pueden consultar y revisar; no se ofrece aplicar 2500 mediante la propuesta ambigua. Se conserva la asignación manual ordinaria para la revisión del supervisor.
-- **Aplicar 2500 por coincidencia mensual** es una decisión expresa que muestra el código actual y el propuesto. Conserva cualquier resultado manual hasta aceptar; Enter no acepta, el doble clic no duplica la operación y los fallos conservan el código anterior.
+- Varias coincidencias de origen o entradas duplicadas del nombre en el informe de destino se muestran como ambiguas. Se pueden consultar y revisar; no se ofrece aplicar el resultado mediante la propuesta ambigua. Se conserva la asignación manual ordinaria para la revisión del supervisor.
+- **Aplicar el código propuesto por coincidencia mensual** es una decisión expresa que muestra el código actual y el propuesto. Conserva cualquier resultado manual hasta aceptar; Enter no acepta, el doble clic no duplica la operación y los fallos conservan el código anterior.
 - Informe finalizado sin reapertura, contratación vinculada/confirmada de destino, documento generado o solicitud cerrada: lectura informativa, sin aplicar códigos. Reabrir un borrador conserva sus versiones archivadas; la acción cambia únicamente el borrador.
 
 ## Implementación y consistencia
@@ -39,3 +39,9 @@ La suite SQL carga las migraciones reales en PostgreSQL/PGlite: nombre y apellid
 La suite de navegador usa `SaeSection` y servicios reales con un adaptador HTTP a PGlite. Incluye consulta de origen, 2500 expreso, persistencia, error/reintento, cambios de origen, Enter, doble clic, fechas sin solapamiento, ambigüedad y Directorio en Chromium y WebKit, 390/820/1440. También conserva las regresiones de quincenas, registro, reapertura y PDF archivado. Autenticación, configuración visual y parser de importación utilizan fronteras sintéticas. WebKit local usa bibliotecas extraídas y omite únicamente la comprobación del inventario de paquetes del host.
 
 Consultar el PR para los resultados de la CI del commit final. La migración `20261023214422_sae_monthly_work_matches.sql` debe aplicarse y verificarse antes de publicar la nueva interfaz. No se ha validado esta nueva funcionalidad con dos sesiones HTTP remotas simultáneas ni en dispositivos físicos.
+
+## Regla por posición del listado de destino
+
+Con periodos solapados, la posición persistida `source_position.orderNumber` determina la propuesta: 1 → código numérico único de «Otros motivos» del catálogo del informe; 2 → 2500. No es la quincena ni el orden de consulta. Otras posiciones o posición desconocida permiten consultar el aviso pero no proponen un código. Catálogo ausente o ambiguo para la posición 1 bloquea la propuesta. La sustitución requiere pulsar expresamente el botón que muestra el código. Cambiar posición o catálogo invalida la firma anterior.
+
+La RPC `sae_apply_monthly_2500` conserva su nombre por compatibilidad, pero guarda exclusivamente el código recalculado por el servidor. La decisión bloquea además la fila de configuración anual durante su comprobación y guardado.
