@@ -168,6 +168,8 @@ jobs:
         run: npm run test:modal-layering
       - name: Global confirmation browser regression (Chromium + WebKit)
         run: npm run test:app-dialog-browser
+      - name: Notification dialog reachable exits
+        run: node scripts/testNotificationCloseBrowser.mjs
       - name: Light/dark contrast regression
         run: npm run test:theme-contrast
       - name: Global modal stack audit
