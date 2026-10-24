@@ -2186,7 +2186,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         </span>
       </div>
       {previewReport && !previewSaving && (
-        <SaeReportPreview key={previewReport.id} title={previewReport.fileName} url={previewUrl}
+        <SaeReportPreview title={previewReport.fileName} url={previewUrl}
           initialX={previewOffsetX} initialY={previewOffsetY}
           onPreview={(x, y) => refreshPreview(previewReport, x, y)}
           onSave={async (x, y) => {
