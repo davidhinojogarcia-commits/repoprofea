@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { listSaeMonthlyMatches, type SaeMonthlyState } from './saeMonthlyService';
 
 export type SaeCodeState = {
+  sourceFortnight?: number;
   candidateId: string;
   automaticCode: string | null;
   sourceCode: string | null;
@@ -30,3 +31,4 @@ export async function syncSaeFortnightCodes(needId: string, decision?: {
   });
   return [...combined.values()];
 }
+
