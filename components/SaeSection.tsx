@@ -3,6 +3,8 @@ import ModalPortal from './ModalPortal';
 import SaeReportPreview from './SaeReportPreview';
 import SaeCodeNotice from './SaeCodeNotice';
 import { syncSaeFortnightCodes, type SaeCodeState } from '../src/services/saeFortnightService';
+import { applySaeMonthlyCode } from '../src/services/saeMonthlyService';
+import SaeMonthlyNotice from './SaeMonthlyNotice';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   AlertTriangle,
@@ -2150,11 +2152,21 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                     : "Pendiente de asignar"}
                               </span>
                             </label>
-                            <SaeCodeNotice state={codeStateById.get(c.id)} currentCode={c.resultCode}
+                            <SaeCodeNotice state={c.quincena === '2ª Quincena' ? codeStateById.get(c.id) : undefined} currentCode={c.resultCode}
                               onDecision={async apply => {
                                 const state = codeStateById.get(c.id);
                                 if (!state?.signature) throw new Error('La propuesta ha cambiado. Actualice el informe.');
                                 const states = await syncSaeFortnightCodes(c.needId, { candidateId: c.id, signature: state.signature, apply });
+                                const fresh = await listSaeCandidates(c.needId, { networkOnly: true });
+                                if (activeNeedRef.current === c.needId) { setCodeStates(states); setCandidates(fresh); }
+                              }} />
+                            <SaeMonthlyNotice state={codeStateById.get(c.id)?.monthly}
+                              onConsult={match => { if (match.needId && match.reportId) { setSelectedNeedId(match.needId); setSelectedReportId(match.reportId); } }}
+                              onApply={async () => {
+                                const monthly = codeStateById.get(c.id)?.monthly;
+                                if (!monthly) throw new Error('Actualice las coincidencias mensuales.');
+                                await applySaeMonthlyCode(c.id, monthly.signature);
+                                const states = await syncSaeFortnightCodes(c.needId);
                                 const fresh = await listSaeCandidates(c.needId, { networkOnly: true });
                                 if (activeNeedRef.current === c.needId) { setCodeStates(states); setCandidates(fresh); }
                               }} />
@@ -2180,7 +2192,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           Guardar 2001 en la primera quincena asigna 2500 al mismo candidato en la
           segunda; otro código válido propone Otros motivos. No hace falta registrar
           al trabajador. Se respetan los códigos manuales y los informes emitidos.
-          Los informes mensuales sin división en quincenas quedan fuera de esta regla.
+          Los informes mensuales cualificados comprueban coincidencias del mes entre obras.
           Las reversiones eliminan únicamente el
           registro creado desde SAE y restablecen el candidato.
         </span>
@@ -2198,5 +2210,6 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     </div>
   );
 };
+
 
 
