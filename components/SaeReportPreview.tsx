@@ -14,6 +14,7 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
 }) {
   const [x, setX] = useState(String(initialX));
   const [y, setY] = useState(String(initialY));
+  const raw = useRef({ x: String(initialX), y: String(initialY) });
   const [status, setStatus] = useState('Posición guardada');
   const [error, setError] = useState('');
   const [closing, setClosing] = useState(false);
@@ -59,6 +60,7 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
     return () => { mounted.current = false; clearTimeout(timer.current); document.removeEventListener('visibilitychange', saveOnHide); window.removeEventListener('beforeunload', warnOnLeave); };
   }, []);
   const change = (nextX: string, nextY: string) => {
+    raw.current = { x: nextX, y: nextY };
     setX(nextX); setY(nextY); setError(''); clearTimeout(timer.current);
     const px = parseOffset(nextX), py = parseOffset(nextY);
     valid.current = Number.isFinite(px) && Number.isFinite(py);
@@ -75,10 +77,10 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
     else setClosing(false);
   };
   const step = (axis: 'X' | 'Y', delta: number) => {
-    const value = parseOffset(axis === 'X' ? x : y);
+    const value = parseOffset(axis === 'X' ? raw.current.x : raw.current.y);
     if (!Number.isFinite(value)) { setError('Complete la coordenada antes de moverla.'); return; }
     const next = String(rounded(value + delta));
-    change(axis === 'X' ? next : x, axis === 'Y' ? next : y);
+    change(axis === 'X' ? next : raw.current.x, axis === 'Y' ? next : raw.current.y);
   };
   return <ModalPortal label="SaeSection"><div className="fixed inset-0 z-[180] bg-slate-950/70 p-2 sm:p-4 flex items-center justify-center">
     <section role="dialog" aria-modal="true" aria-label="Vista previa SAE" className="w-full max-w-6xl bg-white dark:bg-slate-950 rounded-xl overflow-hidden flex flex-col" style={{ height: '94dvh', maxHeight: '100%' }}>
@@ -88,7 +90,7 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
         <div className="flex flex-wrap items-end gap-3 mt-2">
           {(['X', 'Y'] as const).map(axis => <div key={axis} className="flex items-end gap-1">
             <button type="button" aria-label={`Disminuir ${axis}`} disabled={closing} onClick={() => step(axis, -0.5)} className="min-h-11 min-w-11 rounded border">−</button>
-            <label className="text-xs font-bold">{axis} (mm)<input type="text" inputMode="decimal" autoComplete="off" disabled={closing} aria-label={`Desplazamiento ${axis}`} value={axis === 'X' ? x : y} onChange={e => change(axis === 'X' ? e.target.value : x, axis === 'Y' ? e.target.value : y)} className="ui-input block !w-24 min-h-11" /></label>
+            <label className="text-xs font-bold">{axis} (mm)<input type="text" inputMode="decimal" autoComplete="off" disabled={closing} aria-label={`Desplazamiento ${axis}`} value={axis === 'X' ? x : y} onChange={e => change(axis === 'X' ? e.target.value : raw.current.x, axis === 'Y' ? e.target.value : raw.current.y)} className="ui-input block !w-24 min-h-11" /></label>
             <button type="button" aria-label={`Aumentar ${axis}`} disabled={closing} onClick={() => step(axis, 0.5)} className="min-h-11 min-w-11 rounded border">+</button>
           </div>)}
           <button type="button" onClick={() => void flush()} disabled={closing} className="min-h-11 rounded bg-[#00548E] px-3 text-white">Guardar posición</button>
