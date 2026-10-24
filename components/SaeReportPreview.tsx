@@ -60,6 +60,7 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
     return () => { mounted.current = false; clearTimeout(timer.current); document.removeEventListener('visibilitychange', saveOnHide); window.removeEventListener('beforeunload', warnOnLeave); };
   }, []);
   const change = (nextX: string, nextY: string) => {
+    if (raw.current.x === nextX && raw.current.y === nextY) return;
     raw.current = { x: nextX, y: nextY };
     setX(nextX); setY(nextY); setError(''); clearTimeout(timer.current);
     const px = parseOffset(nextX), py = parseOffset(nextY);
@@ -90,7 +91,7 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
         <div className="flex flex-wrap items-end gap-3 mt-2">
           {(['X', 'Y'] as const).map(axis => <div key={axis} className="flex items-end gap-1">
             <button type="button" aria-label={`Disminuir ${axis}`} disabled={closing} onClick={() => step(axis, -0.5)} className="min-h-11 min-w-11 rounded border">−</button>
-            <label className="text-xs font-bold">{axis} (mm)<input type="text" inputMode="decimal" autoComplete="off" disabled={closing} aria-label={`Desplazamiento ${axis}`} value={axis === 'X' ? x : y} onChange={e => change(axis === 'X' ? e.target.value : raw.current.x, axis === 'Y' ? e.target.value : raw.current.y)} className="ui-input block !w-24 min-h-11" /></label>
+            <label className="text-xs font-bold">{axis} (mm)<input type="text" inputMode="decimal" autoComplete="off" disabled={closing} aria-label={`Desplazamiento ${axis}`} value={axis === 'X' ? x : y} onInput={e => change(axis === 'X' ? e.currentTarget.value : raw.current.x, axis === 'Y' ? e.currentTarget.value : raw.current.y)} onChange={e => change(axis === 'X' ? e.currentTarget.value : raw.current.x, axis === 'Y' ? e.currentTarget.value : raw.current.y)} className="ui-input block !w-24 min-h-11" /></label>
             <button type="button" aria-label={`Aumentar ${axis}`} disabled={closing} onClick={() => step(axis, 0.5)} className="min-h-11 min-w-11 rounded border">+</button>
           </div>)}
           <button type="button" onClick={() => void flush()} disabled={closing} className="min-h-11 rounded bg-[#00548E] px-3 text-white">Guardar posición</button>
