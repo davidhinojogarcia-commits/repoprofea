@@ -36,7 +36,8 @@ export const ModalPortal: React.FC<{ children: React.ReactNode; label?: string; 
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusTimer = window.setTimeout(() => {
       const first = rootRef.current?.querySelector<HTMLElement>(focusableSelector);
-      first?.focus();
+      // Do not steal focus if the user has already started editing the dialog.
+      if (!rootRef.current?.contains(document.activeElement)) first?.focus();
     }, 0);
 
     return () => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
+import SaeReportPreview from './SaeReportPreview';
 import SaeCodeNotice from './SaeCodeNotice';
 import { syncSaeFortnightCodes, type SaeCodeState } from '../src/services/saeFortnightService';
 import { appConfirm } from '../src/lib/appDialog';
@@ -1347,25 +1348,6 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     setPreviewOffsetX(0);
     setPreviewOffsetY(0);
   };
-  const applyPreviewOffset = async () => {
-    if (!previewReport || previewSaving) return;
-    setPreviewSaving(true);
-    ++previewRequest.current;
-    try {
-      const rows = await saveSaeReportAlignment(previewReport.id, previewOffsetX, previewOffsetY);
-      setCandidates(previous => [...previous.filter(c => c.reportId !== previewReport.id), ...rows]);
-      const x = rows[0].alignmentOffsetX ?? 0;
-      const y = rows[0].alignmentOffsetY ?? 0;
-      setPreviewOffsetX(x);
-      setPreviewOffsetY(y);
-      onToast("Posición guardada y verificada.", "success");
-      await refreshPreview(previewReport, x, y, rows);
-    } catch (e: any) {
-      onToast(e.message || "No se pudo guardar el ajuste.", "error");
-    } finally {
-      setPreviewSaving(false);
-    }
-  };
 
   return (
     <div className="space-y-6 min-w-0">
@@ -2203,85 +2185,15 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
           registro creado desde SAE y restablecen el candidato.
         </span>
       </div>
-      {previewReport && (
-        <ModalPortal label="SaeSection"><div
-          className="fixed inset-0 z-[180] bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closePreview();
+      {previewReport && !previewSaving && (
+        <SaeReportPreview title={previewReport.fileName} url={previewUrl}
+          initialX={previewOffsetX} initialY={previewOffsetY}
+          onPreview={(x, y) => refreshPreview(previewReport, x, y)}
+          onSave={async (x, y) => {
+            const rows = await saveSaeReportAlignment(previewReport.id, x, y);
+            setCandidates(previous => [...previous.filter(c => c.reportId !== previewReport.id), ...rows]);
           }}
-        >
-          <div className="w-full max-w-6xl h-[92vh] bg-white dark:bg-slate-950 rounded-2xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <div className="font-black">
-                  Vista previa SAE · {previewReport.fileName}
-                </div>
-                <div className="text-xs text-slate-500">
-                  X/Y ajustan todos los códigos en milímetros. La posición guardada se conserva hasta que la cambies.
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold">
-                  X{" "}
-                  <input
-                    type="number"
-                    step="0.5"
-                    disabled={previewSaving}
-                    value={previewOffsetX}
-                    onChange={(e) => {
-                      const v = Number(e.target.value) || 0;
-                      setPreviewOffsetX(v);
-                      void refreshPreview(previewReport, v, previewOffsetY);
-                    }}
-                    className="ui-input !w-20 !py-1.5"
-                  />
-                </label>
-                <label className="text-xs font-bold">
-                  Y{" "}
-                  <input
-                    type="number"
-                    step="0.5"
-                    disabled={previewSaving}
-                    value={previewOffsetY}
-                    onChange={(e) => {
-                      const v = Number(e.target.value) || 0;
-                      setPreviewOffsetY(v);
-                      void refreshPreview(previewReport, previewOffsetX, v);
-                    }}
-                    className="ui-input !w-20 !py-1.5"
-                  />
-                </label>
-                <button
-                  onClick={() => void applyPreviewOffset()}
-                  disabled={previewSaving}
-                  className="px-3 py-2 rounded-lg bg-[#00548E] text-white text-xs font-bold"
-                >
-                  {previewSaving ? "Guardando…" : "Guardar posición"}
-                </button>
-                <button
-                  onClick={closePreview}
-                  disabled={previewSaving}
-                  className="px-3 py-2 rounded-lg border text-xs font-bold"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-900">
-              {previewUrl ? (
-                <iframe
-                  title="Vista previa documento SAE"
-                  src={previewUrl}
-                  className="w-full h-full border-0"
-                />
-              ) : (
-                <div className="h-full grid place-items-center">
-                  Preparando…
-                </div>
-              )}
-            </div>
-          </div>
-        </div></ModalPortal>
+          onClose={closePreview} />
       )}
     </div>
   );
