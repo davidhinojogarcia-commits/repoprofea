@@ -2152,7 +2152,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                     : "Pendiente de asignar"}
                               </span>
                             </label>
-                            <SaeCodeNotice state={c.quincena === '2ª Quincena' ? codeStateById.get(c.id) : undefined} currentCode={c.resultCode}
+                            <SaeCodeNotice state={['1ª Quincena', '2ª Quincena'].includes(c.quincena) ? codeStateById.get(c.id) : undefined} currentCode={c.resultCode}
                               onDecision={async apply => {
                                 const state = codeStateById.get(c.id);
                                 if (!state?.signature) throw new Error('La propuesta ha cambiado. Actualice el informe.');

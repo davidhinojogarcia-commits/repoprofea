@@ -46,6 +46,7 @@ try {
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023210429_sae_reopened_draft_codes.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023214422_sae_monthly_work_matches.sql','utf8'));
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261024201222_sae_reverse_fortnight_suggestions.sql','utf8'));
   const reset=async()=>{
     await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores,user_settings cascade');
     await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11002 GR','Obra A',10,2026)",[need,owner]);
@@ -202,6 +203,15 @@ try {
     await page.getByRole('button',{name:'Consultar / ajustar',exact:true}).last().click();
     await dx.waitFor();assert.equal(await dx.inputValue(),'-6.5');assert.equal(await dy.inputValue(),'-2');
     await closePreview.click();
+    await reset();await q("update sae_candidates set category='Peón',result_code=null where id=$1",[a]);
+    await q("update sae_candidates set category='Peón',result_code='2001' where id=$1",[b]);
+    await page.reload();await page.getByRole('button',{name:/Primera quincena.pdf/}).first().click();
+    await page.getByText(/resultado SAE de la segunda quincena/).waitFor();
+    const reverseApply=page.getByRole('button',{name:'Aplicar nuevo código',exact:true});
+    await reverseApply.focus();await page.keyboard.press('Enter');assert.equal(await result().inputValue(),'');
+    await reverseApply.click();await reverseApply.waitFor({state:'hidden'});assert.equal(await result().inputValue(),'2500');
+    assert.equal((await q('select result_code from sae_candidates where id=$1',[b]))[0].result_code,'2001');
+    await page.reload();await result().waitFor();assert.equal(await result().inputValue(),'2500');
     // Monthly qualified workforce: another work/category, using names only.
     await reset();const monthlyNeed=id(11),monthlyReport=id(22);
     await q("insert into sae_needs(id,owner_id,work_code,work_name,hiring_month,hiring_year) values($1,$2,'11003 GR','Obra de destino',10,2026)",[monthlyNeed,owner]);
