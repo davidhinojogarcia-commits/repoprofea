@@ -158,7 +158,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
   };
 
   return (
-    <ModalPortal label="PushNotificationManagerModal"><div className="profea-notifications-overlay fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print" role="dialog" aria-modal="true" aria-labelledby="profea-notifications-title">
+    <ModalPortal label="PushNotificationManagerModal"><div className="profea-notifications-overlay fixed inset-0 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto no-print" role="dialog" aria-modal="true" aria-labelledby="profea-notifications-title" onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
       <div className="profea-notifications-dialog relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col my-8 max-h-[90vh]">
         
         {/* Header Modal */}
@@ -175,9 +175,11 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
           <button
             onClick={onClose}
             className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+            type="button"
+            aria-label="Cerrar alertas"
             title="Cerrar modal"
           >
-            <X className="w-5 h-5" />
+            <X aria-hidden="true" className="w-5 h-5" /><span>Cerrar</span>
           </button>
         </div>
 
@@ -697,7 +699,7 @@ export const PushNotificationManagerModal: React.FC<PushNotificationManagerModal
 
         </div>
 
-
+        <footer className="profea-notifications-footer"><button type="button" onClick={onClose}>Cerrar y volver al panel</button></footer>
       </div>
     </div></ModalPortal>
   );
