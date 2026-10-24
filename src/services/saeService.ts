@@ -41,6 +41,7 @@ export type SaeReport = {
   codigoObra: string;
   mes: string;
   quincena: string;
+  periodRevision?: string;
   categoria: string;
   status: "review" | "finalized";
   versions: SaeReportVersion[];
@@ -435,8 +436,9 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
       offerNumber: sample.offer_number || "",
       obra: sample.work_name || "",
       codigoObra: sample.work_code || "",
-      mes: monthLabel(Number(sample.hiring_month || 0)),
-      quincena: fortnightLabel(
+      mes: monthLabel(Number(r.detected_legend?.__manual_period?.month || sample.hiring_month || 0)),
+      periodRevision: r.detected_legend?.__manual_period?.revision || "",
+      quincena: r.detected_legend?.__manual_period?.label || fortnightLabel(
         sample.fortnight == null ? null : Number(sample.fortnight),
       ),
       categoria: sample.category || "",
@@ -465,6 +467,19 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
         : [],
       createdAt: r.created_at,
     } as SaeReport;
+  });
+}
+
+export type SaeReportPeriod = "1ª Quincena" | "2ª Quincena" | "Mensual";
+
+export async function saveSaeReportPeriod(report: SaeReport, period: SaeReportPeriod): Promise<void> {
+  await uid();
+  if (!["1ª Quincena", "2ª Quincena", "Mensual"].includes(period))
+    throw new Error("Seleccione un periodo válido.");
+  await supabase.rpc("sae_set_report_period", {
+    p_report_id: report.id,
+    p_period: period,
+    p_expected_revision: report.periodRevision || "",
   });
 }
 

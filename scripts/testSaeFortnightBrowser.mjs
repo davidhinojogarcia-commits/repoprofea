@@ -45,6 +45,7 @@ try {
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023195934_sae_code_selection_trigger.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023210429_sae_reopened_draft_codes.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023214422_sae_monthly_work_matches.sql','utf8'));
+  await db.exec(await fs.readFile(root+'supabase/migrations/20261024201410_sae_report_manual_period.sql','utf8'));
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
   const reset=async()=>{
     await db.exec('truncate sae_candidates,sae_needs,sae_reports,sae_need_categories,sae_private.code_state,sae_private.code_audit,trabajadores,user_settings cascade');
@@ -80,6 +81,12 @@ try {
           return res.end('null');
         }
         if(data.name){
+          if(data.name==='sae_set_report_period') {
+            const p=data.body;
+            await q('select sae_set_report_period($1,$2,$3)',[p.p_report_id,p.p_period,p.p_expected_revision]);
+            return res.end('null');
+          }
+
           if(data.name==='list_sae_monthly_matches'){return res.end(JSON.stringify((await q('select list_sae_monthly_matches($1) result',[data.body.p_need_id]))[0].result));}
           if(data.name==='sae_apply_monthly_2500'){
             monthlyCalls++;if(failMonthly){res.statusCode=503;return res.end(JSON.stringify({message:'Sin conexión mensual de prueba. Se conserva el código.'}));}
@@ -125,7 +132,35 @@ try {
     await context.addInitScript(({need,first})=>{if(!sessionStorage.getItem('profea-sae-selected-need')){sessionStorage.setItem('profea-sae-selected-need',need);sessionStorage.setItem('profea-sae-selected-report',first);}},{need,first});
     const page=await context.newPage();lastPage=page;page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
     const result=()=>page.locator('select').filter({has:page.locator('option[value="2001"]')});
-    await result().waitFor();await result().selectOption('2001');
+    // Correct an unrecognized report, then check real SQL persistence after reload.
+    await result().waitFor();
+    await q('update sae_candidates set fortnight=null where id=$1',[a]);
+    await page.reload();
+    const firstCard=()=>page.getByRole('button',{name:/Primera quincena.pdf/}).first().locator('..');
+    await firstCard().getByRole('button',{name:'Añadir periodo',exact:true}).click();
+    let dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('1ª Quincena');
+    await dialog.getByRole('button',{name:'Guardar periodo',exact:true}).click();
+    await dialog.waitFor({state:'hidden'});
+    assert.equal((await q('select fortnight from sae_candidates where id=$1',[a]))[0].fortnight,1);
+    await page.reload();await firstCard().getByRole('button',{name:'Editar periodo',exact:true}).click();
+    dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    assert.equal(await dialog.getByLabel('Periodo',{exact:true}).inputValue(),'1ª Quincena');
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('2ª Quincena');
+    await dialog.getByRole('button',{name:'Guardar periodo',exact:true}).click();await dialog.waitFor({state:'hidden'});
+    assert.equal((await q('select fortnight from sae_candidates where id=$1',[a]))[0].fortnight,2);
+    await firstCard().getByRole('button',{name:'Editar periodo',exact:true}).click();
+    dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('Mensual');
+    await dialog.getByRole('button',{name:'Guardar periodo',exact:true}).click();await dialog.waitFor({state:'hidden'});
+    await page.reload();await firstCard().getByRole('button',{name:'Editar periodo',exact:true}).click();
+    dialog=page.getByRole('dialog',{name:'Periodo del informe'});
+    assert.equal(await dialog.getByLabel('Periodo',{exact:true}).inputValue(),'Mensual');
+    const periodBounds=await dialog.boundingBox();assert.ok(periodBounds.x>=0&&periodBounds.x+periodBounds.width<=width+1,'period editor fits mobile/tablet');
+    await dialog.getByLabel('Periodo',{exact:true}).selectOption('1ª Quincena');
+    await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();
+    assert.equal((await q("select detected_legend->'__manual_period'->>'label' label from sae_reports where id=$1",[first]))[0].label,'Mensual');
+    await reset();await page.reload();await result().waitFor();await result().selectOption('2001');
     await page.waitForFunction(()=>!document.querySelector('select:disabled option[value="2001"]'));
     await page.getByRole('button',{name:/Segunda quincena.pdf/}).first().click();
     await page.getByText(/Código 2500 asignado automáticamente/).waitFor();
