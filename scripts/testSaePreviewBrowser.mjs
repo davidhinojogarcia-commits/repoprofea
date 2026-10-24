@@ -43,6 +43,7 @@ try {
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const x=page.getByLabel('Desplazamiento X'),y=page.getByLabel('Desplazamiento Y');
+    const ready=async()=>{await page.getByText(/Página [12] de 2/).waitFor();await page.getByText('Preparando página…',{exact:true}).waitFor({state:'hidden'});};
     await page.getByText('Página 1 de 2',{exact:true}).waitFor({timeout:10000});await page.waitForFunction(()=>document.querySelector('canvas')?.width>300);
     await page.getByRole('button',{name:'Página siguiente',exact:true}).click();await page.getByText('Página 2 de 2',{exact:true}).waitFor();
     await page.getByRole('button',{name:'Acercar PDF',exact:true}).click();
@@ -56,11 +57,13 @@ try {
     await page.getByRole('button',{name:'Disminuir Y',exact:true}).tap();
     await page.getByRole('button',{name:'Cerrar',exact:true}).click();
     await page.getByRole('button',{name:'Reabrir',exact:true}).waitFor();assert.deepEqual(saved,{x:-13.5,y:-3.75},'close flushes the last movement in order');
-    await page.getByRole('button',{name:'Reabrir',exact:true}).click();assert.equal(await x.inputValue(),'-13.5');
-    await page.reload();await x.waitFor();assert.equal(await x.inputValue(),'-13.5');assert.equal(await y.inputValue(),'-3.75');
+    await page.getByRole('button',{name:'Reabrir',exact:true}).click();await ready();assert.equal(await x.inputValue(),'-13.5');
+    await page.reload();await ready();await x.waitFor();assert.equal(await x.inputValue(),'-13.5');assert.equal(await y.inputValue(),'-3.75');
     fail=true;await x.fill('-20');await page.getByRole('alert').filter({hasText:'Error de guardado'}).waitFor();
     await page.getByRole('button',{name:'Cerrar',exact:true}).click();await page.getByRole('dialog').waitFor();await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Cerrar'&&!b.disabled));assert.equal(saved.x,-13.5);
     fail=false;await page.getByRole('button',{name:'Guardar posición',exact:true}).click();await page.getByText('Posición guardada y verificada',{exact:true}).waitFor();assert.equal(saved.x,-20);
+    await ready();
+    await page.getByRole('button',{name:'Cerrar',exact:true}).click();await page.getByRole('button',{name:'Reabrir',exact:true}).waitFor();
     await context.close();
   }
   assert.deepEqual(errors,[]);console.log(`PASS SAE preview ${engine}: PDF canvas/pages/zoom, signed decimals, touch, serialized last movement, autosave, close/reopen/reload and failed-save retry at phone/tablet portrait/landscape sizes.`);

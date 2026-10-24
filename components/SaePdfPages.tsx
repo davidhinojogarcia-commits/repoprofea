@@ -3,6 +3,9 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 if (typeof window !== 'undefined') pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+// Share the worker across regenerated previews. Destroying a document must not
+// abort worker startup while another preview is already loading (WebKit).
+let previewWorker: pdfjs.PDFWorker | undefined;
 
 export default function SaePdfPages({ url }: { url: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -23,7 +26,8 @@ export default function SaePdfPages({ url }: { url: string }) {
   useEffect(() => {
     let active = true;
     setError(''); setLoading(true); setDoc(null);
-    const task = pdfjs.getDocument({ url });
+    previewWorker ??= new pdfjs.PDFWorker();
+    const task = pdfjs.getDocument({ url, worker: previewWorker });
     void task.promise.then(value => { if (active) setDoc(value); }).catch((e) => {
       console.warn('SAE PDF load failed', e);
       if (active) { setError('No se pudo cargar el PDF. Vuelva a abrir la previsualización.'); setLoading(false); }
