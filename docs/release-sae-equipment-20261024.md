@@ -4,7 +4,7 @@ Integra los PR #306 (sugerencia inversa de peones), #307 (periodo manual), #308 
 
 Correcciones de integración: la prueba del contador espera a que los candidatos estén cargados antes de evaluar; las recargas de la suite SAE esperan a que terminen las peticiones para evitar abortos de navegación en WebKit. El servicio simulado del panel incluye el nuevo método de periodo manual. El ensayo SQL del periodo carga también la migración inversa para probar ambas juntas.
 
-Validaciones locales: TypeScript, build, SQL de periodos, quincenas y coincidencias mensuales, cálculo del resumen, integración del resumen en Chromium y auditorías de modales. Los navegadores usan servicios de ensayo, no sesiones privadas de producción. Las pruebas WebKit y la CI de la integración deben terminar correctamente antes de publicar.
+Validaciones locales: TypeScript, build, SQL de periodos, quincenas y coincidencias mensuales, cálculo del resumen, integración del resumen en Chromium y auditorías de modales. Los navegadores usan servicios de ensayo, no sesiones privadas de producción. También pasan ambas suites WebKit en 390/820/1440 px. La suite SAE espera al contador de peticiones activas del servicio de ensayo antes de cada recarga; esperar solamente el evento networkidle no garantizaba que la cadena completa de RPC hubiera terminado. La CI del commit conjunto debe terminar correctamente antes de publicar.
 
 Orden de publicación: CI del commit conjunto correcta → aplicar las dos migraciones SAE en producción (inversa, después periodo manual) → pruebas transaccionales con rollback → fusionar → verificar Vercel READY y el commit servido.
 
