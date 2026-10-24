@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import http from 'node:http';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
 import { build } from 'esbuild';
 import { chromium, webkit } from 'playwright';
 import { PGlite } from '@electric-sql/pglite';
@@ -9,6 +11,7 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const root = new URL('../',import.meta.url).pathname;
 const tailwind=process.env.SIGNATURE_TAILWIND_SCRIPT?await fs.readFile(process.env.SIGNATURE_TAILWIND_SCRIPT,'utf8'):await(await fetch('https://cdn.tailwindcss.com',{signal:AbortSignal.timeout(30000)})).text();
+const workerBytes=await fs.readFile(require.resolve('pdfjs-dist/build/pdf.worker.min.mjs'));
 const html=await fs.readFile(root+'index.html','utf8');
 const tailwindConfig=html.match(/<script>\s*(tailwind.config[\s\S]*?)<\/script>/)[1];
 const appCss=await fs.readFile(root+'index.css','utf8');
@@ -49,6 +52,8 @@ try {
   const originalPdf=await PDFDocument.create();originalPdf.addPage([595,842]);const originalBytes=await originalPdf.save();
   const pdfModule=(await build({stdin:{contents:"export * from 'pdf-lib';",resolveDir:root},bundle:true,platform:'browser',format:'esm',write:false})).outputFiles[0].text;
   const bundle=(await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{SaeSection}from'./components/SaeSection';createRoot(document.getElementById('root')).render(<SaeSection people={[]} onToast={(text,type)=>{document.getElementById('toast').textContent=text;document.getElementById('toast').dataset.type=type;}}/>);`,resolveDir:root,loader:'tsx'},bundle:true,platform:'browser',format:'iife',write:false,define:{'import.meta.env':'{}'},plugins:[{name:'test-boundaries',setup(build){
+    build.onResolve({filter:/pdf\.worker.*\?url$/},()=>({path:'worker',namespace:'worker-url'}));
+    build.onLoad({filter:/.*/,namespace:'worker-url'},()=>({contents:"export default '/pdf.worker.mjs'"}));
     build.onResolve({filter:/\/lib\/supabase$|AuthGate$|appSettingsService$|annualHiringPeriodsService$|databaseService$|saeDocumentParser$/},args=>({path:args.path,namespace:'boundary'}));
     build.onLoad({filter:/.*/,namespace:'boundary'},({path})=>({contents:
       path.endsWith('supabase')?`const invoke=async body=>{const r=await fetch('/db',{method:'POST',body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.message);return data;};export const getSessionUser=async()=>({id:'${owner}'});export const supabase={url:location.origin,key:'synthetic-public',query:(table,options)=>invoke({table,options}),rpc:(name,body)=>invoke({name,body}),auth:{getSession:async()=>({data:{session:{access_token:'synthetic'}}})}};`:
@@ -61,6 +66,7 @@ try {
   }}]})).outputFiles[0].text;
   server=http.createServer(async(req,res)=>{
     try {
+      if(req.url==='/pdf.worker.mjs'){res.setHeader('Content-Type','text/javascript');return res.end(workerBytes);}
       if(req.url==='/app.js'){res.setHeader('Content-Type','text/javascript');return res.end(bundle);}
       if(req.url==='/tailwind.js'){res.setHeader('Content-Type','text/javascript');return res.end(tailwind);}
       if(req.url.startsWith('/storage/v1/object/authenticated/sae-documents/')){res.setHeader('Content-Type','application/pdf');return res.end(Buffer.from(originalBytes));}
@@ -175,6 +181,18 @@ try {
     const archivedPdf=await archivedTask.promise;
     const archivedText=(await(await archivedPdf.getPage(1)).getTextContent()).items.map(item=>item.str).join(' ');await archivedTask.destroy();
     assert(archivedText.includes('2210'),'archived PDF retains its original code after the draft changes to 2500');
+    await page.getByRole('button',{name:'Consultar / ajustar',exact:true}).last().click();
+    const dx=page.getByLabel('Desplazamiento X'),dy=page.getByLabel('Desplazamiento Y');
+    await dx.fill('-6.5');await dy.fill('-2');
+    await page.getByText('Posición guardada y verificada',{exact:true}).waitFor();
+    assert.equal(Number((await q('select alignment_offset_x from sae_candidates where id=$1',[b]))[0].alignment_offset_x),-6.5);
+    await page.waitForFunction(()=>document.querySelector('canvas[aria-label="Vista previa documento SAE"]')?.width>300);
+    const closePreview=page.getByRole('button',{name:'Cerrar',exact:true});
+    const box=await closePreview.boundingBox();assert(box.x>=0 && box.x+box.width<=width+1,'preview controls fit screen');
+    await closePreview.click();await page.reload();
+    await page.getByRole('button',{name:'Consultar / ajustar',exact:true}).last().click();
+    await dx.waitFor();assert.equal(await dx.inputValue(),'-6.5');assert.equal(await dy.inputValue(),'-2');
+    await closePreview.click();
     await context.close();
   }
   assert.deepEqual(errors,[]);
