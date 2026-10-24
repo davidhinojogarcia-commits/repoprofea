@@ -5,6 +5,7 @@ import SaeCodeNotice from './SaeCodeNotice';
 import { syncSaeFortnightCodes, type SaeCodeState } from '../src/services/saeFortnightService';
 import { applySaeMonthlyCode } from '../src/services/saeMonthlyService';
 import SaeMonthlyNotice from './SaeMonthlyNotice';
+import SaeHiringSummary from './SaeHiringSummary';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   AlertTriangle,
@@ -437,23 +438,6 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       pending: activeCandidates.filter((c) => !c.resultCode).length,
     }),
     [activeCandidates],
-  );
-  const categoryStats = useMemo(
-    () =>
-      (selectedNeed?.categorias || []).map((req) => {
-        const pool = activeCandidates.filter(
-          (c) =>
-            norm(c.categoria).includes(norm(req.categoria)) ||
-            norm(req.categoria).includes(norm(c.categoria)),
-        );
-        return {
-          ...req,
-          pool: pool.length,
-          assigned: pool.filter((c) => c.quincena || c.estado === "Contratado")
-            .length,
-        };
-      }),
-    [selectedNeed, activeCandidates],
   );
   const stepLabels = [
     "Solicitud de mano de obra",
@@ -1793,33 +1777,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
 
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                  {[
-                    ["Candidatos", stats.candidates],
-                    ["Seleccionados", stats.selected],
-                    ["Contratados", stats.contracted],
-                    ["Sin resultado", stats.pending],
-                  ].map(([l, v]) => (
-                    <div
-                      key={String(l)}
-                      className="rounded-xl bg-slate-50 dark:bg-slate-900 border p-3"
-                    >
-                      <div className="text-2xl font-black">{v}</div>
-                      <div className="text-xs text-slate-500">{l}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {categoryStats.map((c) => (
-                    <span
-                      key={c.id}
-                      className="text-xs font-semibold rounded-full border px-3 py-1.5"
-                    >
-                      {c.categoria}: necesarios {c.cantidad} · candidatos{" "}
-                      {c.pool} · asignados {c.assigned}
-                    </span>
-                  ))}
-                </div>
+
               </div>
               {!!reports.length && (
                 <div className="ui-surface p-5">
@@ -1938,6 +1896,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
                 </div>
               )}
+              <SaeHiringSummary need={selectedNeed} reports={reports} candidates={candidates} selectedReportId={selectedReportId} />
               <div id="sae-candidate-selection" className="ui-surface p-4 sm:p-5 scroll-mt-24 transition-shadow duration-300">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -1952,6 +1911,23 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
                   <Users className="w-5 h-5" />
                 </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  {[
+                    ["Candidatos", stats.candidates],
+                    ["Seleccionados", stats.selected],
+                    ["Con registro", stats.contracted],
+                    ["Sin resultado", stats.pending],
+                  ].map(([l, v]) => (
+                    <div
+                      key={String(l)}
+                      className="rounded-xl bg-slate-50 dark:bg-slate-900 border p-3"
+                    >
+                      <div className="text-2xl font-black">{v}</div>
+                      <div className="text-xs text-slate-500">{l}</div>
+                    </div>
+                  ))}
+                </div>
+
                 {!selectedReport ? (
                   <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">
                     Seleccione un informe SAE.
@@ -2210,6 +2186,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     </div>
   );
 };
+
 
 
 

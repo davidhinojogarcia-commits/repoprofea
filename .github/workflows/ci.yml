@@ -97,6 +97,11 @@ jobs:
           npx playwright install --with-deps chromium webkit
       - name: SAE fortnight and monthly matching (PostgreSQL + Chromium + WebKit)
         run: npm run test:sae-fortnights
+      - name: SAE hiring coverage by period and report
+        run: |
+          node --import tsx scripts/testSaeHiringSummary.ts
+          node scripts/testSaeHiringSummaryBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testSaeHiringSummaryBrowser.mjs
       - name: Employment PDF and responsive browser regression
         run: |
           npm run test:employment-browser
@@ -225,6 +230,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 

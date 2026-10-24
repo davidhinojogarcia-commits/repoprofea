@@ -673,3 +673,31 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .profea-app-dialog-panel > :last-child > :last-child { flex-direction: column; }
   .profea-app-dialog-panel > :last-child > :last-child button { width: 100%; overflow-wrap: anywhere; }
 }
+
+/* SAE: persistent hiring coverage above the worker list. */
+.sae-hiring-summary { position: sticky; top: var(--sae-summary-top, 0px); z-index: 20; padding: 12px; background: #fff; border: 1px solid #cbd5e1; box-shadow: 0 4px 16px #0f172a14; }
+.sae-hiring-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin-bottom: 8px; }
+.sae-hiring-heading h2 { font-size: 14px; font-weight: 900; margin: 0; }
+.sae-hiring-heading > span { font-size: 11px; color: #475569; }
+.sae-hiring-rows { max-height: 30vh; overflow-y: auto; overscroll-behavior: contain; }
+.sae-hiring-row { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, minmax(58px, 75px)); align-items: center; gap: 6px; border-top: 1px solid #e2e8f0; padding: 7px 0; }
+.sae-hiring-label { display: flex; flex-direction: column; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.sae-hiring-label span { font-size: 11px; color: #475569; }
+.sae-hiring-label .sae-report-contribution { color: #00548e; font-weight: 700; }
+.sae-hiring-number { display: flex; flex-direction: column; text-align: center; font-size: 10px; }
+.sae-hiring-number strong { font-size: 20px; line-height: 1.1; }
+.sae-hiring-balance { color: #92400e; }
+.sae-hiring-complete .sae-hiring-balance { color: #166534; }
+.sae-hiring-excess .sae-hiring-balance { color: #be123c; }
+.sae-hiring-details { font-size: 11px; border-top: 1px solid #cbd5e1; padding-top: 6px; }
+.sae-hiring-details summary { cursor: pointer; font-weight: 700; }
+.sae-hiring-details[open] { max-height: 22vh; overflow-y: auto; }
+.sae-hiring-details p { margin: 6px 0; }
+.dark .sae-hiring-summary { background: #0f172a; border-color: #475569; color: #f1f5f9; }
+.dark .sae-hiring-heading > span, .dark .sae-hiring-label span { color: #cbd5e1; }
+.dark .sae-hiring-label .sae-report-contribution { color: #7dd3fc; }
+.dark .sae-hiring-row, .dark .sae-hiring-details { border-color: #475569; }
+.dark .sae-hiring-balance { color: #fcd34d; }
+.dark .sae-hiring-complete .sae-hiring-balance { color: #86efac; }
+.dark .sae-hiring-excess .sae-hiring-balance { color: #fda4af; }
+@media (max-width: 480px) { .sae-hiring-summary { padding: 9px; } .sae-hiring-row { grid-template-columns: minmax(0, 1fr) repeat(3, 60px); gap: 3px; } .sae-hiring-number { font-size: 9px; } }
