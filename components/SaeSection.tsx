@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
 import SaeReportPreview from './SaeReportPreview';
@@ -354,7 +355,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         const records = await listAnnualHiringPeriods();
         if (!cancelled) setAnnualPeriods(records);
       } catch (error) {
-        console.warn("No se pudo comprobar la anualidad SAE:", error);
+        reportOperationalError("No se pudo comprobar la anualidad SAE:", error, 'warn');
       }
     };
     const handleAnnualPeriodsUpdated = () => void loadAnnualPeriods();
@@ -976,7 +977,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             previousMedicalValidity;
         }
       } catch (error) {
-        console.warn("No se pudieron recuperar las limitaciones médicas históricas:", error);
+        reportOperationalError("No se pudieron recuperar las limitaciones médicas históricas:", error, 'warn');
       }
     }
 
@@ -1128,10 +1129,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       try {
         await updateSaeCandidate(candidate.id, originalPatch);
       } catch (rollbackError) {
-        console.error(
-          "No se pudo restaurar el candidato tras fallar la reversión SAE:",
-          rollbackError,
-        );
+        reportOperationalError("No se pudo restaurar el candidato tras fallar la reversión SAE:", rollbackError);
       }
       try {
         const fresh = await listSaeCandidates(candidate.needId);

@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../lib/operationalLog';
 import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION } from "../lib/profeaTutorKnowledge.js";
 import { authenticateTutorRequest, composeTutorResponseLocal, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorRequestLocal, TUTOR_AGENT_VERSION } from "./profeaTutorAgent.js";
 
@@ -78,7 +79,7 @@ export async function profeaTutorHandler(req: any, res: any) {
       });
     } catch (error: any) {
       const status = Number(error?.status) || 500;
-      if (status >= 500) console.error("Tutor PROFEA: operación no completada.", {
+      if (status >= 500) reportOperationalError("Tutor PROFEA: operación no completada.", {
         code: ["CONFIG_MISSING", "UPSTREAM_NETWORK", "UPSTREAM_HTTP"].includes(error?.tutorDiagnostic) ? error.tutorDiagnostic : "INTERNAL",
         upstreamStatus: Number.isInteger(Number(error?.status)) ? Number(error.status) : null,
       });

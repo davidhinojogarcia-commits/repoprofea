@@ -8,6 +8,7 @@
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
+    "test:operational-logs": "node --import tsx scripts/testOperationalLog.ts",
     "test:prevention": "node --import tsx scripts/testPrevention.ts && node scripts/testPreventionSql.mjs && node scripts/runPreventionUi.mjs",
     "test:foreman-publication": "node scripts/testForemanPublicationSql.mjs && node --import tsx scripts/testForemanSafeGeometry.ts && node scripts/testForemanPublicationUi.mjs && node scripts/testMandatoryDraftEditor.mjs && node scripts/testMandatoryDraftService.mjs && node scripts/testMandatoryOverlapPdf.mjs && node scripts/testForemanPublicationReceipt.mjs && node --import tsx scripts/testForemanDocumentPeriod.ts && node --import tsx scripts/testForemanRepeatSignature.ts && node scripts/testIndependentForemanSql.mjs && node scripts/testIndependentForemanPdf.mjs",
     "test:visit-minutes": "node --import tsx scripts/testVisitForeman.ts && node scripts/testVisitMinutesDomain.mjs && node scripts/testVisitMinutesPdf.mjs && node scripts/testVisitMinutesIntegration.mjs && node scripts/testVisitMinutesMixed.mjs && node scripts/testVisitMinutes31.mjs",

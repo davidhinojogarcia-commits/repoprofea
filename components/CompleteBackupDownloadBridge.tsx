@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect } from 'react';
 import { buildSupabaseSystemBackup } from '../src/services/backupExportService';
 import { compressToGzip, isCompressionSupported } from '../src/lib/compression';
@@ -48,7 +49,7 @@ export const CompleteBackupDownloadBridge: React.FC = () => {
           }
           window.dispatchEvent(new CustomEvent('profea:toast', { detail: { message: 'Copia completa v4 generada correctamente.', type: 'success' } }));
         } catch (error: any) {
-          console.error('Copia completa PROFEA:', error);
+          reportOperationalError('Copia completa PROFEA:', error);
           window.alert(error?.message || 'No se pudo generar la copia de seguridad completa.');
         } finally {
           busy = false;

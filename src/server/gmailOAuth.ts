@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../lib/operationalLog';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
@@ -229,7 +230,7 @@ export function apiError(res: any, error: any, fallback = 'No se pudo completar 
   const code = String(error?.code || '');
   // Expected authorization errors are shown to the user. Unexpected failures
   // emit one bounded operational record, never request/provider bodies or tokens.
-  if(status>=500)console.error('[gmail-api]',{status,code:/^[A-Z0-9_]{1,80}$/.test(code)?code:'GMAIL_OPERATION_FAILED'});
+  if(status>=500)reportOperationalError('[gmail-api]', {status,code:/^[A-Z0-9_]{1,80}$/.test(code)?code:'GMAIL_OPERATION_FAILED'});
   return res.status(status >= 400 && status < 600 ? status : 500).json({
     ok: false,
     code: code || undefined,

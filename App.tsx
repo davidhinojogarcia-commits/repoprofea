@@ -1,3 +1,4 @@
+import { reportOperationalError } from './src/lib/operationalLog';
 
 import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth } from './src/lib/supabaseData';
@@ -226,7 +227,7 @@ function App() {
         setInterfaceMode(resolvedMode);
         localStorage.setItem(`profea_interface_mode:${user.id}`, resolvedMode);
       } catch (error) {
-        console.warn('No se pudo recuperar la preferencia de interfaz:', error);
+        reportOperationalError('No se pudo recuperar la preferencia de interfaz:', error, 'warn');
       }
     };
 
@@ -265,7 +266,7 @@ function App() {
         type: 'success',
       });
     } catch (error) {
-      console.error('No se pudo guardar la preferencia de interfaz:', error);
+      reportOperationalError('No se pudo guardar la preferencia de interfaz:', error);
       setInterfaceMode(previousMode);
       const user = await getSessionUser().catch(() => null);
       if (user) localStorage.setItem(`profea_interface_mode:${user.id}`, previousMode);
@@ -361,7 +362,7 @@ function App() {
   useEffect(() => {
     if (people && people.length > 0) {
       void checkAndTriggerUpcomingAlerts(people).catch(error => {
-        console.warn('No se pudieron actualizar las alertas locales:', error);
+        reportOperationalError('No se pudieron actualizar las alertas locales:', error, 'warn');
       });
     }
   }, [people]);
@@ -454,7 +455,7 @@ function App() {
         });
       }
     } catch (err: any) {
-      console.error('Error auto-saving to Google Drive:', err);
+      reportOperationalError('Error auto-saving to Google Drive:', err);
       setToast({ 
         message: 'Error al subir copia a Google Drive: ' + (err.message || err), 
         type: 'error' 
@@ -482,7 +483,7 @@ function App() {
           setViewingWorkerPdf(pdfUrl);
           setViewingWorkerName(worker.apellidosNombre);
         } catch (error) {
-          console.error('Error generating QR target PDF:', error);
+          reportOperationalError('Error generating QR target PDF:', error);
           setToast({ message: 'Error al generar la credencial en PDF', type: 'error' });
         }
       }, 1000);
@@ -505,7 +506,7 @@ function App() {
         sincronizadoEnNube: true,
       })));
     }, { includeShared: true }, error => {
-      console.error('Error leyendo trabajadores de Supabase:', error);
+      reportOperationalError('Error leyendo trabajadores de Supabase:', error);
       setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
@@ -529,7 +530,7 @@ function App() {
     const unsubscribe = subscribeToDocuments<DeletedPerson>('trash', items => {
       setDeletedPeople(items);
     }, { includeShared: true }, error => {
-      console.error('Error leyendo la papelera de Supabase:', error);
+      reportOperationalError('Error leyendo la papelera de Supabase:', error);
       setToast({ message: 'Error al leer la papelera desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
@@ -609,7 +610,7 @@ function App() {
       businessSettingsHydratedRef.current = true;
       clearLegacyBusinessSettings();
     }).catch(error => {
-      console.error('Error cargando configuración empresarial desde Supabase:', error);
+      reportOperationalError('Error cargando configuración empresarial desde Supabase:', error);
       setToast({ message: 'No se pudo cargar la configuración desde Supabase.', type: 'error' });
     });
     return () => { cancelled = true; };
@@ -642,7 +643,7 @@ function App() {
         savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias,
         workStartHour, workEndHour,
       }).catch(error => {
-        console.error('Error guardando configuración empresarial en Supabase:', error);
+        reportOperationalError('Error guardando configuración empresarial en Supabase:', error);
         setToast({ message: 'No se pudo guardar la configuración en Supabase.', type: 'error' });
       });
     }, 250);
@@ -658,7 +659,7 @@ function App() {
       .map(item => item.person.id);
     if (!expiredIds.length) return;
     void Promise.all(expiredIds.map(id => deleteDocument('trash', id))).catch(error => {
-      console.error('Error purgando papelera caducada en Supabase:', error);
+      reportOperationalError('Error purgando papelera caducada en Supabase:', error);
     });
   }, [deletedPeople]);
 
@@ -760,7 +761,7 @@ function App() {
         });
       }
     } catch (err: any) {
-      console.error('Error durante la copia de seguridad a Google Drive:', err);
+      reportOperationalError('Error durante la copia de seguridad a Google Drive:', err);
       const nowIso = new Date().toISOString();
       const newHistoryItem = {
         id: `drive_bak_err_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -940,7 +941,7 @@ function App() {
     try {
       await createDocument('trabajadores', newPerson.id, newPerson as any);
     } catch (error) {
-      console.error('Error guardando trabajador en Supabase:', error);
+      reportOperationalError('Error guardando trabajador en Supabase:', error);
       setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
       return;
     }
@@ -987,7 +988,7 @@ function App() {
       // 2) el CONTROL DE PRESENCIA con todos los trabajadores activos de la obra.
       await prepareMandatoryForemanDocuments(formattedWorkers);
     } catch (error) {
-      console.error('Error persistiendo trabajadores importados o preparando documentación obligatoria:', error);
+      reportOperationalError('Error persistiendo trabajadores importados o preparando documentación obligatoria:', error);
       setToast({ message: 'La importación no se ha guardado completamente. No se han aplicado cambios.', type: 'error' });
       return;
     }
@@ -1040,7 +1041,7 @@ function App() {
       await deleteDocument('trabajadores', id);
       setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
     } catch (error) {
-      console.error('Error enviando trabajador a papelera en Supabase:', error);
+      reportOperationalError('Error enviando trabajador a papelera en Supabase:', error);
       setToast({ message: 'No se pudo enviar el registro a la Papelera.', type: 'error' });
     }
   };
@@ -1057,7 +1058,7 @@ function App() {
       }
       setToast({ message: `${peopleToDelete.length} registros enviados a la Papelera correctamente`, type: 'success' });
     } catch (error) {
-      console.error('Error en baja múltiple de Supabase:', error);
+      reportOperationalError('Error en baja múltiple de Supabase:', error);
       setToast({ message: 'No se pudieron enviar todos los registros a la Papelera.', type: 'error' });
     }
   };
@@ -1070,7 +1071,7 @@ function App() {
       await deleteDocument('trash', id);
       setToast({ message: `Registro de ${foundDeleted.person.apellidosNombre} restaurado correctamente`, type: 'success' });
     } catch (error) {
-      console.error('Error restaurando trabajador desde Supabase:', error);
+      reportOperationalError('Error restaurando trabajador desde Supabase:', error);
       setToast({ message: 'No se pudo restaurar el registro.', type: 'error' });
     }
   };
@@ -1083,7 +1084,7 @@ function App() {
       await deleteDocument('trash', id);
       setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
     } catch (error) {
-      console.error('Error eliminando definitivamente en Supabase:', error);
+      reportOperationalError('Error eliminando definitivamente en Supabase:', error);
       setToast({ message: 'No se pudo eliminar definitivamente el registro.', type: 'error' });
     }
   };
@@ -1095,7 +1096,7 @@ function App() {
       for (const item of deletedPeople) await deleteDocument('trash', item.person.id);
       setToast({ message: 'Papelera vaciada correctamente', type: 'success' });
     } catch (error) {
-      console.error('Error vaciando la papelera en Supabase:', error);
+      reportOperationalError('Error vaciando la papelera en Supabase:', error);
       setToast({ message: 'No se pudo vaciar completamente la Papelera.', type: 'error' });
     }
   };
@@ -1154,7 +1155,7 @@ function App() {
         type: 'success'
       });
     } catch (error) {
-      console.error('Error actualizando trabajador en Supabase:', error);
+      reportOperationalError('Error actualizando trabajador en Supabase:', error);
       const detail = error instanceof Error && error.message
         ? ` ${error.message}`
         : '';
@@ -1177,7 +1178,7 @@ function App() {
       setBulkEditingPeople(null);
       setToast({ message: `${updated.length} registros actualizados correctamente`, type: 'success' });
     } catch (error) {
-      console.error('Error en edición masiva en Supabase:', error);
+      reportOperationalError('Error en edición masiva en Supabase:', error);
       setToast({ message: 'No se pudieron actualizar todos los registros.', type: 'error' });
     }
   };
@@ -1467,7 +1468,7 @@ function App() {
       const blob = doc.output('blob');
       uploadToGoogleDrive(blob, filename);
     } catch (err) {
-      console.error('Error generating summary PDF:', err);
+      reportOperationalError('Error generating summary PDF:', err);
       alert('Ocurrió un error al generar el PDF del resumen de obra.');
     }
   };
@@ -1547,7 +1548,7 @@ function App() {
       const blob = doc.output('blob');
       uploadToGoogleDrive(blob, filename);
     } catch (err) {
-      console.error('Error generating stats summary PDF:', err);
+      reportOperationalError('Error generating stats summary PDF:', err);
       alert('Ocurrió un error al generar el PDF del resumen de estadísticas.');
     }
   };
@@ -1561,7 +1562,7 @@ function App() {
       uploadToGoogleDrive(blob, filename);
       return filename;
     } catch (error) {
-      console.error('Error al generar carné:', error);
+      reportOperationalError('Error al generar carné:', error);
       alert('Error al generar la credencial en PDF');
     }
   };
@@ -1575,7 +1576,7 @@ function App() {
       uploadToGoogleDrive(blob, filename);
       return filename;
     } catch (error) {
-      console.error('Error al generar historial de contratos:', error);
+      reportOperationalError('Error al generar historial de contratos:', error);
       alert('Error al generar el historial de contratación en PDF');
     }
   };
@@ -1668,7 +1669,7 @@ function App() {
             }
           }
         } catch (apiErr) {
-          console.warn('API parse-pdf failed, falling back to client-side extraction:', apiErr);
+          reportOperationalError('API parse-pdf failed, falling back to client-side extraction:', apiErr, 'warn');
         }
 
         if (extracted.length > 0) {
@@ -1746,7 +1747,7 @@ function App() {
               });
             });
           } catch (pdfJsErr) {
-            console.error('Client-side PDF text extraction error:', pdfJsErr);
+            reportOperationalError('Client-side PDF text extraction error:', pdfJsErr);
           }
         }
       } else {
@@ -1935,7 +1936,7 @@ function App() {
             }
           }
         } catch (excelErr) {
-          console.warn('Excel parsing failed, trying text/CSV/JSON fallback:', excelErr);
+          reportOperationalError('Excel parsing failed, trying text/CSV/JSON fallback:', excelErr, 'warn');
         }
 
         if (!parsedWithExcel) {
@@ -2058,7 +2059,7 @@ function App() {
               }
             }
           } catch (textErr) {
-            console.error('Fallback text parsing failed:', textErr);
+            reportOperationalError('Fallback text parsing failed:', textErr);
           }
         }
       }
@@ -2069,7 +2070,7 @@ function App() {
         setToast({ message: 'No se encontraron datos válidos para importar. Asegúrese de usar el formato Excel, CSV, JSON o PDF.', type: 'error' });
       }
     } catch (error: any) {
-      console.error('Error al importar archivo:', error);
+      reportOperationalError('Error al importar archivo:', error);
       const friendlyMsg = error?.message && error.message !== 'Load failed'
         ? error.message
         : 'No se pudo leer el archivo. Compruebe que no está dañado o pruebe con otro formato (Excel, CSV, JSON o PDF).';
@@ -2468,7 +2469,7 @@ function App() {
                   })).then(() => {
                     setPeople(updatedPeople.map(p => ({ ...p, sincronizadoEnNube: true })));
                   }).catch(error => {
-                    console.error('Error guardando reconocimientos en Supabase:', error);
+                    reportOperationalError('Error guardando reconocimientos en Supabase:', error);
                     setToast({ message: 'No se han podido guardar los cambios médicos en la base de datos.', type: 'error' });
                   });
                 }}

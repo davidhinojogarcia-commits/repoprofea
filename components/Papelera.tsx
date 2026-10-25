@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { DeletedPerson } from '../types';
@@ -30,14 +31,14 @@ export const Papelera: React.FC<PapeleraProps> = ({
       setConfirmEmptyOpen(false);
       // La suscripción del padre relee Supabase cada pocos segundos y actualizará la lista.
     } catch (error) {
-      console.error('Error vaciando la papelera en bloque:', error);
+      reportOperationalError('Error vaciando la papelera en bloque:', error);
       // Compatibilidad/fallback: si el RPC no estuviera disponible en un despliegue antiguo,
       // mantenemos el comportamiento previo en vez de dejar la acción inservible.
       try {
         await Promise.resolve(onEmptyTrash());
         setConfirmEmptyOpen(false);
       } catch (fallbackError) {
-        console.error('Error vaciando la papelera con el método de compatibilidad:', fallbackError);
+        reportOperationalError('Error vaciando la papelera con el método de compatibilidad:', fallbackError);
         window.alert('No se pudo vaciar la papelera. Inténtalo de nuevo.');
       }
     } finally {

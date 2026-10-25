@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import ModalPortal from './ModalPortal';
@@ -126,7 +127,7 @@ export const PersonList: React.FC<PersonListProps> = ({
     try {
       localStorage.setItem('profea_personlist_view', layout);
     } catch (e) {
-      console.error(e);
+      reportOperationalError("components/PersonListView.tsx:129", e);
     }
   };
 
@@ -269,7 +270,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         }
       });
     } catch (err) {
-      console.error('Error loading Google Picker:', err);
+      reportOperationalError('Error loading Google Picker:', err);
       setIsDriveLoading(false);
       alert('Error al abrir el selector de Google Drive.');
     }
@@ -304,7 +305,7 @@ export const PersonList: React.FC<PersonListProps> = ({
       const file = new File([blob], finalName, { type: finalMime });
       onImport(file);
     } catch (err: any) {
-      console.error(err);
+      reportOperationalError("components/PersonListView.tsx:307", err);
       alert('Error al descargar archivo de Google Drive: ' + (err.message || err));
     } finally {
       setIsDriveLoading(false);

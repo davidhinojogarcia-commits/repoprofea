@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { supabase, type SupabaseUser } from '../src/lib/supabase';
@@ -111,7 +112,7 @@ export function AuthGate({ children }: AuthGateProps) {
         // No destruir una sesión válida por un fallo temporal de red/Supabase.
         // El formulario queda disponible para reintentar y el siguiente evento de
         // autenticación volverá a validar el perfil.
-        console.warn('AUTH_PROFILE_VALIDATION_FAILED', { status: Number((validationError as any)?.status) || 0 });
+        reportOperationalError('AUTH_PROFILE_VALIDATION_FAILED', { status: Number((validationError as any)?.status) || 0 }, 'warn');
         setError('No se ha podido validar la sesión. Comprueba la conexión y vuelve a intentarlo.');
       } finally {
         if (validationId === authValidationRef.current) { startupComplete = true; setLoading(false); }

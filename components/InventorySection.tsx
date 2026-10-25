@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { InventoryInvitationLink } from './InventoryInvitationLink';
@@ -272,7 +273,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
         (result.failed ? ' · ' + result.failed + ' con error' : '') + '.'
       );
     } catch (error: any) {
-      console.error('[inventory-excel-import]', error);
+      reportOperationalError('[inventory-excel-import]', error);
       setExcelImportNotice(error?.message || 'No se pudo importar el inventario desde Excel.');
     } finally {
       setExcelImportBusy(false);

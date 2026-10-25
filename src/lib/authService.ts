@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import type { AuthChangeEvent } from '@supabase/supabase-js';
 import { getSessionUser, normalizeSupabaseUser, supabase, type SupabaseUser } from './supabase';
 import { auth } from './supabaseData';
@@ -78,7 +79,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
   // last_access_at del usuario autenticado, sin exponer otros campos del perfil.
   // Si la migración todavía no está aplicada, el acceso continúa funcionando.
   await supabase.rpc('mark_own_last_access').catch((error) => {
-    console.warn('AUTH_LAST_ACCESS_FAILED', { status: Number(error?.status) || 0 });
+    reportOperationalError('AUTH_LAST_ACCESS_FAILED', { status: Number(error?.status) || 0 }, 'warn');
   });
 
   await supabase.query('audit_logs', {
@@ -92,7 +93,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
       resource_id: user.id,
       details: {},
     },
-  }).catch(error => console.error('AUTH_LOGIN_AUDIT_FAILED', { status: Number(error?.status) || 0 }));
+  }).catch(error => reportOperationalError('AUTH_LOGIN_AUDIT_FAILED', { status: Number(error?.status) || 0 }));
 
   if ((await getSessionUser())?.id !== user.id) throw Object.assign(new Error('La sesión ha cambiado. Vuelve a iniciar sesión.'), {code:'auth/session-changed'});
   auth.currentUser = user;

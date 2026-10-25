@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../lib/operationalLog';
 import { getSessionUser, supabase } from "../lib/supabase";
 import { syncMedicalAppointmentFromWorker } from "./medicalAppointmentAutoSync";
 
@@ -394,7 +395,7 @@ export async function createDocument<T extends DatabaseRecord>(
   if (table === "trabajadores") {
     void syncMedicalAppointmentFromWorker(effectiveData, id, user.id).catch(
       (error) => {
-        console.error("Error sincronizando cita médica automática:", error);
+        reportOperationalError("Error sincronizando cita médica automática:", error);
       },
     );
   }
@@ -445,7 +446,7 @@ export async function updateDocument<T extends DatabaseRecord>(
   if (table === "trabajadores") {
     void syncMedicalAppointmentFromWorker(merged, id, user.id).catch(
       (error) => {
-        console.error("Error actualizando cita médica automática:", error);
+        reportOperationalError("Error actualizando cita médica automática:", error);
       },
     );
   }

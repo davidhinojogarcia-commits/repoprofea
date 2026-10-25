@@ -579,7 +579,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       revisionHumanaObligatoria: true
     });
   } catch (error: any) {
-    console.error('[CAE analysis v2]', error instanceof Error ? error.message : 'error');
+    reportOperationalError('[CAE analysis v2]', error instanceof Error ? error.message : 'error');
     const message = String(error?.message || 'Error procesando la documentación CAE.');
     const clientError = /No se proporcion|máximo|supera|sin nombre|checklist/i.test(message);
     return sendJson(res, clientError ? 400 : 500, { error: message, engineVersion: '2.3.0' });

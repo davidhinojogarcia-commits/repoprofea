@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 // Helper para el Registro de Service Worker y Gestión de Notificaciones Push
 import { Person } from '../../types';
 
@@ -93,7 +94,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
     return registration;
   } catch (error) {
-    console.error('[SW] Error al registrar el Service Worker:', error);
+    reportOperationalError('[SW] Error al registrar el Service Worker:', error);
     return null;
   }
 }
@@ -137,7 +138,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
     if (import.meta.env.DEV) console.debug('[Notificaciones] Permiso de notificación concedido:', permission);
     return permission;
   } catch (error) {
-    console.error('[Notificaciones] Error solicitando permisos de notificación:', error);
+    reportOperationalError('[Notificaciones] Error solicitando permisos de notificación:', error);
     return 'denied';
   }
 }

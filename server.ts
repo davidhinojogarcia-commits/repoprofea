@@ -1,3 +1,4 @@
+import { reportOperationalError } from './src/lib/operationalLog.js';
 import { foremanPushHandler } from './src/server/foremanPushHandler';
 import { visitMinutesHandler } from './src/server/visitMinutesHandler';
 import express from "express";
@@ -44,7 +45,7 @@ async function extractTextFromOfficeBuffer(buffer: Buffer, filename: string): Pr
       return result.value || '';
     }
   } catch (err) {
-    console.warn(`[Office Parser] No se pudo extraer texto nativo de ${filename}:`, err);
+    reportOperationalError("server.ts:47", err, 'warn');
   }
   return '';
 }
@@ -121,7 +122,7 @@ async function startServer() {
         try {
           const parsed = JSON.parse(candidate);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            console.warn(`Successfully recovered ${parsed.length} records from truncated JSON stream.`);
+            reportOperationalError("server.ts:124", `Successfully recovered ${parsed.length} records from truncated JSON stream.`, 'warn');
             return parsed;
           }
         } catch {
@@ -147,7 +148,7 @@ async function startServer() {
     }
 
     if (recovered.length > 0) {
-      console.warn(`Recovered ${recovered.length} records via regex object matching.`);
+      reportOperationalError("server.ts:150", `Recovered ${recovered.length} records via regex object matching.`, 'warn');
       return recovered;
     }
 
@@ -204,13 +205,13 @@ async function startServer() {
 
           // If a model is experiencing 503 high demand and we have alternative models, switch immediately
           if (is503HighDemand && hasAlternativeModel) {
-            console.log(`[Gemini API] Modelo '${model}' experimentando alta demanda (503). Conmutando de inmediato a modelo de respaldo...`);
+            if (process.env.NODE_ENV !== 'production') console.debug('[Gemini API] Modelo saturado; se intenta el siguiente modelo configurado.');
             break;
           }
 
           if ((is503HighDemand || isRateLimit) && attempt < maxRetries) {
             const backoffMs = 1000 * attempt + Math.floor(Math.random() * 300);
-            console.log(`[Gemini API] Reintentando en ${backoffMs}ms...`);
+            if (process.env.NODE_ENV !== 'production') console.debug('[Gemini API] Reintento acotado de la solicitud.');
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
             continue;
           }
@@ -341,7 +342,7 @@ Devuelve la información estrictamente como un array JSON de objetos con estos c
       const workers: any[] = robustParseJsonArray(rawJson);
       res.json({ success: true, workers });
     } catch (error: any) {
-      console.error("Error recognizing workers:", error);
+      reportOperationalError("Error recognizing workers:", error);
       res.status(500).json({ error: error.message || "Error procesando el reconocimiento automático." });
     }
   });
@@ -438,7 +439,7 @@ Genera y devuelve la información de todos los trabajadores encontrados en el PD
       const workers: any[] = robustParseJsonArray(rawJson);
       res.json({ success: true, workers });
     } catch (error: any) {
-      console.error("Error parsing PDF workers:", error);
+      reportOperationalError("Error parsing PDF workers:", error);
       res.status(500).json({ error: error.message || "Error al procesar el PDF automáticamente." });
     }
   });
@@ -547,7 +548,7 @@ ${extractedText.slice(0, 120000)}`
 
       res.json({ success: true, items, count: items.length });
     } catch (error: any) {
-      console.error("Error analyzing inventory Excel:", error);
+      reportOperationalError("Error analyzing inventory Excel:", error);
       res.status(500).json({ error: error?.message || "No se pudo analizar automáticamente el inventario Excel." });
     }
   });
@@ -675,7 +676,7 @@ Retorna únicamente el array de objetos JSON que cumpla el formato requerido. No
       }
       res.json({ success: true, schedule });
     } catch (error: any) {
-      console.error("Error scheduling appointments with AI:", error);
+      reportOperationalError("Error scheduling appointments with AI:", error);
       res.status(500).json({ error: error.message || "Error al procesar la planificación automática." });
     }
   });
@@ -923,7 +924,7 @@ Retorna únicamente el array de objetos JSON que cumpla el formato requerido. No
             const buf = Buffer.from(raw, 'base64');
             officeText = await extractTextFromOfficeBuffer(buf, fname);
           } catch (e) {
-            console.warn(`[Medical Records] Error extrayendo office text de ${fname}:`, e);
+            reportOperationalError("server.ts:926", e, 'warn');
           }
         }
 
@@ -1166,7 +1167,7 @@ Devuelve única y estrictamente un array JSON estructurado conforme al esquema d
         filenames: preparedFiles.map(f => f.filename)
       });
     } catch (error: any) {
-      console.error("Error parsing medical records PDF:", error);
+      reportOperationalError("Error parsing medical records PDF:", error);
       res.status(500).json({ error: error.message || "Error al procesar automáticamente los reconocimientos médicos del documento." });
     }
   });
@@ -1641,7 +1642,7 @@ Devuelve única y estrictamente un array JSON estructurado conforme al esquema d
             const buf = Buffer.from(cleanBase64, 'base64');
             officeText = await extractTextFromOfficeBuffer(buf, fname);
           } catch (e) {
-            console.warn(`[Subcontratas CAE] Error extrayendo office text de ${fname}:`, e);
+            reportOperationalError("server.ts:1644", e, 'warn');
           }
         }
 
@@ -1821,7 +1822,7 @@ Responde estrictamente en formato JSON según el esquema.`;
           }
         });
       } catch (geminiError: any) {
-        console.warn("[Subcontratas AI] Gemini falló, activando motor de análisis heurístico de respaldo:", geminiError?.message || geminiError);
+        reportOperationalError("[Subcontratas AI] Gemini falló, activando motor de análisis heurístico de respaldo:", geminiError, 'warn');
         return res.json(runHeuristicFallback(files));
       }
 
@@ -1945,7 +1946,7 @@ Responde estrictamente en formato JSON según el esquema.`;
         textoRequerimiento: parsedData.textoRequerimiento || ""
       });
     } catch (error: any) {
-      console.error("Error in /api/analyze-subcontractor-docs:", error);
+      reportOperationalError("Error in /api/analyze-subcontractor-docs:", error);
       res.status(500).json({ error: error.message || "Error procesando el análisis de documentación de subcontratas." });
     }
   });
