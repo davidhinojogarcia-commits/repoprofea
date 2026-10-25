@@ -58,7 +58,8 @@
     "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs",
     "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs",
     "test:visit-writing-browser": "node scripts/testVisitWritingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitWritingBrowser.mjs",
-    "test:calendar-dates": "node scripts/testIntegratedCalendarDates.mjs"
+    "test:calendar-dates": "node scripts/testIntegratedCalendarDates.mjs",
+    "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
@@ -96,5 +97,3 @@
     "vite": "^6.2.0"
   }
 }
-
-
