@@ -69,7 +69,8 @@
       "release/2026-10-18-pending": false,
       "feat/visit-writing-assistant": false,
       "fix/visit-writing-runtime-configuration": false,
-      "fix/sae-capacity-name-editor-20261025": false
+      "fix/sae-capacity-name-editor-20261025": false,
+      "fix/sae-persistent-alignment-default-20261025": false
     }
   }
 }
