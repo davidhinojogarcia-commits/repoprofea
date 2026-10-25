@@ -78,3 +78,33 @@ La CI anterior del commit 5ea900d corresponde a Gateway y no valida este cambio 
 Para cerrar: CI del commit final satisfactoria; cuenta confirmada Free sin método de pago; controles de datos revisados (ZDR); generación real escrita y dictada con el verificador y revisión humana; incorporación expresa, guardado y reapertura desde cuenta autorizada. Las pruebas automatizadas no acreditan dispositivos físicos iPhone/Android/iPad.
 
 No se ha configurado una clave Groq ni ejecutado generación real. No fusionar/publicar automáticamente. Desde tablet se puede crear la cuenta y, cuando proceda configurar, introducir la clave directamente en la variable sensible GROQ_API_KEY del proyecto Vercel, nunca aquí; después será necesario un despliegue autorizado para que el runtime reciba la variable.
+
+## Actualización sobre main — 25/10/2026
+
+Se integra main `79f22edf01244d5c219afeae8522f65ad2ffc0fb` en esta rama,
+conservando sus correcciones SAE PT409, recuperación de sesión, borradores
+cifrados al salir, aislamiento entre cuentas, caché y toda la CI vigente.
+La prueba de secretos ya está en main; se reutiliza sin duplicar pasos.
+Solo se reintroducen los archivos del adaptador Groq y sus pruebas, la
+documentación, las variables de ejemplo y la exclusión de despliegue automático.
+No se sustituye package.json ni el workflow por sus versiones antiguas.
+
+La producción sigue usando Gemini y devuelve configured=false. Los metadatos
+de Vercel no contienen GROQ_API_KEY. No se descifraron secretos. No se ha
+realizado generación real, ni se ha comprobado la cuenta o el dispositivo.
+
+Fuentes oficiales comprobadas de nuevo el 25/10:
+- https://console.groq.com/docs/rate-limits publica para Free y gpt-oss-20b
+  30 peticiones/minuto, 1.000/día, 8.000 tokens/minuto y 200.000/día. Son
+  referencias generales: los límites efectivos deben revisarse en la cuenta.
+- https://console.groq.com/docs/your-data permite ZDR en Data Controls para
+  todos los clientes. Sin ese ajuste pueden retenerse entradas/salidas hasta
+  30 días por fiabilidad/abuso. Los datos retenidos se alojan en EE. UU.; no
+  se acredita residencia europea ni que ZDR esté activado en esta cuenta.
+
+El modelo Groq usa VISIT_WRITING_GROQ_MODEL y no la variable heredada
+VISIT_WRITING_MODEL de Gemini. No hace falta sustituir esta última para Groq.
+Mantener el PR en borrador hasta verificar Free, controles de datos,
+credencial real, dos generaciones y revisión/incorporación/guardado/reapertura.
+El verificador con sesión solo solicita propuestas; no valida por sí solo
+la incorporación ni persistencia en la interfaz.

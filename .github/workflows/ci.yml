@@ -8,8 +8,6 @@ on:
 
 jobs:
   build:
-    # Playwright 1.56.1 cannot install Chromium/WebKit on Ubuntu 26.04.
-    # Keep the supported OS explicit instead of following ubuntu-latest.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -91,9 +89,27 @@ jobs:
         run: npm run test:employment-documents
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
+      - name: Install browser runtimes
+        timeout-minutes: 8
+        run: |
+          # The Azure Ubuntu mirror stalled package downloads on hosted runners.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chromium webkit
+      - name: Auth recovery, isolation and browser races
+        run: |
+          node scripts/testAuthRecovery.mjs
+          node scripts/testAuthRecoveryBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testAuthRecoveryBrowser.mjs
+          node scripts/testClientSecretIsolation.mjs
+      - name: SAE fortnight and monthly matching (PostgreSQL + Chromium + WebKit)
+        run: npm run test:sae-fortnights
+      - name: SAE hiring coverage by period and report
+        run: |
+          node --import tsx scripts/testSaeHiringSummary.ts
+          node scripts/testSaeHiringSummaryBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testSaeHiringSummaryBrowser.mjs
       - name: Employment PDF and responsive browser regression
         run: |
-          npx playwright install --with-deps chromium webkit
           npm run test:employment-browser
           npm run test:independent-foreman-browser
           node scripts/testAppDialogBrowser.mjs
@@ -158,6 +174,8 @@ jobs:
         run: npm run test:modal-layering
       - name: Global confirmation browser regression (Chromium + WebKit)
         run: npm run test:app-dialog-browser
+      - name: Notification dialog reachable exits
+        run: node scripts/testNotificationCloseBrowser.mjs
       - name: Light/dark contrast regression
         run: npm run test:theme-contrast
       - name: Global modal stack audit
@@ -188,8 +206,6 @@ jobs:
           path: tsc-output.log
           if-no-files-found: ignore
           retention-days: 3
-      - name: Ensure server AI credentials stay out of browser bundles
-        run: node scripts/testClientSecretIsolation.mjs
       - name: Build application
         run: npm run build
       - name: Smoke test production server
@@ -222,6 +238,8 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
+
 
 
 

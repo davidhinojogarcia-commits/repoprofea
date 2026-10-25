@@ -41,6 +41,7 @@ export type SaeReport = {
   codigoObra: string;
   mes: string;
   quincena: string;
+  periodRevision?: string;
   categoria: string;
   status: "review" | "finalized";
   versions: SaeReportVersion[];
@@ -400,52 +401,15 @@ export async function updateSaeReportStatus(
   status: "review" | "finalized",
   snapshot?: SaeReportVersionCandidate[],
 ): Promise<number | null> {
-  const ownerId = await uid();
-  const rows = await supabase.query("sae_reports", {
-    query: `select=detected_legend&id=eq.${encodeURIComponent(id)}&limit=1`,
-  });
-  const legend =
-    rows?.[0]?.detected_legend &&
-    typeof rows[0].detected_legend === "object" &&
-    !Array.isArray(rows[0].detected_legend)
-      ? { ...rows[0].detected_legend }
-      : {};
-
-  const previousVersions = Array.isArray((legend as any).__finalized_versions)
-    ? (legend as any).__finalized_versions
-    : [];
-  let versionNumber: number | null = null;
-  let nextVersions = previousVersions;
-
-  if (status === "finalized" && snapshot) {
-    versionNumber = previousVersions.length + 1;
-    nextVersions = [
-      ...previousVersions,
-      {
-        version: versionNumber,
-        finalizedAt: new Date().toISOString(),
-        candidates: snapshot,
-      },
-    ];
+  await uid();
+  if (status === 'finalized') {
+    if (!snapshot) throw new Error('Debe comprobar la versión del informe antes de finalizarlo.');
+    return await supabase.rpc('sae_finalize_report_version', { p_report_id: id, p_snapshot: snapshot });
   }
-
-  // La tabla de producción restringe processing_status y no admite el valor
-  // funcional "finalized". Mantenemos el estado técnico existente y guardamos
-  // el estado de trabajo + histórico en detected_legend, que ya es JSON.
-  await supabase.query("sae_reports", {
-    method: "PATCH",
-    prefer: "return=minimal",
-    query: `id=eq.${encodeURIComponent(id)}`,
-    body: {
-      detected_legend: {
-        ...legend,
-        __workflow_state: status,
-        __finalized_versions: nextVersions,
-      },
-      updated_by: ownerId,
-    },
-  });
-  return versionNumber;
+  // The server preserves archived versions and reconciles the reopened draft
+  // atomically, without trusting a cached copy of the report history.
+  await supabase.rpc('sae_reopen_report', { p_report_id: id });
+  return null;
 }
 
 export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
@@ -472,8 +436,9 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
       offerNumber: sample.offer_number || "",
       obra: sample.work_name || "",
       codigoObra: sample.work_code || "",
-      mes: monthLabel(Number(sample.hiring_month || 0)),
-      quincena: fortnightLabel(
+      mes: monthLabel(Number(r.detected_legend?.__manual_period?.month || sample.hiring_month || 0)),
+      periodRevision: r.detected_legend?.__manual_period?.revision || "",
+      quincena: r.detected_legend?.__manual_period?.label || fortnightLabel(
         sample.fortnight == null ? null : Number(sample.fortnight),
       ),
       categoria: sample.category || "",
@@ -502,6 +467,19 @@ export async function listSaeReports(needId?: string): Promise<SaeReport[]> {
         : [],
       createdAt: r.created_at,
     } as SaeReport;
+  });
+}
+
+export type SaeReportPeriod = "1ª Quincena" | "2ª Quincena" | "Mensual";
+
+export async function saveSaeReportPeriod(report: SaeReport, period: SaeReportPeriod): Promise<void> {
+  await uid();
+  if (!["1ª Quincena", "2ª Quincena", "Mensual"].includes(period))
+    throw new Error("Seleccione un periodo válido.");
+  await supabase.rpc("sae_set_report_period", {
+    p_report_id: report.id,
+    p_period: period,
+    p_expected_revision: report.periodRevision || "",
   });
 }
 
@@ -718,9 +696,11 @@ export async function updateSaeCandidate(
 ) {
   const ownerId = await uid();
   const currentRows = await supabase.query("sae_candidates", {
-    query: `select=source_position,status,fortnight&id=eq.${encodeURIComponent(id)}&limit=1`,
+    query: `select=id,source_position,status,fortnight,updated_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    networkOnly: true,
   });
-  const current = currentRows?.[0] || {};
+  const current = currentRows?.[0];
+  if (!current) throw new Error('El candidato ya no existe o no tiene permiso para modificarlo.');
   const body: any = { updated_by: ownerId };
   if (patch.normalizedName !== undefined)
     body.normalized_full_name = patch.normalizedName;
@@ -775,12 +755,14 @@ export async function updateSaeCandidate(
     if (patch.overlayY !== undefined) pos.y = patch.overlayY;
     body.source_position = pos;
   }
-  await supabase.query("sae_candidates", {
+  const saved = await supabase.query("sae_candidates", {
     method: "PATCH",
-    prefer: "return=minimal",
-    query: `id=eq.${encodeURIComponent(id)}`,
+    prefer: "return=representation",
+    query: `id=eq.${encodeURIComponent(id)}&owner_id=eq.${encodeURIComponent(ownerId)}&updated_at=eq.${encodeURIComponent(current.updated_at)}`,
+    networkOnly: true,
     body,
   });
+  if (!saved?.length) throw new Error('El candidato ha cambiado en otro dispositivo. Actualice el informe antes de continuar.');
 }
 
 export const SAE_RESULT_CODES = [
@@ -795,4 +777,5 @@ export const SAE_RESULT_CODES = [
   ["2212", "Otros motivos"],
   ["2500", "Ya estaba ocupado el puesto de trabajo"],
 ] as const;
+
 

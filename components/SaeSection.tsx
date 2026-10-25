@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
+import SaeReportPreview from './SaeReportPreview';
+import SaeCodeNotice from './SaeCodeNotice';
+import { syncSaeFortnightCodes, type SaeCodeState } from '../src/services/saeFortnightService';
+import { applySaeMonthlyCode } from '../src/services/saeMonthlyService';
+import SaeMonthlyNotice from './SaeMonthlyNotice';
+import SaeHiringSummary from './SaeHiringSummary';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   AlertTriangle,
@@ -49,6 +55,8 @@ import {
   updateSaeCandidate,
   updateSaeNeed,
   updateSaeReportStatus,
+  saveSaeReportPeriod,
+  type SaeReportPeriod,
 } from "../src/services/saeService";
 import { loadAppBusinessSettings } from "../src/services/appSettingsService";
 import { supabase } from "../src/lib/supabase";
@@ -139,12 +147,29 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       : "",
   );
   const [reports, setReports] = useState<SaeReport[]>([]);
+  const [periodEditor, setPeriodEditor] = useState<{ report: SaeReport; period: string } | null>(null);
+  const [periodSaving, setPeriodSaving] = useState(false);
+  const [periodError, setPeriodError] = useState("");
   const [selectedReportId, setSelectedReportId] = useState(() =>
     typeof window !== "undefined"
       ? window.sessionStorage.getItem("profea-sae-selected-report") || ""
       : "",
   );
   const [candidates, setCandidates] = useState<SaeCandidate[]>([]);
+  const [codeStates, setCodeStates] = useState<SaeCodeState[]>([]);
+  const activeNeedRef = useRef(selectedNeedId);
+  activeNeedRef.current = selectedNeedId;
+  const registrationsInFlight = useRef(new Set<string>());
+  const reportFinalizationsInFlight = useRef(new Set<string>());
+  const candidateWrites = useRef(new Set<string>());
+  const [savingCandidates, setSavingCandidates] = useState<Set<string>>(() => new Set());
+  const codeStateById = useMemo(() => new Map(codeStates.map(state => [state.candidateId, state])), [codeStates]);
+  useEffect(() => {
+    try {
+      if (selectedNeedId) window.sessionStorage.setItem('profea-sae-selected-need', selectedNeedId);
+      if (selectedReportId) window.sessionStorage.setItem('profea-sae-selected-report', selectedReportId);
+    } catch { /* Selection can still be used when session storage is unavailable. */ }
+  }, [selectedNeedId, selectedReportId]);
   const [needForm, setNeedForm] = useState<NeedForm>(emptyNeed);
   const [pendingImportedNeeds, setPendingImportedNeeds] = useState<NeedForm[]>(
     [],
@@ -261,12 +286,16 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     if (!resolved) {
       setReports([]);
       setCandidates([]);
+      setCodeStates([]);
       return;
     }
+    if (resolved !== activeNeedRef.current) return; // The selection effect loads the new need once.
+    const states = await syncSaeFortnightCodes(resolved);
     const [r, c] = await Promise.all([
       listSaeReports(resolved),
-      listSaeCandidates(resolved),
+      listSaeCandidates(resolved, { networkOnly: true }),
     ]);
+    setCodeStates(states);
     setReports(r);
     setCandidates(c);
     setSelectedReportId((current) =>
@@ -276,9 +305,15 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     );
   };
   useEffect(() => {
-    void refresh().catch((e) =>
+    let cancelled = false;
+    void listSaeNeeds().then(next => {
+      if (cancelled) return;
+      setNeeds(next);
+      setSelectedNeedId(current => current && next.some(need => need.id === current) ? current : next[0]?.id || '');
+    }).catch((e) =>
       onToast(e.message || "No se pudo cargar SAE.", "error"),
     );
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     let shouldFocus = false;
@@ -332,11 +367,14 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   }, []);
   useEffect(() => {
     if (!selectedNeedId) return;
-    void Promise.all([
+    let cancelled = false;
+    void syncSaeFortnightCodes(selectedNeedId).then(async states => {
+      const [r, c] = await Promise.all([
       listSaeReports(selectedNeedId),
-      listSaeCandidates(selectedNeedId),
-    ])
-      .then(([r, c]) => {
+      listSaeCandidates(selectedNeedId, { networkOnly: true }),
+      ]);
+      if (!cancelled) {
+        setCodeStates(states);
         setReports(r);
         setCandidates(c);
         setSelectedReportId((current) =>
@@ -344,10 +382,31 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             ? current
             : r[0]?.id || "",
         );
+      }
       })
       .catch((e) =>
         onToast(e.message || "No se pudo cargar la solicitud de mano de obra.", "error"),
       );
+    return () => { cancelled = true; };
+  }, [selectedNeedId]);
+  useEffect(() => {
+    if (!selectedNeedId) return;
+    let cancelled = false;
+    let loading = false;
+    const reload = async () => {
+      if (loading || document.visibilityState === 'hidden') return;
+      loading = true;
+      try {
+        const states = await syncSaeFortnightCodes(selectedNeedId);
+        const fresh = await listSaeCandidates(selectedNeedId, { networkOnly: true });
+        if (!cancelled) { setCodeStates(states); setCandidates(fresh); }
+      } catch (e: any) { if (!cancelled) onToast(e.message || 'No se pudo actualizar SAE.', 'error'); }
+      finally { loading = false; }
+    };
+    const visible = () => { if (document.visibilityState === 'visible') void reload(); };
+    window.addEventListener('focus', reload);
+    document.addEventListener('visibilitychange', visible);
+    return () => { cancelled = true; window.removeEventListener('focus', reload); document.removeEventListener('visibilitychange', visible); };
   }, [selectedNeedId]);
   useEffect(() => {
     setReturnedReportIds([]);
@@ -384,23 +443,6 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       pending: activeCandidates.filter((c) => !c.resultCode).length,
     }),
     [activeCandidates],
-  );
-  const categoryStats = useMemo(
-    () =>
-      (selectedNeed?.categorias || []).map((req) => {
-        const pool = activeCandidates.filter(
-          (c) =>
-            norm(c.categoria).includes(norm(req.categoria)) ||
-            norm(req.categoria).includes(norm(c.categoria)),
-        );
-        return {
-          ...req,
-          pool: pool.length,
-          assigned: pool.filter((c) => c.quincena || c.estado === "Contratado")
-            .length,
-        };
-      }),
-    [selectedNeed, activeCandidates],
   );
   const stepLabels = [
     "Solicitud de mano de obra",
@@ -468,17 +510,28 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     candidate: SaeCandidate,
     patch: Partial<SaeCandidate>,
   ) => {
+    if (candidateWrites.current.has(candidate.id)) return;
+    candidateWrites.current.add(candidate.id);
+    setSavingCandidates(new Set(candidateWrites.current));
+    let saved = false;
     const optimistic = { ...candidate, ...patch };
     setCandidates((p) =>
       p.map((c) => (c.id === candidate.id ? optimistic : c)),
     );
     try {
       await updateSaeCandidate(candidate.id, patch);
+      saved = true;
+      const states = await syncSaeFortnightCodes(candidate.needId);
+      const fresh = await listSaeCandidates(candidate.needId, { networkOnly: true });
+      if (activeNeedRef.current === candidate.needId) { setCandidates(fresh); setCodeStates(states); }
     } catch (e: any) {
-      setCandidates((p) =>
+      if (!saved) setCandidates((p) =>
         p.map((c) => (c.id === candidate.id ? candidate : c)),
       );
-      onToast(e.message || "No se pudo actualizar el candidato.", "error");
+      onToast(saved ? 'El cambio está guardado, pero no se pudo actualizar la vista. Vuelva a abrir el informe cuando tenga conexión.' : e.message || "No se pudo actualizar el candidato.", "error");
+    } finally {
+      candidateWrites.current.delete(candidate.id);
+      setSavingCandidates(new Set(candidateWrites.current));
     }
   };
   const startNewNeed = () => {
@@ -834,10 +887,14 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   };
 
   const registerWorker = async (candidate: SaeCandidate) => {
+    if (registrationsInFlight.current.has(candidate.id) || candidateWrites.current.has(candidate.id)) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return onToast('Se necesita conexión para confirmar una contratación SAE.', 'error');
+    }
     const selectedResultCode = String(candidate.resultCode || "").trim() || "2001";
     const reportForCandidate = reports.find((report) => report.id === candidate.reportId) || null;
     const resolvedPeriod =
-      candidate.quincena ||
+      (reportForCandidate?.periodRevision ? reportForCandidate.quincena : candidate.quincena) ||
       (reportForCandidate && saeReportPeriodLabel(reportForCandidate) === "Mensual"
         ? "Mensual"
         : "");
@@ -886,6 +943,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       norm(previousMedicalState).includes("limitaci") &&
       !String(previousMedicalLimitations || "").trim();
 
+    registrationsInFlight.current.add(candidate.id);
     if (previous && needsHistoricalLimitations) {
       try {
         const workerRows = await supabase.query("reconocimientos", {
@@ -923,6 +981,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     }
 
     const workerId = Date.now() + Math.floor(Math.random() * 900000);
+    registrationsInFlight.current.add(candidate.id);
     try {
       const settings = await loadAppBusinessSettings();
       const detectedIdentity = workIdentity(
@@ -978,11 +1037,23 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         sincronizadoEnNube: true,
       };
       await createDocument("trabajadores", workerId, worker as any);
-      await patchCandidate(candidate, {
+      try { await updateSaeCandidate(candidate.id, {
         estado: "Contratado",
         resultCode: selectedResultCode,
         linkedWorkerId: workerId,
-      });
+      }); } catch (error) {
+        // A lost response may hide a committed confirmation. Only compensate
+        // after a live read proves this worker was not linked by the server.
+        const current = (await listSaeCandidates(candidate.needId, { reportId: candidate.reportId, networkOnly: true }))
+          .find(row => row.id === candidate.id);
+        if (current?.estado !== 'Contratado' || current.linkedWorkerId !== workerId) {
+          await deleteDocument('trabajadores', workerId);
+          throw error;
+        }
+      }
+      const states = await syncSaeFortnightCodes(candidate.needId);
+      const fresh = await listSaeCandidates(candidate.needId, { networkOnly: true });
+      if (activeNeedRef.current === candidate.needId) { setCandidates(fresh); setCodeStates(states); }
       window.sessionStorage.setItem("profea-sae-selected-need", candidate.needId || selectedNeedId);
       window.sessionStorage.setItem("profea-sae-selected-report", candidate.reportId || selectedReportId);
       window.sessionStorage.setItem("profea-sae-return-worker-id", String(workerId));
@@ -997,6 +1068,8 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       );
     } catch (e: any) {
       onToast(e.message || "No se pudo registrar al trabajador.", "error");
+    } finally {
+      registrationsInFlight.current.delete(candidate.id);
     }
   };
   const revertWorker = async (candidate: SaeCandidate) => {
@@ -1124,18 +1197,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     return await pdf.save();
   };
   const generateReturnPdf = async (report: SaeReport) => {
+    if (reportFinalizationsInFlight.current.has(report.id)) return;
+    reportFinalizationsInFlight.current.add(report.id);
     setBusy(true);
     setProgress("Generando devolución SAE…");
     try {
       const bytes = await buildReturnPdfBytes(report);
-      const url = URL.createObjectURL(bytesToBlob(bytes));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `SAE_CUMPLIMENTADO_${report.offerNumber || report.id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
       const reportRows = candidates.filter((candidate) => candidate.reportId === report.id);
       const snapshot = reportRows.map((candidate) => ({
         id: candidate.id,
@@ -1149,6 +1216,14 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       const versionNumber =
         (await updateSaeReportStatus(report.id, "finalized", snapshot)) ||
         (report.versions?.length || 0) + 1;
+      const url = URL.createObjectURL(bytesToBlob(bytes));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SAE_CUMPLIMENTADO_${report.offerNumber || report.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       setReports((previous) =>
         previous.map((item) =>
           item.id === report.id
@@ -1177,6 +1252,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     } catch (e: any) {
       onToast(e.message || "No se pudo generar el documento.", "error");
     } finally {
+      reportFinalizationsInFlight.current.delete(report.id);
       setBusy(false);
       setProgress("");
     }
@@ -1215,14 +1291,10 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   const reopenReport = async (report: SaeReport) => {
     try {
       await updateSaeReportStatus(report.id, "review");
-      setReports((previous) =>
-        previous.map((item) =>
-          item.id === report.id ? { ...item, status: "review" } : item,
-        ),
-      );
+      await refresh(report.needId);
       setReturnedReportIds((previous) => previous.filter((id) => id !== report.id));
       setSelectedReportId(report.id);
-      onToast("Informe reabierto para revisión y modificación.", "success");
+      onToast("Borrador reabierto y códigos revisados. Las versiones archivadas se conservan.", "success");
     } catch (error: any) {
       onToast(error.message || "No se pudo reabrir el informe SAE.", "error");
     }
@@ -1266,25 +1338,6 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     setPreviewReport(null);
     setPreviewOffsetX(0);
     setPreviewOffsetY(0);
-  };
-  const applyPreviewOffset = async () => {
-    if (!previewReport || previewSaving) return;
-    setPreviewSaving(true);
-    ++previewRequest.current;
-    try {
-      const rows = await saveSaeReportAlignment(previewReport.id, previewOffsetX, previewOffsetY);
-      setCandidates(previous => [...previous.filter(c => c.reportId !== previewReport.id), ...rows]);
-      const x = rows[0].alignmentOffsetX ?? 0;
-      const y = rows[0].alignmentOffsetY ?? 0;
-      setPreviewOffsetX(x);
-      setPreviewOffsetY(y);
-      onToast("Posición guardada y verificada.", "success");
-      await refreshPreview(previewReport, x, y, rows);
-    } catch (e: any) {
-      onToast(e.message || "No se pudo guardar el ajuste.", "error");
-    } finally {
-      setPreviewSaving(false);
-    }
   };
 
   return (
@@ -1729,33 +1782,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
 
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                  {[
-                    ["Candidatos", stats.candidates],
-                    ["Seleccionados", stats.selected],
-                    ["Contratados", stats.contracted],
-                    ["Sin resultado", stats.pending],
-                  ].map(([l, v]) => (
-                    <div
-                      key={String(l)}
-                      className="rounded-xl bg-slate-50 dark:bg-slate-900 border p-3"
-                    >
-                      <div className="text-2xl font-black">{v}</div>
-                      <div className="text-xs text-slate-500">{l}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {categoryStats.map((c) => (
-                    <span
-                      key={c.id}
-                      className="text-xs font-semibold rounded-full border px-3 py-1.5"
-                    >
-                      {c.categoria}: necesarios {c.cantidad} · candidatos{" "}
-                      {c.pool} · asignados {c.assigned}
-                    </span>
-                  ))}
-                </div>
+
               </div>
               {!!reports.length && (
                 <div className="ui-surface p-5">
@@ -1815,6 +1842,17 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                   </div>
                                 </button>
                                 <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                                  <button type="button" disabled={isFinalized || periodSaving}
+                                    title={isFinalized ? "Reabra el informe para modificar su periodo" : "Corregir el periodo de este informe y sus candidatos"}
+                                    onClick={() => {
+                                      setPeriodError("");
+                                      const label = saeReportPeriodLabel(r);
+                                      setPeriodEditor({ report: r, period: label === "Periodo por confirmar" ? "" : label });
+                                    }}
+                                    className="px-3 py-2 rounded-lg border font-bold text-xs inline-flex gap-1 items-center disabled:opacity-50">
+                                    <Edit3 className="w-4 h-4" />
+                                    {saeReportPeriodLabel(r) === "Periodo por confirmar" ? "Añadir periodo" : "Editar periodo"}
+                                  </button>
                                   <button
                                     onClick={() => {
                                       setSelectedReportId(r.id);
@@ -1874,6 +1912,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
                 </div>
               )}
+              <SaeHiringSummary need={selectedNeed} reports={reports} candidates={candidates} selectedReportId={selectedReportId} />
               <div id="sae-candidate-selection" className="ui-surface p-4 sm:p-5 scroll-mt-24 transition-shadow duration-300">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -1888,6 +1927,23 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                   </div>
                   <Users className="w-5 h-5" />
                 </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  {[
+                    ["Candidatos", stats.candidates],
+                    ["Seleccionados", stats.selected],
+                    ["Con registro", stats.contracted],
+                    ["Sin resultado", stats.pending],
+                  ].map(([l, v]) => (
+                    <div
+                      key={String(l)}
+                      className="rounded-xl bg-slate-50 dark:bg-slate-900 border p-3"
+                    >
+                      <div className="text-2xl font-black">{v}</div>
+                      <div className="text-xs text-slate-500">{l}</div>
+                    </div>
+                  ))}
+                </div>
+
                 {!selectedReport ? (
                   <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">
                     Seleccione un informe SAE.
@@ -1928,18 +1984,18 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               const isQualified =
                                 Boolean(c.categoria) &&
                                 !/\bpeon(?:es)?\b/i.test(normalizeSaeTextForPeriod(c.categoria));
-                              const options = isQualified
+                              const options = selectedReport.periodRevision ? [selectedReport.quincena] : isQualified
                                 ? ["Mensual"]
                                 : ["1ª Quincena", "2ª Quincena"];
                               const effectivePeriod =
-                                c.quincena || (isQualified ? "Mensual" : "");
+                                (selectedReport.periodRevision ? selectedReport.quincena : c.quincena) || (isQualified ? "Mensual" : "");
 
                               return options.map((q) => {
                                 const active = effectivePeriod === q;
                                 return (
                                   <button
                                     key={q}
-                                    disabled={c.estado === "Contratado" || selectedReportLocked}
+                                    disabled={c.estado === "Contratado" || selectedReportLocked || Boolean(selectedReport.periodRevision)}
                                     onClick={() =>
                                       void patchCandidate(c, {
                                         quincena: q,
@@ -2018,7 +2074,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             {c.estado !== "Contratado" ? (
                               <button
                                 onClick={() => void registerWorker(c)}
-                                disabled={selectedReportLocked}
+                                disabled={selectedReportLocked || savingCandidates.has(c.id)}
                                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black inline-flex gap-2 items-center shadow-md shadow-emerald-600/20 ring-1 ring-emerald-700/20 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <UserCheck className="w-4 h-4" />
@@ -2063,7 +2119,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               </span>
                               <select
                                 value={c.resultCode}
-                                disabled={c.estado === "Contratado" || selectedReportLocked}
+                                disabled={c.estado === "Contratado" || selectedReportLocked || savingCandidates.has(c.id)}
                                 onChange={(e) =>
                                   void patchCandidate(c, {
                                     resultCode: e.target.value,
@@ -2080,12 +2136,32 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               </select>
                               <span className="mt-1 block text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                 {c.resultCode === "2001"
-                                  ? "Candidato marcado para contratar"
+                                  ? c.quincena === "1ª Quincena"
+                                    ? "2001 guardado: aplica 2500 al mismo candidato en la segunda quincena, si procede. No requiere registrar trabajador."
+                                    : "Candidato marcado para contratar"
                                   : c.resultCode
                                     ? "Resultado asignado"
                                     : "Pendiente de asignar"}
                               </span>
                             </label>
+                            <SaeCodeNotice state={['1ª Quincena', '2ª Quincena'].includes(c.quincena) ? codeStateById.get(c.id) : undefined} currentCode={c.resultCode}
+                              onDecision={async apply => {
+                                const state = codeStateById.get(c.id);
+                                if (!state?.signature) throw new Error('La propuesta ha cambiado. Actualice el informe.');
+                                const states = await syncSaeFortnightCodes(c.needId, { candidateId: c.id, signature: state.signature, apply });
+                                const fresh = await listSaeCandidates(c.needId, { networkOnly: true });
+                                if (activeNeedRef.current === c.needId) { setCodeStates(states); setCandidates(fresh); }
+                              }} />
+                            <SaeMonthlyNotice state={codeStateById.get(c.id)?.monthly}
+                              onConsult={match => { if (match.needId && match.reportId) { setSelectedNeedId(match.needId); setSelectedReportId(match.reportId); } }}
+                              onApply={async () => {
+                                const monthly = codeStateById.get(c.id)?.monthly;
+                                if (!monthly) throw new Error('Actualice las coincidencias mensuales.');
+                                await applySaeMonthlyCode(c.id, monthly.signature);
+                                const states = await syncSaeFortnightCodes(c.needId);
+                                const fresh = await listSaeCandidates(c.needId, { networkOnly: true });
+                                if (activeNeedRef.current === c.needId) { setCodeStates(states); setCandidates(fresh); }
+                              }} />
                           </div>
                         </div>
                       </div>
@@ -2105,92 +2181,67 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
       <div className="ui-surface p-4 text-xs text-slate-500 flex gap-2">
         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
         <span>
-          2001 significa “Contratará al candidato”. Los no contratados requieren
-          selección expresa del motivo. Las reversiones eliminan únicamente el
+          Guardar 2001 en la primera quincena asigna 2500 al mismo candidato en la
+          segunda; otro código válido propone Otros motivos. No hace falta registrar
+          al trabajador. Se respetan los códigos manuales y los informes emitidos.
+          Los informes mensuales cualificados comprueban coincidencias del mes entre obras.
+          Las reversiones eliminan únicamente el
           registro creado desde SAE y restablecen el candidato.
         </span>
       </div>
-      {previewReport && (
-        <ModalPortal label="SaeSection"><div
-          className="fixed inset-0 z-[180] bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 flex items-center justify-center"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closePreview();
+      {previewReport && !previewSaving && (
+        <SaeReportPreview title={previewReport.fileName} url={previewUrl}
+          initialX={previewOffsetX} initialY={previewOffsetY}
+          onPreview={(x, y) => refreshPreview(previewReport, x, y)}
+          onSave={async (x, y) => {
+            const rows = await saveSaeReportAlignment(previewReport.id, x, y);
+            setCandidates(previous => [...previous.filter(c => c.reportId !== previewReport.id), ...rows]);
           }}
-        >
-          <div className="w-full max-w-6xl h-[92vh] bg-white dark:bg-slate-950 rounded-2xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <div className="font-black">
-                  Vista previa SAE · {previewReport.fileName}
-                </div>
-                <div className="text-xs text-slate-500">
-                  X/Y ajustan todos los códigos en milímetros. La posición guardada se conserva hasta que la cambies.
-                </div>
+          onClose={closePreview} />
+      )}
+      {periodEditor && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100000] bg-black/50 flex items-center justify-center p-3">
+            <form role="dialog" aria-modal="true" aria-labelledby="sae-period-title"
+              className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-xl space-y-4"
+              onSubmit={async event => {
+                event.preventDefault();
+                if (periodSaving || !periodEditor.period) return;
+                setPeriodSaving(true); setPeriodError("");
+                try {
+                  await saveSaeReportPeriod(periodEditor.report, periodEditor.period as SaeReportPeriod);
+                  setPeriodEditor(null);
+                  onToast("Periodo guardado en el informe y sus candidatos.", "success");
+                  await refresh(periodEditor.report.needId).catch(() =>
+                    onToast("Periodo guardado. Recargue la vista para ver los datos actualizados.", "error"));
+                } catch (error: any) {
+                  setPeriodError(error?.message || "No se pudo guardar el periodo. Vuelva a intentarlo.");
+                } finally { setPeriodSaving(false); }
+              }}>
+              <h2 id="sae-period-title" className="font-black text-lg">Periodo del informe</h2>
+              <p className="text-sm break-words">{periodEditor.report.fileName}</p>
+              <p className="text-sm text-slate-500">{selectedNeed?.mes} {selectedNeed?.ano} · {selectedNeed?.obra}</p>
+              <label htmlFor="sae-report-period" className="block text-sm font-bold">Periodo</label>
+              <select id="sae-report-period" autoFocus required value={periodEditor.period} disabled={periodSaving}
+                  onChange={event => setPeriodEditor({ ...periodEditor, period: event.target.value })}
+                  className="ui-input w-full mt-1">
+                  <option value="">Seleccione el periodo…</option>
+                  <option>1ª Quincena</option><option>2ª Quincena</option><option>Mensual</option>
+                </select>
+              <p className="text-xs text-slate-500">Se aplicará a todos los candidatos de este informe y permanecerá guardado hasta que lo vuelva a cambiar. El mes y año corresponden a la solicitud de mano de obra. Revise los resultados SAE ya asignados después del cambio.</p>
+              {periodError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{periodError}</p>}
+              <div className="flex justify-end gap-2">
+                <button type="button" disabled={periodSaving} onClick={() => setPeriodEditor(null)} className="px-4 py-2 border rounded-xl font-bold">Cancelar</button>
+                <button type="submit" disabled={periodSaving || !periodEditor.period} className="px-4 py-2 rounded-xl bg-[#00548E] text-white font-bold disabled:opacity-50">{periodSaving ? "Guardando…" : "Guardar periodo"}</button>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold">
-                  X{" "}
-                  <input
-                    type="number"
-                    step="0.5"
-                    disabled={previewSaving}
-                    value={previewOffsetX}
-                    onChange={(e) => {
-                      const v = Number(e.target.value) || 0;
-                      setPreviewOffsetX(v);
-                      void refreshPreview(previewReport, v, previewOffsetY);
-                    }}
-                    className="ui-input !w-20 !py-1.5"
-                  />
-                </label>
-                <label className="text-xs font-bold">
-                  Y{" "}
-                  <input
-                    type="number"
-                    step="0.5"
-                    disabled={previewSaving}
-                    value={previewOffsetY}
-                    onChange={(e) => {
-                      const v = Number(e.target.value) || 0;
-                      setPreviewOffsetY(v);
-                      void refreshPreview(previewReport, previewOffsetX, v);
-                    }}
-                    className="ui-input !w-20 !py-1.5"
-                  />
-                </label>
-                <button
-                  onClick={() => void applyPreviewOffset()}
-                  disabled={previewSaving}
-                  className="px-3 py-2 rounded-lg bg-[#00548E] text-white text-xs font-bold"
-                >
-                  {previewSaving ? "Guardando…" : "Guardar posición"}
-                </button>
-                <button
-                  onClick={closePreview}
-                  disabled={previewSaving}
-                  className="px-3 py-2 rounded-lg border text-xs font-bold"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-900">
-              {previewUrl ? (
-                <iframe
-                  title="Vista previa documento SAE"
-                  src={previewUrl}
-                  className="w-full h-full border-0"
-                />
-              ) : (
-                <div className="h-full grid place-items-center">
-                  Preparando…
-                </div>
-              )}
-            </div>
+            </form>
           </div>
-        </div></ModalPortal>
+        </ModalPortal>
       )}
     </div>
   );
 };
+
+
+
 

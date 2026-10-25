@@ -1,0 +1,11 @@
+# Previsualización SAE y posición persistente
+
+La previsualización usa PDF.js con worker empaquetado, canvas, navegación de páginas y zoom. Se adapta al ancho disponible y al cambio de orientación sin depender del visor PDF integrado del navegador. Los controles táctiles tienen al menos 44 px y se distribuyen en varias líneas.
+
+Los desplazamientos X/Y son absolutos, en milímetros, con dos decimales. Se admiten negativos, coma y punto decimal. Un signo menos aislado o un campo vacío es una edición incompleta: no se convierte en cero ni se guarda. Los botones ±0,5 permiten introducir negativos aunque el teclado de la tablet no incluya el signo.
+
+Cada edición válida genera una previsualización y se guarda tras 500 ms. Las escrituras se ejecutan en serie y consumen la posición más reciente pendiente, evitando que una respuesta antigua sobrescriba el último movimiento. Cerrar espera al guardado y a su verificación; si falla, conserva abierta la edición y permite reintentar. Al ocultar la aplicación se intenta guardar lo pendiente; al abandonar con cambios pendientes se solicita la protección de salida del navegador. No se garantiza completar una petición si el sistema mata el navegador o no hay conexión: solo el estado «Posición guardada y verificada» acredita persistencia remota.
+
+Se reutiliza `saveSaeReportAlignment`: PATCH único limitado al informe y al supervisor, seguido de lectura de red que comprueba IDs y valores. Guarda `alignment_offset_x/y` en Supabase sin caducidad. La posición dura hasta una nueva edición o la eliminación de los datos del informe. Reabrir carga esos valores de la red. No usa almacenamiento temporal ni suma de nuevo el ajuste anterior. El PDF generado utiliza las mismas coordenadas. Las versiones de PDF ya archivadas se conservan.
+
+Pruebas: `npm run test:sae-alignment` (servicio y Chromium/WebKit), `npm run test:sae-fortnights` (pantalla SAE/servicios/PGlite y visor integrado). Se comprueban negativos, decimales, signo incompleto, movimientos rápidos durante una petición, cierre inmediato, reapertura, recarga, error/reintento y aislamiento por informe. Son pruebas automatizadas con tamaños de teléfono/tablet y eventos táctiles; no acreditan un iPad físico. No requiere migración.

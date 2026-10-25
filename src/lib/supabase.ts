@@ -62,12 +62,13 @@ const requestLimiter = new RequestLimiter();
 const readResponseCache = new ReadResponseCache();
 const cacheChannel = typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
   ? new BroadcastChannel('profea-read-cache-invalidation') : null;
-if (cacheChannel) cacheChannel.onmessage = () => readResponseCache.clear();
+if (cacheChannel) cacheChannel.onmessage = () => { readResponseCache.clear(); requestLimiter.invalidateReads(); };
 function invalidateReadCache() {
   readResponseCache.clear();
+  requestLimiter.invalidateReads();
   cacheChannel?.postMessage('invalidate');
 }
-client.auth.onAuthStateChange(() => readResponseCache.clear());
+client.auth.onAuthStateChange(() => { readResponseCache.clear(); requestLimiter.invalidateReads(); });
 async function performNetworkRequest(path: string, options: RequestInit = {}, fresh = false): Promise<any> {
   const user = await getSessionUser();
   const method = String(options.method || 'GET').toUpperCase();
@@ -174,7 +175,7 @@ async function request(path: string, options: RequestInit = {}, fresh = false, n
 
   // Persistence checks must never accept a cached/offline copy as server proof.
   if (networkOnly) {
-    if (isOffline()) throw new Error('Se necesita conexión para verificar el guardado.');
+    if (isOffline()) throw new Error('Se necesita conexión para consultar el servidor.');
     return performNetworkRequest(path, options, true);
   }
 
@@ -409,17 +410,19 @@ export const supabase = {
   removeChannel(channel: ReturnType<typeof client.channel>) {
     return client.removeChannel(channel);
   },
-  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean; networkOnly?: boolean } = {}) {
+  async query(table: string, options: { method?: string; query?: string; body?: any; prefer?: string; fresh?: boolean; networkOnly?: boolean; signal?: AbortSignal } = {}) {
     const headers: Record<string, string> = {};
     if (options.prefer) headers.Prefer = options.prefer;
     const method = options.method || 'GET';
     const upperMethod = method.toUpperCase();
 
+    const authorizationRead = upperMethod === 'GET' && ['profiles', 'data_permissions'].includes(table);
     const result = await request(`/rest/v1/${table}${options.query ? `?${options.query}` : ''}`, {
       method,
       headers,
+      signal: options.signal,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    }, options.fresh === true, options.networkOnly === true);
+    }, options.fresh === true, options.networkOnly === true || authorizationRead);
 
     if (table === 'obras' && upperMethod === 'GET') {
       return syncObrasPreventiveResource(result);
