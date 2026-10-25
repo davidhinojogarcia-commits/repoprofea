@@ -27,7 +27,7 @@ const initial = reports.flatMap((report, index) => Array.from({ length: index ==
 let candidates = structuredClone(initial), fail = false, browser, server;
 const errors = [];
 try {
-  const output = await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{SaeSection}from'./components/SaeSection';createRoot(document.getElementById('root')).render(<><div className="app-navigation-panel" style={{position:'sticky',top:0,zIndex:80,height:48,background:'white'}}>Cabecera de la aplicación</div><SaeSection people={[]} onToast={text=>document.getElementById('toast').textContent=text}/></>);`, resolveDir: root, loader: 'tsx' },
+  const output = await build({ stdin: { contents: `import React from 'react';import{AppDialogHost}from'./components/AppDialogHost';import{createRoot}from'react-dom/client';import{SaeSection}from'./components/SaeSection';createRoot(document.getElementById('root')).render(<><div className="app-navigation-panel" style={{position:'sticky',top:0,zIndex:80,height:48,background:'white'}}>Cabecera de la aplicación</div><AppDialogHost/><SaeSection people={[]} onToast={text=>document.getElementById('toast').textContent=text}/></>);`, resolveDir: root, loader: 'tsx' },
     bundle: true, platform: 'browser', format: 'iife', write: false, outdir: '/tmp/sae-hiring-browser',
     define: { 'import.meta.env': '{}' }, plugins: [{ name: 'boundaries', setup(b) {
       b.onResolve({ filter: /saeService$|saeFortnightService$|saeMonthlyService$|AuthGate$|appSettingsService$|annualHiringPeriodsService$|databaseService$|saeDocumentParser$|SaeReportPreview$|\/lib\/supabase$/ }, args => ({ path: args.path, namespace: 'mock' }));
@@ -56,7 +56,7 @@ try {
       return res.end('{}');
     }
     res.setHeader('Content-Type', 'text/html');
-    res.end(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><script>tailwind.config={darkMode:'class'}</script><style>${appCss}body{margin:0;padding:12px;font-family:Arial}.ui-surface{border-radius:16px;border:1px solid #cbd5e1}#toast{position:fixed;bottom:0;background:white}</style></head><body><div id="root"></div><div id="toast"></div><script src="/app.js"></script></body></html>`);
+    res.end(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><script>tailwind.config={darkMode:'class'}</script><style>${appCss}body{margin:0;padding:12px;font-family:Arial}.ui-surface{border-radius:16px;border:1px solid #cbd5e1}#toast{position:fixed;bottom:0;background:white}</style></head><body><div id="root"></div><div id="toast"></div><script>window.addEventListener("profea:dialog",e=>{window.pendingConfirmation=e.detail;});</script><script src="/app.js"></script></body></html>`);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   browser = await (engine === 'webkit' ? webkit : chromium).launch({ headless: true, ...(process.env.SAE_BROWSER_EXECUTABLE ? { executablePath: process.env.SAE_BROWSER_EXECUTABLE } : {}) });
@@ -68,6 +68,27 @@ try {
     const panel = page.getByRole('region', { name: 'Control de contratación por periodo' });
     await panel.waitFor();
     await page.locator('#sae-candidate-selection select').nth(11).waitFor();
+    assert.equal(await page.getByLabel('Apellidos',{exact:true}).count(),0);
+    await page.getByRole('button',{name:'Corregir nombre',exact:true}).first().click();
+    await page.getByLabel('Apellidos',{exact:true}).fill('Apellido corregido');
+    assert.equal(candidates[0].apellidos,'Apellido 0','typing never writes');
+    await page.getByRole('button',{name:'Cancelar',exact:true}).click();
+    assert.equal(candidates[0].apellidos,'Apellido 0','cancel never writes');
+    await page.getByRole('button',{name:'Corregir nombre',exact:true}).nth(11).click();
+    await page.getByLabel('Apellidos',{exact:true}).fill('Apellido revisado');
+    fail=true;
+    await page.getByRole('button',{name:'Guardar nombre',exact:true}).click();
+    await page.getByRole('alert').filter({hasText:'Fallo de guardado de prueba'}).waitFor();
+    assert.equal(await page.getByLabel('Apellidos',{exact:true}).inputValue(),'Apellido revisado');
+    assert.equal(candidates[11].apellidos,'Apellido 0','failed save leaves server unchanged');
+    fail=false;
+    await page.getByRole('button',{name:'Guardar nombre',exact:true}).click();
+    await page.getByText(/12\. Apellido revisado Nombre 11/).waitFor();
+    await page.reload();
+    await page.getByText(/12\. Apellido revisado Nombre 11/).waitFor();
+    assert.equal(await page.getByLabel('Apellidos',{exact:true}).count(),0,'editor collapses after save and reload');
+
+
     const first = panel.locator('[data-period="1ª Quincena"]');
     const second = panel.locator('[data-period="2ª Quincena"]');
     const monthly = panel.locator('[data-period="Mensual"]');
@@ -104,8 +125,19 @@ try {
     assert.deepEqual(await values(monthly), ['1', '1', '0']);
     await page.getByRole('button', { name: /Primera quincena.pdf/ }).click();
     await page.locator('#sae-candidate-selection select').nth(6).selectOption('2001');
+    await page.waitForFunction(()=>Boolean(window.pendingConfirmation));
+    assert.match(await page.evaluate(()=>window.pendingConfirmation.message), /previstas 6, seleccionadas 7/);
+    assert.equal(candidates.find(c=>c.id==='report-0-6').resultCode,'','confirmation precedes write');
+    await page.getByRole('dialog').getByRole('button',{name:'Cancelar',exact:true}).click();
+    await page.evaluate(()=>{window.pendingConfirmation=null;});
+    await page.locator('#sae-candidate-selection select').nth(6).selectOption('2001');
+    await page.waitForFunction(()=>Boolean(window.pendingConfirmation));
+    await page.getByRole('dialog').getByRole('button',{name:'Continuar de todas formas',exact:true}).click();
+    await page.evaluate(()=>{window.pendingConfirmation=null;});
     await page.waitForFunction(() => document.querySelector('[data-period="1ª Quincena"] .sae-hiring-balance strong').textContent === '+1');
     assert.deepEqual(await values(first), ['6', '7', '+1']);
+    assert(await page.getByRole('alert').filter({hasText:'Previsión superada'}).isVisible());
+    assert(await page.getByText(/Previsión superada · \+1 en este grupo/).count()>0);
     await page.locator('#sae-candidate-selection select').nth(6).selectOption('2212');
     await page.waitForFunction(() => document.querySelector('[data-period="1ª Quincena"] .sae-hiring-balance strong').textContent === '0');
     await panel.getByText('Detalle del informe y del recuento', { exact: true }).click();
