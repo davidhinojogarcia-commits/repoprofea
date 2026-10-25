@@ -109,16 +109,35 @@ async function enrichWorkerAnnualHiring(
     };
   }
 
-  const rows = await supabase.query("trabajadores", {
-    query: `select=id,dni,periodo_inicio,quincena,fecha_registro,data&owner_id=eq.${encodeURIComponent(ownerId)}`,
-  });
+  // A subsequence filter is deliberately broader than normalized equality:
+  // it retains legacy spaces/hyphens and the client still verifies the exact
+  // normalized DNI. Non-alphanumeric legacy identifiers use the bounded,
+  // projected fallback rather than interpolating PostgREST filter syntax.
+  const pattern = /^[A-Z0-9]{5,20}$/.test(dni) ? `*${dni.split('').join('*')}*` : '';
+  const filter = pattern ? `&or=${encodeURIComponent(`(dni.ilike.${pattern},data->>dni.ilike.${pattern})`)}` : '';
+  const projection = 'id,dni,periodo_inicio,quincena,fecha_registro,legacyDni:data->>dni,legacyStart:data->>periodoInicio,legacyFortnight:data->>quincena,legacyRegistered:data->>fechaRegistro';
+  const rows: any[] = [];
+  const seen = new Set<string>();
+  for (let offset = 0; ; offset += 500) {
+    const page = await supabase.query('trabajadores', {
+      query: `select=${projection}&owner_id=eq.${encodeURIComponent(ownerId)}${filter}&order=id.asc&limit=500&offset=${offset}`,
+      fresh: true,
+    });
+    for (const row of page || []) {
+      const key = String(row.id ?? '');
+      if (key && seen.has(key)) throw new Error('El historial cambió durante el recuento. Vuelve a intentar el registro.');
+      if (key) seen.add(key);
+    }
+    rows.push(...(page || []));
+    if (!page || page.length < 500) break;
+  }
   const sameWorkerSameYear = (rows || []).filter((row: any) => {
-    if (normalizeDni(row.dni || row.data?.dni) !== dni) return false;
+    if (normalizeDni(row.dni || row.legacyDni || row.data?.dni) !== dni) return false;
     const hydrated = {
       ...(row.data || {}),
-      periodoInicio: row.periodo_inicio || row.data?.periodoInicio,
-      quincena: row.quincena || row.data?.quincena,
-      fechaRegistro: row.fecha_registro || row.data?.fechaRegistro,
+      periodoInicio: row.periodo_inicio || row.legacyStart || row.data?.periodoInicio,
+      quincena: row.quincena || row.legacyFortnight || row.data?.quincena,
+      fechaRegistro: row.fecha_registro || row.legacyRegistered || row.data?.fechaRegistro,
     };
     return resolveContractYear(hydrated) === annuality;
   });
