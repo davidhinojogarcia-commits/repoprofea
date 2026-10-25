@@ -36,6 +36,30 @@ try {
         : 'export const offlineCacheKey=(...args)=>JSON.stringify(args); export const readOfflineCache=async()=>null; export const writeOfflineCache=async()=>{}; export const applyRestMutationToCachedReads=async()=>{}; export const enqueueOfflineOperation=async()=>{}; export const listOfflineOperations=async()=>[]; export const removeOfflineOperation=async()=>{}; export const setOfflineSyncActivity=async()=>{}; export const updateOfflineOperationFailure=async()=>{};'}));
     }}]});
   const {supabase,ReadResponseCache,getDocuments,subscribeToDocuments} = await import(out.href);
+  // A save creates a new read generation: a subsequent fresh query must not
+  // join a request started before that save, even while it is still pending.
+  const ordinaryFetch = globalThis.fetch;
+  let readStarted, finishOld;
+  const started = new Promise(resolve => readStarted=resolve);
+  globalThis.fetch = async (url,options) => {
+    if(url.includes('race_records') && options.method==='GET') {
+      if(!finishOld) {
+        readStarted();
+        return new Promise(resolve => { finishOld=()=>resolve(new Response('[{"revision":"old"}]')); });
+      }
+      return new Response('[{"revision":"new"}]');
+    }
+    return ordinaryFetch(url,options);
+  };
+  const oldRead = supabase.query('race_records',{fresh:true});
+  await started;
+  await supabase.query('race_records',{method:'PATCH',body:{revision:'new'}});
+  const newRead = supabase.query('race_records',{fresh:true});
+  const firstCompleted = await Promise.race([newRead.then(()=>true),new Promise(resolve=>setTimeout(()=>resolve(false),1000))]);
+  finishOld();
+  assert.equal(firstCompleted,true,'post-save read does not wait for stale in-flight response');
+  assert.equal((await newRead)[0].revision,'new');await oldRead;
+  globalThis.fetch=ordinaryFetch;calls=[];
   const rpcFirst=await supabase.rpc('resolve_foreman_portal',{p_token:'test'});
   assert.deepEqual(await supabase.rpc('resolve_foreman_portal',{p_token:'test'}),rpcFirst,'normal RPC reads remain cached');
   const freshRpc=await supabase.rpc('resolve_foreman_portal',{p_token:'test'},{fresh:true});

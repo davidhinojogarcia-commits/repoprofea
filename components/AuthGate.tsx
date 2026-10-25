@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
-import type { AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase, type SupabaseUser } from '../src/lib/supabase';
 import { Eye, EyeOff, KeyRound, Loader2, LogIn } from 'lucide-react';
 import { authErrorMessage, getUserProfile, signInWithEmail, signOutUser, subscribeToAuth, type AppRole, type AuthProfile } from '../src/lib/authService';
 import { clearUserActivity, initializeUserActivity, useIdleTimeout } from '../src/hooks/useIdleTimeout';
-import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, type SupervisorSettings, type TechnicianSettings } from '../src/services/appSettingsService';
+import { DEFAULT_SUPERVISOR_SETTINGS, DEFAULT_TECHNICIAN_SETTINGS, loadAppBusinessSettings, resetCachedBusinessSettings, type SupervisorSettings, type TechnicianSettings } from '../src/services/appSettingsService';
 
 interface AuthGateProps { children: React.ReactNode; }
 
@@ -49,24 +48,25 @@ export function AuthGate({ children }: AuthGateProps) {
   const authValidationRef = useRef(0);
   const roleRef = useRef<AppRole | null>(null);
   const authTaskTimerRef = useRef<number | null>(null);
+  const validationRequestRef = useRef<(() => void) | null>(null);
+  const currentUserRef = useRef<SupabaseUser | null>(null);
+  const signInPendingRef = useRef(false);
 
   useEffect(() => { roleRef.current = role; }, [role]);
 
   useEffect(() => {
+    let startupComplete = false;
     // Salvaguarda de arranque: una sesión local dañada o un refresh atascado no debe
     // dejar la aplicación indefinidamente en la pantalla de carga.
     const startupSafetyTimer = window.setTimeout(() => {
+      if (startupComplete) return;
       setLoading(current => current ? false : current);
+      if (!roleRef.current) setError('No se ha podido completar la comprobación de acceso. Puedes volver a comprobar la sesión.');
     }, 8000);
 
-    const validateAuthenticatedUser = async (currentUser: SupabaseUser, event: AuthChangeEvent) => {
-      const validationId = ++authValidationRef.current;
+    const validateAuthenticatedUser = async (currentUser: SupabaseUser, validationId: number) => {
+      if (validationId !== authValidationRef.current) return;
       setUser(currentUser);
-
-      if (event === 'TOKEN_REFRESHED' && roleRef.current) {
-        setLoading(false);
-        return;
-      }
 
       setError('');
       try {
@@ -74,11 +74,13 @@ export function AuthGate({ children }: AuthGateProps) {
         let lastValidationError: unknown = null;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            currentProfile = await getUserProfile();
+            currentProfile = await getUserProfile(currentUser);
             lastValidationError = null;
             break;
           } catch (validationError) {
+            if (validationId !== authValidationRef.current) return;
             lastValidationError = validationError;
+            if ([401, 403].includes(Number((validationError as any)?.status))) break;
             if (attempt < 2) {
               await new Promise(resolve => window.setTimeout(resolve, 350 * (attempt + 1)));
             }
@@ -91,7 +93,8 @@ export function AuthGate({ children }: AuthGateProps) {
         setProfile(currentProfile);
         if (currentRole) {
           const businessSettings = await loadAppBusinessSettings()
-            .catch(err => { console.warn('No se pudo precargar la configuración del supervisor:', err); return null; });
+            .catch(() => { console.warn('AUTH_SETTINGS_PRELOAD_FAILED'); return null; });
+          if (validationId !== authValidationRef.current) return;
           if (businessSettings?.supervisor) setSupervisorSettings(businessSettings.supervisor);
           if (businessSettings?.technician) setTechnicianSettings(businessSettings.technician);
           if (validationId !== authValidationRef.current) return;
@@ -108,16 +111,41 @@ export function AuthGate({ children }: AuthGateProps) {
         // No destruir una sesión válida por un fallo temporal de red/Supabase.
         // El formulario queda disponible para reintentar y el siguiente evento de
         // autenticación volverá a validar el perfil.
-        console.warn('Validación temporal de autenticación fallida:', validationError);
+        console.warn('AUTH_PROFILE_VALIDATION_FAILED', { status: Number((validationError as any)?.status) || 0 });
         setError('No se ha podido validar la sesión. Comprueba la conexión y vuelve a intentarlo.');
       } finally {
-        if (validationId === authValidationRef.current) setLoading(false);
+        if (validationId === authValidationRef.current) { startupComplete = true; setLoading(false); }
       }
     };
 
+    const scheduleValidation = (currentUser: SupabaseUser) => {
+      const validationId = ++authValidationRef.current;
+      if (authTaskTimerRef.current !== null) window.clearTimeout(authTaskTimerRef.current);
+      authTaskTimerRef.current = window.setTimeout(() => {
+        authTaskTimerRef.current = null;
+        void validateAuthenticatedUser(currentUser, validationId);
+      }, 0);
+    };
+    validationRequestRef.current = () => {
+      const currentUser = currentUserRef.current;
+      if (!currentUser) return;
+      setLoading(true);
+      scheduleValidation(currentUser);
+    };
+
     const unsubscribe = subscribeToAuth((currentUser, event) => {
+      if (currentUser?.id !== currentUserRef.current?.id) {
+        resetCachedBusinessSettings();
+        roleRef.current = null;
+        setRole(null); setProfile(null);
+        setSupervisorSettings(DEFAULT_SUPERVISOR_SETTINGS);
+        setTechnicianSettings(DEFAULT_TECHNICIAN_SETTINGS);
+      }
+      currentUserRef.current = currentUser;
       if (!currentUser) {
+        startupComplete = true;
         ++authValidationRef.current;
+        if (authTaskTimerRef.current !== null) window.clearTimeout(authTaskTimerRef.current);
         setUser(null);
         setRole(null);
         setProfile(null);
@@ -136,7 +164,9 @@ export function AuthGate({ children }: AuthGateProps) {
       }
 
       if (event === 'PASSWORD_RECOVERY') {
+        startupComplete = true;
         ++authValidationRef.current;
+        if (authTaskTimerRef.current !== null) window.clearTimeout(authTaskTimerRef.current);
         setUser(currentUser);
         setRole(null);
         setProfile(null);
@@ -147,14 +177,12 @@ export function AuthGate({ children }: AuthGateProps) {
         return;
       }
 
-      if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
-      authTaskTimerRef.current = window.setTimeout(() => {
-        authTaskTimerRef.current = null;
-        void validateAuthenticatedUser(currentUser, event);
-      }, 0);
+      scheduleValidation(currentUser);
     });
 
     return () => {
+      ++authValidationRef.current;
+      validationRequestRef.current = null;
       window.clearTimeout(startupSafetyTimer);
       unsubscribe();
       if (authTaskTimerRef.current) window.clearTimeout(authTaskTimerRef.current);
@@ -163,14 +191,16 @@ export function AuthGate({ children }: AuthGateProps) {
 
   useEffect(() => {
     const reloadSupervisor = () => {
+      const owner = currentUserRef.current?.id;
       void loadAppBusinessSettings()
-        .then(settings => setSupervisorSettings(settings.supervisor || DEFAULT_SUPERVISOR_SETTINGS))
-        .catch(err => console.warn('No se pudo recargar la configuración del supervisor:', err));
+        .then(settings => { if (owner === currentUserRef.current?.id) setSupervisorSettings(settings.supervisor || DEFAULT_SUPERVISOR_SETTINGS); })
+        .catch(() => console.warn('AUTH_SUPERVISOR_SETTINGS_FAILED'));
     };
     const reloadTechnician = () => {
+      const owner = currentUserRef.current?.id;
       void loadAppBusinessSettings()
-        .then(settings => setTechnicianSettings(settings.technician || DEFAULT_TECHNICIAN_SETTINGS))
-        .catch(err => console.warn('No se pudo recargar la configuración del técnico:', err));
+        .then(settings => { if (owner === currentUserRef.current?.id) setTechnicianSettings(settings.technician || DEFAULT_TECHNICIAN_SETTINGS); })
+        .catch(() => console.warn('AUTH_TECHNICIAN_SETTINGS_FAILED'));
     };
     window.addEventListener('profea:supervisor-settings-updated', reloadSupervisor);
     window.addEventListener('profea:technician-settings-updated', reloadTechnician);
@@ -199,6 +229,7 @@ export function AuthGate({ children }: AuthGateProps) {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (signInPendingRef.current) return;
     explicitSignOutRef.current = false;
     setError('');
     setNotice('');
@@ -206,6 +237,7 @@ export function AuthGate({ children }: AuthGateProps) {
       setError('Introduce tu correo electrónico y contraseña.');
       return;
     }
+    signInPendingRef.current = true;
     setSubmitting(true);
     try {
       const signedInUser = await signInWithEmail(email, password);
@@ -215,6 +247,7 @@ export function AuthGate({ children }: AuthGateProps) {
     } catch (err) {
       setError(authErrorMessage(err));
     } finally {
+      signInPendingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -340,6 +373,7 @@ export function AuthGate({ children }: AuthGateProps) {
           <div><label htmlFor="login-email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Correo electrónico</label><input id="login-email" type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/30" placeholder="correo@ejemplo.es" disabled={submitting}/></div>
           <div><label htmlFor="login-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Contraseña</label><div className="relative"><input id="login-password" type={showPassword?'text':'password'} autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-3 pr-12 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/30" disabled={submitting}/><button type="button" aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'} onClick={()=>setShowPassword(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-primary hover:text-brand-secondary transition-colors">{showPassword?<EyeOff size={20}/>:<Eye size={20}/>}</button></div></div>
           {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
+          {user && <button type="button" disabled={submitting} onClick={() => validationRequestRef.current?.()} className="w-full rounded-xl border border-slate-300 px-4 py-3 font-semibold dark:border-slate-700">Volver a comprobar sesión</button>}
           <button type="submit" disabled={submitting} className="w-full rounded-xl bg-brand-primary hover:bg-brand-secondary text-white py-3.5 font-semibold flex items-center justify-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 disabled:opacity-60">{submitting?<Loader2 className="h-5 w-5 animate-spin"/>:<LogIn className="h-5 w-5"/>}{submitting?'Iniciando sesión…':'Iniciar sesión'}</button>
         </form>
         <p className="mt-6 text-center text-xs text-slate-400">El acceso es gestionado exclusivamente por un administrador.</p>
