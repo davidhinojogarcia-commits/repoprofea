@@ -1,4 +1,4 @@
-import { reportOperationalError } from '../lib/operationalLog';
+import { reportOperationalError } from '../lib/operationalLog.js';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';

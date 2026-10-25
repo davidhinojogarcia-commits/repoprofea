@@ -8,7 +8,7 @@ const root=new URL('../',import.meta.url);
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'tutor-serverless-'));
 try{
  await fs.writeFile(path.join(temp,'package.json'),JSON.stringify({type:'module'}));
- for(const file of ['api/profea-tutor.ts','src/server/profeaTutorHandler.ts','src/server/profeaTutorAgent.ts','src/lib/profeaTutorKnowledge.ts','src/lib/prevention.ts']){
+ for(const file of ['api/profea-tutor.ts','src/server/profeaTutorHandler.ts','src/server/profeaTutorAgent.ts','src/lib/profeaTutorKnowledge.ts','src/lib/prevention.ts','src/lib/operationalLog.ts']){
   const source=await fs.readFile(new URL(file,root),'utf8');
   const emitted=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
   const destination=path.join(temp,file.replace(/\.ts$/,'.js'));
