@@ -1,3 +1,4 @@
+import { applyBusinessConflictFix } from './saeBusinessConflictFixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
@@ -51,6 +52,7 @@ try {
   await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261023210429_sae_reopened_draft_codes.sql',import.meta.url),'utf8'));
   await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261024201222_sae_reverse_fortnight_suggestions.sql',import.meta.url),'utf8'));
   await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261024201410_sae_report_manual_period.sql',import.meta.url),'utf8'));
+  await applyBusinessConflictFix(db);
   const save=(r,period,revision='')=>q('select sae_set_report_period($1,$2,$3)',[r,period,revision]);
   const meta=async r=>(await q("select detected_legend->'__manual_period' p from sae_reports where id=$1",[r]))[0].p;
   await reset(); await patch(a,{fortnight:null,hiring_month:null});

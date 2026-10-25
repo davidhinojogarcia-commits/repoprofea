@@ -1,3 +1,4 @@
+import { applyBusinessConflictFix } from './saeBusinessConflictFixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
@@ -146,10 +147,11 @@ try {
   await db.exec('reset role; drop trigger reject_code on sae_candidates'); await asUser(owner); await confirm(); assert.equal(await code(),'2500','retry recovers without duplicates');
   await db.exec('reset role'); const audits=await q("select * from sae_private.code_audit where action='automatic'");
   assert.equal(audits.length,1); assert.equal(audits[0].actor_id,owner); assert.equal(audits[0].source_report_id,first); assert.equal(audits[0].target_report_id,second);
+  await applyBusinessConflictFix(db);
   await asUser(owner);const snapshot=[{id:b,resultCode:'2500',orderNumber:1,pageNumber:1,overlayX:184,overlayY:50}];
   await confirm('2100');
   const finalize=async rows=>(await q('select sae_finalize_report_version($1,$2) version',[second,rows]))[0].version;
-  await assert.rejects(finalize(snapshot),/han cambiado/,'cannot finalize stale code while building PDF');
+  await assert.rejects(finalize(snapshot),e=>e.code==='PT409' && /han cambiado/.test(e.message),'cannot finalize stale code while building PDF');
   snapshot[0].resultCode='2212';assert.equal(await finalize(snapshot),1);assert.equal(await finalize(snapshot),1,'finalization retry does not duplicate the version');
   await confirm('2001');assert.equal(await code(),'2212','finalized version cannot be silently changed');
   await asUser(other);await assert.rejects(finalize(snapshot),/no accesible/);
@@ -188,6 +190,7 @@ try {
   // Reverse direction: explicit second-fortnight 2001 proposes first-fortnight 2500.
   await db.exec('reset role; alter table sae_candidates add column category text');
   await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261024201222_sae_reverse_fortnight_suggestions.sql',import.meta.url),'utf8'));
+  await applyBusinessConflictFix(db);
   await reset();await patch(a,{category:'Peón'});await patch(b,{category:'Peón'});
   await patch(b,{result_code:'2001'});
   let reverse=(await sync()).find(s=>s.candidateId===a);
