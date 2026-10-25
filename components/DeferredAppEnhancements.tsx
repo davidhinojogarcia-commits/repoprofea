@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 
 const AnnualHiringPeriodsPanel = lazy(() => import('./AnnualHiringPeriodsPanel').then(module => ({ default: module.AnnualHiringPeriodsPanel })));
@@ -37,11 +38,11 @@ export function DeferredAppEnhancements() {
   useEffect(() => {
     if (!ready) return;
     void import('../src/lib/worksiteAdditionalDocumentsLegalBodies').catch(error =>
-      console.warn('No se pudieron cargar las definiciones legales de documentos:', error),
+      reportOperationalError('No se pudieron cargar las definiciones legales de documentos:', error, 'warn'),
     );
     void import('../src/lib/subcontratasDefaults')
       .then(module => module.hydrateStoredSubcontratasPreferences())
-      .catch(error => console.warn('No se pudieron precargar preferencias de subcontratas:', error));
+      .catch(error => reportOperationalError('No se pudieron precargar preferencias de subcontratas:', error, 'warn'));
   }, [ready]);
 
   if (!ready) return null;

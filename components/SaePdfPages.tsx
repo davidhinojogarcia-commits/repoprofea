@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useRef, useState } from 'react';
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -29,7 +30,7 @@ export default function SaePdfPages({ url }: { url: string }) {
     previewWorker ??= new pdfjs.PDFWorker();
     const task = pdfjs.getDocument({ url, worker: previewWorker });
     void task.promise.then(value => { if (active) setDoc(value); }).catch((e) => {
-      console.warn('SAE PDF load failed', e);
+      reportOperationalError('SAE PDF load failed', e, 'warn');
       if (active) { setError('No se pudo cargar el PDF. Vuelva a abrir la previsualización.'); setLoading(false); }
     });
     return () => { active = false; void task.destroy(); };

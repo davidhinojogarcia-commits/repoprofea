@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useRef } from 'react';
 import { appConfirm } from '../src/lib/appDialog';
 import ModalPortal from './ModalPortal';
@@ -235,12 +236,12 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
-          videoRef.current.play().catch(e => console.error("Error al iniciar reproducción:", e));
+          videoRef.current.play().catch(e => reportOperationalError("Error al iniciar reproducción:", e));
         }
       }, 150);
       
     } catch (err) {
-      console.error("Error iniciando cámara web interactiva:", err);
+      reportOperationalError("Error iniciando cámara web interactiva:", err);
       // Fallback directo a la cámara nativa del sistema.
       openNativeCameraCapture();
       onToast("Abriendo la cámara nativa del sistema", "success");
@@ -532,7 +533,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         'success',
       );
     } catch (error) {
-      console.error('Error importando archivo ya escaneado:', error);
+      reportOperationalError('Error importando archivo ya escaneado:', error);
       onToast('No se ha podido preparar el archivo escaneado para el reconocimiento.', 'error');
     } finally {
       setIsCameraLoading(false);
@@ -618,7 +619,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         throw new Error("El servidor devolvió un formato de datos inesperado.");
       }
     } catch (err: any) {
-      console.error(err);
+      reportOperationalError("components/CameraScannerModal.tsx:621", err);
       onToast(`Error en reconocimiento automático: ${err.message}`, "error");
     } finally {
       setIsRecognizing(false);
@@ -701,7 +702,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
 
       onToast(`Datos incorporados a ${targetWorker.apellidosNombre}: ${detectedLabels}. Escáner limpio y listo para otra captura.`, 'success');
     } catch (error: any) {
-      console.error('OCR administrativo rápido:', error?.message || error);
+      reportOperationalError('OCR administrativo rápido:', error);
       onToast('No se han podido reconocer los datos. Puedes repetir el escaneo o introducirlos manualmente.', 'error');
     } finally {
       setIsRecognizingAdministrative(false);
@@ -855,7 +856,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       link.click();
       onToast("Relación exportada a Excel (.xlsx) correctamente", "success");
     } catch (err) {
-      console.error(err);
+      reportOperationalError("components/CameraScannerModal.tsx:858", err);
       onToast("No se pudo exportar a Excel", "error");
     }
   };
@@ -880,7 +881,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
           doc.addImage(logoBase64, 'PNG', 231, 4, 52, 8);
         }
       } catch (err) {
-        console.warn('Logo addition failed:', err);
+        reportOperationalError('Logo addition failed:', err, 'warn');
       }
 
       doc.setFontSize(14);
@@ -941,7 +942,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
       doc.save(`Relacion_Trabajadores_IA_${pdfName}.pdf`);
       onToast("Relación exportada a PDF correctamente", "success");
     } catch (err) {
-      console.error(err);
+      reportOperationalError("components/CameraScannerModal.tsx:944", err);
       onToast("No se pudo exportar a PDF", "error");
     }
   };
@@ -1077,7 +1078,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({ isOpen, 
         onToast('PDF descargado con éxito', 'success');
       }
     } catch (err) {
-      console.error(err);
+      reportOperationalError("components/CameraScannerModal.tsx:1080", err);
       onToast('Error al generar el PDF', 'error');
     } finally {
       setIsGenerating(false);

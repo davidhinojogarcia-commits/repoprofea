@@ -68,7 +68,7 @@ const postJson = async (path: string, payload: any, label: string) => {
       body: JSON.stringify(payload),
     });
   } catch (error) {
-    console.error(`[CAE] ${label}`, error);
+    reportOperationalError("components/FileUploaderIA.tsx:71", error);
     throw new Error(`No se pudo conectar con el servicio de ${label}.`);
   }
 
@@ -150,7 +150,7 @@ export const FileUploaderIA: React.FC<Props> = ({
           );
         }
       } catch (error) {
-        console.error('[CAE] No se pudo preparar la previsualización local:', error);
+        reportOperationalError('[CAE] No se pudo preparar la previsualización local:', error);
         if (!cancelled) {
           setPreviewError(
             'No se ha podido previsualizar este archivo, pero puede mantenerse seleccionado para el análisis.',
@@ -278,7 +278,7 @@ export const FileUploaderIA: React.FC<Props> = ({
           }
         }
       } catch (error) {
-        console.warn('[CAE] validación PSS no bloqueante', error);
+        reportOperationalError('[CAE] validación PSS no bloqueante', error, 'warn');
       }
 
       data.documentosAnalizados = fillCaeDocumentDates(
@@ -386,7 +386,7 @@ export const FileUploaderIA: React.FC<Props> = ({
         );
       }
     } catch (error: any) {
-      console.error('[CAE] análisis interrumpido', error);
+      reportOperationalError('[CAE] análisis interrumpido', error);
       const message = String(error?.message || '');
       onToast(
         message && message !== 'The string did not match the expected pattern.'

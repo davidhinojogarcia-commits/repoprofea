@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useMemo, useState } from 'react';
 import { PersonList as PersonListView } from './PersonListView';
 import { DirectoryStatusFilter } from './DirectoryStatusFilter';
@@ -22,7 +23,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> =
       await moveWorkersToTrashBulk(ids);
       props.onToast?.(`${ids.length} registros enviados a la Papelera correctamente`, 'success');
     } catch (error) {
-      console.error('Error en baja múltiple de Supabase:', error);
+      reportOperationalError('Error en baja múltiple de Supabase:', error);
       props.onToast?.('No se pudieron enviar todos los registros a la Papelera.', 'error');
     }
   };

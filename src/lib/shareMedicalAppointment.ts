@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import type { Person } from '../../types';
 import { applyPdfCopyrightStamp, generateMedicalTicketsPDF } from './exportUtils';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
@@ -99,7 +100,7 @@ const resolveAppointmentLocalidad = async (person: Person): Promise<string> => {
     const municipio = String(match?.municipio || '').trim();
     if (municipio) return municipio;
   } catch (error) {
-    console.warn('No se pudo resolver la localidad de la obra para la citación médica:', error);
+    reportOperationalError('No se pudo resolver la localidad de la obra para la citación médica:', error, 'warn');
   }
 
   const fallback = String((person as any).municipio || (person as any).localidad || '').trim();
@@ -328,7 +329,7 @@ export const sharePreparedMedicalAppointmentPdf = async (
       return 'shared';
     } catch (error: any) {
       if (error?.name === 'AbortError') return 'cancelled';
-      console.warn('No se pudo abrir el sistema nativo de compartir; se descargará el PDF.', error);
+      reportOperationalError('No se pudo abrir el sistema nativo de compartir; se descargará el PDF.', error, 'warn');
     }
   }
 
@@ -374,7 +375,7 @@ export const shareMedicalAppointmentByWhatsApp = async (
         closeWindow(whatsappWindow);
         return 'cancelled';
       }
-      console.warn('No se pudo compartir directamente la citación PDF; se usará la alternativa de WhatsApp Web.', error);
+      reportOperationalError('No se pudo compartir directamente la citación PDF; se usará la alternativa de WhatsApp Web.', error, 'warn');
     }
   }
 

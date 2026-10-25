@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React from 'react';
 import { Camera, CameraIcon, Check, CheckCircle2, Loader2, RefreshCw, RotateCcw, Smartphone, SwitchCamera, X, XCircle } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
@@ -69,7 +70,7 @@ export const RemoteScannerPortal: React.FC<{ token: string }> = ({ token }) => {
       setValid(Boolean(result?.valid));
       if (!result?.valid) setError('Este QR ha caducado o ya no está activo. Genera uno nuevo desde GestionProfea.');
     } catch (e) {
-      console.error(e);
+      reportOperationalError("components/RemoteScannerPortal.tsx:72", e);
       setValid(false);
       setError('No se ha podido validar la vinculación del escáner.');
     } finally {
@@ -114,7 +115,7 @@ export const RemoteScannerPortal: React.FC<{ token: string }> = ({ token }) => {
         await videoRef.current.play();
       }
     } catch (e: any) {
-      console.error('No se pudo iniciar la cámara:', e);
+      reportOperationalError('No se pudo iniciar la cámara:', e);
       setCameraError(
         e?.name === 'NotAllowedError'
           ? 'No se ha autorizado el acceso a la cámara. Activa el permiso de cámara en el navegador.'
@@ -169,7 +170,7 @@ export const RemoteScannerPortal: React.FC<{ token: string }> = ({ token }) => {
       setCameraError('');
       window.setTimeout(() => { void startCamera('environment'); }, 250);
     } catch (e: any) {
-      console.error(e);
+      reportOperationalError("components/RemoteScannerPortal.tsx:172", e);
       setError(e?.message?.includes('expired') ? 'La sesión ha caducado. Genera un nuevo QR en el ordenador.' : 'No se ha podido enviar la fotografía. Inténtalo de nuevo.');
     } finally {
       setSending(false);
@@ -194,7 +195,7 @@ export const RemoteScannerPortal: React.FC<{ token: string }> = ({ token }) => {
       const raw = await fileToDataUrl(file);
       await sendImageData(raw, file.name || `Captura_${Date.now()}.jpg`);
     } catch (e) {
-      console.error(e);
+      reportOperationalError("components/RemoteScannerPortal.tsx:197", e);
       setError('No se ha podido leer la fotografía.');
     }
   };

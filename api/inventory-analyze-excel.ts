@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import * as XLSX from 'xlsx';
 
 type Row = Record<string, string>;
@@ -270,7 +271,7 @@ export default function handler(req: any, res: any) {
       parser: 'deterministic-xlsx',
     });
   } catch (error: any) {
-    console.error('[inventory-excel-api]', error);
+    reportOperationalError('[inventory-excel-api]', error);
     return res.status(500).json({
       error: error?.message ? `No se pudo leer el Excel: ${error.message}` : 'No se pudo analizar el Excel.',
     });

@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import ModalPortal from './ModalPortal';
@@ -264,7 +265,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
         const records = await listAnnualHiringPeriods();
         if (active) setAnnualHiringPeriods(records);
       } catch (error) {
-        console.error('No se pudieron cargar los periodos anuales de contratación:', error);
+        reportOperationalError('No se pudieron cargar los periodos anuales de contratación:', error);
       }
     };
 

@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
@@ -81,7 +82,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
         if (!nextById.has(old.id)) await deleteDocument('subcontratas', old.id);
       }
     } catch (error) {
-      console.error('Error guardando subcontratas en Supabase:', error);
+      reportOperationalError('Error guardando subcontratas en Supabase:', error);
       onToast('No se pudieron guardar los cambios de subcontratas en Supabase.', 'error');
     }
   };
@@ -101,7 +102,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       hydratedSubcontratasRef.current = true;
       queueMicrotask(() => { suppressSubPersistenceRef.current = false; });
     }, { includeShared: true }, error => {
-      console.error('Error leyendo subcontratas de Supabase:', error);
+      reportOperationalError('Error leyendo subcontratas de Supabase:', error);
       onToast('No se pudieron cargar las subcontratas desde Supabase.', 'error');
     });
     return () => unsubscribe();
@@ -152,7 +153,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       if (Array.isArray(settings.checklistTemplate) && settings.checklistTemplate.length > 0) setChecklistTemplate(settings.checklistTemplate);
       if (settings.obrasRecursos) setObrasRecursos(settings.obrasRecursos);
     }).catch(error => {
-      console.error('Error cargando configuración de subcontratas desde Supabase:', error);
+      reportOperationalError('Error cargando configuración de subcontratas desde Supabase:', error);
       onToast('No se pudo cargar la configuración de subcontratas desde Supabase.', 'error');
     });
     return () => { cancelled = true; };
@@ -411,7 +412,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       await saveSubcontrataSettings({ checklistTemplate: newTemplate });
       setChecklistTemplate(newTemplate);
     } catch (error) {
-      console.error('Error guardando checklist en Supabase:', error);
+      reportOperationalError('Error guardando checklist en Supabase:', error);
       onToast('No se pudo guardar el checklist en Supabase.', 'error');
       return;
     }
@@ -725,7 +726,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       );
       onToast('Informe oficial en PDF descargado correctamente.', 'success');
     } catch (err) {
-      console.error('Error generating PDF:', err);
+      reportOperationalError('Error generating PDF:', err);
       onToast('Error al generar el informe en PDF.', 'error');
     }
   };
@@ -757,7 +758,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     const nextRecursos = { ...obrasRecursos, [name]: { recursoPreventivoNombre: recurso, recursoPreventivoCategoria: categoria } };
     setObrasRecursos(nextRecursos);
     void saveSubcontrataSettings({ obrasRecursos: nextRecursos }).catch(error => {
-      console.error('Error guardando recurso preventivo en Supabase:', error);
+      reportOperationalError('Error guardando recurso preventivo en Supabase:', error);
       onToast('No se pudo guardar el recurso preventivo en Supabase.', 'error');
     });
     setNewObraInput('');
@@ -810,7 +811,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     nextRecursos[trimmedNew] = { recursoPreventivoNombre: trimmedRec, recursoPreventivoCategoria: categoria.trim() || 'Encargado de Obra' };
     setObrasRecursos(nextRecursos);
     void saveSubcontrataSettings({ obrasRecursos: nextRecursos }).catch(error => {
-      console.error('Error actualizando recurso preventivo en Supabase:', error);
+      reportOperationalError('Error actualizando recurso preventivo en Supabase:', error);
       onToast('No se pudo actualizar el recurso preventivo en Supabase.', 'error');
     });
 
@@ -876,7 +877,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
     delete nextRecursos[obraName];
     setObrasRecursos(nextRecursos);
     void saveSubcontrataSettings({ obrasRecursos: nextRecursos }).catch(error => {
-      console.error('Error eliminando recurso preventivo en Supabase:', error);
+      reportOperationalError('Error eliminando recurso preventivo en Supabase:', error);
       onToast('No se pudo actualizar la configuración de recursos en Supabase.', 'error');
     });
 
@@ -912,7 +913,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
       });
       onToast(`Informe consolidado de "${targetObra}" generado correctamente con diseño oficial de Diputación.`, 'success');
     } catch (err) {
-      console.error('Error generating consolidated PDF:', err);
+      reportOperationalError('Error generating consolidated PDF:', err);
       onToast('Error al exportar el reporte consolidado en PDF.', 'error');
     }
   };
@@ -3020,7 +3021,7 @@ export const SubcontratasSection: React.FC<SubcontratasSectionProps> = ({
                 id="form-firmas-reporte"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void saveSubcontrataSettings({ reporteConfig }).then(() => onToast('Configuración de firmas del Reporte Técnico guardada correctamente.', 'success')).catch(error => { console.error(error); onToast('No se pudo guardar la configuración del Reporte Técnico.', 'error'); });
+                  void saveSubcontrataSettings({ reporteConfig }).then(() => onToast('Configuración de firmas del Reporte Técnico guardada correctamente.', 'success')).catch(error => { reportOperationalError("components/SubcontratasSection.tsx:3023", error); onToast('No se pudo guardar la configuración del Reporte Técnico.', 'error'); });
                   setIsFirmasModalOpen(false);
                 }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"

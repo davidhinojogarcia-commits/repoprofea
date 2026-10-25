@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { applyPlugin } from 'jspdf-autotable';
@@ -114,7 +115,7 @@ export const ExportRenunciationEnhancer: React.FC = () => {
           if (name) renouncedNames.add(name);
         }
       } catch (error) {
-        console.warn('No se pudieron cargar renuncias para exportaciones', error);
+        reportOperationalError('No se pudieron cargar renuncias para exportaciones', error, 'warn');
       }
     };
     installPdfHighlight();

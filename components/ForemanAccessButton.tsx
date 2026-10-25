@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { appConfirm } from '../src/lib/appDialog';
@@ -42,7 +43,7 @@ const qrDataUrl = async (accessUrl: string) => {
       margin: 2,
     });
   } catch (canvasError) {
-    console.warn('No se pudo generar el QR con canvas; usando SVG de respaldo.', canvasError);
+    reportOperationalError('No se pudo generar el QR con canvas; usando SVG de respaldo.', canvasError, 'warn');
     const svg = await QRCode.toString(accessUrl, {
       type: 'svg',
       errorCorrectionLevel: 'H',
@@ -120,7 +121,7 @@ export const ForemanAccessButton: React.FC<{
         }
       }
     } catch (caught) {
-      console.error('No se pudo comprobar el acceso del encargado:', caught);
+      reportOperationalError('No se pudo comprobar el acceso del encargado:', caught);
       setError(errorMessage(caught, 'No se pudo comprobar el estado del acceso.'));
       setAccess((current) => ({ ...current, loaded: true }));
     }
@@ -154,7 +155,7 @@ export const ForemanAccessButton: React.FC<{
         const nextQr = await qrDataUrl(next);
         setQr(nextQr);
       } catch (qrError) {
-        console.error('No se pudo representar el QR del encargado:', qrError);
+        reportOperationalError('No se pudo representar el QR del encargado:', qrError);
         setQr('');
         setError('El acceso se ha generado correctamente, pero este navegador no pudo dibujar el QR. Puedes usar Copiar enlace.');
       }
@@ -162,7 +163,7 @@ export const ForemanAccessButton: React.FC<{
       if (openModal) setOpen(true);
       return next;
     } catch (caught) {
-      console.error('No se pudo generar el acceso del encargado:', caught);
+      reportOperationalError('No se pudo generar el acceso del encargado:', caught);
       setError(errorMessage(caught, 'No se pudo generar el código QR. Inténtalo de nuevo.'));
       return '';
     } finally {
@@ -203,7 +204,7 @@ export const ForemanAccessButton: React.FC<{
       // El propio visor del QR es la única ventana visible.
       await generateAccess(false);
     } catch (caught) {
-      console.error('No se pudo mostrar el código QR:', caught);
+      reportOperationalError('No se pudo mostrar el código QR:', caught);
       setError(errorMessage(caught, 'No se pudo mostrar el código QR. Inténtalo de nuevo.'));
     }
   };
@@ -235,7 +236,7 @@ export const ForemanAccessButton: React.FC<{
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2500);
     } catch (caught) {
-      console.error('No se pudo copiar el enlace:', caught);
+      reportOperationalError('No se pudo copiar el enlace:', caught);
       setError(errorMessage(caught, 'No se pudo copiar el enlace.'));
     }
   };
@@ -259,7 +260,7 @@ export const ForemanAccessButton: React.FC<{
       window.localStorage.removeItem(storageKey);
       setOpen(false);
     } catch (caught) {
-      console.error('No se pudo desautorizar el acceso:', caught);
+      reportOperationalError('No se pudo desautorizar el acceso:', caught);
       setError(errorMessage(caught, 'No se pudo desautorizar el acceso. Inténtalo de nuevo.'));
     } finally {
       setBusy(false);

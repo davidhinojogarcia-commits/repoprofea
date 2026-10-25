@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import ModalPortal from './ModalPortal';
 import { VisitContactsPanel } from './VisitContactsPanel';
@@ -234,7 +235,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
           );
       })
       .catch((error) =>
-        console.error("No se pudieron cargar las obras maestras:", error),
+        reportOperationalError("No se pudieron cargar las obras maestras:", error),
       );
   }, [setSavedObras]);
 
@@ -270,7 +271,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         setActiveTrainingProviderId(settings.activeTrainingProviderId || settings.trainingProviders?.[0]?.id || "");
         setTrainingProviderDraft({ ...DEFAULT_TRAINING_PROVIDER_SETTINGS });
       })
-      .catch((error) => console.error("No se pudo cargar la configuración del supervisor:", error))
+      .catch((error) => reportOperationalError("No se pudo cargar la configuración del supervisor:", error))
       .finally(() => {
         if (active) {
           setSupervisorLoaded(true);
@@ -376,7 +377,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         });
       }
     } catch (error: any) {
-      console.error(error);
+      reportOperationalError("components/Configuracion.tsx:379", error);
       alert(
         "⚠️ Hubo un error al generar la copia de seguridad comprimida: " +
           error.message,
@@ -408,7 +409,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         });
       }
     } catch (error) {
-      console.error(error);
+      reportOperationalError("components/Configuracion.tsx:411", error);
       alert("⚠️ Hubo un error al generar la copia de seguridad estándar.");
     }
   };
@@ -445,7 +446,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         );
       }
     } catch (error: any) {
-      console.error(error);
+      reportOperationalError("components/Configuracion.tsx:448", error);
       alert(
         "⚠️ Error al leer o procesar el archivo de copia de seguridad: " +
           error.message,
@@ -556,7 +557,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         });
       }
     } catch (error: any) {
-      console.error("Error restaurando copia en Supabase:", error);
+      reportOperationalError("Error restaurando copia en Supabase:", error);
       if (setToast) {
         setToast({
           message: `No se pudo restaurar la copia en la base de datos: ${error?.message || "error desconocido"}`,
@@ -641,7 +642,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
         type: "success",
       });
     } catch (error: any) {
-      console.error("[worker-master-export]", error);
+      reportOperationalError("[worker-master-export]", error);
       setToast?.({
         message: error?.message || `No se pudo generar la exportación ${format === "excel" ? "Excel" : "PDF"}.`,
         type: "error",
@@ -1041,7 +1042,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                   window.dispatchEvent(new CustomEvent("profea:contact-settings-updated", { detail: { settingsKey } }));
                   setToast?.({ message: `${title} guardado correctamente.`, type: "success" });
                 } catch (error) {
-                  console.error("No se pudieron guardar los datos de contacto:", error);
+                  reportOperationalError("No se pudieron guardar los datos de contacto:", error);
                   setToast?.({ message: "No se pudieron guardar los datos de contacto.", type: "error" });
                 }
               }}
@@ -1444,7 +1445,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         window.dispatchEvent(new CustomEvent("profea:supervisor-settings-updated"));
                         setToast?.({ message: "Datos del supervisor guardados y disponibles para toda la aplicación.", type: "success" });
                       } catch (error) {
-                        console.error("No se pudieron guardar los datos del supervisor:", error);
+                        reportOperationalError("No se pudieron guardar los datos del supervisor:", error);
                         setToast?.({ message: "No se pudieron guardar los datos del supervisor.", type: "error" });
                       }
                     }}
@@ -1529,7 +1530,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         window.dispatchEvent(new CustomEvent("profea:technician-settings-updated"));
                         setToast?.({ message: "Datos del técnico guardados y disponibles para los informes.", type: "success" });
                       } catch (error) {
-                        console.error("No se pudieron guardar los datos del técnico:", error);
+                        reportOperationalError("No se pudieron guardar los datos del técnico:", error);
                         setToast?.({ message: "No se pudieron guardar los datos del técnico.", type: "error" });
                       }
                     }}
@@ -1628,7 +1629,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                     window.dispatchEvent(new CustomEvent("profea:contact-settings-updated", { detail: { settingsKey: "trainingProvider" } }));
                                     setToast?.({ message: `${provider.empresa || "Empresa"} activada para los envíos de formación.`, type: "success" });
                                   } catch (error) {
-                                    console.error("No se pudo activar la empresa de formación:", error);
+                                    reportOperationalError("No se pudo activar la empresa de formación:", error);
                                     setToast?.({ message: "No se pudo activar la empresa de formación.", type: "error" });
                                   }
                                 }}
@@ -1666,7 +1667,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                                   window.dispatchEvent(new CustomEvent("profea:contact-settings-updated", { detail: { settingsKey: "trainingProvider" } }));
                                   setToast?.({ message: "Empresa de formación eliminada.", type: "success" });
                                 } catch (error) {
-                                  console.error("No se pudo eliminar la empresa de formación:", error);
+                                  reportOperationalError("No se pudo eliminar la empresa de formación:", error);
                                   setToast?.({ message: "No se pudo eliminar la empresa de formación.", type: "error" });
                                 }
                               }}
@@ -1748,7 +1749,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                             type: "success",
                           });
                         } catch (error) {
-                          console.error("No se pudo guardar la empresa de formación:", error);
+                          reportOperationalError("No se pudo guardar la empresa de formación:", error);
                           setToast?.({ message: "No se pudo guardar la empresa de formación.", type: "error" });
                         }
                       }}
@@ -1817,7 +1818,7 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({
                         await saveAppBusinessSettings({ workStartHour, workEndHour });
                         setToast?.({ message: `Horario de jornal guardado: ${workStartHour} – ${workEndHour}`, type: "success" });
                       } catch (error) {
-                        console.error("No se pudo guardar el horario de jornal:", error);
+                        reportOperationalError("No se pudo guardar el horario de jornal:", error);
                         setToast?.({ message: "No se pudo guardar el horario de jornal.", type: "error" });
                       }
                     }}
