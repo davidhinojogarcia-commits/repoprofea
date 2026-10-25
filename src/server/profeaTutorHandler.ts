@@ -1,4 +1,4 @@
-import { reportOperationalError } from '../lib/operationalLog';
+import { reportOperationalError } from '../lib/operationalLog.js';
 import { PROFEA_TUTOR_VIEW_LABELS, PROFEA_TUTOR_KNOWLEDGE_VERSION } from "../lib/profeaTutorKnowledge.js";
 import { authenticateTutorRequest, composeTutorResponseLocal, executeTutorConfirmation, executeTutorTools, normalizeTutorContext, planTutorRequestLocal, TUTOR_AGENT_VERSION } from "./profeaTutorAgent.js";
 

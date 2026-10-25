@@ -26,6 +26,7 @@ const validationEnd = app.indexOf('  }, [savedObras]);', normalizationAt) + '  }
 const validation = app.slice(validationStart, validationEnd);
 const storage = extract("  useEffect(() => {\n    localStorage.setItem('selectedObraFilter'", '  useEffect(() => {\n    if (toast)');
 const source = `import React, {useState, useRef, useEffect} from 'react';
+import {reportOperationalError} from './src/lib/operationalLog';
 const loadAppBusinessSettings = () => globalThis.__filterLoad();
 const clearLegacyBusinessSettings = () => {};
 export function Harness() {
