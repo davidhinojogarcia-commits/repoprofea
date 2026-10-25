@@ -7,6 +7,8 @@ import { syncSaeFortnightCodes, type SaeCodeState } from '../src/services/saeFor
 import { applySaeMonthlyCode } from '../src/services/saeMonthlyService';
 import SaeMonthlyNotice from './SaeMonthlyNotice';
 import SaeHiringSummary from './SaeHiringSummary';
+import SaeCandidateNameEditor from './SaeCandidateNameEditor';
+import { buildSaeHiringSummary, isSaeHiring, type SaeHiringRow } from '../src/lib/saeHiringSummary';
 import { appConfirm } from '../src/lib/appDialog';
 import {
   AlertTriangle,
@@ -197,6 +199,20 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
         : [],
     [candidates, selectedReportId],
   );
+  const hiringRows = useMemo(() => selectedNeed ? buildSaeHiringSummary(selectedNeed, reports, candidates, selectedReportId) : [], [selectedNeed, reports, candidates, selectedReportId]);
+  const excessById = new Map<string, SaeHiringRow>(hiringRows.filter(r => r.excess > 0).flatMap(r => r.memberIds.map(id => [id, r] as const)));
+  const capacityChecks = useRef(new Set<string>());
+  const checkCapacity = async (candidate: SaeCandidate, patch: Partial<SaeCandidate>, registration = false) => {
+    if (!selectedNeed) return true;
+    const next = {...candidate, ...patch};
+    if (!isSaeHiring(next)) return true;
+    const rows = buildSaeHiringSummary(selectedNeed, reports, candidates.map(c => c.id === candidate.id ? next : c));
+    const row = rows.find(r => r.memberIds.includes(candidate.id));
+    const before = hiringRows.find(r => r.id === row?.id);
+    if (!row?.excess || (!registration && row.excess <= (before?.excess || 0))) return true;
+    const accepted = await appConfirm(`${row.period} · ${row.category}: previstas ${row.planned}, seleccionadas ${row.hiring}, exceso +${row.excess}. ${registration ? 'Vas a registrar una contratación en un grupo que supera la previsión.' : 'Esta selección supera la previsión.'} ¿Quieres continuar?`, {title:'Previsión de contratación superada',confirmLabel:'Continuar de todas formas'});
+    return accepted && activeNeedRef.current === candidate.needId;
+  };
   const selectedReportLocked = selectedReport?.status === "finalized";
   const currentYear = new Date().getFullYear();
   const currentAnnualPeriods = annualPeriods.find((record) => record.year === currentYear) || null;
@@ -507,7 +523,13 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
     return firstPending === -1 ? 7 : firstPending + 1;
   }, [completedSteps]);
 
-  const patchCandidate = async (
+  const patchCandidate = async (candidate: SaeCandidate, patch: Partial<SaeCandidate>) => {
+    if (capacityChecks.current.has(candidate.id) || candidateWrites.current.has(candidate.id)) return;
+    capacityChecks.current.add(candidate.id);
+    try { if (await checkCapacity(candidate, patch)) await patchCandidateSaved(candidate, patch); else setCandidates(p => [...p]); }
+    finally { capacityChecks.current.delete(candidate.id); }
+  };
+  const patchCandidateSaved = async (
     candidate: SaeCandidate,
     patch: Partial<SaeCandidate>,
   ) => {
@@ -888,6 +910,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
   };
 
   const registerWorker = async (candidate: SaeCandidate) => {
+    if (capacityChecks.current.has(candidate.id) || registrationsInFlight.current.has(candidate.id) || candidateWrites.current.has(candidate.id)) return;
+    capacityChecks.current.add(candidate.id);
+    try { if (await checkCapacity(candidate, {resultCode: candidate.resultCode || '2001'}, true)) await registerWorkerSaved(candidate); }
+    finally { capacityChecks.current.delete(candidate.id); }
+  };
+  const registerWorkerSaved = async (candidate: SaeCandidate) => {
     if (registrationsInFlight.current.has(candidate.id) || candidateWrites.current.has(candidate.id)) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return onToast('Se necesita conexión para confirmar una contratación SAE.', 'error');
@@ -1957,11 +1985,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                         Informe finalizado y archivado. Use “Reabrir para modificar” si necesita realizar cambios.
                       </div>
                     )}
+                    {hiringRows.filter(r => r.excess > 0 && r.reportRelevant).map(r => <div key={r.id} role="alert" className="rounded-xl border-2 border-red-500 bg-red-50 p-3 font-bold text-red-800 dark:bg-red-950/30 dark:text-red-200">Previsión superada · {r.period} · {r.category}: previstas {r.planned}, seleccionadas {r.hiring}, de más +{r.excess}. Registradas: {r.registered}.</div>)}
                     {activeCandidates.map((c) => (
-                      <div key={c.id} className="rounded-2xl border p-4">
+                      <div key={c.id} className={`rounded-2xl border p-4 ${excessById.has(c.id) && isSaeHiring(c) ? "border-red-500 bg-red-50 dark:bg-red-950/20" : ""}`}>
                         <div className="flex flex-col xl:flex-row xl:items-center gap-3">
                           <div className="flex-1">
-                            <div className="font-black text-sm">
+                            <div className={`font-black text-sm ${excessById.has(c.id) && isSaeHiring(c) ? "text-red-700 dark:text-red-300" : ""}`}>
                               {c.orderNumber}.{" "}
                               {c.normalizedName ||
                                 titleCaseSpanish(c.fullNameOriginal)}{" "}
@@ -1971,6 +2000,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                 </span>
                               )}
                             </div>
+                            {excessById.has(c.id) && isSaeHiring(c) && <p className="text-xs font-bold text-red-700 dark:text-red-300">Previsión superada · +{excessById.get(c.id)!.excess} en este grupo · {c.linkedWorkerId || c.estado === 'Contratado' ? 'Registrado' : '2001 pendiente de registrar'}</p>}
                             <div className="text-xs text-slate-500 mt-1">
                               {c.categoria || "Categoría pendiente"} · Oferta{" "}
                               {c.offerNumber || "—"}
@@ -2013,62 +2043,17 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                             })()}
                           </div>
                         </div>
-                        <div className="mt-3 grid md:grid-cols-[1fr_auto] gap-3 items-end">
-                          <div className="grid sm:grid-cols-2 gap-2">
-                            <input
-                              value={c.apellidos}
-                              disabled={c.estado === "Contratado" || selectedReportLocked}
-                              onChange={(e) =>
-                                setCandidates((p) =>
-                                  p.map((x) =>
-                                    x.id === c.id
-                                      ? {
-                                          ...x,
-                                          apellidos: e.target.value,
-                                          normalizedName:
-                                            `${e.target.value} ${x.nombre}`.trim(),
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              onBlur={() =>
-                                void updateSaeCandidate(c.id, {
-                                  apellidos: c.apellidos,
-                                  normalizedName: c.normalizedName,
-                                })
-                              }
-                              className="ui-input text-sm"
-                              placeholder="Apellidos"
-                            />
-                            <input
-                              value={c.nombre}
-                              disabled={c.estado === "Contratado" || selectedReportLocked}
-                              onChange={(e) =>
-                                setCandidates((p) =>
-                                  p.map((x) =>
-                                    x.id === c.id
-                                      ? {
-                                          ...x,
-                                          nombre: e.target.value,
-                                          normalizedName:
-                                            `${x.apellidos} ${e.target.value}`.trim(),
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              onBlur={() =>
-                                void updateSaeCandidate(c.id, {
-                                  nombre: c.nombre,
-                                  normalizedName: c.normalizedName,
-                                })
-                              }
-                              className="ui-input text-sm"
-                              placeholder="Nombre"
-                            />
-                          </div>
-                          <div className="flex flex-wrap items-end gap-2">
+                        <div className="mt-3 flex flex-col gap-3">
+                          <SaeCandidateNameEditor key={c.id} candidate={c} disabled={c.estado === 'Contratado' || selectedReportLocked || savingCandidates.has(c.id)} onSave={async patch => {
+                            if (candidateWrites.current.has(c.id) || capacityChecks.current.has(c.id)) throw new Error('Hay otra operación pendiente para este candidato.');
+                            if (!(await checkCapacity(c, patch))) throw new Error('Corrección pendiente de confirmar. El nombre guardado se conserva.');
+                            await updateSaeCandidate(c.id, patch);
+                            if (activeNeedRef.current === c.needId) setCandidates(p => p.map(x => x.id === c.id ? {...x, ...patch} : x));
+                            const states = await syncSaeFortnightCodes(c.needId);
+                            const fresh = await listSaeCandidates(c.needId, {networkOnly:true});
+                            if (activeNeedRef.current === c.needId) {setCodeStates(states);setCandidates(fresh);}
+                          }} />
+                          <div className="flex flex-wrap items-end gap-2 max-w-full">
                             {c.estado !== "Contratado" ? (
                               <button
                                 onClick={() => void registerWorker(c)}

@@ -35,7 +35,7 @@ export const isSaeHiring = (candidate: SaeCandidate) => candidate.resultCode ===
 export type SaeHiringRow = {
   id: string; category: string; period: HiringPeriod; planned: number | null;
   candidates: number; hiring: number; registered: number; remaining: number | null;
-  excess: number; reportHiring: number; reportCandidates: number; reportRelevant: boolean;
+  memberIds: string[]; excess: number; reportHiring: number; reportCandidates: number; reportRelevant: boolean;
 };
 
 /** Every vacancy belongs to one category/period. Reports contribute to that shared target. */
@@ -50,7 +50,7 @@ export function buildSaeHiringSummary(need: SaeNeed, reports: SaeReport[], candi
     const planned = /\bpendiente\b/.test(normalize(req.categoria)) ? null : Math.max(0, Number(req.cantidad) || 0);
     if (existing) existing.planned = existing.planned === null || planned === null ? null : existing.planned + planned;
     else rows.push({ id: req.id, category: req.categoria, period, planned, members: [], candidates: 0,
-      hiring: 0, registered: 0, remaining: null, excess: 0, reportHiring: 0, reportCandidates: 0, reportRelevant: false });
+      hiring: 0, registered: 0, remaining: null, excess: 0, memberIds: [], reportHiring: 0, reportCandidates: 0, reportRelevant: false });
   }
   for (const candidate of candidates) {
     if (candidate.needId !== need.id || !reportById.has(candidate.reportId)) continue;
@@ -66,7 +66,7 @@ export function buildSaeHiringSummary(need: SaeNeed, reports: SaeReport[], candi
       row = rows.find(r => r.planned === null && r.period === period && r.category === label);
       if (!row) {
         row = { id: `unplanned:${period}:${label}`, category: label, period, planned: null, members: [],
-          candidates: 0, hiring: 0, registered: 0, remaining: null, excess: 0, reportHiring: 0, reportCandidates: 0, reportRelevant: false };
+          candidates: 0, hiring: 0, registered: 0, remaining: null, excess: 0, memberIds: [], reportHiring: 0, reportCandidates: 0, reportRelevant: false };
         rows.push(row);
       }
     }
@@ -78,7 +78,7 @@ export function buildSaeHiringSummary(need: SaeNeed, reports: SaeReport[], candi
     const selected = members.filter(c => c.reportId === selectedReportId);
     const selectedPeriod = selectedReport && (explicitPeriod(selectedReport.quincena)
       || (selectedReport.categoria && !isPeon(selectedReport.categoria) ? 'Mensual' : 'Periodo por confirmar'));
-    return { ...row, candidates: unique(members), hiring: unique(hiring),
+    return { ...row, memberIds: members.map(c => c.id), candidates: unique(members), hiring: unique(hiring),
       registered: unique(hiring.filter(c => Boolean(c.linkedWorkerId) || c.estado === 'Contratado')),
       remaining: row.planned === null ? null : Math.max(0, row.planned - unique(hiring)),
       excess: row.planned === null ? 0 : Math.max(0, unique(hiring) - row.planned),
