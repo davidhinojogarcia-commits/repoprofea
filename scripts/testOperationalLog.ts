@@ -32,6 +32,9 @@ try {
   assert.equal((entries.at(-1)!.args[1] as any).sanitizationFailed,true);
   assert.equal(entries.filter(e=>e.level==='warn').length,6,'warning severity and every invocation are preserved');
   assert.equal(entries.filter(e=>e.level==='error').length,3,'errors remain visible; no blanket suppression');
+  reportOperationalError('SYNTHETIC_TUTOR_FAILED',{code:'UPSTREAM_NETWORK',upstreamStatus:503});
+  assert.equal((entries.at(-1)!.args[1] as any).code,'UPSTREAM_NETWORK');
+  assert.equal((entries.at(-1)!.args[1] as any).upstreamStatus,503);
   previous.warn(`PASS synthetic diagnostic payload: ${beforeBytes}→${afterBytes} serialized bytes. Local fixture, not production traffic.`);
 } finally {console.warn=previous.warn;console.error=previous.error;}
 
