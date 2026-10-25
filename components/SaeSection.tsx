@@ -1842,7 +1842,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                                   </div>
                                 </button>
                                 <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                                  <button type="button" disabled={isFinalized}
+                                  <button type="button" disabled={isFinalized || periodSaving}
                                     title={isFinalized ? "Reabra el informe para modificar su periodo" : "Corregir el periodo de este informe y sus candidatos"}
                                     onClick={() => {
                                       setPeriodError("");
