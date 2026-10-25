@@ -6,10 +6,11 @@ const parseOffset = (value: string) => /^[-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)$/.test
 const rounded = (value: number) => Math.round(value * 100) / 100;
 type Point = { x: number; y: number; revision: number };
 
-export default function SaeReportPreview({ title, url, initialX, initialY, onPreview, onSave, onClose }: {
+export default function SaeReportPreview({ title, url, initialX, initialY, onPreview, onSave, onSaveDefault, onClose }: {
   title: string; url: string; initialX: number; initialY: number;
   onPreview: (x: number, y: number) => Promise<void>;
   onSave: (x: number, y: number) => Promise<void>;
+  onSaveDefault?: (x: number, y: number) => Promise<void>;
   onClose: () => void;
 }) {
   const [x, setX] = useState(String(initialX));
@@ -18,6 +19,8 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
   const [status, setStatus] = useState('Posición guardada');
   const [error, setError] = useState('');
   const [closing, setClosing] = useState(false);
+  const [savingDefault, setSavingDefault] = useState(false);
+  const defaultFlight = useRef(false);
   const desired = useRef<Point>({ x: initialX, y: initialY, revision: 0 });
   const saved = useRef(0);
   const revision = useRef(0);
@@ -71,6 +74,19 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
     void onPreview(rounded(px), rounded(py)).catch(e => setError(e instanceof Error ? e.message : 'No se pudo actualizar el PDF.'));
     timer.current = setTimeout(() => void flushRef.current(), 500);
   };
+  const saveDefault = async () => {
+    if (defaultFlight.current || closing) return;
+    defaultFlight.current = true; setSavingDefault(true);
+    try {
+      if (!(await flush())) return;
+      if (onSaveDefault) {
+        await onSaveDefault(desired.current.x, desired.current.y);
+        if (mounted.current) {setError('');setStatus('Posición guardada para este informe y como predeterminada para nuevos informes SAE.');}
+      }
+    } catch (e) {
+      if (mounted.current) {setStatus('Ajuste del informe guardado; predeterminado pendiente');setError(e instanceof Error?e.message:'No se pudo guardar la posición predeterminada. Vuelve a guardar.');}
+    } finally { defaultFlight.current=false; if(mounted.current) setSavingDefault(false); }
+  };
   const close = async () => {
     if (closing) return;
     setClosing(true);
@@ -87,15 +103,15 @@ export default function SaeReportPreview({ title, url, initialX, initialY, onPre
     <section role="dialog" aria-modal="true" aria-label="Vista previa SAE" className="w-full max-w-6xl bg-white dark:bg-slate-950 rounded-xl overflow-hidden flex flex-col" style={{ height: '94dvh', maxHeight: '100%' }}>
       <div className="shrink-0 max-h-[48dvh] overflow-auto border-b p-3">
         <h2 className="font-bold break-words">Vista previa SAE · {title}</h2>
-        <p className="text-xs">Ajuste X/Y en milímetros, incluidos negativos. Guardado automático por informe hasta que vuelva a cambiar la posición.</p>
+        <p className="text-xs">Ajuste X/Y en milímetros, incluidos negativos. Los ajustes se guardan en este informe. «Guardar posición» los establece también como predeterminados de tu cuenta para los nuevos informes SAE, hasta que vuelvas a cambiarlos.</p>
         <div className="flex flex-wrap items-end gap-3 mt-2">
           {(['X', 'Y'] as const).map(axis => <div key={axis} className="flex items-end gap-1">
-            <button type="button" aria-label={`Disminuir ${axis}`} disabled={closing} onClick={() => step(axis, -0.5)} className="min-h-11 min-w-11 rounded border">−</button>
-            <label className="text-xs font-bold">{axis} (mm)<input type="text" inputMode="decimal" autoComplete="off" disabled={closing} aria-label={`Desplazamiento ${axis}`} value={axis === 'X' ? x : y} onInput={e => change(axis === 'X' ? e.currentTarget.value : raw.current.x, axis === 'Y' ? e.currentTarget.value : raw.current.y)} onChange={e => change(axis === 'X' ? e.currentTarget.value : raw.current.x, axis === 'Y' ? e.currentTarget.value : raw.current.y)} className="ui-input block !w-24 min-h-11" /></label>
-            <button type="button" aria-label={`Aumentar ${axis}`} disabled={closing} onClick={() => step(axis, 0.5)} className="min-h-11 min-w-11 rounded border">+</button>
+            <button type="button" aria-label={`Disminuir ${axis}`} disabled={closing || savingDefault} onClick={() => step(axis, -0.5)} className="min-h-11 min-w-11 rounded border">−</button>
+            <label className="text-xs font-bold">{axis} (mm)<input type="text" inputMode="decimal" autoComplete="off" disabled={closing || savingDefault} aria-label={`Desplazamiento ${axis}`} value={axis === 'X' ? x : y} onInput={e => change(axis === 'X' ? e.currentTarget.value : raw.current.x, axis === 'Y' ? e.currentTarget.value : raw.current.y)} onChange={e => change(axis === 'X' ? e.currentTarget.value : raw.current.x, axis === 'Y' ? e.currentTarget.value : raw.current.y)} className="ui-input block !w-24 min-h-11" /></label>
+            <button type="button" aria-label={`Aumentar ${axis}`} disabled={closing || savingDefault} onClick={() => step(axis, 0.5)} className="min-h-11 min-w-11 rounded border">+</button>
           </div>)}
-          <button type="button" onClick={() => void flush()} disabled={closing} className="min-h-11 rounded bg-[#00548E] px-3 text-white">Guardar posición</button>
-          <button type="button" onClick={() => void close()} disabled={closing} className="min-h-11 rounded border px-3">{closing ? 'Guardando antes de cerrar…' : 'Cerrar'}</button>
+          <button type="button" onClick={() => void saveDefault()} disabled={closing || savingDefault} className="min-h-11 rounded bg-[#00548E] px-3 text-white">Guardar posición</button>
+          <button type="button" onClick={() => void close()} disabled={closing || savingDefault} className="min-h-11 rounded border px-3">{closing ? 'Guardando antes de cerrar…' : 'Cerrar'}</button>
         </div>
         <p role="status" className="text-xs mt-2">{status}</p>
         {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}

@@ -1,3 +1,4 @@
+import { loadSaeAlignmentDefault } from './saeAlignmentPreferences';
 import { getSessionUser, supabase } from "../lib/supabase";
 
 export type SaeNeed = {
@@ -508,6 +509,7 @@ export async function createSaeReport(
   const normalizedMime = mimeType === "image/jpg" ? "image/jpeg" : mimeType;
   if (!["application/pdf", "image/jpeg", "image/png"].includes(normalizedMime))
     throw new Error("Formato SAE no admitido. Use PDF, JPG o PNG.");
+  const alignment = await loadSaeAlignmentDefault(ownerId);
   // La política RLS de Storage valida que la primera carpeta sea el id de la
   // solicitud SAE. Mantener este orden es imprescindible para poder guardar el
   // informe sin relajar la seguridad entre supervisores.
@@ -560,6 +562,8 @@ export async function createSaeReport(
         work_code: candidate.codigoObra || report.codigoObra || null,
         hiring_month: monthNumber(candidate.mes || report.mes),
         fortnight: fortnightNumber(candidate.quincena || report.quincena),
+        alignment_offset_x: alignment?.x ?? 0,
+        alignment_offset_y: alignment?.y ?? 0,
         source_page: Math.max(1, Number(candidate.pageNumber || 1)),
         source_row_text: `${candidate.orderNumber} ${candidate.fullNameOriginal}`.trim(),
         source_position: {

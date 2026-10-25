@@ -1,3 +1,4 @@
+import { saveSaeAlignmentDefault } from '../src/services/saeAlignmentPreferences';
 import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ModalPortal from './ModalPortal';
@@ -2180,6 +2181,7 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
             const rows = await saveSaeReportAlignment(previewReport.id, x, y);
             setCandidates(previous => [...previous.filter(c => c.reportId !== previewReport.id), ...rows]);
           }}
+          onSaveDefault={saveSaeAlignmentDefault}
           onClose={closePreview} />
       )}
       {periodEditor && (

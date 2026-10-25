@@ -40,7 +40,7 @@ try {
         path.endsWith('annualHiringPeriodsService') ? 'export const listAnnualHiringPeriods=async()=>[];' :
         path.endsWith('databaseService') ? 'export const createDocument=async()=>{};export const deleteDocument=async()=>{};' :
         path.endsWith('saeDocumentParser') ? 'export const parseSaeNeedFile=()=>{};export const parseSaeReportFile=()=>{};export const fileToDataUrl=()=>{};export const titleCaseSpanish=v=>v;' :
-        path.endsWith('SaeReportPreview') ? 'export default ()=>null;' : 'export const supabase={};'
+        path.endsWith('SaeReportPreview') ? 'export default ()=>null;' : 'export const supabase={};export const getSessionUser=async()=>({id:"owner"});'
       }));
     } }] });
   server = http.createServer(async (req, res) => {
