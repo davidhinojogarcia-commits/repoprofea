@@ -56,7 +56,7 @@
     "test:signed-attendance": "node scripts/testSignedAttendancePdf.mjs && node scripts/testForemanPublicationUi.mjs",
     "test:signature-quality": "node --import tsx scripts/testSignatureQuality.ts",
     "test:signature-browser": "node scripts/testBlueSignaturesBrowser.mjs",
-    "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs && node scripts/testVisitWritingGroq.mjs",
+    "test:visit-writing": "node --import tsx scripts/testVisitWriting.ts && node scripts/testVisitWritingApi.mjs && node --import tsx scripts/testVisitWritingGroq.mjs",
     "test:visit-writing-browser": "node scripts/testVisitWritingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testVisitWritingBrowser.mjs",
     "test:calendar-dates": "node scripts/testIntegratedCalendarDates.mjs",
     "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs"
