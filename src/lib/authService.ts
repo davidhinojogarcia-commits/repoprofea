@@ -18,10 +18,28 @@ export async function configureAuthPersistence(): Promise<void> {
   await supabase.auth.getSession();
 }
 
+const profileReads = new Map<string, Promise<AuthProfile | null>>();
 async function readUserProfile(user: SupabaseUser): Promise<AuthProfile | null> {
-  const rows = await supabase.query('profiles', {
-    query: `select=id,email,nombre,apellidos,telefono,role,active&id=eq.${encodeURIComponent(user.id)}`,
+  const existing = profileReads.get(user.id);
+  if (existing) return existing;
+  const pending = fetchUserProfile(user).finally(() => {
+    if (profileReads.get(user.id) === pending) profileReads.delete(user.id);
   });
+  profileReads.set(user.id, pending);
+  return pending;
+}
+
+async function fetchUserProfile(user: SupabaseUser): Promise<AuthProfile | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let rows: any;
+  try {
+    rows = await supabase.query('profiles', {
+      query: `select=id,email,nombre,apellidos,telefono,role,active&id=eq.${encodeURIComponent(user.id)}`,
+      networkOnly: true,
+      signal: controller.signal,
+    });
+  } finally { clearTimeout(timeout); }
   const data = rows?.[0];
   if (!data || (data.role !== 'admin' && data.role !== 'user') || data.active !== true) return null;
   return {
@@ -60,7 +78,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
   // last_access_at del usuario autenticado, sin exponer otros campos del perfil.
   // Si la migración todavía no está aplicada, el acceso continúa funcionando.
   await supabase.rpc('mark_own_last_access').catch((error) => {
-    console.warn('No se pudo registrar el último acceso; comprueba la migración de Supabase.', error);
+    console.warn('AUTH_LAST_ACCESS_FAILED', { status: Number(error?.status) || 0 });
   });
 
   await supabase.query('audit_logs', {
@@ -74,8 +92,9 @@ export async function signInWithEmail(email: string, password: string): Promise<
       resource_id: user.id,
       details: {},
     },
-  }).catch(() => undefined);
+  }).catch(error => console.error('AUTH_LOGIN_AUDIT_FAILED', { status: Number(error?.status) || 0 }));
 
+  if ((await getSessionUser())?.id !== user.id) throw Object.assign(new Error('La sesión ha cambiado. Vuelve a iniciar sesión.'), {code:'auth/session-changed'});
   auth.currentUser = user;
   return user;
 }
@@ -90,10 +109,11 @@ export async function signOutUser() {
 
 export function subscribeToAuth(callback: (user: User | null, event: AuthChangeEvent) => void) {
   const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    profileReads.clear();
     const user = session?.user ? normalizeSupabaseUser(session.user) : null;
-    const previous=auth.currentUser?.id;
     auth.currentUser = user;
-    if(event==='SIGNED_OUT'&&previous)void import('./visitDraftStore').then(m=>m.forgetVisitDraft(previous)).catch(()=>undefined);
+    // A revoked/expired session must not erase pending encrypted work. Drafts
+    // remain scoped to their owner and are offered only after authentication.
     callback(user, event);
   });
   return () => data.subscription.unsubscribe();
@@ -106,8 +126,8 @@ export async function getCurrentRole(): Promise<AppRole | null> {
   return profile?.role || null;
 }
 
-export async function getUserProfile(): Promise<AuthProfile | null> {
-  const sessionUser = await getSessionUser();
+export async function getUserProfile(expectedUser?: SupabaseUser): Promise<AuthProfile | null> {
+  const sessionUser = expectedUser || await getSessionUser();
   if (!sessionUser) return null;
   return readUserProfile(normalizeSupabaseUser(sessionUser));
 }
@@ -126,10 +146,10 @@ export async function registerEmailPassword(): Promise<never> {
 export function authErrorMessage(error: unknown): string {
   const code = (error as any)?.code;
   const status = (error as any)?.status;
-  if (code === 'invalid_credentials' || code === 'invalid_grant' || status === 400) return 'Correo electrónico o contraseña incorrectos.';
+  if (code === 'invalid_credentials' || code === 'invalid_grant') return 'Correo electrónico o contraseña incorrectos.';
   if (code === 'auth/missing-role') return 'La cuenta está creada, pero no tiene un perfil activo autorizado en Supabase.';
   if (code === 'user_banned') return 'Esta cuenta está desactivada. Contacta con un administrador.';
-  if (code === 'auth/network-request-failed') return 'Error de conexión con Supabase. Comprueba tu conexión a internet.';
+  if (code === 'auth/network-request-failed' || error instanceof TypeError || ['AbortError','TimeoutError','AuthRetryableFetchError'].includes((error as any)?.name) || status >= 500) return 'No se ha podido conectar con Supabase. Comprueba la conexión y vuelve a intentarlo.';
   if (status === 401 || status === 403) return 'La cuenta no tiene permisos suficientes para completar la operación.';
   return 'No se ha podido iniciar sesión. Inténtalo de nuevo.';
 }

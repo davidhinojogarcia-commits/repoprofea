@@ -95,6 +95,12 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Auth recovery, isolation and browser races
+        run: |
+          node scripts/testAuthRecovery.mjs
+          node scripts/testAuthRecoveryBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testAuthRecoveryBrowser.mjs
+          node scripts/testClientSecretIsolation.mjs
       - name: SAE fortnight and monthly matching (PostgreSQL + Chromium + WebKit)
         run: npm run test:sae-fortnights
       - name: SAE hiring coverage by period and report

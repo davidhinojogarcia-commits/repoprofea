@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { applyBusinessConflictFix } from './saeBusinessConflictFixture.mjs';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { createRequire } from 'node:module';
@@ -46,6 +47,7 @@ try {
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023210429_sae_reopened_draft_codes.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261023214422_sae_monthly_work_matches.sql','utf8'));
   await db.exec(await fs.readFile(root+'supabase/migrations/20261024201410_sae_report_manual_period.sql','utf8'));
+  await applyBusinessConflictFix(db);
   await q("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
   await db.exec(await fs.readFile(root+'supabase/migrations/20261024201222_sae_reverse_fortnight_suggestions.sql','utf8'));
   const reset=async()=>{

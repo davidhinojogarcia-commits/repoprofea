@@ -1,3 +1,4 @@
+import { applyBusinessConflictFix } from './saeBusinessConflictFixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
@@ -49,6 +50,7 @@ try {
     grant select,insert,update,delete on sae_needs,sae_reports,sae_candidates,trabajadores,user_settings to authenticated;`);
   for(const name of ['20261023140416_sae_fortnight_codes.sql','20261023195934_sae_code_selection_trigger.sql','20261023210429_sae_reopened_draft_codes.sql','20261023214422_sae_monthly_work_matches.sql','20261024201222_sae_reverse_fortnight_suggestions.sql'])
     await db.exec(fs.readFileSync(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+  await applyBusinessConflictFix(db);
   await reset();await patch(b,{source_position:{orderNumber:1}});
   let ranked=await state();assert.equal(ranked.proposedCode,'2212');assert.equal(ranked.currentCode,null);
   await apply(ranked.signature);assert.equal(await code(),'2212');
