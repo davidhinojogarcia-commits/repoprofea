@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useMemo } from 'react';
 import ModalPortal from './ModalPortal';
 import { X, Calendar, Briefcase, Users, GraduationCap, Building2, Download, Search, CheckCircle, FileText, AlertCircle } from 'lucide-react';
@@ -155,7 +156,7 @@ export const PeriodicReportModal: React.FC<PeriodicReportModalProps> = ({ isOpen
       const { doc, filename } = await generatePeriodicReportPDF(filteredData, fullPeriodLabel, supervisor, zona);
       downloadPDF(doc, filename);
     } catch (err) {
-      console.error('Error rendering report PDF:', err);
+      reportOperationalError('Error rendering report PDF:', err);
       alert('Ocurrió un error al compilar el informe. Por favor, inténtelo de nuevo.');
     } finally {
       setIsExporting(false);

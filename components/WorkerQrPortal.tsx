@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Download, ExternalLink, FileText, Loader2, Share2, ShieldCheck, X } from 'lucide-react';
 import type { Person } from '../types';
@@ -86,7 +87,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
       }
     } catch (error: any) {
       if (error?.name === 'AbortError') return;
-      console.warn('No se pudo compartir el PDF desde el navegador:', error);
+      reportOperationalError('No se pudo compartir el PDF desde el navegador:', error, 'warn');
     }
     downloadPdf();
   };

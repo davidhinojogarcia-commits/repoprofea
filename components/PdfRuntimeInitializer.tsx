@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { applyPlugin } from 'jspdf-autotable';
@@ -44,7 +45,7 @@ export default function PdfRuntimeInitializer() {
   useEffect(() => {
     applyPdfRuntimeDefaults();
     void hydrateStoredPdfConfig().catch(error =>
-      console.warn('No se pudo precargar la configuración PDF:', error),
+      reportOperationalError('No se pudo precargar la configuración PDF:', error, 'warn'),
     );
   }, []);
   return null;

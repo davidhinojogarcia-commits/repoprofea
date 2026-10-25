@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import {
   GOOGLE_CLIENT_ID,
   apiError,
@@ -163,7 +164,7 @@ export default async function handler(req: any, res: any) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           });
         } catch (error) {
-          console.warn('[gmail-disconnect]', {code:'GMAIL_REVOKE_UNCONFIRMED'});
+          reportOperationalError('[gmail-disconnect]', {code:'GMAIL_REVOKE_UNCONFIRMED'}, 'warn');
         }
       }
       await deleteConnection(user.id);

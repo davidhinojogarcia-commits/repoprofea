@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -46,7 +47,7 @@ export const getStoredPdfConfig = (): Required<PdfCustomConfig> => ({ ...pdfConf
 export const saveStoredPdfConfig = (config: Partial<PdfCustomConfig>): Required<PdfCustomConfig> => {
   pdfConfigCache = normalizePdfConfig({ ...pdfConfigCache, ...config });
   void savePdfPreferences(pdfConfigCache).catch(error =>
-    console.warn('Error guardando configuración PDF en Supabase:', error)
+    reportOperationalError('Error guardando configuración PDF en Supabase:', error, 'warn')
   );
   return { ...pdfConfigCache };
 };
@@ -111,7 +112,7 @@ export const renderPdfLogo = (
     try {
       doc.addImage(logoToUse, 'PNG', x, y, maxW, maxH);
     } catch (e2) {
-      console.warn('Error adding logo to PDF:', e2);
+      reportOperationalError('Error adding logo to PDF:', e2, 'warn');
     }
   }
 };
@@ -1585,14 +1586,14 @@ export const handleEmailFiles = async (dataToExport: Person[], allPeople?: Perso
         return;
       } catch (err: any) {
         if (err.name === 'AbortError') return;
-        console.warn('Navigator.share falló:', err.message);
+        reportOperationalError('Navigator.share falló:', err, 'warn');
       }
     }
 
     fallbackManualEmail(asunto, cuerpo, pdfBlob, excelBlob, pdfFilename, excelFilename);
 
   } catch (error) {
-    console.error('Error al preparar el envío:', error);
+    reportOperationalError('Error al preparar el envío:', error);
     alert('Se produjo un error al preparar los archivos.');
   }
 };
@@ -1625,7 +1626,7 @@ export const generateWorkerIDCardPDF = async (
     try {
       qrCodeDataUrl = await QRCode.toDataURL(qrText, { margin: 1, width: 250 });
     } catch (error) {
-      console.error('Error generating QR code:', error);
+      reportOperationalError('Error generating QR code:', error);
     }
   }
 
@@ -1661,7 +1662,7 @@ export const generateWorkerIDCardPDF = async (
       doc.addImage(logoBase64, 'PNG', badgeX + badgeW - 27, badgeY + 2.5, 24, 3.7);
     }
   } catch (err) {
-    console.warn('Logo addition failed:', err);
+    reportOperationalError('Logo addition failed:', err, 'warn');
   }
 
   doc.setTextColor(30, 41, 59);

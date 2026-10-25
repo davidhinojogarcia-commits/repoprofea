@@ -55,6 +55,8 @@ jobs:
           grep -q 'persistSession: true' src/lib/supabase.ts
           grep -q 'IDLE_TIMEOUT_MS = 30 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
+      - name: Ensure diagnostics do not expose private payloads
+        run: npm run test:operational-logs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail

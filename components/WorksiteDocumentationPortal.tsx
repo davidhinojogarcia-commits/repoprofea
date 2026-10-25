@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { appConfirm } from '../src/lib/appDialog';
 import {
@@ -235,7 +236,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       setWorkStartHour(settings.workStartHour || "08:00");
       setWorkEndHour(settings.workEndHour || "15:00");
     } catch (error) {
-      console.error("No se pudo cargar Documentación de obra:", error);
+      reportOperationalError("No se pudo cargar Documentación de obra:", error);
       showToast("No se han podido cargar las obras y trabajadores.", "error");
     } finally {
       setLoading(false);
@@ -493,7 +494,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       await refresh();
       showToast("Datos de la obra guardados.");
     } catch (error) {
-      console.error("Error guardando configuración de obra:", error);
+      reportOperationalError("Error guardando configuración de obra:", error);
       showToast("No se ha podido guardar el recurso preventivo de la obra.", "error");
     } finally {
       setSaving(false);
@@ -686,7 +687,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
       window.setTimeout(() => URL.revokeObjectURL(url), 120000);
       showToast(`PDF conjunto preparado: ${generated.length} documento(s) en ${batchGroups.length} grupo(s).`);
     } catch (error) {
-      console.error("Error generando impresión múltiple:", error);
+      reportOperationalError("Error generando impresión múltiple:", error);
       showToast("No se pudo preparar el PDF conjunto. Revisa la conexión e inténtalo de nuevo.", "error");
     } finally {
       setBatchGenerating(false);

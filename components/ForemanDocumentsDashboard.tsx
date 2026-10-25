@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import ForemanModelSettings from './ForemanModelSettings';
 import { allowsForemanSignature } from '../src/lib/foremanSignaturePolicy';
 import { saveAttendanceForemanTemplate, getSupervisorForemanEvidence } from '../src/services/foremanPortalService';
@@ -667,7 +668,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setGenericEditDraft({});
       await refresh(true);
     } catch (error:any) {
-      console.error('No se pudo editar el documento del encargado:', error);
+      reportOperationalError('No se pudo editar el documento del encargado:', error);
       setMailMessage(error?.message || 'No se pudo guardar la edición.');
     } finally {
       setEditBusy(false);
@@ -700,7 +701,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage('Documento eliminado correctamente. La eliminación ha quedado guardada.');
       await refresh(true);
     } catch (error:any) {
-      console.error('No se pudo eliminar el documento del encargado:', error);
+      reportOperationalError('No se pudo eliminar el documento del encargado:', error);
       setMailMessage(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
