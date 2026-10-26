@@ -4,6 +4,7 @@ import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRe
 import { auth } from './src/lib/supabaseData';
 import { getSessionUser, supabase } from './src/lib/supabase';
 import { Header } from './components/Header';
+import {usePartsNotifications} from './src/hooks/usePartsNotifications';
 import { useAuthShell } from './components/AuthGate';
 import { GuidedHome } from './components/GuidedHome';
 import { PrintHeader } from './components/PrintHeader';
@@ -42,6 +43,7 @@ const PreventionSection = lazy(() => import('./components/PreventionSection').th
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
+const PartsPanel = lazy(()=>import('./components/PartsPanel'));
 const VisitMinutesPanel = lazy(() => import('./components/VisitMinutesPanel').then(module => ({ default: module.VisitMinutesPanel })));
 const Stats = lazy(() => import('./components/Stats').then(module => ({ default: module.Stats })));
 const RegistrationForm = lazy(() => import('./components/RegistrationForm').then(module => ({ default: module.RegistrationForm })));
@@ -117,6 +119,7 @@ type InterfaceMode = 'guided' | 'full';
 
 const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: string; help: string }>> = {
   sae: { step: 'Paso 1 de 6', title: 'Selección SAE', help: 'Selecciona trabajadores y prepara la contratación.' },
+  partes_avisos: {step:'Seguimiento de obra',title:'Partes y avisos',help:'Revisa hechos y comunicaciones sin sanciones automáticas.'},
   directorio: { step: 'Paso 2 de 6', title: 'Trabajadores', help: 'Revisa datos, documentación e historial.' },
   citas: { step: 'Paso 3 de 6', title: 'Reconocimientos médicos', help: 'Comprueba citas y aptitud médica.' },
   documentacion_obra: { step: 'Paso 4 de 6', title: 'Documentación de obra', help: 'Completa y revisa los documentos de la obra.' },
@@ -156,7 +159,7 @@ function App() {
     return 'light';
   });
 
-  const [activeView, setActiveView] = useState<ViewMode>('dashboard');
+  const [activeView, setActiveView] = useState<ViewMode>(()=>new URLSearchParams(window.location.search).has('parts')?'partes_avisos':'dashboard');
   const [visitWorksite, setVisitWorksite] = useState('');
   useEffect(() => {
     const openVisit = (event: Event) => {setVisitWorksite(String((event as CustomEvent).detail?.worksite || ''));setActiveView('actas_visitas');};
@@ -198,6 +201,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const partsUnread=usePartsNotifications(authenticatedUser.id,message=>setToast({message,type:'success'}));
   const [interfaceMode, setInterfaceMode] = useState<InterfaceMode>('full');
   const [isInterfaceModeSaving, setIsInterfaceModeSaving] = useState(false);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 3500); return () => window.clearTimeout(timer); }, [toast]);
@@ -244,7 +248,7 @@ function App() {
     setInterfaceMode(nextMode);
     if (
       nextMode === 'guided' &&
-      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'actas_visitas', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
+      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'actas_visitas', 'partes_avisos', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
     ) {
       setActiveView('dashboard');
       window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
@@ -2167,6 +2171,7 @@ function App() {
         uniqueQuincenas={uniqueQuincenas}
         onOpenScanner={() => setIsScannerOpen(true)}
         guidedMode={interfaceMode === 'guided'}
+        partsUnread={partsUnread}
       />
       <div
         aria-hidden="true"
@@ -2290,6 +2295,7 @@ function App() {
             </div>
           )}
 
+          {activeView === 'partes_avisos' && <Suspense fallback={<ViewLoadingFallback/>}><PartsPanel/></Suspense>}
           {activeView === 'directorio' && (
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">

@@ -1,10 +1,11 @@
 import { reportOperationalError } from '../src/lib/operationalLog';
-import React, { useMemo, useState } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { PersonList as PersonListView } from './PersonListView';
 import { DirectoryStatusFilter } from './DirectoryStatusFilter';
 import type { DirectoryStatusValue } from './DirectoryStatusFilter';
 import { moveWorkersToTrashBulk } from '../src/services/workerImportService';
 
+const PartsPanel=lazy(()=>import('./PartsPanel'));
 const getStatus = (person: any): DirectoryStatusValue => {
   const raw = String(person?.aptitudMedica || person?.reconocimientoEstado || '').toLowerCase();
   if (raw.includes('no apto')) return 'no_apto';
@@ -14,6 +15,7 @@ const getStatus = (person: any): DirectoryStatusValue => {
 };
 
 export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> = (props) => {
+  const [partsWorker,setPartsWorker]=useState<number|null>(null);
   const [statusFilters, setStatusFilters] = useState<DirectoryStatusValue[]>([]);
 
   const handleDeleteMultiple = async (ids: number[]) => {
@@ -40,6 +42,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> =
   );
 
   return <div>
+    <details className="m-3 rounded-xl border p-3"><summary className="cursor-pointer font-bold">Partes y avisos · historial restringido</summary><label className="block mt-2">Seleccionar contratación por ID<select className="mt-1 w-full rounded-xl border bg-white p-3 text-slate-900 dark:bg-slate-900 dark:text-white" value={partsWorker??''} onChange={e=>setPartsWorker(e.target.value?Number(e.target.value):null)}><option value="">Selecciona un trabajador</option>{props.people.map(p=><option key={p.id} value={p.id}>{p.apellidosNombre} · {p.obra} · ID {p.id}</option>)}</select></label>{partsWorker!==null&&<Suspense fallback={<p>Cargando historial…</p>}><PartsPanel key={partsWorker} workerId={partsWorker}/></Suspense>}</details>
     {props.people.length > 0 && <DirectoryStatusFilter value={statusFilters} onChange={setStatusFilters} counts={counts} />}
     <PersonListView {...props} people={visiblePeople} onDeleteMultiple={handleDeleteMultiple} />
   </div>;

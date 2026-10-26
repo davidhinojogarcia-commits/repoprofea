@@ -48,6 +48,7 @@ import {
   type MandatoryWorkerAnchor,
 } from '../src/lib/mandatoryPdfOverlay';
 
+const PartsPanel = lazy(()=>import('./PartsPanel'));
 const ForemanVisitMinutes = lazy(()=>import('./ForemanVisitMinutes'));
 const today = () => {
   const now = new Date();
@@ -182,7 +183,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'|'prevention'|'visits'>('mandatory');
+  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'|'prevention'|'visits'|'parts'>(()=>new URLSearchParams(window.location.search).has('parts')?'parts':'mandatory');
   const [date,setDate]=useState(today());
   const [attendanceEvidence,setAttendanceEvidence]=useState<any>(null);
   const [attendanceSigning,setAttendanceSigning]=useState(false);
@@ -1253,6 +1254,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         </div>
       </div>
 
+      {tab!=='parts'&&<button type="button" onClick={()=>setTab('parts')} className="min-h-[56px] w-full rounded-xl border border-blue-200 bg-white p-3 text-center font-black text-[#00548E] dark:bg-slate-900 dark:text-blue-200"><ClipboardList className="mr-2 inline h-5 w-5"/>Partes y avisos</button>}
+      {tab==='parts' && <Suspense fallback={<p>Cargando partes y avisos…</p>}><PartsPanel token={token} onBack={()=>setTab('mandatory')}/></Suspense>}
       {tab==='visits' && <Suspense fallback={<p>Cargando actas de visitas…</p>}><ForemanVisitMinutes token={token} onOpenPdf={showPdfPreview} /></Suspense>}
       {tab==='prevention' && <PreventionSection token={token} savedObras={[data.obra]} foremanName={data.foremanName} />}
       {tab==='control'&&<section className="space-y-3">

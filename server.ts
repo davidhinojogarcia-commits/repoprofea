@@ -1,5 +1,6 @@
 import { reportOperationalError } from './src/lib/operationalLog.js';
 import { foremanPushHandler } from './src/server/foremanPushHandler';
+import {partsHandler} from './src/server/partsHandler';
 import { visitMinutesHandler } from './src/server/visitMinutesHandler';
 import express from "express";
 import path from "path";
@@ -253,6 +254,7 @@ async function startServer() {
   // Local, context-aware operational agent endpoint for the in-app Tutor PROFEA.
   // It intentionally does not call Gemini or any external language-model provider.
   app.all("/api/foreman-push", foremanPushHandler);
+  app.all("/api/parts", partsHandler);
   app.all("/api/visit-minutes", visitMinutesHandler);
   app.post("/api/profea-tutor", profeaTutorHandler);
 

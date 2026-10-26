@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/parts",
+      "destination": "/api/gmail?action=parts"
+    },
+    {
       "source": "/api/visit-minutes",
       "destination": "/api/gmail?action=visit-minutes"
     },
@@ -71,7 +75,8 @@
       "fix/visit-writing-runtime-configuration": false,
       "fix/sae-capacity-name-editor-20261025": false,
       "fix/sae-persistent-alignment-default-20261025": false,
-      "fix/sae-bidirectional-code-guard-20261026": false
+      "fix/sae-bidirectional-code-guard-20261026": false,
+      "feat/partes-avisos-20261026": false
     }
   }
 }
