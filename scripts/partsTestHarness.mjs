@@ -7,10 +7,10 @@ export const id = (n) =>
 export const token = "a".repeat(48),
   otherToken = "b".repeat(48),
   wrongWorkToken = "c".repeat(48);
-export const now = "2026-10-26T12:00:00.000Z";
+export const now = new Date().toISOString().slice(0, 10) + "T12:00:00.000Z";
 export const content = {
   reason: "mobile",
-  occurredAt: "2026-10-26T10:00:00.000Z",
+  occurredAt: now.slice(0, 10) + "T10:00:00.000Z",
   place: "Acceso norte",
   facts:
     "Se observó el uso del móvil durante la instrucción. No se midió su duración.",
@@ -74,8 +74,16 @@ export async function partsTestHarness() {
     [100, 2, "Obra A"],
   ])
     await db.query(
-      "insert into trabajadores values($1,$2,$3,'Persona Homónima','Peón','2026-10-01','2026-10-31')",
-      [id(owner), worker, work],
+      "insert into trabajadores values($1,$2,$3,'Persona Homónima','Peón',$4,$5)",
+      [
+        id(owner),
+        worker,
+        work,
+        now.slice(0, 7) + "-01",
+        new Date(Date.UTC(Number(now.slice(0, 4)), Number(now.slice(5, 7)), 0))
+          .toISOString()
+          .slice(0, 10),
+      ],
     );
   const approved = {
     employer: "Entidad empleadora de prueba",
@@ -109,7 +117,7 @@ export async function partsTestHarness() {
   await build({
     stdin: {
       contents:
-        "export {createPartsHandler,partContentHash} from './src/server/partsHandler';export * from './src/lib/parts/domain';export {generatePartPdf}from'./src/lib/parts/pdf';export{dispatchPartsPush}from'./src/server/partsPush';",
+        "export {createPartsHandler,partContentHash,madridDayStart} from './src/server/partsHandler';export * from './src/lib/parts/domain';export {generatePartPdf}from'./src/lib/parts/pdf';export{dispatchPartsPush}from'./src/server/partsPush';",
       resolveDir: new URL("../", import.meta.url).pathname,
     },
     outfile: out.pathname,
@@ -172,8 +180,51 @@ export async function partsTestHarness() {
     for (const [k, v] of params) {
       if (["select", "limit", "offset", "order", "on_conflict"].includes(k))
         continue;
-      if (k === "or" || k === "and")
-        throw Error("Complex pagination requires HTTP PostgREST fixture");
+      if (k === "or" || k === "and") {
+        const split = (text) => {
+          let depth = 0,
+            start = 0,
+            items = [];
+          for (let i = 0; i < text.length; i++) {
+            if (text[i] === "(") depth++;
+            if (text[i] === ")") depth--;
+            if (text[i] === "," && depth === 0) {
+              items.push(text.slice(start, i));
+              start = i + 1;
+            }
+          }
+          items.push(text.slice(start));
+          return items;
+        };
+        const expression = (item) => {
+          const group = item.match(/^(and|or)\((.*)\)$/);
+          if (group)
+            return (
+              "(" +
+              split(group[2])
+                .map(expression)
+                .join(" " + group[1] + " ") +
+              ")"
+            );
+          const match = item.match(/^(.+?)\.(eq|lt|gt|gte|lte)\.(.+)$/);
+          if (!match) throw Error("Invalid fixture expression");
+          args.push(match[3]);
+          return (
+            field(match[1]) +
+            { eq: "=", lt: "<", gt: ">", gte: ">=", lte: "<=" }[match[2]] +
+            "$" +
+            args.length
+          );
+        };
+        conditions.push(
+          "(" +
+            split(v.slice(1, -1))
+              .map(expression)
+              .join(" " + k + " ") +
+            ")",
+        );
+        continue;
+      }
       const [op, ...rest] = v.split("."),
         value = rest.join(".");
       if (op === "in") {
@@ -288,6 +339,7 @@ export async function partsTestHarness() {
     }
     const promise = queue
       .then(() => execute(...args))
+      .then((result) => JSON.parse(JSON.stringify(result)))
       .catch((e) => {
         errors.push(e.message);
         if (e.code === "PT409" || e.code === "23505")

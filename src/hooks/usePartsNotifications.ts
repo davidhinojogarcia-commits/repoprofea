@@ -11,19 +11,22 @@ export function usePartsNotifications(
   useEffect(() => {
     const setCount = (count: number) => setState({ owner: userId, count });
     let disposed = false,
-      lastRead = 0;
+      lastRead = 0,
+      epoch = 0;
     const ids = new Set<string>(),
       removed = new Set<string>();
     setCount(0);
     async function refresh() {
       if (disposed || Date.now() - lastRead < 1000) return;
       lastRead = Date.now();
+      const started = epoch;
       try {
         const rows = await supabase.query("parts_notifications", {
           query: `select=id&owner_id=eq.${encodeURIComponent(userId)}&recipient=eq.supervisor&read_at=is.null&limit=100`,
           networkOnly: true,
         });
         if (disposed) return;
+        if (started === epoch) ids.clear();
         for (const r of rows || []) if (!removed.has(r.id)) ids.add(r.id);
         setCount(ids.size);
       } catch {
@@ -51,6 +54,7 @@ export function usePartsNotifications(
             event.new?.recipient !== "supervisor"
           )
             return;
+          epoch++;
           const row = event.new;
           if (row.read_at) {
             ids.delete(row.id);
@@ -71,6 +75,8 @@ export function usePartsNotifications(
         if (status === "SUBSCRIBED") void refresh();
       });
     const marked = () => {
+      epoch++;
+      for (const id of ids) removed.add(id);
       ids.clear();
       setCount(0);
     };

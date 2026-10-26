@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import { build } from "esbuild";
 import { chromium, webkit } from "playwright";
-import { partsTestHarness, token, id } from "./partsTestHarness.mjs";
+import { partsTestHarness, token, id, content } from "./partsTestHarness.mjs";
 const engine = process.env.BROWSER_ENGINE === "webkit" ? "webkit" : "chromium";
 const env = await partsTestHarness(),
   root = new URL("../", import.meta.url).pathname;
@@ -24,7 +24,7 @@ async function buildClient() {
         loader: "tsx",
         contents: `
  import React from'react';import{createRoot}from'react-dom/client';import PartsPanel from'./components/PartsPanel';import{AppDialogHost}from'./components/AppDialogHost';
- const supervisor=new URLSearchParams(location.search).has('supervisor');createRoot(document.getElementById('root')).render(<><AppDialogHost/><PartsPanel token={supervisor?undefined:${JSON.stringify(token)}}/></>);`,
+ const supervisor=new URLSearchParams(location.search).has('supervisor');function Fixture(){const[owner,setOwner]=React.useState(1);window.__switchPartsAccount=()=>setOwner(2);window.__partsOwner=owner;return <><AppDialogHost/><PartsPanel accountId={supervisor?'10000000-0000-4000-8000-'+String(owner).padStart(12,'0'):undefined} token={supervisor?undefined:${JSON.stringify(token)}}/></>;}createRoot(document.getElementById('root')).render(<Fixture/>);`,
       },
       bundle: true,
       write: false,
@@ -47,7 +47,7 @@ async function buildClient() {
               namespace: "parts-boundary",
             }));
             b.onLoad({ filter: /.*/, namespace: "parts-boundary" }, () => ({
-              contents: `export const normalizeSupabaseUser=v=>v;export const getSessionUser=async()=>({id:'${id(1)}'});export const supabase={auth:{getSession:async()=>({data:{session:{user:{id:'${id(1)}'},access_token:'user-1'}}})}};`,
+              contents: `export const normalizeSupabaseUser=v=>v;export const getSessionUser=async()=>({id:'${id(1)}'});export const supabase={auth:{getSession:async()=>({data:{session:{user:{id:'10000000-0000-4000-8000-'+String(window.__partsOwner||1).padStart(12,'0')},access_token:'user-'+(window.__partsOwner||1)}}})}};`,
             }));
           },
         },
@@ -136,6 +136,7 @@ try {
       errors.push(e.message);
       runtimeErrors.push(e.message);
     });
+    page.setDefaultTimeout(15000);
     await page.goto(base);
     await page.evaluate(async () => {
       await navigator.serviceWorker.register("/service-worker.js");
@@ -152,7 +153,7 @@ try {
     await page.getByLabel("Trabajador", { exact: true }).selectOption("100");
     await page
       .getByLabel("Fecha y hora del hecho", { exact: true })
-      .fill("2026-10-26T10:00");
+      .fill(content.occurredAt.slice(0, 16));
     await page
       .getByLabel("Lugar en la obra", { exact: true })
       .fill("Zona norte");
@@ -263,6 +264,153 @@ try {
     .click();
   await draw(supervisor);
   await supervisor.getByRole("heading", { name: /Comunicado/ }).waitFor();
+  // Independent foreman/supervisor HTTP sessions exercise circuit B and return/ratification.
+  const foreman = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  lastPage = foreman;
+  foreman.on("pageerror", (e) => runtimeErrors.push(e.message));
+  await foreman.goto(base);
+  await foreman
+    .getByRole("button", { name: "Nuevo parte de incidencia", exact: true })
+    .click();
+  await foreman.getByLabel("Trabajador", { exact: true }).selectOption("101");
+  await foreman
+    .getByLabel("Fecha y hora del hecho", { exact: true })
+    .fill(content.occurredAt.slice(0, 16));
+  await foreman
+    .getByLabel("Lugar en la obra", { exact: true })
+    .fill("Acceso sur");
+  await foreman
+    .getByLabel("Descripción objetiva de los hechos", { exact: true })
+    .fill(
+      "Se solicita aclarar el cumplimiento de la instrucción, sin presuponer intenciones.",
+    );
+  await foreman
+    .getByLabel("Instrucción comunicada", { exact: true })
+    .fill("Recordatorio de la instrucción concreta.");
+  await foreman
+    .getByRole("button", { name: "Guardar borrador en servidor", exact: true })
+    .click();
+  await foreman
+    .getByRole("button", { name: "Firmar y enviar al supervisor", exact: true })
+    .click();
+  await draw(foreman);
+  const sentHeading = foreman.getByRole("heading", {
+    name: /Enviado al supervisor/,
+  });
+  await sentHeading.waitFor();
+  const number = (await sentHeading.innerText()).split(" · ")[0];
+  assert.equal(
+    await foreman.getByLabel("Resultado", { exact: true }).count(),
+    0,
+    "B does not permit communication before supervisor authorization",
+  );
+  await supervisor
+    .getByRole("button", { name: "Volver al listado", exact: true })
+    .click();
+  await supervisor
+    .getByRole("button", { name: "Actualizar", exact: true })
+    .click();
+  await supervisor
+    .getByRole("button", { name: new RegExp(number + " ·") })
+    .click();
+  await supervisor
+    .getByLabel("Motivo de la decisión / justificación de comparabilidad", {
+      exact: true,
+    })
+    .fill("Precisar la ubicación antes de autorizar.");
+  await supervisor
+    .getByRole("button", { name: "Devolver para corrección", exact: true })
+    .click();
+  await supervisor.getByRole("heading", { name: /Devuelto/ }).waitFor();
+  await foreman
+    .getByRole("button", { name: "Actualizar", exact: true })
+    .click();
+  await foreman.getByRole("heading", { name: /Devuelto/ }).waitFor();
+  await foreman
+    .getByRole("button", { name: "Corregir borrador", exact: true })
+    .click();
+  await foreman
+    .getByLabel("Lugar en la obra", { exact: true })
+    .fill("Acceso sur junto a la caseta");
+  await foreman
+    .getByRole("button", { name: "Guardar borrador en servidor", exact: true })
+    .click();
+  await foreman
+    .getByRole("button", { name: "Firmar y enviar al supervisor", exact: true })
+    .click();
+  await draw(foreman);
+  await sentHeading.waitFor();
+  await supervisor
+    .getByRole("button", { name: "Actualizar", exact: true })
+    .click();
+  await supervisor
+    .getByRole("button", { name: "Revisar y autorizar con firma", exact: true })
+    .click();
+  await draw(supervisor);
+  await supervisor
+    .getByRole("heading", { name: /Pendiente de comunicación/ })
+    .waitFor();
+  await foreman
+    .getByRole("button", { name: "Actualizar", exact: true })
+    .click();
+  await foreman
+    .getByRole("heading", { name: /Pendiente de comunicación/ })
+    .waitFor();
+  await foreman
+    .getByLabel("Resultado", { exact: true })
+    .selectOption("refused");
+  await foreman
+    .getByLabel(
+      "Observaciones del trabajador o descripción objetiva del intento",
+      { exact: true },
+    )
+    .fill(
+      "Tras la lectura, declina firmar. No se presume acreditada la entrega.",
+    );
+  await foreman.getByLabel(/El documento completo ha sido mostrado/).check();
+  await foreman
+    .getByRole("button", { name: "Registrar intento sin firma", exact: true })
+    .click();
+  await foreman
+    .getByRole("heading", { name: /Entrega no acreditada/ })
+    .waitFor();
+  const download = foreman.waitForEvent("download");
+  await foreman
+    .getByRole("button", { name: "Descargar PDF", exact: true })
+    .click();
+  assert.match((await download).suggestedFilename(), /\.pdf$/);
+  await foreman.setViewportSize({ width: 844, height: 390 });
+  assert.equal(
+    await foreman.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+    false,
+    "landscape has no horizontal overflow",
+  );
+  if (process.env.PARTS_EVIDENCE_DIR) {
+    await fs.mkdir(process.env.PARTS_EVIDENCE_DIR, { recursive: true });
+    await foreman.screenshot({
+      path: process.env.PARTS_EVIDENCE_DIR + "/" + engine + "-delivery.png",
+      fullPage: true,
+    });
+    await (
+      await download
+    ).saveAs(process.env.PARTS_EVIDENCE_DIR + "/" + engine + "-incident.pdf");
+  }
+  // A late response from the old authenticated account must never repopulate the new account.
+  let delayedResolve;const delayed=new Promise(r=>delayedResolve=r);let delayOnce=true;
+  await supervisor.route('**/api/parts',async route=>{if(delayOnce&&route.request().postDataJSON()?.action==='detail'){delayOnce=false;delayedResolve();await new Promise(r=>setTimeout(r,250));}await route.continue();});
+  const late=supervisor.waitForResponse(r=>r.url().endsWith('/api/parts')&&r.request().postDataJSON()?.action==='detail');
+  await supervisor.getByRole('button',{name:'Actualizar',exact:true}).click();await delayed;await supervisor.evaluate(()=>window.__switchPartsAccount());await late;
+  await supervisor.waitForFunction(()=>!document.body.textContent.includes('Persona Homónima'));
+  assert.equal(await supervisor.getByRole('button',{name:/Persona Homónima/}).count(),0);
+  console.log('PASS Partes account switch: late old-account detail discarded and personal data cleared.');
+  assert.deepEqual(runtimeErrors, []);
+  console.log(
+    "PASS Partes circuit B: separate HTTP sessions, blocked premature receipt, return/correction/new declaration, supervisor authorization, refusal without forged signature, PDF download and landscape.",
+  );
   console.log(
     `PASS Partes ${engine} 390/820/1440 light/dark: real UI + handler + PostgreSQL, encrypted offline draft/reload/reconnection, direct service declaration, worker disagreement receipt, supervisor review signature, no horizontal overflow or runtime exceptions.`,
   );

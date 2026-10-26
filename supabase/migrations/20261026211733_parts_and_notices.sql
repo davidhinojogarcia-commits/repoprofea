@@ -214,6 +214,7 @@ language sql stable security invoker set search_path='' as $$
  with source as(select r.*,(policy.policy->>'windowDays')::int days,coalesce((r.state#>>'{content,occurredAt}')::timestamptz,r.created_at) occurred_at,
   r.status in('communicated','closed','elevated') and r.state->>'blockedAt' is null and jsonb_typeof(r.state#>'{receipt,signature}')='object'
    and(r.state#>>'{receipt,mode}'<>'disagreement' or jsonb_typeof(r.state->'receiptReview')='object')
+   and(r.state#>>'{content,occurredAt}')::timestamptz<=now()
    and(r.state#>>'{content,occurredAt}')::timestamptz>=now()-(policy.policy->>'windowDays')::int*interval '1 day' documented
   from public.parts_records r join public.parts_policies policy on policy.owner_id=r.owner_id and policy.worksite_id=r.worksite_id where r.owner_id=p_owner),
  ranked as(select *,coalesce(sum(case when documented then 1 else 0 end) over(partition by worker_id,worksite_id,state#>>'{content,reason}' order by occurred_at,created_at,id rows between unbounded preceding and 1 preceding),0) prior_count from source),

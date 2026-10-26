@@ -14,7 +14,7 @@ const getStatus = (person: any): DirectoryStatusValue => {
   return 'pendiente';
 };
 
-export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> = (props) => {
+export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & {accountId?:string}> = (props) => {
   const [partsWorker,setPartsWorker]=useState<number|null>(null);
   const [statusFilters, setStatusFilters] = useState<DirectoryStatusValue[]>([]);
 
@@ -42,7 +42,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView>> =
   );
 
   return <div>
-    <details className="m-3 rounded-xl border p-3"><summary className="cursor-pointer font-bold">Partes y avisos · historial restringido</summary><label className="block mt-2">Seleccionar contratación por ID<select className="mt-1 w-full rounded-xl border bg-white p-3 text-slate-900 dark:bg-slate-900 dark:text-white" value={partsWorker??''} onChange={e=>setPartsWorker(e.target.value?Number(e.target.value):null)}><option value="">Selecciona un trabajador</option>{props.people.map(p=><option key={p.id} value={p.id}>{p.apellidosNombre} · {p.obra} · ID {p.id}</option>)}</select></label>{partsWorker!==null&&<Suspense fallback={<p>Cargando historial…</p>}><PartsPanel key={partsWorker} workerId={partsWorker}/></Suspense>}</details>
+    <details className="m-3 rounded-xl border p-3"><summary className="cursor-pointer font-bold">Partes y avisos · historial restringido</summary><label className="block mt-2">Seleccionar contratación por ID<select className="mt-1 w-full rounded-xl border bg-white p-3 text-slate-900 dark:bg-slate-900 dark:text-white" value={partsWorker??''} onChange={e=>setPartsWorker(e.target.value?Number(e.target.value):null)}><option value="">Selecciona un trabajador</option>{props.people.map(p=><option key={p.id} value={p.id}>{p.apellidosNombre} · {p.obra} · ID {p.id}</option>)}</select></label>{partsWorker!==null&&<Suspense fallback={<p>Cargando historial…</p>}><PartsPanel key={props.accountId+':'+partsWorker} accountId={props.accountId} workerId={partsWorker}/></Suspense>}</details>
     {props.people.length > 0 && <DirectoryStatusFilter value={statusFilters} onChange={setStatusFilters} counts={counts} />}
     <PersonListView {...props} people={visiblePeople} onDeleteMultiple={handleDeleteMultiple} />
   </div>;

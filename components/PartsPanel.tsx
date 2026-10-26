@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AuthShellContext } from "./AuthGate";
 import PartsPolicyEditor from "./PartsPolicyEditor";
 import { VisitSignaturePad } from "./VisitSignaturePad";
 import ModalPortal from "./ModalPortal";
@@ -10,6 +9,8 @@ import {
 } from "../src/services/partsService";
 import {
   PART_REASONS,
+  RECEIPT_LABELS,
+  PART_ACTION_LABELS,
   PART_STATUS,
   type PartContent,
   type PartRecord,
@@ -59,14 +60,15 @@ type Draft = {
 };
 export default function PartsPanel({
   token,
+  accountId,
   workerId,
   onBack,
 }: {
   token?: string;
+  accountId?: string;
   workerId?: number;
   onBack?: () => void;
 }) {
-  const authShell = React.useContext(AuthShellContext);
   const [workerSearch, setWorkerSearch] = useState("");
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [context, setContext] = useState<any>(null),
@@ -259,7 +261,7 @@ export default function PartsPanel({
       clearTimeout(refreshTimer);
       navigator.serviceWorker?.removeEventListener("message", updates);
     };
-  }, [token, authShell?.user.id]);
+  }, [token, accountId]);
   useEffect(() => {
     draftRef.current = draft;
     if (!storageKey.current || !context) return;
@@ -722,7 +724,8 @@ export default function PartsPanel({
               </label>
               <label className="block">
                 Trabajador
-                <select aria-label="Trabajador"
+                <select
+                  aria-label="Trabajador"
                   required
                   className={input}
                   value={draft.workerId || ""}
@@ -802,6 +805,15 @@ export default function PartsPanel({
                 ][i]
               }
               <textarea
+                aria-label={
+                  [
+                    "Lugar en la obra",
+                    "Descripción objetiva de los hechos",
+                    "Instrucción comunicada",
+                    "Respuesta del trabajador, si existe",
+                    "Testigos, si existen",
+                  ][i]
+                }
                 rows={key === "facts" ? 5 : 2}
                 required={["place", "facts", "instruction"].includes(key)}
                 className={input}
@@ -1017,7 +1029,7 @@ export default function PartsPanel({
           )}
           {selected.receipt && (
             <p className="rounded-lg border p-3">
-              Resultado de entrega: {selected.receipt.mode} ·{" "}
+              Resultado de entrega: {RECEIPT_LABELS[selected.receipt.mode]} ·{" "}
               {selected.receipt.note}{" "}
               {selected.receipt.signature
                 ? "Acuse de recibo registrado."
@@ -1127,19 +1139,11 @@ export default function PartsPanel({
           )}
           {!isForeman && (
             <>
-              <label className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={draft.kind === "incident"}
-                  disabled={draft.kind === "incident"}
-                  onChange={() => setDraft({ ...draft, kind: "incident" })}
-                />
-                Solicitar revisión del supervisor (parte de incidencia)
-              </label>
               <label className="block">
                 Motivo de la decisión / justificación de comparabilidad
                 <textarea
                   className={input}
+                  aria-label="Motivo de la decisión / justificación de comparabilidad"
                   value={reason}
                   maxLength={2000}
                   onChange={(e) => setReason(e.target.value)}
@@ -1252,6 +1256,21 @@ export default function PartsPanel({
                   </button>
                 )}
               </div>
+              {detail?.policy &&
+                Date.parse(selected.content.occurredAt) +
+                  detail.policy.retentionDays * 86400000 <
+                  Date.parse(
+                    context.serverTime || new Date().toISOString(),
+                  ) && (
+                  <p
+                    role="status"
+                    className="rounded-lg border border-amber-500 p-3"
+                  >
+                    Revisar conservación: se ha alcanzado el plazo configurado.
+                    El responsable debe decidir bloqueo o supresión conforme al
+                    procedimiento aprobado. No se han eliminado documentos.
+                  </p>
+                )}
               <h4 className="font-black">Antecedentes para revisión</h4>
               {!detail?.policy && (
                 <p className="text-sm">
@@ -1405,7 +1424,8 @@ export default function PartsPanel({
                 </p>
                 <label className="block">
                   Resultado
-                  <select aria-label="Resultado"
+                  <select
+                    aria-label="Resultado"
                     className={input}
                     value={receiptMode}
                     onChange={(e) => {
@@ -1431,6 +1451,7 @@ export default function PartsPanel({
                   intento
                   <textarea
                     className={input}
+                    aria-label="Observaciones del trabajador o descripción objetiva del intento"
                     value={receiptNote}
                     onChange={(e) => setReceiptNote(e.target.value)}
                     maxLength={3000}
@@ -1489,6 +1510,24 @@ export default function PartsPanel({
                 </button>
               </>
             )}
+          {selected.foremanSignature && detail?.policy && (
+            <p
+              role="status"
+              className={
+                (detail.comparable?.length >= 2
+                  ? "border-red-500 text-red-700 dark:text-red-300"
+                  : "border-amber-400") + " rounded-xl border p-3 font-bold"
+              }
+            >
+              {detail.comparable?.length >= 2
+                ? "Tercera incidencia potencialmente comparable — seguimiento reforzado. Requiere revisión; no implica sanción."
+                : detail.comparable?.length === 1
+                  ? "Segunda incidencia potencialmente comparable — revisión de reiteración."
+                  : selected.receipt?.signature
+                    ? "Primer aviso documentado."
+                    : "Sin antecedentes comunicados comparables en el horizonte aprobado."}
+            </p>
+          )}
           {detail?.history && (
             <details>
               <summary className="cursor-pointer font-bold">
@@ -1500,7 +1539,7 @@ export default function PartsPanel({
                   className="flex flex-wrap items-center gap-2 border-b py-2"
                 >
                   <span>
-                    r{h.revision} · {h.action} ·{" "}
+                    r{h.revision} · {PART_ACTION_LABELS[h.action] || h.action} ·{" "}
                     {new Date(h.created_at).toLocaleString("es-ES")}
                   </span>
                   <button
@@ -1676,7 +1715,12 @@ export default function PartsPanel({
       {signing && selected && (
         <ModalPortal label="Firma del documento">
           <div className="fixed inset-0 overflow-y-auto bg-slate-950/70 p-3">
-            <div className="mx-auto my-3 max-w-2xl rounded-2xl bg-white p-4 text-slate-900 dark:bg-slate-900 dark:text-white">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Firma del documento"
+              className="mx-auto my-3 max-w-2xl rounded-2xl bg-white p-4 text-slate-900 dark:bg-slate-900 dark:text-white"
+            >
               <h3 className="font-black">
                 {signing === "authorize"
                   ? "Revisado y autorizada su comunicación al trabajador"
@@ -1684,11 +1728,58 @@ export default function PartsPanel({
                     ? "Recepción del documento, sin conformidad con los hechos"
                     : signing === "elevate"
                       ? "Propuesta de elevación para valoración"
-                      : "Declaración del encargado"}
+                      : signing === "resolve-dispute"
+                        ? "Revisión de las observaciones del trabajador"
+                        : "Declaración del encargado"}
               </h3>
               <p className="my-2 text-sm">
                 {selected.number} · v{selected.version} · {selected.worker.name}
               </p>
+              <dl className="my-3 space-y-2 break-words text-sm">
+                <dt className="font-bold">Obra, fecha y lugar del hecho</dt>
+                <dd>
+                  {selected.worksite.code} · {selected.worksite.name} ·{" "}
+                  {new Date(selected.content.occurredAt).toLocaleString()} ·{" "}
+                  {selected.content.place}
+                </dd>
+                <dt className="font-bold">Motivo</dt>
+                <dd>
+                  {(
+                    detail?.policy?.reasons ||
+                    PART_REASONS.map(([id, label]) => ({ id, label }))
+                  ).find((r: any) => r.id === selected.content.reason)?.label ||
+                    selected.content.reason}
+                </dd>
+                <dt className="font-bold">Respuesta y testigos declarados</dt>
+                <dd>
+                  {selected.content.response || "No consta respuesta"} ·{" "}
+                  {selected.content.witnesses || "Sin testigos declarados"}
+                </dd>
+                <dt className="font-bold">Adjuntos de la versión</dt>
+                <dd>
+                  {selected.content.attachments.map((a) => a.name).join(", ") ||
+                    "Sin adjuntos"}
+                </dd>
+                {signing === "receipt" && (
+                  <>
+                    <dt className="font-bold">Observaciones de recepción</dt>
+                    <dd>
+                      {receiptNote || "Sin observaciones"} · {witnesses} ·{" "}
+                      {channel}
+                    </dd>
+                  </>
+                )}
+                {["elevate", "resolve-dispute"].includes(signing) && (
+                  <>
+                    <dt className="font-bold">
+                      Motivo de revisión / propuesta
+                    </dt>
+                    <dd>
+                      {reason} · {authority}
+                    </dd>
+                  </>
+                )}
+              </dl>
               <p className="whitespace-pre-wrap break-words">
                 {selected.content.facts}
               </p>
@@ -1706,7 +1797,9 @@ export default function PartsPanel({
                       ? "Revisado y autorizada su comunicación al trabajador"
                       : signing === "elevate"
                         ? "Revisado para remitir al órgano competente para valoración"
-                        : "Declaro los hechos de esta versión como encargado"
+                        : signing === "resolve-dispute"
+                          ? "He revisado las observaciones del trabajador, sin convertir el aviso en sanción"
+                          : "Declaro los hechos de esta versión como encargado"
                 }
                 name={
                   signing === "receipt"

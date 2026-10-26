@@ -102,7 +102,15 @@ jobs:
       - name: Partes y avisos transactions, permissions, PDFs and browser workflows
         run: |
           npm run test:parts
-          npm run test:parts-browser
+          PARTS_EVIDENCE_DIR=artifacts/parts npm run test:parts-browser
+      - name: Upload synthetic Partes browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partes-browser-evidence
+          path: artifacts/parts
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Auth recovery, isolation and browser races
         run: |
           node scripts/testAuthRecovery.mjs

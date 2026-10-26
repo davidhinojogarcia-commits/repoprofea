@@ -11,3 +11,11 @@ Circuitos: A permite comunicar tras firma del encargado. B requiere firma de rev
 Seguridad: operaciones de servidor con autorización renovada, máquina de estados, claves idempotentes y compare-and-swap transaccional. Tablas privadas con RLS, sin escritura directa del navegador. Instantáneas y eventos inmutables; firmas vinculadas a hash, versión, actor y hora de servidor. Adjuntos y PDF privados con acceso autenticado, sin URL pública. Listas proyectadas/paginadas; detalle bajo demanda. No sondeos, reenvíos infinitos ni logs de contenido.
 
 Contabilidad de reiteración deshabilitada hasta configurar y validar un horizonte aplicable y criterios de comparabilidad. No transformar prescripción de faltas en plazo universal de conservación. No usar nombre como identificador, ni antecedentes para contratación/SAE. Conservación, bloqueo y supresión requieren validación y procedimiento auditado; sin purgas automáticas de datos reales.
+
+La política se configura por `(owner_id,worksite_id)`, con versión y auditoría, porque una obra puede pertenecer a distinta entidad empleadora o régimen. Sin política aprobada: borradores solamente; no envíos/firmas/comunicaciones formales. No se solicitan secretos ni se modifican credenciales.
+
+Los documentos se generan en el servidor y se insertan atómicamente con cada actuación firmada. El hash del contenido incluye identidad, obra, contratación, declarante, versión y hechos. Los eventos conservan además estado, revisiones, decisiones, firmas y recepción. Una corrección crea versión nueva, retira firmas de la versión vigente y exige nueva ratificación. La elevación congela las revisiones y contenidos referenciados: no depende de que el antecedente se archive después.
+
+Los identificadores de trabajadores son de contratación: no se fusionan registros distintos por nombres coincidentes. Las búsquedas de obra exigen correspondencia inequívoca y código válido. El historial C y referencias comparativas de otras obras/accesos no se exponen al encargado. El supervisor recibe metadatos genéricos de notificaciones, nunca hechos en la pantalla bloqueada.
+
+Véanse [verificación y límites](validation.md), [validación jurídica](legal-validation.md) y [publicación/reversión](release.md).

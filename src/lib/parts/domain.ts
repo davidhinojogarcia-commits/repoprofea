@@ -40,6 +40,32 @@ export const PART_STATUS: Record<PartStatus, string> = {
   elevated: "Elevado",
   annulled: "Anulado mediante rectificación",
 };
+export const RECEIPT_LABELS = {
+  received: "Recibido sin observaciones",
+  observations: "Recibido con observaciones",
+  disagreement: "Recibido con disconformidad",
+  refused: "Negativa a firmar",
+  not_delivered: "Entrega no realizada",
+} as const;
+export const PART_ACTION_LABELS: Record<string, string> = {
+  create: "Borrador registrado",
+  edit: "Nueva versión",
+  submit: "Declaración firmada",
+  review: "Inicio de revisión",
+  return: "Devolución para corrección",
+  information: "Solicitud de información",
+  authorize: "Comunicación autorizada",
+  archive: "Archivo motivado",
+  dismiss: "Desestimación motivada",
+  receipt: "Constancia de entrega",
+  close: "Seguimiento cerrado",
+  elevate: "Propuesta de elevación",
+  remit: "Constancia de remisión",
+  annul: "Anulación trazable",
+  compare: "Revisión de comparabilidad",
+  block: "Bloqueo por conservación",
+  "resolve-dispute": "Revisión de disconformidad",
+};
 export type PartActor = {
   id: string;
   name: string;
@@ -448,6 +474,10 @@ export function applyPartCommand(
     case "authorize":
       supervisor();
       state("submitted", "review");
+      if (p.receipt)
+        throw partFail(
+          "Revisa las observaciones de recepción mediante su actuación específica.",
+        );
       if (
         p.kind !== "incident" ||
         !p.foremanSignature ||

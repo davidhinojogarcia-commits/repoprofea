@@ -616,33 +616,39 @@ export function createPartsHandler(deps: Dependencies) {
         };
       }
       if (!p) throw partFail("Operación no disponible.", 400);
-      const existingAssets = await db(
-        "parts_assets?" +
-          params({
-            record_id: "eq." + p.id,
-            select: "id,sha256,mime,bytes,name,purpose,revision",
-            purpose: "eq.attachment",
-            limit: 20,
-          }),
-      );
-      const comparable = policy
+      const existingAssets = ["attachment", "edit"].includes(b.action)
         ? await db(
-            "parts_records?" +
+            "parts_assets?" +
               params({
-                owner_id: "eq." + owner,
-                worker_id: "eq." + p.workerId,
-                worksite_id: "eq." + p.worksite.id,
-                "state->content->>reason": "eq." + p.content.reason,
-                created_at:
-                  "gte." +
-                  new Date(
-                    Date.parse(now) - policy.windowDays * 86400000,
-                  ).toISOString(),
-                order: "created_at.desc",
-                limit: 101,
+                record_id: "eq." + p.id,
+                select: "id,sha256,mime,bytes,name,purpose,revision",
+                purpose: "eq.attachment",
+                limit: 20,
               }),
           )
         : [];
+      const comparable =
+        policy &&
+        ["create", "edit", "submit", "detail", "compare", "elevate"].includes(
+          b.action,
+        )
+          ? await db(
+              "parts_records?" +
+                params({
+                  owner_id: "eq." + owner,
+                  worker_id: "eq." + p.workerId,
+                  worksite_id: "eq." + p.worksite.id,
+                  "state->content->>reason": "eq." + p.content.reason,
+                  "state->content->>occurredAt":
+                    "gte." +
+                    new Date(
+                      Date.parse(now) - policy.windowDays * 86400000,
+                    ).toISOString(),
+                  order: "created_at.desc",
+                  limit: 101,
+                }),
+            )
+          : [];
       const eligible = comparable
         .map((r: any) => r.state)
         .filter((r: PartRecord) => eligiblePart(r, p!, policy, now));
@@ -1024,7 +1030,7 @@ export function createPartsHandler(deps: Dependencies) {
           if (partsDigest(Buffer.from(asset.base64, "base64")) !== asset.sha256)
             throw partFail("La firma no supera la comprobación de integridad.");
         const bytes = await generatePartPdf(next, [...stored, ...newAssets]);
-        if (bytes.length > 5000000)
+        if (bytes.length > 3000000)
           throw partFail(
             "El documento generado supera el límite. Reduce los anexos.",
             413,
@@ -1066,16 +1072,14 @@ export function createPartsHandler(deps: Dependencies) {
       const status = [400, 401, 403, 404, 409, 413, 503].includes(e?.status)
         ? e.status
         : 503;
-      return res
-        .status(status)
-        .json({
-          ok: false,
-          code: status === 503 ? "PART_UNAVAILABLE" : e.code || "PART_REJECTED",
-          message:
-            status === 503
-              ? "No se pudo confirmar la operación. Conserva el trabajo y actualiza antes de reintentar."
-              : e.message,
-        });
+      return res.status(status).json({
+        ok: false,
+        code: status === 503 ? "PART_UNAVAILABLE" : e.code || "PART_REJECTED",
+        message:
+          status === 503
+            ? "No se pudo confirmar la operación. Conserva el trabajo y actualiza antes de reintentar."
+            : e.message,
+      });
     }
   };
 }

@@ -724,6 +724,172 @@ try {
   delete process.env.FOREMAN_PUSH_VAPID_PUBLIC_KEY;
   delete process.env.FOREMAN_PUSH_VAPID_PRIVATE_KEY;
   delete process.env.FOREMAN_PUSH_VAPID_SUBJECT;
+  // Real SQL pagination, civil date filters and policy isolation.
+  assert.equal(
+    env.module.madridDayStart("2026-03-29"),
+    "2026-03-28T23:00:00.000Z",
+  );
+  assert.equal(
+    env.module.madridDayStart("2026-03-30"),
+    "2026-03-29T22:00:00.000Z",
+  );
+  assert.equal(
+    env.module.madridDayStart("2026-10-25"),
+    "2026-10-24T22:00:00.000Z",
+  );
+  assert.equal(
+    env.module.madridDayStart("2026-10-26"),
+    "2026-10-25T23:00:00.000Z",
+  );
+  assert.throws(() => env.module.madridDayStart("2026-02-30"), /Fecha/);
+  assert.throws(() => env.module.madridDayStart("2026-99-99"), /Fecha/);
+  const noPolicy = (
+    await call({
+      action: "create",
+      token: otherToken,
+      id: id(95),
+      operationId: randomUUID(),
+      expected: 0,
+      workerId: 100,
+      kind: "service",
+      content,
+    })
+  ).record;
+  assert.equal(
+    (
+      await invoke({
+        action: "submit",
+        token: otherToken,
+        id: noPolicy.id,
+        expected: noPolicy.revision,
+        operationId: randomUUID(),
+        command: sign(noPolicy),
+      })
+    ).status,
+    409,
+    "policy cannot leak between employers/owners",
+  );
+  const workB = await call({ action: "context", token: wrongWorkToken });
+  assert.equal(
+    workB.policy,
+    null,
+    "policy cannot leak between works of one owner",
+  );
+  assert.equal(
+    (
+      await invoke({
+        action: "edit",
+        token,
+        id: draftB.id,
+        expected: draftB.revision,
+        operationId: randomUUID(),
+        command: { kind: "invented", content: draftB.content },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await invoke({ action: "pdf", token, id: draftB.id, intent: "share" }))
+      .status,
+    409,
+    "draft cannot be formally shared",
+  );
+  const rank = await call({ action: "list", filters: { repetition: "3" } }, 1);
+  assert.ok(
+    rank.rows.some((r) => r.id === raced.id),
+    "actual SQL window function finds third comparable entry after excluding archived source",
+  );
+  assert.equal(
+    (await invoke({ action: "list", token, filters: { repetition: "3" } }))
+      .status,
+    403,
+  );
+  for (let n = 200; n < 228; n++)
+    await create(n, "service", { reason: "punctuality" }, 101);
+  const page1 = await call({ action: "list", token });
+  assert.equal(page1.rows.length, 25);
+  assert.ok(page1.cursor);
+  assert.equal(
+    page1.rows.some((r) => "state" in r),
+    false,
+    "list does not download facts or signatures",
+  );
+  const page2 = await call({ action: "list", token, cursor: page1.cursor });
+  assert.ok(page2.rows.length > 0);
+  assert.equal(
+    page2.rows.some((r) => page1.rows.some((a) => a.id === r.id)),
+    false,
+    "stable cursor never repeats first page",
+  );
+  const dates = await call({
+    action: "list",
+    token,
+    filters: { from: now.slice(0, 10), to: now.slice(0, 10) },
+  });
+  assert.ok(dates.rows.length > 0);
+  const futureDay = new Date(Date.parse(now) + 86400000)
+    .toISOString()
+    .slice(0, 10);
+  assert.equal(
+    (
+      await call({
+        action: "list",
+        token,
+        filters: { from: futureDay, to: futureDay },
+      })
+    ).rows.length,
+    0,
+  );
+  assert.equal(
+    (await invoke({ action: "list", token, filters: { to: "2026-02-30" } }))
+      .status,
+    400,
+  );
+  const blocked = await command(
+    draftB,
+    "block",
+    { reason: "Bloqueo técnico de prueba por orden del responsable." },
+    1,
+  );
+  assert.ok(blocked.blockedAt);
+  assert.equal(
+    (await invoke({ action: "detail", token, id: blocked.id })).status,
+    403,
+  );
+  assert.equal(
+    (await invoke({ action: "pdf", id: blocked.id }, 1)).status,
+    403,
+  );
+  await db.exec("reset role");
+  assert.equal(
+    (await db.query("select count(*)::int n from trabajadores")).rows[0].n,
+    4,
+    "module never modifies workers or SAE",
+  );
+  const total = (
+    await db.query(
+      "select count(*)::int n from parts_records where owner_id=$1 and kind='service'",
+      [id(1)],
+    )
+  ).rows[0].n;
+  assert.equal(
+    page1.counts.service,
+    total,
+    "counters use real authorised records",
+  );
+  const secured = (
+    await db.query(
+      "select relname,relrowsecurity from pg_class where relnamespace='public'::regnamespace and relname like 'parts_%' and relkind='r'",
+    )
+  ).rows;
+  assert.equal(secured.length, 7);
+  assert.ok(
+    secured.every((t) => t.relrowsecurity),
+    "all module tables enable RLS",
+  );
+  console.log(
+    "PASS Partes pagination, per-worksite legal gate, DST date filters, repetition SQL, projected lists, real counters and legal block.",
+  );
   console.log(
     "PASS Partes extended: validated comparability window, three-record review, no automatic elevation, snapshot compilation, archival race, private attachments, tampered PDFs, simultaneous authorization, revoked access, generic push payload, persisted delivery and bounded retries.",
   );
@@ -731,7 +897,11 @@ try {
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
     id(2),
   ]);
-  assert.equal((await db.query("select * from parts_records")).rows.length, 0);
+  assert.deepEqual(
+    (await db.query("select id from parts_records")).rows.map((r) => r.id),
+    [noPolicy.id],
+    "owner only sees own record, never the other supervisor history",
+  );
   await assert.rejects(
     db.exec("update parts_records set status='authorized'"),
     /permission denied/,

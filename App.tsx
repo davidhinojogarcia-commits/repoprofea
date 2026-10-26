@@ -2295,12 +2295,12 @@ function App() {
             </div>
           )}
 
-          {activeView === 'partes_avisos' && <Suspense fallback={<ViewLoadingFallback/>}><PartsPanel/></Suspense>}
+          {activeView === 'partes_avisos' && <Suspense fallback={<ViewLoadingFallback/>}><PartsPanel accountId={authenticatedUser.id}/></Suspense>}
           {activeView === 'directorio' && (
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
                 <Suspense fallback={<ViewLoadingFallback />}>
-                <PersonList 
+                <PersonList accountId={authenticatedUser.id}
                   people={visiblePeople} 
                   onDelete={handleDelete} 
                   onEdit={handleEdit} 

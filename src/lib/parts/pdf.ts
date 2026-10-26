@@ -2,6 +2,8 @@ import { jsPDF } from "jspdf";
 import { OFFICIAL_LOGO_BASE64 } from "../../assets/logoData.js";
 import {
   PART_REASONS,
+  RECEIPT_LABELS,
+  PART_ACTION_LABELS,
   PART_STATUS,
   type PartRecord,
   type PartSignature,
@@ -158,7 +160,7 @@ export async function generatePartPdf(
   if (p.receipt) {
     text(
       "Constancia de comunicación",
-      `${p.receipt.mode} · ${stamp(p.receipt.at)} · Recogida por ${p.receipt.actor.name}`,
+      `${RECEIPT_LABELS[p.receipt.mode]} · ${stamp(p.receipt.at)} · Recogida por ${p.receipt.actor.name}`,
     );
     text(
       "Observaciones del trabajador / incidencia de entrega",
@@ -186,7 +188,7 @@ export async function generatePartPdf(
   if (p.decision)
     text(
       "Decisión motivada",
-      `${p.decision.action} · ${p.decision.reason} · ${p.decision.actor.name} · ${stamp(p.decision.at)}`,
+      `${PART_ACTION_LABELS[p.decision.action] || p.decision.action} · ${p.decision.reason} · ${p.decision.actor.name} · ${stamp(p.decision.at)}`,
     );
   if (p.elevation) {
     text(
@@ -205,6 +207,18 @@ export async function generatePartPdf(
           ? `${r.number} · ${stamp(r.content.occurredAt)} · ${r.work}\n${r.content.facts}`
           : `ID ${id} · Consulte la versión histórica incorporada. No se presume vigente ni comparable.`,
       );
+    }
+    for (const r of p.elevation.references || []) {
+      text(
+        "Versión documental referenciada",
+        `${r.number} · ID ${r.id} · v${r.version} / r${r.revision} · SHA-256 ${r.contentHash}`,
+      );
+      text(
+        "Instrucciones y respuesta del antecedente",
+        `${r.content.instruction}\nRespuesta: ${r.content.response || "No consta"}\nTestigos: ${r.content.witnesses || "No constan"}\nRecepción: ${r.receiptMode ? RECEIPT_LABELS[r.receiptMode] : "No acreditada"}`,
+      );
+      for (const a of r.content.attachments)
+        text("Evidencia referenciada", `${a.name} · SHA-256 ${a.sha256}`);
     }
     await signature("Revisión y propuesta de elevación", p.elevation.signature);
     text(
