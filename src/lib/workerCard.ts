@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import type { Person } from '../../types';
 
 // Explicit allowlist: the shareable card never includes the worker's file or QR access token.
-export function generateWorkerCard(person: Person) {
+export function generateWorkerCard(person: Person, qrDataUrl?: string) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [95, 62], compress: true });
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, 95, 62, 'F');
@@ -42,13 +42,20 @@ export function generateWorkerCard(person: Person) {
     doc.text(label, 4, y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(fitLines(value, 66, maxLines, 7), 25, y);
+    doc.text(fitLines(value, qrDataUrl && y >= 29 ? 45 : 66, maxLines, 7), 25, y);
   };
   const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : '—';
   field('DNI / NIE', person.dni, 28);
   field('CATEGORÍA', person.categoria || 'Peón', 34);
   field('OBRA', person.obra, 40, 2);
   field('CONTRATO', `${date(person.periodoInicio)} a ${date(person.periodoFin)}`, 50);
+  if (qrDataUrl) {
+    doc.addImage(qrDataUrl, 'PNG', 72, 29, 19, 19);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(4.6);
+    doc.setTextColor(100, 116, 139);
+    doc.text('CONSULTAR FICHA', 81.5, 50, { align: 'center' });
+  }
   doc.setDrawColor(226, 232, 240);
   doc.line(4, 54, 91, 54);
   doc.setFont('helvetica', 'normal');
