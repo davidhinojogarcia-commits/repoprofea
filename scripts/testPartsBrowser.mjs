@@ -5,6 +5,8 @@ import { build } from "esbuild";
 import { chromium, webkit } from "playwright";
 import { partsTestHarness, token, id, content } from "./partsTestHarness.mjs";
 const engine = process.env.BROWSER_ENGINE === "webkit" ? "webkit" : "chromium";
+const originOutage =
+  engine === "webkit" || process.env.PARTS_ORIGIN_OUTAGE === "1";
 const env = await partsTestHarness(),
   root = new URL("../", import.meta.url).pathname;
 const tailwind = process.env.SIGNATURE_TAILWIND_SCRIPT
@@ -171,7 +173,7 @@ try {
       .getByText("Borrador local conservado.", { exact: true })
       .waitFor();
     const beforeReload = await page.evaluate(() => performance.timeOrigin);
-    if (engine === "webkit") {
+    if (originOutage) {
       // Playwright #42775: its offline flag rejects even literal SW responses in WebKit.
       // A real origin outage still exercises our unchanged SW and persisted encrypted draft.
       const stopped = new Promise((resolve, reject) =>
@@ -181,7 +183,6 @@ try {
       await stopped;
       assert.equal(server.listening, false);
       await page.reload();
-      await context.setOffline(true); // Native offline event/UI and reconnect, after cache navigation.
     } else {
       await context.setOffline(true);
       await page.reload();
@@ -216,12 +217,16 @@ try {
       })
       .click();
     await page.getByText(/Pendiente de sincronización del borrador/).waitFor();
-    if (engine === "webkit")
+    if (originOutage)
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(port, "127.0.0.1", resolve);
       });
-    await context.setOffline(false);
+    if (originOutage)
+      await page
+        .getByRole("button", { name: "Comprobar conexión", exact: true })
+        .click();
+    else await context.setOffline(false);
     await page
       .getByRole("button", { name: "Revisar y firmar aviso", exact: true })
       .waitFor();
@@ -457,12 +462,63 @@ try {
   console.log(
     "PASS Partes account switch: late old-account detail discarded and personal data cleared.",
   );
+  await foreman.setViewportSize({ width: 390, height: 844 });
+  await foreman
+    .getByRole("button", { name: "Nuevo aviso de servicio", exact: true })
+    .click();
+  await foreman.getByLabel("Trabajador", { exact: true }).selectOption("101");
+  await foreman
+    .getByLabel("Descripción objetiva de los hechos", { exact: true })
+    .fill("Borrador conservado tras revocar el acceso.");
+  await foreman
+    .getByRole("button", { name: "Guardar en este dispositivo", exact: true })
+    .click();
+  await foreman
+    .getByText("Borrador local conservado.", { exact: true })
+    .waitFor();
+  await env.db.exec("reset role");
+  await env.db.query(
+    "update foreman_portal_access set active=false where id=$1",
+    [id(10)],
+  );
+  await foreman.reload();
+  await foreman
+    .getByRole("alert")
+    .filter({ hasText: /revocado o no válido/ })
+    .waitFor();
+  assert.equal(
+    await foreman
+      .getByLabel("Descripción objetiva de los hechos", { exact: true })
+      .inputValue(),
+    "Borrador conservado tras revocar el acceso.",
+  );
+  assert.equal(
+    await foreman
+      .getByRole("button", {
+        name: "Guardar borrador en servidor",
+        exact: true,
+      })
+      .isDisabled(),
+    true,
+  );
+  assert.equal(
+    await foreman
+      .getByLabel("Trabajador", { exact: true })
+      .locator("option")
+      .filter({ hasText: "Persona Homónima" })
+      .count(),
+    0,
+    "an actual denial must not restore the cached authorised worker context",
+  );
+  console.log(
+    "PASS Partes revoked access: draft text retained, server writes disabled and authorised cached context not reused after 403.",
+  );
   assert.deepEqual(runtimeErrors, []);
   console.log(
     "PASS Partes circuit B: separate HTTP sessions, blocked premature receipt, return/correction/new declaration, supervisor authorization, refusal without forged signature, PDF download and landscape.",
   );
   console.log(
-    `PASS Partes ${engine} 390/820/1440 light/dark: real UI + handler + PostgreSQL, encrypted draft/reload/reconnection (${engine === "webkit" ? "real origin outage; offline UI event emulated after reload" : "browser offline emulation"}), direct service declaration, worker disagreement receipt, supervisor review signature, no horizontal overflow or runtime exceptions.`,
+    `PASS Partes ${engine} 390/820/1440 light/dark: real UI + handler + PostgreSQL, encrypted draft/reload/reconnection (${originOutage ? "real origin outage and explicit server-confirmed recovery" : "browser offline emulation"}), direct service declaration, worker disagreement receipt, supervisor review signature, no horizontal overflow or runtime exceptions.`,
   );
 } catch (e) {
   console.error(e.message, runtimeErrors);

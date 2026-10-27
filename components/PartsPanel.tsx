@@ -214,9 +214,12 @@ export default function PartsPanel({
           if (ctrl.signal.aborted) return;
           contextRef.current = r;
           setContext(r);
+          setOnline(true);
           await persist();
-        } catch (e) {
-          if (saved?.context) {
+        } catch (e: any) {
+          if (ctrl.signal.aborted) return;
+          if (!e.status || e.status >= 500) setOnline(false);
+          if (saved?.context && (!e.status || e.status >= 500)) {
             contextRef.current = saved.context;
             setContext(saved.context);
             setNotice(
@@ -277,8 +280,35 @@ export default function PartsPanel({
     return () => clearTimeout(t);
   }, [draft, context]);
   useEffect(() => {
-    if (context && online) void list();
+    if (context && online && !draftRef.current?.pendingSync) void list();
   }, [context, online, JSON.stringify(filters)]);
+  async function retryConnection() {
+    if (flight.current) return;
+    const scope = scopeGeneration.current;
+    flight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const fresh = await partsRequest({ action: "context" }, token);
+      if (!mounted.current || scope !== scopeGeneration.current) return;
+      contextRef.current = fresh;
+      setContext(fresh);
+      setOnline(true);
+      setNotice(
+        "Conexión confirmada. Se vuelven a validar permisos y contratación antes de sincronizar.",
+      );
+    } catch (e: any) {
+      if (mounted.current && scope === scopeGeneration.current) {
+        setOnline(false);
+        setError(e.message);
+      }
+    } finally {
+      if (scope === scopeGeneration.current) {
+        flight.current = false;
+        if (mounted.current) setBusy(false);
+      }
+    }
+  }
   async function run(
     action: string,
     command: Partial<PartCommand> = {},
@@ -322,6 +352,12 @@ export default function PartsPanel({
   }
   async function save() {
     if (!draft || flight.current) return;
+    if (!context || !online) {
+      setError(
+        "Conserva el borrador local y confirma la conexión y los permisos antes de guardar en el servidor.",
+      );
+      return;
+    }
     flight.current = true;
     setBusy(true);
     setError("");
@@ -504,7 +540,7 @@ export default function PartsPanel({
     if (await run(signing!, command)) setSigning(null);
   }
   syncRef.current = () => {
-    if (draft?.pendingSync && !flight.current && navigator.onLine) void save();
+    if (draft?.pendingSync && !flight.current && online) void save();
   };
   useEffect(() => {
     if (online && context && draft?.pendingSync) syncRef.current();
@@ -644,10 +680,19 @@ export default function PartsPanel({
         </p>
       )}
       {!online && (
-        <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-900">
-          Sin conexión: solo borradores locales. Las firmas y comunicaciones
-          requieren confirmación del servidor.
-        </p>
+        <div className="rounded-lg bg-amber-50 p-3 text-amber-900">
+          <p role="status">
+            Sin conexión confirmada con el servidor: solo borradores locales.
+            Las firmas y comunicaciones requieren confirmación del servidor.
+          </p>
+          <button
+            className={button}
+            disabled={busy}
+            onClick={() => void retryConnection()}
+          >
+            Comprobar conexión
+          </button>
+        </div>
       )}
       {error && (
         <p
@@ -890,7 +935,7 @@ export default function PartsPanel({
           <div className="flex flex-wrap gap-2">
             <button
               className={primary}
-              disabled={busy || !online || !draft.workerId}
+              disabled={busy || !online || !context || !draft.workerId}
             >
               Guardar borrador en servidor
             </button>
