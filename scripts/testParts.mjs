@@ -929,6 +929,88 @@ try {
     total,
     "counters use real authorised records",
   );
+  // The existing Directory trash RPC physically deletes its active worker row.
+  // Signed snapshots must survive it; creation/edit/declaration still require a live assignment.
+  await db.exec("reset role");
+  const archivedWorker = (
+    await db.query("select * from trabajadores where owner_id=$1 and id=100", [
+      id(1),
+    ])
+  ).rows[0];
+  const recordsBefore = (
+    await db.query("select count(*)::int n from parts_records")
+  ).rows[0].n;
+  await db.query("delete from trabajadores where owner_id=$1 and id=100", [
+    id(1),
+  ]);
+  assert.equal(
+    (await db.query("select count(*)::int n from parts_records")).rows[0].n,
+    recordsBefore,
+    "trash cannot cascade into retained notices",
+  );
+  const retained = (await call({ action: "detail", id: second.id }, 1)).record;
+  assert.equal(retained.worker.name, archivedWorker.apellidos_nombre);
+  assert.ok(retained.receipt.signature);
+  second = await command(
+    retained,
+    "close",
+    {
+      reason:
+        "Cerrar seguimiento histórico tras retirar la contratación del Directorio activo.",
+    },
+    1,
+  );
+  assert.equal(second.status, "closed");
+  assert.ok(
+    (await call({ action: "pdf", id: second.id }, 1)).file.sha256,
+    "signed historical PDF remains available after trash",
+  );
+  assert.equal(
+    (
+      await invoke({
+        action: "create",
+        token,
+        id: id(97),
+        operationId: randomUUID(),
+        expected: 0,
+        workerId: 100,
+        kind: "service",
+        content,
+      })
+    ).status,
+    403,
+    "new record requires an active worksite assignment",
+  );
+  assert.equal(
+    (
+      await invoke({
+        action: "edit",
+        token,
+        id: draftA.id,
+        expected: draftA.revision,
+        operationId: randomUUID(),
+        command: { kind: draftA.kind, content: draftA.content },
+      })
+    ).status,
+    403,
+    "cannot change facts against a removed active assignment",
+  );
+  await db.exec("reset role");
+  await db.query(
+    "insert into trabajadores(owner_id,id,obra,apellidos_nombre,categoria,periodo_inicio,periodo_fin) values($1,$2,$3,$4,$5,$6,$7)",
+    [
+      archivedWorker.owner_id,
+      archivedWorker.id,
+      archivedWorker.obra,
+      archivedWorker.apellidos_nombre,
+      archivedWorker.categoria,
+      archivedWorker.periodo_inicio,
+      archivedWorker.periodo_fin,
+    ],
+  );
+  console.log(
+    "PASS Partes Directory trash: active worker removal/restoration preserves signed history/PDF; new declarations and fact edits require a current authorised worker.",
+  );
   const secured = (
     await db.query(
       "select relname,relrowsecurity from pg_class where relnamespace='public'::regnamespace and relname like 'parts_%' and relkind='r'",

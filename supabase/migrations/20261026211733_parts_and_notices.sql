@@ -6,8 +6,10 @@ create table public.parts_records (
  version integer not null check(version>0), kind text not null check(kind in('service','incident')),
  status text not null check(status in('draft','submitted','review','returned','archived','dismissed','authorized','pending_delivery','communicated','unproven_delivery','closed','elevated','annulled')),
  state jsonb not null check(jsonb_typeof(state)='object'),
- created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
- foreign key(owner_id,worker_id) references public.trabajadores(owner_id,id)
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+ -- worker_id is an immutable historical key. The existing trash RPC deletes the active
+ -- trabajadores row; a live-table FK would break trash/backup and retained evidence.
+ -- Creation/edit/declaration validate and lock the authorised live worker below.
 );
 create index parts_owner_date on public.parts_records(owner_id,updated_at desc,id);
 create index parts_access_date on public.parts_records(access_id,updated_at desc,id);
@@ -82,7 +84,10 @@ begin
   end loop;
  end if;
  if not exists(select 1 from public.obras o where o.id=(p_state#>>'{worksite,id}')::uuid and o.owner_id=p_owner) then raise exception 'Obra no autorizada' using errcode='42501';end if;
- if not exists(select 1 from public.trabajadores t where t.owner_id=p_owner and t.id=p_worker and ((prior.id is not null and p_action not in('edit','submit')) or lower(btrim(t.obra))=lower(btrim(p_work)))) then raise exception 'Trabajador fuera del ámbito' using errcode='42501';end if;
+ if prior.id is null or p_action in('edit','submit') then
+  perform 1 from public.trabajadores t where t.owner_id=p_owner and t.id=p_worker and lower(btrim(t.obra))=lower(btrim(p_work)) for share;
+  if not found then raise exception 'Trabajador fuera del ámbito' using errcode='42501';end if;
+ end if;
  if p_action='submit' and not exists(select 1 from public.trabajadores t where t.owner_id=p_owner and t.id=p_worker
   and a.foreman_name=p_state->>'foremanName'
   and t.apellidos_nombre=p_state#>>'{worker,name}' and t.categoria=p_state#>>'{worker,category}'
