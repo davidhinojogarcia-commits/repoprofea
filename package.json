@@ -1,5 +1,5 @@
 {
-  "name": "sistema-contratación-profea_dhg",
+  "name": "sistema-contrataci\u00f3n-profea_dhg",
   "private": true,
   "version": "1.21.5",
   "type": "module",
@@ -62,7 +62,12 @@
     "test:worker-card": "node scripts/testWorkerCardBrowser.mjs",
     "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs",
     "test:parts": "node scripts/testParts.mjs",
-    "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs"
+    "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs",
+    "test:worker-qr-public": "node scripts/testWorkerQrPublicPrivacy.mjs",
+    "test:worker-card-scan": "node --import tsx scripts/testWorkerCardScan.mjs && node scripts/testWorkerCardScanBrowser.mjs",
+    "test:worker-card-pairing": "node scripts/testWorkerCardPairing.mjs && node scripts/testWorkerCardPairingBrowser.mjs && node scripts/testWorkerCardPairingRecovery.mjs",
+    "test:rehire-prevention": "node scripts/testRehirePreventionBrowser.mjs",
+    "test:registration-qr": "node scripts/testRegistrationQrBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
@@ -72,11 +77,12 @@
     "express": "^5.2.1",
     "jspdf": "2.5.1",
     "jspdf-autotable": "3.8.1",
+    "jsqr": "1.4.0",
     "lucide-react": "^0.563.0",
     "mammoth": "^1.12.2",
     "motion": "^12.42.0",
-    "pdfjs-dist": "^6.2.108",
     "pdf-lib": "1.17.1",
+    "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

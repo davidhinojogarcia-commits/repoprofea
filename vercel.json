@@ -27,6 +27,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "codex/carnet-qr-privacidad": false,
       "fix/foreman-signature-default-panel": false,
       "feat/independent-foreman-signatures": false,
       "local/fix-mandatory-persistence-20261009": false,
