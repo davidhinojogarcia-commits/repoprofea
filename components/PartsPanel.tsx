@@ -1835,6 +1835,15 @@ export default function PartsPanel({
                 </p>
               )}
               <VisitSignaturePad
+                key={
+                  selected.id +
+                  ":" +
+                  selected.version +
+                  ":" +
+                  selected.revision +
+                  ":" +
+                  signing
+                }
                 fixedPurpose={
                   signing === "receipt"
                     ? "Acuse de recibo, sin conformidad con los hechos"

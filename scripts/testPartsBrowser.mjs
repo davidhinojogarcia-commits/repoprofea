@@ -101,7 +101,7 @@ const server = http.createServer(async (req, res) => {
 });
 let browser, lastPage;
 const runtimeErrors = [];
-async function draw(page) {
+async function draw(page, { confirm = true } = {}) {
   const canvas = page.getByRole("dialog").locator("canvas");
   await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
@@ -114,6 +114,7 @@ async function draw(page) {
     );
   await page.mouse.up();
   await page.getByLabel(/Soy .*he leído esta versión/).check();
+  if (!confirm) return;
   await page
     .getByRole("button", { name: "Confirmar firma", exact: true })
     .click();
@@ -319,12 +320,71 @@ try {
   await foreman
     .getByLabel("Instrucción comunicada", { exact: true })
     .fill("Recordatorio de la instrucción concreta.");
+  const createdResponse = foreman.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/parts") &&
+      r.request().postDataJSON()?.action === "create",
+  );
   await foreman
     .getByRole("button", { name: "Guardar borrador en servidor", exact: true })
     .click();
+  const initialDraft = (await (await createdResponse).json()).record;
   await foreman
     .getByRole("button", { name: "Firmar y enviar al supervisor", exact: true })
     .click();
+  await draw(foreman, { confirm: false });
+  const concurrentEdit = await fetch(base + "/api/parts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "edit",
+      token,
+      id: initialDraft.id,
+      expected: initialDraft.revision,
+      operationId: crypto.randomUUID(),
+      command: {
+        kind: "incident",
+        content: {
+          ...initialDraft.content,
+          place: "Acceso sur, ubicación precisada desde otra sesión",
+        },
+      },
+    }),
+  });
+  assert.equal(concurrentEdit.status, 200);
+  await foreman.evaluate(() =>
+    navigator.serviceWorker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "PARTS_UPDATED" } }),
+    ),
+  );
+  await foreman
+    .getByRole("dialog")
+    .getByText(/ubicación precisada desde otra sesión/)
+    .waitFor();
+  assert.equal(
+    await foreman
+      .getByRole("dialog")
+      .getByRole("button", { name: "Confirmar firma", exact: true })
+      .isDisabled(),
+    true,
+    "a refreshed document cannot reuse an already captured signature",
+  );
+  assert.equal(
+    await foreman.getByLabel(/Soy .*he leído esta versión/).isChecked(),
+    false,
+    "new version requires a new acknowledgment",
+  );
+  assert.equal(
+    await foreman
+      .getByRole("dialog")
+      .locator("canvas")
+      .evaluate((c) => {
+        const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+        return d.some((v, i) => i % 4 === 3 && v > 0);
+      }),
+    false,
+    "the old mark is erased on a new revision",
+  );
   await draw(foreman);
   const sentHeading = foreman.getByRole("heading", {
     name: /Enviado al supervisor/,
@@ -514,6 +574,9 @@ try {
     "PASS Partes revoked access: draft text retained, server writes disabled and authorised cached context not reused after 403.",
   );
   assert.deepEqual(runtimeErrors, []);
+  console.log(
+    "PASS Partes signature refresh: concurrent edit resets the captured mark and acknowledgment before ratification.",
+  );
   console.log(
     "PASS Partes circuit B: separate HTTP sessions, blocked premature receipt, return/correction/new declaration, supervisor authorization, refusal without forged signature, PDF download and landscape.",
   );
