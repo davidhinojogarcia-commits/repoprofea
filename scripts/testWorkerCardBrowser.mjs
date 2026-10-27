@@ -44,13 +44,13 @@ assert(!text.includes('CONTRATO'));
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF para imprimir'}).click();assert((await dl).suggestedFilename().endsWith('.pdf'));
- await page.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async data=>{window.shared={type:data.files[0].type,name:data.files[0].name,count:data.files.length}}});});
- await page.getByRole('button',{name:'Compartir tarjeta'}).click();assert.deepEqual(await page.evaluate(()=>window.shared),{type:'image/png',name:'CARNE_PROFEA_Garcia_Fernandez_Maria_del_Carmen.png',count:1});
- await page.evaluate(()=>{navigator.share=async()=>{throw new DOMException('Cancelled','AbortError')}});
- let downloads=0;page.on('download',()=>downloads++);await page.getByRole('button',{name:'Compartir tarjeta'}).click();await page.waitForTimeout(100);assert.equal(downloads,0);
- await page.evaluate(()=>{navigator.canShare=()=>false});dl=page.waitForEvent('download');await page.getByRole('button',{name:'Compartir tarjeta'}).click();assert((await dl).suggestedFilename().endsWith('.png'));
- await page.getByRole('status').filter({hasText:'Se ha descargado'}).waitFor();
+ // Chromium desktop must download a real PNG even when the browser falsely exposes navigator.share.
+ await page.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async()=>{window.nativeShareInvoked=true}});});
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'Compartir tarjeta'}).click();assert((await dl).suggestedFilename().endsWith('.png'));
+ assert.equal(await page.evaluate(()=>Boolean(window.nativeShareInvoked)),false);
+ await page.getByRole('status').filter({hasText:'Imagen PNG descargada'}).waitFor();
+ assert(await page.getByRole('status').filter({hasText:'WhatsApp Web'}).isVisible());
  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>window.closedCard),true);
  assert.deepEqual(errors,[]);
- console.log('PASS: actual card rendering, PNG >1000px, PDF 95×62mm, excluded private fields/history, image/PDF download, file sharing, cancellation, unsupported-share fallback, Escape. Native mobile share simulated.');
+ console.log('PASS: actual card rendering, PNG >1000px, PDF 95×62mm, excluded private fields/history, image/PDF download, desktop PNG share fallback, WhatsApp attachment instructions, Escape. Native mobile share handled through Web Share API.');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
