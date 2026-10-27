@@ -99,6 +99,18 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Partes y avisos transactions, permissions, PDFs and browser workflows
+        run: |
+          npm run test:parts
+          PARTS_EVIDENCE_DIR=artifacts/parts npm run test:parts-browser
+      - name: Upload synthetic Partes browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partes-browser-evidence
+          path: artifacts/parts
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Auth recovery, isolation and browser races
         run: |
           node scripts/testAuthRecovery.mjs
