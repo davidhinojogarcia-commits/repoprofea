@@ -80,7 +80,7 @@ export function downloadWorkerCard(blob: Blob, filename: string) {
 }
 
 export async function shareWorkerCard(file: File): Promise<'shared' | 'cancelled' | 'downloaded'> {
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+  // File sharing through the Web Share API is not dependable on desktop browsers.\n  // WhatsApp Web cannot accept an image attachment via a wa.me URL.\n  // Download the actual PNG so the supervisor can attach it in WhatsApp Desktop/Web.\n  const desktop = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);\n  if (!desktop && navigator.share && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: 'Carnet PROFEA' });
       return 'shared';
