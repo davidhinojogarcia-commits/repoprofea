@@ -24,7 +24,8 @@ export default function WorkerCardPairing({ onClose, onWorker }: { onClose: () =
         setMessage(workerCallback.current(id) ? 'Trabajador localizado. Puedes seguir escaneando desde el móvil.' : 'La ficha no está disponible en este directorio.');
       }, status => {
         if (!active.current) return;
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setMessage('Se ha perdido la conexión con el ordenador. Cierra y crea una nueva vinculación.');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || status === 'RECONCILE_ERROR') setMessage('Se ha perdido la conexión. Al recuperarse se comprobará la última lectura; si no vuelve, cierra y crea una nueva vinculación.');
+        if (status === 'SUBSCRIBED' && current.current) setMessage('Conexión recuperada. Puedes continuar escaneando.');
       });
       const unsubscribe = subscription.unsubscribe;
       const timeout = window.setTimeout(() => {

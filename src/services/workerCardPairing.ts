@@ -27,15 +27,41 @@ export async function closeCardPairing(id: string) { await supabase.rpc('worker_
 export function watchCardPairing(id: string, onWorker: (workerId: number, eventId: number) => void, onStatus: (status: string) => void) {
   let readyResolve: () => void = () => {};
   let readyReject: (error: Error) => void = () => {};
+  let active = true;
+  let latest = 0;
+  let reconciling = false;
+  let rerun = false;
   const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+  const deliver = (row: any) => {
+    const worker = Number(row?.worker_id); const event = Number(row?.id);
+    if (!active || !Number.isSafeInteger(worker) || worker <= 0 || !Number.isSafeInteger(event) || event <= latest) return;
+    latest = event;
+    onWorker(worker, event);
+  };
+  // Only reconcile the newest result: stale events must not replace the latest
+  // worker selected. Query the RLS-protected table after each reconnection.
+  const reconcile = async () => {
+    if (reconciling) { rerun = true; return; }
+    reconciling = true;
+    try {
+      do {
+        rerun = false;
+        const rows = await supabase.query('worker_card_pair_results', {
+          query: `session_id=eq.${encodeURIComponent(id)}&select=id,worker_id&order=id.desc&limit=1`,
+          fresh: true, networkOnly: true,
+        });
+        if (active && Array.isArray(rows) && rows[0]) deliver(rows[0]);
+      } while (active && rerun);
+    } catch { if (active) onStatus('RECONCILE_ERROR'); }
+    finally { reconciling = false; }
+  };
   const channel = supabase.channel(`worker-pair-${id}-${crypto.randomUUID()}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'worker_card_pair_results', filter: `session_id=eq.${id}` }, (payload: any) => {
-      const worker = Number(payload.new?.worker_id); const event = Number(payload.new?.id);
-      if (Number.isSafeInteger(worker) && Number.isSafeInteger(event)) onWorker(worker, event);
-    }).subscribe(status => {
-      if (status === 'SUBSCRIBED') readyResolve();
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'worker_card_pair_results', filter: `session_id=eq.${id}` }, (payload: any) => deliver(payload.new))
+    .subscribe(status => {
+      if (!active) return;
+      if (status === 'SUBSCRIBED') { readyResolve(); void reconcile(); }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') readyReject(new Error('Canal no disponible'));
       onStatus(status);
     });
-  return { ready, unsubscribe: () => { void supabase.removeChannel(channel as any); } };
+  return { ready, unsubscribe: () => { active = false; void supabase.removeChannel(channel as any); } };
 }
