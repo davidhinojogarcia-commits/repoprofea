@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf';
 import type { Person } from '../types';
 import { resolveWorkerQrShare, resolveWorkerQrOccupational } from '../src/services/workerQrShareService';
 import { getAptitudMedicaInfo } from '../types';
-import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
+import { OFFICIAL_LOGO_BASE64 } from '../src/assets/logoData';
 import { applyInstitutionalPdfStandard, renderInstitutionalSectionTitle } from '../src/lib/exportUtils';
 
 interface WorkerQrPortalProps { token: string; }
