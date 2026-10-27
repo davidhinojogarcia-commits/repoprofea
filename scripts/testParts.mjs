@@ -80,6 +80,15 @@ try {
     [100, 101],
   );
   assert.equal(ctx.actor.method, "worksite_access");
+  // Every foreman access resolves the code of its own authorised worksite,
+  // even when another supervisor has a worksite with the same display name.
+  const otherContext = await call({ action: "context", token: otherToken });
+  assert.equal(otherContext.works[0].worksite.id, id(22));
+  assert.equal(otherContext.works[0].worksite.code, "11004GR");
+  assert.notEqual(otherContext.works[0].worksite.id, ctx.works[0].worksite.id);
+  const secondWorkContext = await call({ action: "context", token: wrongWorkToken });
+  assert.equal(secondWorkContext.works[0].worksite.id, id(21));
+  assert.equal(secondWorkContext.works[0].worksite.code, "11003GR");
   assert.equal(
     (
       await invoke({
