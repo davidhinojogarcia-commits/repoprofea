@@ -32,6 +32,8 @@ npm run build
 
 `test:parts-browser` usa React, firma táctil, IndexedDB, service worker, HTTP y handler reales con PGlite. Sustituye la frontera de sesión del SDK. En cada motor prueba 390/820/1440, claro/oscuro, recuperación offline tras recarga, reconexión, aviso directo y recepción con disconformidad. Además: sesiones HTTP separadas de encargado/supervisor, rechazo de comunicación prematura B, devolución/corrección/nueva firma, autorización, negativa sin firma inventada, descarga PDF, horizontal 844×390 y descarte de una respuesta tardía al cambiar de cuenta. No prueba voz real: el texto representa apuntes escritos/transcritos por teclado.
 
+Diferencia de conectividad: Chromium recarga con `context.setOffline(true)`. Playwright/WebKit presenta un error documentado al rechazar navegaciones atendidas incluso por un service worker con respuesta literal ([microsoft/playwright #42775](https://github.com/microsoft/playwright/issues/42775)). Para WebKit se detiene realmente el servidor HTTP, se exige recarga de un documento nuevo desde caché con el servidor inaccesible y se comprueba el borrador recuperado. Después se aplica la señal offline nativa del emulador para verificar el estado de la interfaz y su reconexión; se reinicia el servidor antes de recuperar red. No se omiten las aserciones ni se capturan errores de navegación para declararlos éxito. Una caída del origen no equivale a una prueba física del modo avión de Safari.
+
 Con `PARTS_EVIDENCE_DIR=/tmp/parts-evidence` guarda capturas y PDF sintéticos; la CI adjunta `partes-browser-evidence` durante tres días. Ningún dato real se utiliza.
 
 ## Resultados y límites

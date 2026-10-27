@@ -120,7 +120,8 @@ async function draw(page) {
 try {
   js = await buildClient();
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const base = "http://127.0.0.1:" + server.address().port;
+  const port = server.address().port;
+  const base = "http://127.0.0.1:" + port;
   browser = await (engine === "webkit" ? webkit : chromium).launch({
     headless: true,
     ...(engine === "chromium" ? { args: ["--no-sandbox"] } : {}),
@@ -169,8 +170,27 @@ try {
     await page
       .getByText("Borrador local conservado.", { exact: true })
       .waitFor();
-    await context.setOffline(true);
-    await page.reload();
+    const beforeReload = await page.evaluate(() => performance.timeOrigin);
+    if (engine === "webkit") {
+      // Playwright #42775: its offline flag rejects even literal SW responses in WebKit.
+      // A real origin outage still exercises our unchanged SW and persisted encrypted draft.
+      const stopped = new Promise((resolve, reject) =>
+        server.close((e) => (e ? reject(e) : resolve())),
+      );
+      server.closeAllConnections();
+      await stopped;
+      assert.equal(server.listening, false);
+      await page.reload();
+      await context.setOffline(true); // Native offline event/UI and reconnect, after cache navigation.
+    } else {
+      await context.setOffline(true);
+      await page.reload();
+    }
+    assert.notEqual(
+      await page.evaluate(() => performance.timeOrigin),
+      beforeReload,
+      "recovery requires an actual new document, not the previous DOM",
+    );
     await page
       .getByLabel("Descripción objetiva de los hechos", { exact: true })
       .waitFor();
@@ -196,6 +216,11 @@ try {
       })
       .click();
     await page.getByText(/Pendiente de sincronización del borrador/).waitFor();
+    if (engine === "webkit")
+      await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", resolve);
+      });
     await context.setOffline(false);
     await page
       .getByRole("button", { name: "Revisar y firmar aviso", exact: true })
@@ -400,19 +425,44 @@ try {
     ).saveAs(process.env.PARTS_EVIDENCE_DIR + "/" + engine + "-incident.pdf");
   }
   // A late response from the old authenticated account must never repopulate the new account.
-  let delayedResolve;const delayed=new Promise(r=>delayedResolve=r);let delayOnce=true;
-  await supervisor.route('**/api/parts',async route=>{if(delayOnce&&route.request().postDataJSON()?.action==='detail'){delayOnce=false;delayedResolve();await new Promise(r=>setTimeout(r,250));}await route.continue();});
-  const late=supervisor.waitForResponse(r=>r.url().endsWith('/api/parts')&&r.request().postDataJSON()?.action==='detail');
-  await supervisor.getByRole('button',{name:'Actualizar',exact:true}).click();await delayed;await supervisor.evaluate(()=>window.__switchPartsAccount());await late;
-  await supervisor.waitForFunction(()=>!document.body.textContent.includes('Persona Homónima'));
-  assert.equal(await supervisor.getByRole('button',{name:/Persona Homónima/}).count(),0);
-  console.log('PASS Partes account switch: late old-account detail discarded and personal data cleared.');
+  let delayedResolve;
+  const delayed = new Promise((r) => (delayedResolve = r));
+  let delayOnce = true;
+  await supervisor.route("**/api/parts", async (route) => {
+    if (delayOnce && route.request().postDataJSON()?.action === "detail") {
+      delayOnce = false;
+      delayedResolve();
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    await route.continue();
+  });
+  const late = supervisor.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/parts") &&
+      r.request().postDataJSON()?.action === "detail",
+  );
+  await supervisor
+    .getByRole("button", { name: "Actualizar", exact: true })
+    .click();
+  await delayed;
+  await supervisor.evaluate(() => window.__switchPartsAccount());
+  await late;
+  await supervisor.waitForFunction(
+    () => !document.body.textContent.includes("Persona Homónima"),
+  );
+  assert.equal(
+    await supervisor.getByRole("button", { name: /Persona Homónima/ }).count(),
+    0,
+  );
+  console.log(
+    "PASS Partes account switch: late old-account detail discarded and personal data cleared.",
+  );
   assert.deepEqual(runtimeErrors, []);
   console.log(
     "PASS Partes circuit B: separate HTTP sessions, blocked premature receipt, return/correction/new declaration, supervisor authorization, refusal without forged signature, PDF download and landscape.",
   );
   console.log(
-    `PASS Partes ${engine} 390/820/1440 light/dark: real UI + handler + PostgreSQL, encrypted offline draft/reload/reconnection, direct service declaration, worker disagreement receipt, supervisor review signature, no horizontal overflow or runtime exceptions.`,
+    `PASS Partes ${engine} 390/820/1440 light/dark: real UI + handler + PostgreSQL, encrypted draft/reload/reconnection (${engine === "webkit" ? "real origin outage; offline UI event emulated after reload" : "browser offline emulation"}), direct service declaration, worker disagreement receipt, supervisor review signature, no horizontal overflow or runtime exceptions.`,
   );
 } catch (e) {
   console.error(e.message, runtimeErrors);
