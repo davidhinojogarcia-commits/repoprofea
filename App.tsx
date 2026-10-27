@@ -52,6 +52,7 @@ const EditPersonModal = lazy(() => import('./components/EditPersonModal').then(m
 const BulkEditModal = lazy(() => import('./components/BulkEditModal').then(module => ({ default: module.BulkEditModal })));
 const PeriodicReportModal = lazy(() => import('./components/PeriodicReportModal').then(module => ({ default: module.PeriodicReportModal })));
 const CameraScannerModal = lazy(() => import('./components/CameraScannerModal').then(module => ({ default: module.CameraScannerModal })));
+const WorkerCardModal = lazy(() => import('./components/WorkerCardModal'));
 const PdfViewerModal = lazy(() => import('./components/PdfViewerModal').then(module => ({ default: module.PdfViewerModal })));
 const PushNotificationManagerModal = lazy(() => import('./components/PushNotificationManagerModal').then(module => ({ default: module.PushNotificationManagerModal })));
 
@@ -564,6 +565,7 @@ function App() {
   const visiblePeople = people;
   const visibleDeletedPeople = deletedPeople;
 
+  const [cardPerson, setCardPerson] = useState<Person | null>(null);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
 
   useEffect(() => {
@@ -1557,18 +1559,8 @@ function App() {
     }
   };
 
-  const handleGenerateIDCard = async (person: Person) => {
-    try {
-      const { generateWorkerIDCardPDF, downloadPDF } = await loadExportUtils();
-      const { doc, filename } = await generateWorkerIDCardPDF(person, people);
-      downloadPDF(doc, filename);
-      const blob = doc.output('blob');
-      uploadToGoogleDrive(blob, filename);
-      return filename;
-    } catch (error) {
-      reportOperationalError('Error al generar carné:', error);
-      alert('Error al generar la credencial en PDF');
-    }
+  const handleGenerateIDCard = (person: Person) => {
+    setCardPerson(person);
   };
 
   const handleGenerateWorkerHistoryPDF = async (person: Person) => {
@@ -2521,6 +2513,7 @@ function App() {
             </Suspense>
           )}
 
+          {cardPerson && <Suspense fallback={<ViewLoadingFallback />}><WorkerCardModal key={cardPerson.id} person={cardPerson} onClose={() => setCardPerson(null)} /></Suspense>}
           {editingPerson && (
             <Suspense fallback={null}><EditPersonModal 
               key={editingPerson.id}
