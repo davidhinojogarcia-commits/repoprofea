@@ -98,14 +98,16 @@ async function worksiteSnapshot(db: DB, owner: string, work: string) {
   const rows = [
     ...new Map([...byName, ...byCode].map((r) => [r.id, r])).values(),
   ];
-  if (rows.length !== 1 || !rows[0].codigo || !rows[0].nombre)
+  if (rows.length !== 1 || !rows[0].nombre?.trim())
     throw partFail(
-      "La obra debe tener un código y una identificación única en Configuración.",
+      "No se puede identificar una única obra autorizada. Revisa su nombre en Configuración.",
       409,
     );
   return {
     id: rows[0].id,
-    code: rows[0].codigo,
+    // Legacy works store their reference in nombre; identity remains the owner-scoped UUID.
+    // Do not invent or persist an official code when it has never been configured.
+    code: rows[0].codigo?.trim() || "",
     name: rows[0].nombre,
     municipality: rows[0].municipio || "",
   };

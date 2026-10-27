@@ -27,6 +27,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "fix/parts-existing-worksites-20261027": false,
       "fix/foreman-signature-default-panel": false,
       "feat/independent-foreman-signatures": false,
       "local/fix-mandatory-persistence-20261009": false,

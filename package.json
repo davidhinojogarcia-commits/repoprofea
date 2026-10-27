@@ -61,7 +61,7 @@
     "test:calendar-dates": "node scripts/testIntegratedCalendarDates.mjs",
     "test:worker-card": "node scripts/testWorkerCardBrowser.mjs",
     "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs",
-    "test:parts": "node scripts/testParts.mjs",
+    "test:parts": "node scripts/testPartsLegacyWorksites.mjs && node scripts/testParts.mjs",
     "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs"
   },
   "dependencies": {

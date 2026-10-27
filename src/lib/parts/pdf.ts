@@ -127,7 +127,9 @@ export async function generatePartPdf(
   );
   text(
     "Obra",
-    `${p.worksite.code} · ${p.worksite.name} · ${p.worksite.municipality}`,
+    [p.worksite.code, p.worksite.name, p.worksite.municipality]
+      .filter(Boolean)
+      .join(" · "),
   );
   text(
     "Trabajador",
