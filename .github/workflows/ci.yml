@@ -210,6 +210,8 @@ jobs:
         run: npm run test:inventory-usage
       - name: Inventory usage browser regression
         run: npm run test:inventory-usage-browser
+      - name: Worker card QR browser regression
+        run: npm run test:worker-card
       - name: TypeScript validation
         run: |
           set -o pipefail
