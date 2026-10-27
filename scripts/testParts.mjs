@@ -64,6 +64,40 @@ const sign = (p) => ({
   acknowledged: true,
 });
 try {
+  const legacyEnv = await partsTestHarness();
+  try {
+    const invokeLegacy = async (input) => {
+      const result = await legacyEnv.invoke({token, ...input});
+      assert.equal(result.status, 200, JSON.stringify(result.data));
+      return result.data;
+    };
+    await legacyEnv.db.query("update obras set nombre='11002 GR',codigo='' where id=$1", [id(20)]);
+    await legacyEnv.db.query("update foreman_portal_access set obra='11002 GR' where id=$1", [id(10)]);
+    await legacyEnv.db.query("update trabajadores set obra='11002 GR' where owner_id=$1 and obra='Obra A'", [id(1)]);
+    assert.equal((await invokeLegacy({action: "context"})).works[0].worksite.code, "11002 GR");
+    let record = (await invokeLegacy({action: "create", id: id(3000),
+      operationId: randomUUID(), expected: 0, workerId: 100, kind: "service", content})).record;
+    assert.equal(record.worksite.id, id(20));
+    record = (await invokeLegacy({action: "submit", id: record.id,
+      expected: record.revision, operationId: randomUUID(), command: sign(record)})).record;
+    assert.equal(record.status, "pending_delivery");
+    assert.ok((await invokeLegacy({action: "pdf", id: record.id, intent: "share"})).file.sha256);
+    record = (await invokeLegacy({action: "receipt", id: record.id,
+      expected: record.revision, operationId: randomUUID(), command: {mode: "received", ...sign(record)}})).record;
+    assert.equal(record.status, "communicated");
+    await legacyEnv.db.query("update obras set nombre='11002 GR Calle de prueba' where id=$1", [id(20)]);
+    await legacyEnv.db.query("update foreman_portal_access set obra=' calle  de prueba ' where id=$1", [id(10)]);
+    assert.equal((await invokeLegacy({action: "context"})).works[0].worksite.id, id(20));
+    await legacyEnv.db.query("update obras set nombre='11002 GR Calle de prueba',codigo='' where id=$1", [id(22)]);
+    assert.equal((await invokeLegacy({action: "context"})).works[0].worksite.id, id(20));
+    await legacyEnv.db.query("update obras set nombre='11003 GR Calle de prueba' where id=$1", [id(21)]);
+    assert.equal((await legacyEnv.invoke({action: "context", token})).status, 409);
+    await legacyEnv.db.query("update foreman_portal_access set obra='Calle' where id=$1", [id(10)]);
+    assert.equal((await legacyEnv.invoke({action: "context", token})).status, 409);
+    console.log("PASS Legacy worksites: context, create, signatures, PDF, receipt, owner isolation and ambiguity.");
+  } finally {
+    await legacyEnv.close();
+  }
   assert.equal((await invoke({ action: "context" })).status, 401);
   assert.equal((await invoke({ action: "context" }, 3)).status, 403);
   // Foreman access and canonical worksite names can differ in case and spaces.

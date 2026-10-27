@@ -74,13 +74,16 @@ const one = async (
   filters: Record<string, string | number>,
   select = "*",
 ) => (await db(table + "?" + params({ ...filters, select, limit: 1 })))[0];
+const embeddedWorksiteCode = (name: string) =>
+  name.trim().match(/^(\d{5}\s+(?:GR|EE))(?=\s|$)/i)?.[1] || "";
 async function worksiteSnapshot(db: DB, owner: string, work: string) {
   // Foreman access stores the obra label, which can differ in casing or
   // surrounding whitespace from the canonical worksites configuration.
   // Never select an arbitrary worksite when more than one could match.
-  const key = work.trim().toLocaleLowerCase("es");
+  const key = work.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
   if (!key) throw partFail("El acceso no tiene una obra asignada.", 409);
   const matches = new Map<string, any>();
+  const legacyMatches = new Map<string, any>();
   // Limit the scan and reject ambiguous/incomplete results rather than
   // silently binding a personnel record to the wrong worksite.
   for (let offset = 0; offset < 2000; offset += 250) {
@@ -97,27 +100,32 @@ async function worksiteSnapshot(db: DB, owner: string, work: string) {
     for (const row of rows) {
       const keys = [row.id, row.nombre, row.codigo]
         .filter((v): v is string => typeof v === "string")
-        .map((v) => v.trim().toLocaleLowerCase("es"));
+        .map((v) => v.trim().replace(/\s+/g, " ").toLocaleLowerCase("es"));
       if (keys.includes(key)) matches.set(row.id, row);
+      const code = embeddedWorksiteCode(row.nombre || "");
+      if (code && row.nombre.trim().slice(code.length).trim()
+        .replace(/\s+/g, " ").toLocaleLowerCase("es") === key)
+        legacyMatches.set(row.id, row);
     }
     if (rows.length < 250) break;
     if (offset === 1750)
       throw partFail("Demasiadas obras para verificar la asignación.", 409);
   }
-  const rows = [...matches.values()];
+  const rows = [...(matches.size ? matches : legacyMatches).values()];
   if (rows.length !== 1)
     throw partFail(
       "No se puede identificar de forma única la obra del encargado. Revisa su asignación en Configuración.",
       409,
     );
-  if (!rows[0].codigo?.trim() || !rows[0].nombre?.trim())
+  const code = rows[0].codigo?.trim() || embeddedWorksiteCode(rows[0].nombre || "");
+  if (!code || !rows[0].nombre?.trim())
     throw partFail(
       "La obra identificada no tiene código o nombre en Configuración.",
       409,
     );
   return {
     id: rows[0].id,
-    code: rows[0].codigo,
+    code,
     name: rows[0].nombre,
     municipality: rows[0].municipio || "",
   };
