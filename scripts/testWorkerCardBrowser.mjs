@@ -48,7 +48,7 @@ assert(!text.includes('CONTRATO'));
  await page.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async()=>{window.nativeShareInvoked=true}});});
  await page.getByRole('button',{name:'Compartir tarjeta'}).click();
  assert.equal(await page.evaluate(()=>Boolean(window.nativeShareInvoked)),false);
- await page.getByRole('status').filter({hasText:'Elige cómo compartir'}).waitFor();
+ await page.getByRole('status').filter({hasText:'Elige dónde compartir'}).waitFor();
  assert(await page.getByRole('group',{name:'Opciones para compartir el carnet'}).isVisible());
  assert(await page.getByRole('button',{name:'WhatsApp Web'}).isVisible());
  assert(await page.getByRole('button',{name:'Gmail'}).isVisible());
