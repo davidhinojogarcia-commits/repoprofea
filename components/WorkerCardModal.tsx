@@ -62,12 +62,16 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
   }, [onClose]);
   const share = async () => {
     if (!card || sharing) return;
-    if (shareOptions) { setShareOptions(false); return; }
+    if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      setShareOptions(value => !value);
+      setNotice('Elige dónde compartir la tarjeta. Adjunta la imagen PNG en la aplicación que selecciones.');
+      return;
+    }
     setSharing(true);
     setNotice('');
     try {
       const result = await shareWorkerCard(card.image);
-      if (result === 'downloaded') { setShareOptions(true); setNotice('Elige cómo compartir la tarjeta. En el ordenador, algunas aplicaciones requieren adjuntar el PNG manualmente.'); }
+      if (result === 'downloaded') setNotice('Imagen PNG descargada. Puedes adjuntarla en la aplicación que prefieras.');
     } catch {
       setNotice('No se ha podido compartir. Utiliza Descargar imagen.');
     } finally { setSharing(false); }
@@ -88,11 +92,11 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
           {shareOptions && <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-slate-900" role="group" aria-label="Opciones para compartir el carnet">
             <p className="mb-2 text-sm font-bold">Elige dónde compartir</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { window.open('https://web.whatsapp.com/', '_blank', 'noopener,noreferrer'); }} className="min-h-11 rounded-lg border bg-white px-3 text-sm font-semibold">WhatsApp Web</button>
-              <button type="button" onClick={() => { window.open('https://mail.google.com/mail/u/0/#inbox?compose=new', '_blank', 'noopener,noreferrer'); }} className="min-h-11 rounded-lg border bg-white px-3 text-sm font-semibold">Gmail</button>
-              <button type="button" onClick={() => { void navigator.clipboard?.writeText(card.image.name).then(() => setNotice('Nombre del archivo copiado. Adjunta la imagen descargada en el medio que prefieras.')).catch(() => setNotice('Adjunta la imagen descargada en la aplicación que prefieras.')); }} className="min-h-11 rounded-lg border bg-white px-3 text-sm font-semibold">Otro medio</button>
+              <button type="button" onClick={() => { downloadWorkerCard(card.image, card.image.name); window.open('https://web.whatsapp.com/', '_blank', 'noopener,noreferrer'); }} className="min-h-11 rounded-lg border bg-white px-3 text-sm font-semibold">WhatsApp Web</button>
+              <button type="button" onClick={() => { downloadWorkerCard(card.image, card.image.name); window.open('https://mail.google.com/mail/u/0/#inbox?compose=new', '_blank', 'noopener,noreferrer'); }} className="min-h-11 rounded-lg border bg-white px-3 text-sm font-semibold">Gmail</button>
+              <button type="button" onClick={() => { downloadWorkerCard(card.image, card.image.name); setNotice('Imagen descargada. Abre la aplicación de tu elección y adjunta el archivo PNG.'); }} className="min-h-11 rounded-lg border bg-white px-3 text-sm font-semibold">Otro medio</button>
             </div>
-            <p className="mt-2 text-xs">La imagen PNG se ha descargado. Adjunta ese archivo en el chat o correo elegido; los navegadores no permiten añadirlo automáticamente a WhatsApp Web o Gmail.</p>
+            <p className="mt-2 text-xs">Al elegir WhatsApp Web, Gmail u otro medio se descarga la imagen PNG para adjuntarla. Los navegadores no permiten añadirla automáticamente a estas aplicaciones.</p>
           </div>}
           <button type="button" onClick={() => downloadWorkerCard(card.pdf, card.pdfName)} className="mt-3 min-h-11 text-sm underline">Descargar PDF para imprimir</button>
           {notice && <p role="status" className="mt-2 text-sm">{notice}</p>}
