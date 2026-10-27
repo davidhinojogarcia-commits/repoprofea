@@ -4,6 +4,8 @@ import { jsPDF } from 'jspdf';
 import type { Person } from '../types';
 import { resolveWorkerQrShare, resolveWorkerQrOccupational } from '../src/services/workerQrShareService';
 import { getAptitudMedicaInfo } from '../types';
+import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
+import { applyInstitutionalPdfStandard, renderInstitutionalSectionTitle } from '../src/lib/exportUtils';
 
 interface WorkerQrPortalProps { token: string; }
 const safeName = (value: unknown) => String(value || 'Trabajador').trim() || 'Trabajador';
@@ -13,41 +15,89 @@ const dateText = (value: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || 
 // Inspection-facing view only: the public RPC intentionally omits the full DNI,
 // contact details, payroll identifiers and occupational medical information.
 function makePublicInspectionPdf(history: Person[]) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const worker = history[0];
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('FICHA DE CONSULTA PROFEA', 15, 20);
-  doc.setFontSize(10);
-  doc.text(safeName(worker.apellidosNombre), 15, 30);
-  doc.setFont('helvetica', 'normal');
-  doc.text('DNI/NIE (parcial): ' + safeText(worker.dni), 15, 37);
-  doc.text('Consulta mediante codigo QR. No acredita contratacion vigente.', 15, 44);
-  let y = 57;
-  history.forEach((item, index) => {
-    if (y > 258) { doc.addPage(); y = 20; }
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const safeMargin = 15;
+  const sectionWidth = pageWidth - 2 * safeMargin;
+  const issuedAt = new Date().toLocaleString('es-ES');
+  const header = () => {
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, pageWidth, 20, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.text('Registro ' + (index + 1), 15, y);
+    doc.setTextColor(0, 84, 142);
+    doc.setFontSize(9.5);
+    doc.text('DIPUTACIÓN PROVINCIAL DE CÁDIZ', safeMargin, 8);
     doc.setFont('helvetica', 'normal');
-    const entries = [
-      'Obra: ' + safeText(item.obra),
-      'Categoria: ' + safeText(item.categoria),
-      'Formacion PRL 20h: ' + safeText(item.formacion),
-      ...(item.aptitudMedica || item.reconocimientoEstado ? [
-        'Aptitud laboral: ' + getAptitudMedicaInfo(item).estado,
-        ...(getAptitudMedicaInfo(item).estado === 'Apto con limitaciones' ? [
-          'Limitaciones laborales: ' + safeText(getAptitudMedicaInfo(item).limitaciones)
-        ] : [])
-      ] : ['Aptitud laboral: acceso restringido al supervisor autorizado']),
-      'Periodo: ' + dateText(item.periodoInicio) + ' a ' + dateText(item.periodoFin)
-    ];
-    for (const entry of entries) {
-      const lines = doc.splitTextToSize(entry, 174);
-      doc.text(lines, 15, y + 6);
-      y += 5 * lines.length + 2;
+    doc.setFontSize(7.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text('DESARROLLO LOCAL | GESTIÓN DE FONDOS PROFEA', safeMargin, 13);
+    try {
+      const format = OFFICIAL_LOGO_BASE64.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+      const image = doc.getImageProperties(OFFICIAL_LOGO_BASE64);
+      const width = Math.min(49, 10.5 * image.width / image.height);
+      doc.addImage(OFFICIAL_LOGO_BASE64, format, pageWidth - safeMargin - width, 4.5, width, 10.5);
+    } catch {
+      // Keep the institutional heading readable even if the image cannot load.
     }
-    y += 10;
-  });
+    doc.setDrawColor(218, 226, 233);
+    doc.line(safeMargin, 18.2, pageWidth - safeMargin, 18.2);
+    doc.setFillColor(0, 84, 142);
+    doc.rect(0, 20, pageWidth, 18, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('FICHA DE CONSULTA DEL TRABAJADOR', safeMargin, 28);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.text('Consulta de identificación y situación documental · ' + issuedAt, safeMargin, 33);
+    doc.setFillColor(56, 189, 248);
+    doc.rect(0, 38, pageWidth, 1.4, 'F');
+  };
+  header();
+  let y = renderInstitutionalSectionTitle(doc, 'Identificación del trabajador', 46, { width: sectionWidth });
+  const drawLine = (label: string, value: string) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.setFontSize(8.5);
+    const lines = doc.splitTextToSize(label + ': ' + (value || '—'), sectionWidth - 6);
+    doc.text(lines, safeMargin + 3, y + 3.5);
+    y += Math.max(6, lines.length * 4.5 + 1.5);
+  };
+  drawLine('Nombre y apellidos', safeName(worker.apellidosNombre));
+  drawLine('DNI / NIE parcial', safeText(worker.dni));
+  y += 3;
+  for (const [index, item] of history.entries()) {
+    if (y > 229) {
+      doc.addPage();
+      header();
+      y = 47;
+    }
+    y = renderInstitutionalSectionTitle(doc, 'Registro laboral ' + (index + 1), y, { width: sectionWidth });
+    const details = [
+      ['Obra', safeText(item.obra)],
+      ['Categoría', safeText(item.categoria)],
+      ['Período', dateText(item.periodoInicio) + ' a ' + dateText(item.periodoFin)],
+      ['Formación PRL 20 horas', safeText(item.formacion)],
+      ['Reconocimiento médico', item.aptitudMedica || item.reconocimientoEstado
+        ? getAptitudMedicaInfo(item).estado
+        : 'Información restringida a usuarios autorizados'],
+      ...(getAptitudMedicaInfo(item).estado === 'Apto con limitaciones'
+        ? [['Limitaciones laborales', safeText(getAptitudMedicaInfo(item).limitaciones)]] : []),
+    ];
+    for (const [label, value] of details) {
+      const estimated = doc.splitTextToSize(label + ': ' + value, sectionWidth - 6);
+      if (y + Math.max(6, estimated.length * 4.5 + 1.5) > 271) {
+        doc.addPage(); header(); y = 48;
+      }
+      drawLine(label, value);
+    }
+    y += 5;
+  }
+  if (y > 262) { doc.addPage(); header(); y = 48; }
+  y = renderInstitutionalSectionTitle(doc, 'Información de verificación', y, { width: sectionWidth, compact: true });
+  drawLine('Observación', 'Este documento no acredita por sí solo una contratación vigente.');
+  applyInstitutionalPdfStandard(doc);
   return doc.output('blob');
 }
 
