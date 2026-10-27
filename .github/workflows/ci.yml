@@ -212,6 +212,8 @@ jobs:
         run: npm run test:inventory-usage-browser
       - name: Public worker QR privacy regression
         run: npm run test:worker-qr-public
+      - name: Worker card pairing isolation
+        run: npm run test:worker-card-pairing
       - name: Worker card QR scan authorization
         run: npm run test:worker-card-scan
       - name: Worker card QR browser regression

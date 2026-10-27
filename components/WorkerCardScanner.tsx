@@ -5,12 +5,13 @@ import ModalPortal from './ModalPortal';
 import { workerTokenFromQr } from '../src/lib/workerQrScan';
 import { resolveWorkerCardOwner } from '../src/services/workerQrShareService';
 
-export default function WorkerCardScanner({ onClose, onFound }: { onClose: () => void; onFound: (id: number) => boolean }) {
+export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: { onClose: () => void; onFound?: (id: number) => boolean; onRemoteToken?: (token: string) => Promise<boolean> }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const foundRef = useRef(onFound);
+  const remoteRef = useRef(onRemoteToken);
   const [message, setMessage] = useState('Solicitando acceso a la cámara…');
   const [restart, setRestart] = useState(0);
-  useEffect(() => { foundRef.current = onFound; }, [onFound]);
+  useEffect(() => { foundRef.current = onFound; remoteRef.current = onRemoteToken; }, [onFound, onRemoteToken]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } };
     window.addEventListener('keydown', escape);
@@ -41,10 +42,16 @@ export default function WorkerCardScanner({ onClose, onFound }: { onClose: () =>
             pending = true;
             setMessage('Comprobando carnet…');
             try {
-              const id = await resolveWorkerCardOwner(token);
-              if (!active) return;
-              if (id && foundRef.current(id)) { onClose(); return; }
-              setMessage('Carnet no disponible para esta cuenta o trabajador no cargado.');
+              if (remoteRef.current) {
+                const sent = await remoteRef.current(token);
+                if (!active) return;
+                setMessage(sent ? 'Carnet enviado al ordenador. Pulsa Reintentar para otro trabajador.' : 'Carnet o vinculación no disponible.');
+              } else {
+                const id = await resolveWorkerCardOwner(token);
+                if (!active) return;
+                if (id && foundRef.current?.(id)) { onClose(); return; }
+                setMessage('Carnet no disponible para esta cuenta o trabajador no cargado.');
+              }
             } catch {
               if (active) setMessage('No se ha podido verificar el carnet. Comprueba la conexión y vuelve a intentarlo.');
             }
