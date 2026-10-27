@@ -44,12 +44,15 @@ assert(!text.includes('CONTRATO'));
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF para imprimir'}).click();assert((await dl).suggestedFilename().endsWith('.pdf'));
- // Chromium desktop must download a real PNG even when the browser falsely exposes navigator.share.
+ // Desktop first offers destinations, even when the browser falsely exposes navigator.share.
  await page.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async()=>{window.nativeShareInvoked=true}});});
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'Compartir tarjeta'}).click();assert((await dl).suggestedFilename().endsWith('.png'));
+ await page.getByRole('button',{name:'Compartir tarjeta'}).click();
  assert.equal(await page.evaluate(()=>Boolean(window.nativeShareInvoked)),false);
- await page.getByRole('status').filter({hasText:'Imagen PNG descargada'}).waitFor();
- assert(await page.getByRole('status').filter({hasText:'WhatsApp Web'}).isVisible());
+ await page.getByRole('status').filter({hasText:'Elige dónde compartir'}).waitFor();
+ assert(await page.getByRole('group',{name:'Opciones para compartir el carnet'}).isVisible());
+ assert(await page.getByRole('button',{name:'WhatsApp Web'}).isVisible());
+ assert(await page.getByRole('button',{name:'Gmail'}).isVisible());
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'Otro medio'}).click();assert((await dl).suggestedFilename().endsWith('.png'));
  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>window.closedCard),true);
  assert.deepEqual(errors,[]);
  console.log('PASS: actual card rendering, PNG >1000px, PDF 95×62mm, excluded private fields/history, image/PDF download, desktop PNG share fallback, WhatsApp attachment instructions, Escape. Native mobile share handled through Web Share API.');
