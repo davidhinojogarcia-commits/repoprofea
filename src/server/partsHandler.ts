@@ -75,32 +75,44 @@ const one = async (
   select = "*",
 ) => (await db(table + "?" + params({ ...filters, select, limit: 1 })))[0];
 async function worksiteSnapshot(db: DB, owner: string, work: string) {
-  const [byName, byCode] = await Promise.all([
-    db(
+  // Foreman access stores the obra label, which can differ in casing or
+  // surrounding whitespace from the canonical worksites configuration.
+  // Never select an arbitrary worksite when more than one could match.
+  const key = work.trim().toLocaleLowerCase("es");
+  if (!key) throw partFail("El acceso no tiene una obra asignada.", 409);
+  const matches = new Map<string, any>();
+  // Limit the scan and reject ambiguous/incomplete results rather than
+  // silently binding a personnel record to the wrong worksite.
+  for (let offset = 0; offset < 2000; offset += 250) {
+    const rows = await db(
       "obras?" +
         params({
           owner_id: "eq." + owner,
-          nombre: "eq." + work,
           select: "id,codigo,nombre,municipio",
-          limit: 2,
+          order: "id",
+          offset,
+          limit: 250,
         }),
-    ),
-    db(
-      "obras?" +
-        params({
-          owner_id: "eq." + owner,
-          codigo: "eq." + work,
-          select: "id,codigo,nombre,municipio",
-          limit: 2,
-        }),
-    ),
-  ]);
-  const rows = [
-    ...new Map([...byName, ...byCode].map((r) => [r.id, r])).values(),
-  ];
-  if (rows.length !== 1 || !rows[0].codigo || !rows[0].nombre)
+    );
+    for (const row of rows) {
+      const keys = [row.id, row.nombre, row.codigo]
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => v.trim().toLocaleLowerCase("es"));
+      if (keys.includes(key)) matches.set(row.id, row);
+    }
+    if (rows.length < 250) break;
+    if (offset === 1750)
+      throw partFail("Demasiadas obras para verificar la asignación.", 409);
+  }
+  const rows = [...matches.values()];
+  if (rows.length !== 1)
     throw partFail(
-      "La obra debe tener un código y una identificación única en Configuración.",
+      "No se puede identificar de forma única la obra del encargado. Revisa su asignación en Configuración.",
+      409,
+    );
+  if (!rows[0].codigo?.trim() || !rows[0].nombre?.trim())
+    throw partFail(
+      "La obra identificada no tiene código o nombre en Configuración.",
       409,
     );
   return {
