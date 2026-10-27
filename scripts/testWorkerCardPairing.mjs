@@ -12,7 +12,7 @@ try {
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.uid',true),'')::uuid$$;
  create function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('session_id',current_setting('request.sid',true))$$;
  create function extensions.digest(text,text) returns bytea language sql immutable as $$select sha256(convert_to($1,'UTF8'))$$;
- create table public.trabajadores(id bigint primary key); insert into public.trabajadores values (7);
+ create table public.trabajadores(owner_id uuid,id bigint,primary key(owner_id,id)); insert into public.trabajadores values ('${owner}',7),('${other}',7);
  create function public.resolve_worker_card_owner(uuid) returns bigint language sql stable as $$select case when $1='${card}'::uuid and auth.uid()='${owner}'::uuid then 7::bigint else null end$$;
  create publication supabase_realtime;`);
  await db.exec(await readFile(new URL('../supabase/migrations/20261027171312_worker_card_pairing.sql',import.meta.url),'utf8'));
