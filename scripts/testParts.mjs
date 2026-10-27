@@ -66,6 +66,14 @@ const sign = (p) => ({
 try {
   assert.equal((await invoke({ action: "context" })).status, 401);
   assert.equal((await invoke({ action: "context" }, 3)).status, 403);
+  // Foreman access and canonical worksite names can differ in case and spaces.
+  await db.query("update obras set nombre=$2 where id=$1", [
+    id(20), "  obra a  ",
+  ]);
+  const normalizedContext = await call({ action: "context", token });
+  assert.equal(normalizedContext.works[0].worksite.id, id(20));
+  assert.equal(normalizedContext.works[0].worksite.code, "11002GR");
+  await db.query("update obras set nombre=$2 where id=$1", [id(20), "Obra A"]);
   const ctx = await call({ action: "context", token });
   assert.deepEqual(
     ctx.workers.map((w) => w.id),
