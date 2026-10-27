@@ -79,19 +79,17 @@ export function downloadWorkerCard(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
-export async function shareWorkerCard(file: File): Promise<'shared' | 'cancelled' | 'downloaded'> {
-  // File sharing through the Web Share API is not dependable on desktop browsers.
-  // WhatsApp Web cannot accept an image attachment via a wa.me URL.
-  // Download the actual PNG so the supervisor can attach it in WhatsApp Desktop/Web.
-  const desktop = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if (!desktop && navigator.share && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'Carnet PROFEA' });
-      return 'shared';
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
-    }
+export async function shareWorkerCard(file: File): Promise<'shared' | 'cancelled' | 'unsupported'> {
+  // Request the operating system's native share sheet with the actual PNG attachment.
+  // No download or browser-specific destination menu should replace this action.
+  if (typeof navigator.share !== 'function' || !navigator.canShare?.({ files: [file] })) {
+    return 'unsupported';
   }
-  downloadWorkerCard(file, file.name);
-  return 'downloaded';
+  try {
+    await navigator.share({ files: [file], title: 'Carnet PROFEA' });
+    return 'shared';
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
+    throw error;
+  }
 }
