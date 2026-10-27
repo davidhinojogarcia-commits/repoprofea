@@ -37,7 +37,9 @@ try {
  const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
  const parseTask=pdfjs.getDocument({data:new Uint8Array(pdf),useSystemFonts:true});const parsed=await parseTask.promise;
  const text=(await(await parsed.getPage(1)).getTextContent()).items.map(i=>i.str).join(' ');
- assert(text.includes('García Fernández'.toUpperCase()));assert(text.includes('01/01/2027'));
+ assert(text.includes('García Fernández'.toUpperCase()));assert(!text.includes('01/01/2027'));
+assert(!text.includes('OBRA'));
+assert(!text.includes('CONTRATO'));
  for(const forbidden of ['PRIVATE_','HISTORIAL','1960','FICHA COMPLETA','worker-qr'])assert(!text.includes(forbidden),forbidden);
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
