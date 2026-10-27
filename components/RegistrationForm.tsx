@@ -1,6 +1,6 @@
 import { reportOperationalError } from '../src/lib/operationalLog';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import ModalPortal from './ModalPortal';
 import { PlusCircle, FileText, User, Calendar, Briefcase, Phone, Ruler, Award, MapPin, AlertCircle, Upload, ArrowRight, CheckCircle2, HardHat, UserCheck, History, X } from 'lucide-react';
 import { Person } from '../types';
@@ -9,6 +9,9 @@ import { formatIban, formatSpanishSocialSecurityNumber, normalizeIban, normalize
 import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 import { useAuthShell } from './AuthGate';
 import { buildWorkerMasterRecords, searchWorkerMasterRecords, type WorkerMasterRecord } from '../src/lib/workerMaster';
+
+const WorkerCardScanner = lazy(() => import('./WorkerCardScanner'));
+const WorkerCardPairing = lazy(() => import('./WorkerCardPairing'));
 
 interface RegistrationFormProps {
   onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>) => void;
@@ -116,7 +119,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   savedCategorias,
   people = []
 }) => {
-  const { supervisorName } = useAuthShell();
+  const { supervisorName, user } = useAuthShell();
+  const accountId = user?.id || '';
   const today = new Date();
   const nextHiringMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   const savedFortnight = typeof window !== 'undefined'
@@ -175,6 +179,42 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [requiresPreventionReview, setRequiresPreventionReview] = useState(false);
   const [workerLookupField, setWorkerLookupField] = useState<'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban' | null>(null);
   const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
+  const cardPeople = useMemo(() => people.filter(p => !p.ownerId || p.ownerId === accountId), [people, accountId]);
+  const cardMasterRecords = useMemo(() => buildWorkerMasterRecords(cardPeople), [cardPeople]);
+  const [scanningCard, setScanningCard] = useState(false);
+  const [pairingCard, setPairingCard] = useState(false);
+  const [cardCandidate, setCardCandidate] = useState<{ id: number; accountId: string } | null>(null);
+  const [cardMessage, setCardMessage] = useState('');
+  const cardPreviewRef = useRef<HTMLElement>(null);
+  const closeCardScanner = useCallback(() => setScanningCard(false), []);
+  // The QR carries only a reference. Resolve it against the authenticated
+  // directory; never trust personal data supplied by a QR or mobile event.
+  const previewScannedWorker = useCallback((id: number) => {
+    const person = cardPeople.find(p => Number(p.id) === id);
+    if (!person || !person.apellidosNombre?.trim() || analyzeDNI(person.dni).status !== 'valid') {
+      setCardMessage('La ficha no está disponible o su DNI/NIE necesita revisión en el directorio.');
+      return false;
+    }
+    setCardCandidate({ id, accountId });
+    setCardMessage('Carnet localizado. Confirma la identidad antes de rellenar el formulario.');
+    setPairingCard(false);
+    return true;
+  }, [cardPeople, accountId]);
+  const cardPerson = cardCandidate?.accountId === accountId
+    ? cardPeople.find(p => Number(p.id) === cardCandidate.id)
+    : undefined;
+  const cardMaster = cardPerson && analyzeDNI(cardPerson.dni).status === 'valid'
+    ? cardMasterRecords.find(w => w.key === cardPerson.dni.replace(/[\s-]/g, '').toUpperCase())
+    : undefined;
+  useEffect(() => {
+    setScanningCard(false);
+    setPairingCard(false);
+    setCardCandidate(null);
+    setCardMessage('');
+  }, [accountId]);
+  useEffect(() => {
+    if (cardCandidate) cardPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [cardCandidate]);
 
   const workerLookupQuery = workerLookupField ? String((formData as any)[workerLookupField] || '') : '';
   const workerSuggestions = useMemo(
@@ -182,16 +222,16 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     [workerLookupField, workerLookupQuery, workerMasterRecords]
   );
 
-  const applyWorkerMasterRecord = (worker: WorkerMasterRecord) => {
+  const applyWorkerMasterRecord = (worker: WorkerMasterRecord, fromCard = false) => {
     setFormData(prev => ({
       ...prev,
-      apellidosNombre: worker.apellidosNombre || prev.apellidosNombre,
-      dni: worker.dni || prev.dni,
-      fechaNacimiento: worker.fechaNacimiento || prev.fechaNacimiento,
-      telefono: worker.telefono || prev.telefono,
-      numeroSeguridadSocial: worker.numeroSeguridadSocial || prev.numeroSeguridadSocial,
-      iban: worker.iban || prev.iban,
-      calzado: worker.calzado && worker.calzado !== 'No necesita' ? worker.calzado : prev.calzado,
+      apellidosNombre: worker.apellidosNombre || (fromCard ? '' : prev.apellidosNombre),
+      dni: worker.dni || (fromCard ? '' : prev.dni),
+      fechaNacimiento: worker.fechaNacimiento || (fromCard ? '' : prev.fechaNacimiento),
+      telefono: worker.telefono || (fromCard ? '' : prev.telefono),
+      numeroSeguridadSocial: worker.numeroSeguridadSocial || (fromCard ? '' : prev.numeroSeguridadSocial),
+      iban: worker.iban || (fromCard ? '' : prev.iban),
+      calzado: worker.calzado && worker.calzado !== 'No necesita' ? worker.calzado : (fromCard ? '' : prev.calzado),
       supervisorResponsable: supervisorName,
       // Datos de contratación, PRL y reconocimiento se mantienen siempre separados.
       numOferta: prev.numOferta,
@@ -203,19 +243,25 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       formacion: '',
       lugarFormacion: '',
       necesitaReconocimiento: '',
-      citaDia: prev.citaDia,
-      citaHora: prev.citaHora,
-      sitioReconocimiento: prev.sitioReconocimiento,
+      citaDia: fromCard ? '' : prev.citaDia,
+      citaHora: fromCard ? '' : prev.citaHora,
+      sitioReconocimiento: fromCard ? '' : prev.sitioReconocimiento,
       documentacionCompleta: '',
-      observaciones: prev.observaciones,
+      observaciones: fromCard ? '' : prev.observaciones,
     }));
-    const contracts = (people || []).filter(p =>
+    const contracts = (fromCard ? cardPeople : people).filter(p =>
       p.dni.replace(/[\s-]/g, '').toUpperCase() === worker.dni.replace(/[\s-]/g, '').toUpperCase()
     );
     setRequiresPreventionReview(true);
     setMatchedWorkerName(worker.apellidosNombre);
     setWorkerHistory(contracts);
     setWorkerLookupField(null);
+    if (fromCard) {
+      setIsSameAnnualityActive(contracts.some(p => getContractYear(p) === qYear));
+      setShowHistoryModal(true);
+      setCardCandidate(null);
+      setCardMessage('Datos personales recuperados. Revisa los datos del nuevo contrato, los certificados PRL, el reconocimiento y la documentación antes de registrar.');
+    }
   };
 
   const renderWorkerSuggestions = (field: 'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban') => {
@@ -455,6 +501,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (cardCandidate) {
+      alert('Confirma la ficha del carnet o cancela su recuperación antes de registrar.');
+      return;
+    }
     if (!formData.dni || !formData.dni.trim()) {
       alert('⚠️ Por favor, introduzca el DNI/NIE del trabajador.');
       const inputEl = document.getElementById('dni-input');
@@ -560,6 +610,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       sitioReconocimiento: ''
     }));
     setRequiresPreventionReview(false);
+    setCardCandidate(null);
+    setCardMessage('');
+    setPairingCard(false);
+    setScanningCard(false);
     const formTop = document.getElementById('form-container');
     if (formTop) formTop.scrollIntoView({ behavior: 'smooth' });
   };
@@ -626,6 +680,28 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Alta de trabajador y datos necesarios para su incorporación PROFEA.</p>
         </div>
       </div>
+
+      <section className="mb-6 rounded-xl border border-blue-200 p-4 dark:border-blue-900" aria-label="Recuperar trabajador por carnet QR">
+        <h3 className="font-bold">Recuperar datos con el carnet QR</h3>
+        <p className="mt-1 text-sm">Vincula el móvil para leer el carnet o utiliza la cámara de este dispositivo. Confirma la ficha y revisa la nueva contratación antes de guardarla.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" disabled={pairingCard || scanningCard} onClick={() => { setCardCandidate(null); setCardMessage(''); setPairingCard(true); }} className="min-h-11 rounded-xl bg-[#00548E] px-4 py-2 font-bold text-white disabled:opacity-50">Vincular cámara del móvil</button>
+          <button type="button" disabled={pairingCard || scanningCard} onClick={() => { setCardCandidate(null); setCardMessage(''); setScanningCard(true); }} className="min-h-11 rounded-xl border px-4 py-2 font-bold disabled:opacity-50">Leer QR con este dispositivo</button>
+        </div>
+        {cardMessage && <p role="status" className="mt-3 text-sm">{cardMessage}</p>}
+        {pairingCard && <Suspense fallback={<p role="status">Preparando vinculación…</p>}><WorkerCardPairing key={accountId} onClose={() => setPairingCard(false)} onWorker={previewScannedWorker} /></Suspense>}
+        {scanningCard && <Suspense fallback={<p role="status">Preparando escáner…</p>}><WorkerCardScanner key={accountId} onClose={closeCardScanner} onFound={previewScannedWorker} /></Suspense>}
+        {cardCandidate && <section ref={cardPreviewRef} className="mt-4 rounded-xl border p-3" aria-label="Confirmar ficha del carnet">
+          {cardMaster ? <>
+            <h4 className="font-bold">{cardMaster.apellidosNombre}</h4>
+            <p>DNI/NIE: {cardMaster.dni}</p>
+            <p className="mt-2 text-sm">Se recuperarán los datos personales disponibles: nombre, documento, nacimiento, teléfono, Seguridad Social, IBAN y talla de calzado. Los datos ausentes quedarán vacíos.</p>
+            <p className="mt-2 text-sm">Se conservarán la obra, categoría, oferta y período que hayas elegido para el nuevo contrato. Debes comprobar los certificados PRL, su adecuación al puesto, el reconocimiento y la documentación.</p>
+            <button type="button" onClick={() => applyWorkerMasterRecord(cardMaster, true)} className="mt-3 min-h-11 rounded-xl bg-[#00548E] px-4 py-2 font-bold text-white">Confirmar ficha y rellenar datos</button>
+          </> : <p role="alert">La ficha ya no está disponible para esta cuenta. Vuelve a comprobar el acceso antes de escanear.</p>}
+          <button type="button" onClick={() => { setCardCandidate(null); setCardMessage('Recuperación cancelada. El formulario conserva sus datos.'); }} className="ml-2 mt-3 min-h-11 rounded-xl border px-4 py-2">Cancelar recuperación</button>
+        </section>}
+      </section>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         

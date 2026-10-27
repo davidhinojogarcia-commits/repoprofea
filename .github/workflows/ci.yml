@@ -214,6 +214,10 @@ jobs:
         run: npm run test:worker-qr-public
       - name: Rehire prevention review
         run: npm run test:rehire-prevention
+      - name: Registration QR autofill and confirmation
+        run: |
+          npm run test:registration-qr
+          BROWSER_ENGINE=webkit npm run test:registration-qr
       - name: Worker card pairing isolation
         run: npm run test:worker-card-pairing
       - name: Worker card QR scan authorization
