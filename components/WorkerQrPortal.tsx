@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, ExternalLink, FileText, Loader2, Share2, ShieldCheck, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import type { Person } from '../types';
-import { resolveWorkerQrShare } from '../src/services/workerQrShareService';
+import { resolveWorkerQrShare, resolveWorkerQrOccupational } from '../src/services/workerQrShareService';
+import { getAptitudMedicaInfo } from '../types';
 
 interface WorkerQrPortalProps { token: string; }
 const safeName = (value: unknown) => String(value || 'Trabajador').trim() || 'Trabajador';
@@ -31,6 +32,13 @@ function makePublicInspectionPdf(history: Person[]) {
     const entries = [
       'Obra: ' + safeText(item.obra),
       'Categoria: ' + safeText(item.categoria),
+      'Formacion PRL 20h: ' + safeText(item.formacion),
+      ...(item.aptitudMedica || item.reconocimientoEstado ? [
+        'Aptitud laboral: ' + getAptitudMedicaInfo(item).estado,
+        ...(getAptitudMedicaInfo(item).estado === 'Apto con limitaciones' ? [
+          'Limitaciones laborales: ' + safeText(getAptitudMedicaInfo(item).limitaciones)
+        ] : [])
+      ] : ['Aptitud laboral: acceso restringido al supervisor autorizado']),
       'Periodo: ' + dateText(item.periodoInicio) + ' a ' + dateText(item.periodoFin)
     ];
     for (const entry of entries) {
@@ -68,9 +76,20 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
           setError('Este código QR no es válido, ha sido revocado o la ficha ya no está disponible.');
           return;
         }
-        const blob = makePublicInspectionPdf(records);
+        let displayRecords = records;
+        try {
+          const occupational = await resolveWorkerQrOccupational(normalizedToken);
+          if (!active) return;
+          if (occupational.length) {
+            const byId = new Map(occupational.map(item => [item.id, item]));
+            displayRecords = records.map(item => ({ ...item, ...(byId.get(item.id) || {}) }));
+          }
+        } catch {
+          // Anonymous and unauthorized visitors see only the limited public ficha.
+        }
+        const blob = makePublicInspectionPdf(displayRecords);
         objectUrl = URL.createObjectURL(blob);
-        setHistory(records);
+        setHistory(displayRecords);
         setPdfBlob(blob);
         setPdfUrl(objectUrl);
       } catch (e) {
@@ -129,7 +148,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
       <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-5">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900 flex gap-2">
           <ShieldCheck className="h-5 w-5 shrink-0"/>
-          <span>Este QR permite consultar únicamente los datos de identificación y contratación autorizados. No abre sesión, no acredita una contratación vigente y no muestra datos bancarios ni médicos.</span>
+          <span>Este QR permite consultar únicamente los datos de identificación y contratación autorizados. No acredita una contratación vigente. La formación PRL es visible; la aptitud laboral y las limitaciones solo se muestran al supervisor autenticado y autorizado. No se muestran datos bancarios ni diagnósticos.</span>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <button type="button" onClick={sharePdf} className="rounded-xl bg-[#00548E] text-white px-4 py-3 font-bold flex justify-center gap-2"><Share2 className="h-4 w-4"/> Compartir PDF</button>
