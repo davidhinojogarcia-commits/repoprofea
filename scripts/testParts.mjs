@@ -10,6 +10,7 @@ import {
   content,
   hash,
   now,
+  day,
 } from "./partsTestHarness.mjs";
 const env = await partsTestHarness();
 const { invoke, db } = env;
@@ -85,6 +86,31 @@ try {
       })
     ).status,
     403,
+  );
+  let changedName = await create(96, "service", {}, 101);
+  await db.exec("reset role");
+  await db.query(
+    "update foreman_portal_access set foreman_name=$2 where id=$1",
+    [id(10), "Otro encargado"],
+  );
+  assert.equal(
+    (
+      await invoke({
+        action: "submit",
+        token,
+        id: changedName.id,
+        expected: changedName.revision,
+        operationId: randomUUID(),
+        command: sign(changedName),
+      })
+    ).status,
+    409,
+    "changed declarant cannot silently ratify an old identity snapshot",
+  );
+  await db.exec("reset role");
+  await db.query(
+    "update foreman_portal_access set foreman_name=$2 where id=$1",
+    [id(10), "Encargado de prueba"],
   );
   let p = await create(30);
   assert.equal(p.revision, 1);
@@ -356,9 +382,35 @@ try {
   second = await command(second, "submit", sign(second));
   second = await command(second, "authorize", sign(second), 1);
   second = await command(second, "receipt", {
-    mode: "received",
+    mode: "disagreement",
+    note: "Se discrepa de la descripción.",
     ...sign(second),
   });
+  assert.equal(
+    (
+      await invoke(
+        {
+          action: "authorize",
+          id: second.id,
+          expected: second.revision,
+          operationId: randomUUID(),
+          command: sign(second),
+        },
+        1,
+      )
+    ).status,
+    409,
+    "a receipt dispute cannot bypass its signed review",
+  );
+  second = await command(
+    second,
+    "resolve-dispute",
+    {
+      ...sign(second),
+      reason: "Revisadas las observaciones sin sanción automática.",
+    },
+    1,
+  );
   let third = await create(51);
   third = await command(third, "submit", sign(third));
   third = await command(third, "authorize", sign(third), 1);
@@ -824,10 +876,10 @@ try {
   const dates = await call({
     action: "list",
     token,
-    filters: { from: now.slice(0, 10), to: now.slice(0, 10) },
+    filters: { from: day, to: day },
   });
   assert.ok(dates.rows.length > 0);
-  const futureDay = new Date(Date.parse(now) + 86400000)
+  const futureDay = new Date(Date.parse(day + "T12:00:00Z") + 86400000)
     .toISOString()
     .slice(0, 10);
   assert.equal(

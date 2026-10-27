@@ -153,7 +153,9 @@ export async function generatePartPdf(
   if (p.kind === "incident" || p.supervisorSignature) {
     text(
       "Revisión del supervisor",
-      "Revisado y autorizada su comunicación al trabajador. No implica haber presenciado los hechos ni potestad sancionadora.",
+      p.supervisorSignature
+        ? "Revisado y autorizada su comunicación al trabajador. No implica haber presenciado los hechos ni potestad sancionadora."
+        : "Pendiente de revisión firmada del supervisor. No está autorizada su comunicación formal al trabajador.",
     );
     await signature("Firma de revisión", p.supervisorSignature);
   }

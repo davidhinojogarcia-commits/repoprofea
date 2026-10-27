@@ -921,6 +921,9 @@ export function createPartsHandler(deps: Dependencies) {
         if (!worker)
           throw partFail("La contratación ya no pertenece a esta obra.", 403);
         if (
+          actor.name !== p.foremanName ||
+          worker.apellidos_nombre !== p.worker.name ||
+          worker.categoria !== p.worker.category ||
           worker.periodo_inicio !== p.worker.periodStart ||
           worker.periodo_fin !== p.worker.periodEnd
         )

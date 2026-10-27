@@ -7,10 +7,13 @@ export const id = (n) =>
 export const token = "a".repeat(48),
   otherToken = "b".repeat(48),
   wrongWorkToken = "c".repeat(48);
-export const now = new Date().toISOString().slice(0, 10) + "T12:00:00.000Z";
+export const now = new Date().toISOString();
+export const day = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Madrid",
+}).format(new Date(now));
 export const content = {
   reason: "mobile",
-  occurredAt: now.slice(0, 10) + "T10:00:00.000Z",
+  occurredAt: now,
   place: "Acceso norte",
   facts:
     "Se observó el uso del móvil durante la instrucción. No se midió su duración.",
@@ -79,8 +82,8 @@ export async function partsTestHarness() {
         id(owner),
         worker,
         work,
-        now.slice(0, 7) + "-01",
-        new Date(Date.UTC(Number(now.slice(0, 4)), Number(now.slice(5, 7)), 0))
+        day.slice(0, 7) + "-01",
+        new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0))
           .toISOString()
           .slice(0, 10),
       ],

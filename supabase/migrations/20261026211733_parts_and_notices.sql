@@ -49,8 +49,8 @@ grant all on public.parts_records,public.parts_events,public.parts_assets,public
 grant usage,select on sequence public.parts_records_number_seq to service_role;
 grant select on public.parts_records,public.parts_policies,public.parts_notifications to authenticated;
 create policy parts_owner_read on public.parts_records for select to authenticated using(owner_id=(select auth.uid()) and exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.active=true and p.role in('admin','user')));
-create policy parts_policy_read on public.parts_policies for select to authenticated using(owner_id=(select auth.uid()) and exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.active=true));
-create policy parts_notification_read on public.parts_notifications for select to authenticated using(owner_id=(select auth.uid()) and recipient='supervisor' and exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.active=true));
+create policy parts_policy_read on public.parts_policies for select to authenticated using(owner_id=(select auth.uid()) and exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.active=true and p.role in('admin','user')));
+create policy parts_notification_read on public.parts_notifications for select to authenticated using(owner_id=(select auth.uid()) and recipient='supervisor' and exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.active=true and p.role in('admin','user')));
 
 create function public.parts_commit(p_id uuid,p_owner uuid,p_worker bigint,p_work text,p_access uuid,p_access_hash text,
  p_actor uuid,p_expected integer,p_operation uuid,p_fingerprint text,p_action text,p_state jsonb,p_assets jsonb default '[]') returns jsonb
@@ -84,6 +84,8 @@ begin
  if not exists(select 1 from public.obras o where o.id=(p_state#>>'{worksite,id}')::uuid and o.owner_id=p_owner) then raise exception 'Obra no autorizada' using errcode='42501';end if;
  if not exists(select 1 from public.trabajadores t where t.owner_id=p_owner and t.id=p_worker and ((prior.id is not null and p_action not in('edit','submit')) or lower(btrim(t.obra))=lower(btrim(p_work)))) then raise exception 'Trabajador fuera del ámbito' using errcode='42501';end if;
  if p_action='submit' and not exists(select 1 from public.trabajadores t where t.owner_id=p_owner and t.id=p_worker
+  and a.foreman_name=p_state->>'foremanName'
+  and t.apellidos_nombre=p_state#>>'{worker,name}' and t.categoria=p_state#>>'{worker,category}'
   and t.periodo_inicio::text=p_state#>>'{worker,periodStart}' and t.periodo_fin::text=p_state#>>'{worker,periodEnd}'
   and ((p_state#>>'{content,occurredAt}')::timestamptz at time zone 'Europe/Madrid')::date between t.periodo_inicio::date and t.periodo_fin::date)
  then raise exception 'La contratación ha cambiado. Revise el borrador antes de firmar.' using errcode='PT409';end if;
