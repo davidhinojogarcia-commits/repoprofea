@@ -172,7 +172,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [matchedWorkerName, setMatchedWorkerName] = useState('');
   const [workerHistory, setWorkerHistory] = useState<Person[]>([]);
   const [isSameAnnualityActive, setIsSameAnnualityActive] = useState(false);
-  const [isAutoFormedOnReturn, setIsAutoFormedOnReturn] = useState(false);
+  const [requiresPreventionReview, setRequiresPreventionReview] = useState(false);
   const [workerLookupField, setWorkerLookupField] = useState<'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban' | null>(null);
   const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
 
@@ -200,18 +200,19 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       quincena: prev.quincena,
       periodoInicio: prev.periodoInicio,
       periodoFin: prev.periodoFin,
-      formacion: prev.formacion,
-      lugarFormacion: prev.lugarFormacion,
-      necesitaReconocimiento: prev.necesitaReconocimiento,
+      formacion: '',
+      lugarFormacion: '',
+      necesitaReconocimiento: '',
       citaDia: prev.citaDia,
       citaHora: prev.citaHora,
       sitioReconocimiento: prev.sitioReconocimiento,
-      documentacionCompleta: prev.documentacionCompleta,
+      documentacionCompleta: '',
       observaciones: prev.observaciones,
     }));
     const contracts = (people || []).filter(p =>
       p.dni.replace(/[\s-]/g, '').toUpperCase() === worker.dni.replace(/[\s-]/g, '').toUpperCase()
     );
+    setRequiresPreventionReview(true);
     setMatchedWorkerName(worker.apellidosNombre);
     setWorkerHistory(contracts);
     setWorkerLookupField(null);
@@ -351,16 +352,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
         const hasSameAnnuality = matchedContracts.some(p => getContractYear(p) === qYear);
         setIsSameAnnualityActive(hasSameAnnuality);
         
-        if (hasSameAnnuality) {
-          setFormData(prev => ({
-            ...prev,
-            necesitaReconocimiento: 'No',
-            calzado: 'No',
-            citaDia: '',
-            citaHora: '',
-            sitioReconocimiento: ''
-          }));
-        }
+
       } else {
         setIsSameAnnualityActive(false);
       }
@@ -418,12 +410,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           const hasSameAnnuality = matchedContracts.some(p => getContractYear(p) === qYear);
           setIsSameAnnualityActive(hasSameAnnuality);
 
-          // Si el trabajador ya fue registrado previamente sin formación ('No' o 'Sin formación'),
-          // al volver a salir se registra automáticamente como YA FORMADO ('Sí').
-          const hadNoFormacionInHistory = matchedContracts.some(
-            p => p.formacion === 'No' || p.formacion === 'Sin formación' || !p.formacion
-          );
-          setIsAutoFormedOnReturn(hadNoFormacionInHistory);
+          // La contratación anterior no acredita la formación ni la aptitud para el nuevo puesto.
+          setRequiresPreventionReview(true);
 
           setFormData(prev => ({
             ...prev,
@@ -442,13 +430,13 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             numeroSeguridadSocial: matchedPerson.numeroSeguridadSocial || prev.numeroSeguridadSocial,
             iban: matchedPerson.iban || prev.iban,
             categoria: matchedPerson.categoria || prev.categoria,
-            formacion: hadNoFormacionInHistory ? 'Sí' : (matchedPerson.formacion || prev.formacion || 'Sí'),
-            lugarFormacion: hadNoFormacionInHistory ? '' : (matchedPerson.lugarFormacion || prev.lugarFormacion),
-            documentacionCompleta: matchedPerson.documentacionCompleta || prev.documentacionCompleta,
+            formacion: '',
+            lugarFormacion: '',
+            documentacionCompleta: '',
             observaciones: prev.observaciones,
-            // Automatically select 'No' for medical checkup and footwear for repeated worker in same annuality
-            necesitaReconocimiento: hasSameAnnuality ? 'No' : 'Sí',
-            calzado: hasSameAnnuality ? 'No' : (matchedPerson.calzado && matchedPerson.calzado !== 'No' && matchedPerson.calzado !== 'No necesita' ? matchedPerson.calzado : ''),
+            // Revisar cada puesto antes de decidir si corresponde un reconocimiento.
+            necesitaReconocimiento: '',
+            calzado: '',
             citaDia: '',
             citaHora: '',
             sitioReconocimiento: ''
@@ -571,6 +559,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       citaHora: '',
       sitioReconocimiento: ''
     }));
+    setRequiresPreventionReview(false);
     const formTop = document.getElementById('form-container');
     if (formTop) formTop.scrollIntoView({ behavior: 'smooth' });
   };
@@ -859,7 +848,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                       <AlertCircle className="w-4 h-4 text-purple-500 shrink-0 mt-0.5 animate-pulse" />
                       <div>
                         <span className="font-bold uppercase tracking-wider block text-purple-800 dark:text-purple-200 text-[10px]">⚠️ REPETIDO EN LA MISMA ANUALIDAD ({qYear})</span>
-                        <p className="font-normal text-[11px] mt-0.5">Este trabajador ya ha sido contratado este año. Por normativa, <span className="font-bold underline">NO necesita botas ni reconocimiento médico</span> (se han configurado automáticamente a "No").</p>
+                        <p className="font-normal text-[11px] mt-0.5">Este trabajador ya ha sido contratado este año. Revisa la formación, el reconocimiento y el estado del calzado para el nuevo puesto.</p>
                       </div>
                     </div>
                   )}
@@ -964,13 +953,9 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             )}
           </div>
 
-          {isAutoFormedOnReturn && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 font-medium animate-in fade-in duration-200">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-emerald-900 dark:text-emerald-200 uppercase tracking-wider block text-[10px]">✨ Formación Actualizada Automáticamente</span>
-                <p className="mt-0.5 text-[11px]">Trabajador registrado previamente sin formación: al re-incorporarse se registra automáticamente como <strong>YA FORMADO (Sí)</strong>.</p>
-              </div>
+          {requiresPreventionReview && (
+            <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Revisa los certificados de formación y la adecuación de la vigilancia de la salud al puesto. Una contratación anterior no acredita por sí sola esos requisitos.
             </div>
           )}
 
@@ -984,6 +969,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 required 
                 className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm text-slate-800 dark:text-slate-100"
               >
+                <option value="" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">Seleccione tras revisar el puesto...</option>
                 <option value="Sí" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">Sí</option>
                 <option value="No" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">No</option>
               </select>
@@ -1177,7 +1163,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                   <AlertCircle className="w-5 h-5 text-purple-500 shrink-0 mt-0.5 animate-bounce" />
                   <div>
                     <span className="font-bold text-xs block mb-1 text-purple-800 dark:text-purple-200">⚠️ REPETIDO EN LA MISMA ANUALIDAD ({qYear})</span>
-                    Este trabajador ya cuenta con un contrato registrado en la misma anualidad (<span className="font-bold">{qYear}</span>). Por normativa, <span className="font-bold underline">NO necesita botas nuevas ni reconocimiento médico</span>. Se han configurado estas opciones automáticamente a "No".
+                    Este trabajador ya tiene un contrato en el año indicado (<span className="font-bold">{qYear}</span>). Comprueba la formación, el reconocimiento y los equipos para el nuevo puesto.
                   </div>
                 </div>
               ) : (
