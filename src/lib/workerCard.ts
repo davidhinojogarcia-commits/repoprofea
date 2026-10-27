@@ -44,11 +44,13 @@ export function generateWorkerCard(person: Person, qrDataUrl?: string) {
     doc.setTextColor(15, 23, 42);
     doc.text(fitLines(value, qrDataUrl && y >= 29 ? 45 : 66, maxLines, 7), 25, y);
   };
-  const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : '—';
   field('DNI / NIE', person.dni, 28);
   field('CATEGORÍA', person.categoria || 'Peón', 34);
-  field('OBRA', person.obra, 40, 2);
-  field('CONTRATO', `${date(person.periodoInicio)} a ${date(person.periodoFin)}`, 50);
+  // Generic reusable card: no worksite or contract-period details.
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('IDENTIFICACIÓN PERSONAL · CONSULTA EL QR', 4, 45);
   if (qrDataUrl) {
     doc.addImage(qrDataUrl, 'PNG', 72, 29, 19, 19);
     doc.setFont('helvetica', 'normal');
