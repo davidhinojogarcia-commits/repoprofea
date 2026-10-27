@@ -44,16 +44,23 @@ assert(!text.includes('CONTRATO'));
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF para imprimir'}).click();assert((await dl).suggestedFilename().endsWith('.pdf'));
- // Desktop first offers destinations, even when the browser falsely exposes navigator.share.
- await page.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async()=>{window.nativeShareInvoked=true}});});
+ // Native image sharing must receive the actual PNG, even on desktop.
+ await page.evaluate(()=>{
+   Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:({files})=>files?.[0]?.type==='image/png'});
+   Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async data=>{
+     window.shared= {type:data.files[0].type,name:data.files[0].name,count:data.files.length};
+   }});
+ });
  await page.getByRole('button',{name:'Compartir tarjeta'}).click();
- assert.equal(await page.evaluate(()=>Boolean(window.nativeShareInvoked)),false);
- await page.getByRole('status').filter({hasText:'Elige dónde compartir'}).waitFor();
- assert(await page.getByRole('group',{name:'Opciones para compartir el carnet'}).isVisible());
- assert(await page.getByRole('button',{name:'WhatsApp Web'}).isVisible());
- assert(await page.getByRole('button',{name:'Gmail'}).isVisible());
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'Otro medio'}).click();assert((await dl).suggestedFilename().endsWith('.png'));
+ await page.waitForFunction(()=>Boolean(window.shared));
+ assert.deepEqual(await page.evaluate(()=>window.shared),{type:'image/png',name:'CARNE_PROFEA_Garcia_Fernandez_Maria_del_Carmen.png',count:1});
+ assert.equal(await page.getByRole('group',{name:'Opciones para compartir el carnet'}).count(),0);
+ await page.evaluate(()=>{navigator.share=async()=>{throw new DOMException('Cancelled','AbortError')};});
+ await page.getByRole('button',{name:'Compartir tarjeta'}).click();
+ await page.evaluate(()=>{navigator.canShare=()=>false;});
+ await page.getByRole('button',{name:'Compartir tarjeta'}).click();
+ await page.getByRole('status').filter({hasText:'Este navegador no permite compartir imágenes'}).waitFor();
  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>window.closedCard),true);
  assert.deepEqual(errors,[]);
- console.log('PASS: actual card rendering, PNG >1000px, PDF 95×62mm, excluded private fields/history, image/PDF download, desktop PNG share fallback, WhatsApp attachment instructions, Escape. Native mobile share handled through Web Share API.');
+ console.log('PASS: actual card rendering, PNG >1000px, PDF 95×62mm, excluded private fields/history, image/PDF download, native PNG file sharing on desktop, cancellation, unsupported browser guidance, Escape.');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
