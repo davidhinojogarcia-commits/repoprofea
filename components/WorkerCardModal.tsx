@@ -65,7 +65,7 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
     setNotice('');
     try {
       const result = await shareWorkerCard(card.image);
-      if (result === 'downloaded') setNotice('Se ha descargado la imagen. Puedes adjuntarla en WhatsApp o correo.');
+      if (result === 'downloaded') setNotice('Imagen PNG descargada. Abre WhatsApp Web o WhatsApp Desktop, entra en el chat del trabajador y adjunta la imagen. Desde el móvil puedes compartirla directamente.');
     } catch {
       setNotice('No se ha podido compartir. Utiliza Descargar imagen.');
     } finally { setSharing(false); }
