@@ -62,7 +62,8 @@
     "test:worker-card": "node scripts/testWorkerCardBrowser.mjs",
     "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs",
     "test:parts": "node scripts/testParts.mjs",
-    "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs"
+    "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs",
+    "test:worker-qr-public": "node scripts/testWorkerQrPublicPrivacy.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

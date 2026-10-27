@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import type { Person } from '../../types';
+import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 
 // Explicit allowlist: the shareable card never includes the worker's file or QR access token.
 export function generateWorkerCard(person: Person, qrDataUrl?: string) {
@@ -63,7 +64,10 @@ export function generateWorkerCard(person: Person, qrDataUrl?: string) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(100, 116, 139);
-  doc.text('Tarjeta personal de identificación PROFEA', 4, 58);
+  const logo = doc.getImageProperties(OFFICIAL_LOGO_BASE64);
+  const logoWidth = Math.min(30, 4.5 * logo.width / logo.height);
+  doc.addImage(OFFICIAL_LOGO_BASE64, 'PNG', 4, 55.5, logoWidth, 4.5);
+  doc.text('Identificación PROFEA', 91, 58, { align: 'right' });
   const name = person.apellidosNombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '') || 'Trabajador';
   return { doc, filename: `CARNE_PROFEA_${name}.pdf` };
 }
