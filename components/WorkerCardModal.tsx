@@ -4,6 +4,8 @@ import ModalPortal from './ModalPortal';
 import type { Person } from '../types';
 import { downloadWorkerCard, generateWorkerCard, shareWorkerCard } from '../src/lib/workerCard';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import QRCode from 'qrcode';
+import { ensureWorkerQrShare } from '../src/services/workerQrShareService';
 
 export default function WorkerCardModal({ person, onClose }: { person: Person; onClose: () => void }) {
   const [card, setCard] = useState<{ url: string; image: File; pdf: Blob; pdfName: string } | null>(null);
@@ -17,7 +19,12 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
     setCard(null);
     setError('');
     void (async () => {
-      const { doc, filename } = generateWorkerCard(person);
+      const token = await ensureWorkerQrShare(Number(person.id));
+      if (cancelled) return;
+      const qrUrl = `${window.location.origin}${window.location.pathname}?worker-qr=${encodeURIComponent(token)}`;
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+      if (cancelled) return;
+      const { doc, filename } = generateWorkerCard(person, qrDataUrl);
       const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
       if (cancelled) return;
       pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -70,8 +77,8 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
           <h2 id="worker-card-title" className="font-bold">Carnet del trabajador</h2>
           <button type="button" onClick={onClose} aria-label="Cerrar carnet" className="min-h-11 min-w-11 rounded-xl border p-3"><X className="h-5 w-5" /></button>
         </header>
-        {error ? <p role="alert">{error}</p> : card ? <>
-          <img src={card.url} alt={`Carnet PROFEA de ${person.apellidosNombre}`} className="block h-auto w-full rounded-xl border" />
+        {error ? <p role="alert">No se ha podido crear la tarjeta con su QR. {error}</p> : card ? <>
+          <img src={card.url} alt={`Carnet PROFEA de ${person.apellidosNombre} con código QR para consultar la ficha`} className="block h-auto w-full rounded-xl border" />
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" disabled={sharing} onClick={share} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50"><Share2 className="h-4 w-4" />Compartir tarjeta</button>
             <button type="button" onClick={() => downloadWorkerCard(card.image, card.image.name)} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-bold"><Download className="h-4 w-4" />Descargar imagen</button>
