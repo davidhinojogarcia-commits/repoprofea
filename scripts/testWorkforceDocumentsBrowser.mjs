@@ -54,7 +54,7 @@ const js = (
     stdin: {
       resolveDir: root,
       loader: "tsx",
-      contents: `import React from'react';import{createRoot}from'react-dom/client';import{ForemanMobilePortal}from'./components/ForemanMobilePortal';import{WorksiteDocumentationPortal}from'./components/WorksiteDocumentationPortal';import{AppDialogHost}from'./components/AppDialogHost';const s=new URLSearchParams(location.search).has('supervisor');createRoot(document.getElementById('root')).render(<><AppDialogHost/>{s?<div className="p-4 min-w-0"><WorksiteDocumentationPortal/></div>:<ForemanMobilePortal token="${token}"/>}</>);`,
+      contents: `import React from'react';import{createRoot}from'react-dom/client';import{ForemanMobilePortal}from'./components/ForemanMobilePortal';import{WorksiteDocumentationPortal}from'./components/WorksiteDocumentationPortal';import{Sidebar}from'./components/Sidebar';import{AppDialogHost}from'./components/AppDialogHost';const params=new URLSearchParams(location.search);const s=params.has('supervisor');const app=createRoot(document.getElementById('root'));window.__openDocumentation=(view,worksite,request)=>app.render(<><AppDialogHost/><div className="p-4 min-w-0"><WorksiteDocumentationPortal accountId="${id(1)}" partsUnread={3} initialDocumentView={view} initialWorksite={worksite} initialNavigationKey={request}/></div></>);app.render(<><AppDialogHost/>{params.has('sidebar')?<Sidebar activeView="documentacion_obra" setActiveView={view=>window.__sidebarView=view} isCollapsed={false} setIsCollapsed={()=>{}} isMobileOpen={true} setIsMobileOpen={()=>{}} onOpenScanner={()=>{}} guidedMode={params.has('guided')} partsUnread={3}/>:s?<div className="p-4 min-w-0"><WorksiteDocumentationPortal accountId="${id(1)}" partsUnread={3}/></div>:<ForemanMobilePortal token="${token}"/>}</>);`,
     },
     bundle: true,
     write: false,
@@ -64,6 +64,16 @@ const js = (
       {
         name: "controlled-auth-and-legacy-context",
         setup(b) {
+          // These destination panels have their own full browser suites. Here we
+          // validate their navigation boundary, account and selected worksite.
+          b.onResolve({ filter: /\/(PartsPanel|VisitMinutesPanel)$/ }, a=>({path:a.path,namespace:"navigation-panel"}));
+          b.onLoad({ filter: /.*/, namespace:"navigation-panel" }, a=>({
+            resolveDir:root,
+            contents:a.path.endsWith('PartsPanel')
+              ? `import React from 'react';export default function Panel({accountId}){return <section aria-label="Panel de partes integrado" data-account={accountId}>Partes integrados</section>;}`
+              : `import React from 'react';export function VisitMinutesPanel({initialWorksite}){return <section aria-label="Panel de actas integrado" data-worksite={initialWorksite}>Actas integradas</section>;}`,
+            loader:"tsx",
+          }));
           b.onResolve({ filter: /\?url$|\.css$/ }, (a) => ({
             path: a.path,
             namespace: "asset",
@@ -103,7 +113,7 @@ const js = (
           b.onLoad({ filter: /.*/, namespace: "auth" }, () => ({
             resolveDir: root,
             contents:
-              "import React from'react';export const AuthShellContext=React.createContext(null);",
+              "import React from'react';export const AuthShellContext=React.createContext(null);export const useAuthShell=()=>({user:{id:'supervisor',email:'test@example.test',user_metadata:{}},role:'user',signOut:async()=>{},signingOut:false});",
           }));
           b.onResolve({ filter: /\/supabase$/ }, (a) => ({
             path: a.path,
@@ -414,6 +424,33 @@ try {
     });
     await page.waitForLoadState("networkidle");
     await page.goto(base + "/?supervisor=1");
+    const navigation=page.getByRole("navigation", {name:"Documentos de obra",exact:true});
+    await navigation.waitFor();
+    assert.equal(await page.getByRole("button",{name:"Abrir actas de visitas",exact:true}).count(),0);
+    assert.equal(await page.getByRole("button",{name:"Actas de visitas",exact:true}).count(),1,"No duplicate acta entry");
+    assert.equal(await page.getByRole("button",{name:"Partes y avisos",exact:true}).count(),1,"No duplicate parts entry");
+    const actas=navigation.getByRole("button",{name:"Actas de visitas",exact:true});
+    await actas.click();
+    const integratedVisit=page.getByRole("region",{name:"Panel de actas integrado",exact:true});
+    await integratedVisit.waitFor();
+    assert.equal(await integratedVisit.getAttribute("data-worksite"),id(20),"Visit receives the authorised worksite UUID");
+    const parts=navigation.getByRole("button",{name:"Partes y avisos",exact:true});
+    await parts.click();
+    const integratedParts=page.getByRole("region",{name:"Panel de partes integrado",exact:true});
+    await integratedParts.waitFor();
+    assert.equal(await integratedParts.getAttribute("data-account"),id(1),"Parts receives authenticated account scope");
+    assert.equal(await navigation.getByLabel("3 avisos pendientes").textContent(),"3");
+    const color=await parts.evaluate(element=>getComputedStyle(element).backgroundColor);
+    const channels=color.match(/\d+/g).map(Number);
+    assert.ok(channels[0]>channels[1]&&channels[0]>channels[2],"Selected parts tab has a red background");
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Navigation has no page overflow");
+    await page.screenshot({path:root+`tmp/workforce/supervisor-navigation-${engine}-${width}.png`,fullPage:true});
+    await page.evaluate(worksite=>window.__openDocumentation("actas_visitas",worksite,1),id(20));
+    await page.getByRole("region",{name:"Panel de actas integrado",exact:true}).waitFor();
+    await page.getByRole("navigation",{name:"Documentos de obra",exact:true}).getByRole("button",{name:"Partes y avisos",exact:true}).click();
+    await page.getByRole("region",{name:"Panel de partes integrado",exact:true}).waitFor();
+    await page.evaluate(worksite=>window.__openDocumentation("actas_visitas",worksite,2),id(20));
+    await page.getByRole("region",{name:"Panel de actas integrado",exact:true}).waitFor();
     await page
       .getByRole("button", { name: "Rechazo voluntario", exact: true })
       .first()
@@ -456,6 +493,13 @@ try {
     await openDocuments(page);
     await signed(page, "rechazo_voluntario");
     await page.waitForLoadState("networkidle");
+    for(const guided of [false,true]){
+      await page.goto(base+"/?sidebar=1"+(guided?"&guided=1":""));
+      await page.locator('[data-profea-view="documentacion_obra"]').waitFor();
+      assert.equal(await page.locator('[data-profea-view="actas_visitas"], [data-profea-view="partes_avisos"]').count(),0,"Both sidebar modes omit actas/parts");
+      await page.locator('[data-profea-view="documentacion_obra"]').click();
+      assert.equal(await page.evaluate(()=>window.__sidebarView),"documentacion_obra");
+    }
     assert.deepEqual(errors, []);
     await context.close();
   }

@@ -1,12 +1,13 @@
 import WorkforceDocumentsPanel from './WorkforceDocumentsPanel';
 import { reportOperationalError } from '../src/lib/operationalLog';
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { appConfirm } from '../src/lib/appDialog';
 import {
   Clock,
+  ClipboardList,
+  ClipboardPenLine,
   FileDown,
   FileText,
-  FolderOpen,
   HardHat,
   Save,
   Users,
@@ -91,7 +92,10 @@ type CoreDocumentationView =
   | "formacion"
   | "maquinaria"
   | "control";
-type DocumentationView = CoreDocumentationView | AdditionalWorksiteDocumentType | "rechazo_voluntario" | "salida_obra";
+type CommunicationView = "actas_visitas" | "partes_avisos";
+type DocumentationView = CoreDocumentationView | AdditionalWorksiteDocumentType | "rechazo_voluntario" | "salida_obra" | CommunicationView;
+const PartsPanel = lazy(()=>import('./PartsPanel'));
+const VisitMinutesPanel = lazy(()=>import('./VisitMinutesPanel').then(module=>({default:module.VisitMinutesPanel})));
 
 const WORKSITE_LAST_WORK_KEY = "profea:worksite-doc:last-work";
 const WORKSITE_LAST_VIEW_KEY = "profea:worksite-doc:last-view";
@@ -112,7 +116,7 @@ const DOCUMENTATION_VIEWS: DocumentationView[] = [
   "formacion",
   "maquinaria",
   "control",
-  "rechazo_voluntario", "salida_obra",
+  "rechazo_voluntario", "salida_obra", "actas_visitas", "partes_avisos",
   ...ADDITIONAL_DOCUMENTATION_VIEWS,
 ];
 const storedDocumentationView = (): DocumentationView => {
@@ -186,14 +190,20 @@ const overlaps = (person: Person, start: string, end: string) => {
 const workerKey = (person: Person) => String(person.id);
 const cleanDni = (person: Person) => safe(person.dni).toUpperCase().replace(/[\s-]/g, "");
 
-export const WorksiteDocumentationPortal: React.FC = () => {
+export const WorksiteDocumentationPortal: React.FC<{
+  initialDocumentView?: CommunicationView;
+  initialWorksite?: string;
+  initialNavigationKey?: number;
+  accountId?: string;
+  partsUnread?: number;
+}> = ({ initialDocumentView, initialWorksite, initialNavigationKey, accountId, partsUnread = 0 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [workers, setWorkers] = useState<Person[]>([]);
   const [workRows, setWorkRows] = useState<WorkRow[]>([]);
   const [configuredWorks, setConfiguredWorks] = useState<string[]>([]);
   const [selectedWork, setSelectedWork] = useState(() =>
-    typeof window === "undefined" ? "" : window.localStorage.getItem(WORKSITE_LAST_WORK_KEY) || "",
+    initialWorksite || (typeof window === "undefined" ? "" : window.localStorage.getItem(WORKSITE_LAST_WORK_KEY) || ""),
   );
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [empresa, setEmpresa] = useState(DEFAULT_COMPANY);
@@ -211,7 +221,10 @@ export const WorksiteDocumentationPortal: React.FC = () => {
   const [workStartHour, setWorkStartHour] = useState("08:00");
   const [workEndHour, setWorkEndHour] = useState("15:00");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>(storedDocumentationView);
+  const [activeDocumentView, setActiveDocumentView] = useState<DocumentationView>(()=>initialDocumentView || storedDocumentationView());
+  useEffect(()=>{if(initialDocumentView)setActiveDocumentView(initialDocumentView);},[initialDocumentView,initialNavigationKey]);
+  useEffect(()=>{if(initialWorksite)setSelectedWork(initialWorksite);},[initialWorksite,initialNavigationKey]);
+  const isCommunicationView = activeDocumentView==='actas_visitas'||activeDocumentView==='partes_avisos';
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchWorks, setBatchWorks] = useState<string[]>([]);
   const [batchMonths, setBatchMonths] = useState<string[]>([]);
@@ -270,10 +283,16 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     return Array.from(values).sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
   }, [configuredWorks, workRows]);
 
+  const visitWorksiteId=useMemo(()=>{
+    const matches=workRows.filter(row=>sameWork(row.nombre,selectedWork));
+    return matches.length===1?matches[0].id:selectedWork;
+  },[workRows,selectedWork]);
   useEffect(() => {
+    const initialRow=workRows.find(row=>row.id===selectedWork);
+    if(initialRow){setSelectedWork(workIdentity(initialRow.nombre)||initialRow.nombre);return;}
     if (!selectedWork && workNames.length) setSelectedWork(workNames[0]);
     if (selectedWork && !workNames.includes(selectedWork) && workNames.length) setSelectedWork(workNames[0]);
-  }, [selectedWork, workNames]);
+  }, [selectedWork, workNames, workRows]);
 
   useEffect(() => {
     if (!selectedWork || typeof window === "undefined") return;
@@ -705,6 +724,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     description: string;
     icon: React.ElementType;
     section?: "otros";
+    tone?: "red";
   }[] = [
     { id: "obra", label: "Datos de la obra", mobileLabel: "Obra", description: "Empresa, CIF y responsable", icon: HardHat },
     { id: "trabajadores", label: "Trabajadores", mobileLabel: "Trabajadores", description: `${periodWorkers.length} en el periodo`, icon: Users },
@@ -712,6 +732,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     { id: "formacion", label: "Formación e información", mobileLabel: "Formación", description: "Documento preventivo", icon: GraduationCap },
     { id: "maquinaria", label: "Autorización de maquinaria", mobileLabel: "Maquinaria", description: "Equipos por trabajador", icon: Wrench },
     { id: "control", label: "Control horario", mobileLabel: "Control", description: "Activos y prórrogas", icon: Clock },
+    { id: "actas_visitas", label: "Actas de visitas", mobileLabel: "Actas de visitas", description: "Acuerdos y firmas de la obra", icon: ClipboardPenLine },
+    { id: "partes_avisos", label: "Partes y avisos", mobileLabel: "Partes y avisos", description: "Comunicaciones y revisión", icon: ClipboardList, tone: "red" },
     { id: "rechazo_voluntario", label: "Rechazo voluntario", mobileLabel: "Rechazo voluntario", description: "Manifestación de persona contratada y firmas", icon: FileSignature },
     { id: "salida_obra", label: "Salida de obra", mobileLabel: "Salida de obra", description: "Salida temporal y diligencia de regreso", icon: LogOut },
     ...(Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS) as [AdditionalWorksiteDocumentType, (typeof ADDITIONAL_WORKSITE_DOCUMENTS)[AdditionalWorksiteDocumentType]][]).map(
@@ -728,11 +750,10 @@ export const WorksiteDocumentationPortal: React.FC = () => {
 
   return (
     <div className="w-full text-slate-900 dark:text-slate-100">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"><span className="text-sm font-bold">Actas de visitas de la obra seleccionada</span><button type="button" disabled={!selectedWork} onClick={()=>window.dispatchEvent(new CustomEvent('profea:open-visit-minutes',{detail:{worksite:selectedWork}}))} className="min-h-[46px] rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Abrir actas de visitas</button></div>
       <div className="pb-6">
         <div className="max-w-[1580px] mx-auto space-y-3 sm:space-y-6">
-          <div className="lg:hidden sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
-            <div className="px-3 pt-3 pb-2">
+          <div role="navigation" aria-label="Documentos de obra" className="sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
+            <div className="px-3 pt-3 pb-2 lg:hidden">
               <label className="block text-[10px] uppercase tracking-wider font-black text-slate-500 dark:text-slate-400">
                 Obra actual
                 <select
@@ -762,14 +783,15 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       onClick={() => selectDocumentView(item.id)}
                       title={item.label}
                       aria-label={item.label}
-                      className={`worksite-doc-mobile-tab min-h-[84px] snap-start rounded-2xl border px-3 py-3 flex flex-col items-center justify-center gap-1.5 text-[11px] sm:text-xs leading-[1.2] font-black text-center transition-colors ${
-                        selected
-                          ? "border-[#00548E] bg-[#00548E] text-white shadow-md"
-                          : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
+                      className={`worksite-doc-mobile-tab min-w-[132px] max-w-[160px] shrink-0 min-h-[84px] snap-start rounded-2xl border px-3 py-3 flex flex-col items-center justify-center gap-1.5 text-[11px] sm:text-xs leading-[1.2] font-black text-center transition-colors ${
+                        item.tone==='red'
+                          ? selected ? "border-red-700 bg-red-700 text-white shadow-md" : "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200 shadow-sm"
+                          : selected ? "border-[#00548E] bg-[#00548E] text-white shadow-md" : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
                       }`}
                       aria-current={selected ? "page" : undefined}
                     >
-                      <Icon className="w-5 h-5 shrink-0" />
+                      <Icon className="w-5 h-5 shrink-0"/>
+                      {item.id==='partes_avisos'&&partsUnread>0&&<span aria-label={`${partsUnread} avisos pendientes`} className="rounded-full bg-red-700 px-2 text-xs font-black text-white ring-1 ring-white">{partsUnread>99?'99+':partsUnread}</span>}
                       <span className="worksite-doc-mobile-tab-label flex min-h-[2.4rem] items-center justify-center text-center">
                         {mobileLabel}
                       </span>
@@ -822,68 +844,10 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 )}
               </div>
 
-              <div className="my-4 border-t border-slate-200 dark:border-slate-800" />
-
-              <div className="mb-2">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-[#00548E] dark:text-blue-400" />
-                  <h2 className="font-black text-sm uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                    Biblioteca de documentación
-                  </h2>
-                </div>
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  Selecciona un apartado para trabajar en el panel derecho.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                {libraryItems.map((item) => {
-                  const Icon = item.icon;
-                  const selected = activeDocumentView === item.id;
-                  return (
-                    <React.Fragment key={item.id}>
-                      {item.section === "otros" && (
-                        <div className="pt-3 pb-1 px-1">
-                          <div className="border-t border-slate-200 dark:border-slate-800 mb-3" />
-                          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                            <FolderOpen className="w-3.5 h-3.5" />
-                            Otros documentos
-                          </div>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        aria-label={item.label}
-                        onClick={() => selectDocumentView(item.id)}
-                        className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
-                          selected
-                            ? "border-[#00548E] bg-[#00548E] text-white shadow-sm"
-                            : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700"
-                        }`}
-                      >
-                        <Icon
-                          className={`w-4 h-4 shrink-0 ${
-                            selected ? "text-white" : "text-slate-500 dark:text-slate-400"
-                          }`}
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-xs font-black">{item.label}</span>
-                          <span
-                            className={`block mt-0.5 text-[10px] truncate ${
-                              selected ? "text-blue-100" : "text-slate-500 dark:text-slate-400"
-                            }`}
-                          >
-                            {item.description}
-                          </span>
-                        </span>
-                      </button>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
             </aside>
 
             <main id="worksite-doc-content" className="space-y-3 sm:space-y-5 min-w-0 scroll-mt-40">
+              {!isCommunicationView&&<>
               <section className="rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-5 shadow-sm">
                 <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-2 sm:gap-3">
                   <label className="hidden lg:block text-xs font-bold text-slate-600 dark:text-slate-300">
@@ -1035,6 +999,9 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 )}
               </section>
 
+              </>}
+              {activeDocumentView==='actas_visitas'&&<Suspense fallback={<p>Cargando actas de visitas…</p>}><VisitMinutesPanel key={visitWorksiteId} initialWorksite={visitWorksiteId}/></Suspense>}
+              {activeDocumentView==='partes_avisos'&&<Suspense fallback={<p>Cargando partes y avisos…</p>}><PartsPanel key={accountId||'session'} accountId={accountId} onBack={()=>selectDocumentView('obra')}/></Suspense>}
               {activeDocumentView === "obra" && (
                 <section className="rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-sm">
                   <div className="flex items-center gap-2 mb-5">

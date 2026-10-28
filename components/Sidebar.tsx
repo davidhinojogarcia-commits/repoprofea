@@ -70,8 +70,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'prevencion', label: 'Incidencias y alertas', icon: ShieldCheck },
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
-        { id: 'partes_avisos', label: 'Partes y avisos', icon: ClipboardCheck },
-        { id: 'actas_visitas', label: 'Actas de visitas', icon: ClipboardCheck },
         { id: 'documentacion_encargados', label: 'Documentación de encargados', icon: ClipboardCheck },
         {
           id: 'subcontratas',
@@ -107,8 +105,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'citas', label: '4. Reconocimientos', subtitle: 'Citas y aptitud médica', icon: Calendar },
         { id: 'documentacion_obra', label: '5. Documentación', subtitle: 'Documentos de la obra', icon: Files },
         { id: 'documentacion_encargados', label: 'Documentación de encargados', subtitle: 'Firmas y partes recibidos', icon: ClipboardCheck },
-        { id: 'partes_avisos', label: 'Partes y avisos', icon: ClipboardCheck },
-        { id: 'actas_visitas', label: 'Actas de visitas', subtitle: 'Acuerdos, conformidades y firmas', icon: ClipboardCheck },
         { id: 'subcontratas', label: '6. CAE', subtitle: 'Coordinación de empresas', icon: HardHat },
         { id: 'prevencion', label: 'Incidencias y alertas', subtitle: 'Comprobaciones y seguimiento por obra', icon: ShieldCheck },
         { id: 'inventario', label: '7. Maquinaria', subtitle: 'Equipos y herramientas', icon: Wrench },
@@ -198,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`} />
                       <span className={`min-w-0 flex-1 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
                         <span className={`profea-sidebar-label w-full font-semibold text-sm leading-[1.15] whitespace-normal break-words ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
-                          {item.label}{item.id==='partes_avisos'&&Number(partsUnread)>0&&<span className="ml-1 rounded-full bg-red-600 px-2 py-1 text-xs font-black text-white">{Number(partsUnread)>99?'99+':partsUnread}</span>}
+                          {item.label}{item.id==='documentacion_obra'&&Number(partsUnread)>0&&<span className="ml-1 rounded-full bg-red-600 px-2 py-1 text-xs font-black text-white">{Number(partsUnread)>99?'99+':partsUnread}</span>}
                         </span>
                         {item.subtitle && (
                           <span className={`profea-sidebar-subtitle mt-0.5 text-[10px] leading-[1.2] font-medium max-w-[13rem] ${isActive ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
@@ -209,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                       {isCollapsed && !isMobileOpen && (
                         <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-xs font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                          {item.label}{item.id==='partes_avisos'&&Number(partsUnread)>0&&<span className="ml-1 rounded-full bg-red-600 px-2 py-1 text-xs font-black text-white">{Number(partsUnread)>99?'99+':partsUnread}</span>}
+                          {item.label}{item.id==='documentacion_obra'&&Number(partsUnread)>0&&<span className="ml-1 rounded-full bg-red-600 px-2 py-1 text-xs font-black text-white">{Number(partsUnread)>99?'99+':partsUnread}</span>}
                         </div>
                       )}
                     </button>
