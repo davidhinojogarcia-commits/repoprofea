@@ -39,6 +39,7 @@ const worker = {
   obra: "Obra A",
   dni: "00000000T",
   categoria: "Peón",
+  quincena: "1ª Octubre 2026",
   periodoInicio: "2026-10-01",
   periodoFin: "2026-10-31",
 };
@@ -182,13 +183,7 @@ async function openDocuments(page) {
   await page.getByRole("button", { name: "Documentos", exact: true }).click();
 }
 async function signed(page, kind) {
-  await page
-    .getByRole("button", {
-      name: kind === "salida_obra" ? "Salida de obra" : "Rechazo voluntario",
-      exact: true,
-    })
-    .first()
-    .click();
+  await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption(kind);
   const panel = page.getByRole("region", {
     name: kind === "salida_obra" ? "Salida de obra" : "Rechazo voluntario",
   });
@@ -351,12 +346,26 @@ try {
     await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
     await page.goto(base);
     await openDocuments(page);
-    await page
-      .getByRole("button", { name: "Rechazo voluntario", exact: true })
-      .waitFor();
-    await page
-      .getByRole("button", { name: "Salida de obra", exact: true })
-      .waitFor();
+    const documents = page.getByRole("combobox", { name: "Documento", exact: true });
+    assert.equal(await documents.locator('option[value="rechazo_voluntario"]').count(), 1);
+    assert.equal(await documents.locator('option[value="salida_obra"]').count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0);
+    await documents.selectOption("rechazo_voluntario");
+    await page.getByRole("region", { name: "Rechazo voluntario", exact: true }).waitFor();
+    await documents.selectOption("ausencia_trabajador");
+    await page.getByLabel("Inicio de la ausencia", { exact: true }).waitFor();
+    const periods = page.getByRole("group", { name: "Periodos de trabajo", exact: true });
+    assert.ok((await periods.boundingBox()).height < 420, "Compact period selector fits on mobile");
+    await periods.getByRole("combobox", { name: "Añadir mes completo", exact: true }).selectOption("2026-10");
+    await periods.getByRole("combobox", { name: "Añadir quincena o contrato", exact: true }).selectOption("1ª Octubre 2026");
+    await periods.getByRole("status").getByText("2 periodo(s) · 1 trabajador(es)", { exact: true }).waitFor();
+    assert.equal(await periods.locator("details[open]").count(), 0, "Lists remain collapsed");
+    await periods.getByText("Ver o quitar periodos (2)", { exact: true }).click();
+    await periods.getByRole("button", { name: "Quitar Octubre 2026", exact: true }).click();
+    await periods.getByRole("status").getByText("1 periodo(s) · 1 trabajador(es)", { exact: true }).waitFor();
+    await periods.getByRole("button", { name: "Limpiar selección", exact: true }).click();
+    await periods.getByRole("status").getByText("Selecciona un periodo para ver los trabajadores", { exact: true }).waitFor();
     const panel = await signed(page, "salida_obra");
     await panel
       .getByLabel("Regreso efectivo comprobado")
@@ -381,9 +390,7 @@ try {
     await page.waitForLoadState("networkidle");
     await page.reload();
     await openDocuments(page);
-    await page
-      .getByRole("button", { name: "Salida de obra", exact: true })
-      .click();
+    await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption("salida_obra");
     await page
       .getByRole("button", { name: /Persona Homónima · Regreso registrado/ })
       .first()
@@ -460,9 +467,7 @@ try {
   await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
   await page.goto(base);
   await openDocuments(page);
-  await page
-    .getByRole("button", { name: "Salida de obra", exact: true })
-    .click();
+  await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption("salida_obra");
   await page
     .getByRole("button", { name: /Persona Homónima · Peón/ })
     .first()
@@ -478,9 +483,7 @@ try {
   lostSave = false;
   await page.reload();
   await openDocuments(page);
-  await page
-    .getByRole("button", { name: "Salida de obra", exact: true })
-    .click();
+  await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption("salida_obra");
   await page
     .getByRole("button", { name: "Reintentar el mismo guardado", exact: true })
     .waitFor();
