@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/workforce-documents",
+      "destination": "/api/gmail?action=workforce-documents"
+    },
+    {
+      "source": "/api/parts",
+      "destination": "/api/gmail?action=parts"
+    },
+    {
       "source": "/api/visit-minutes",
       "destination": "/api/gmail?action=visit-minutes"
     },
@@ -23,6 +31,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "codex/carnet-qr-privacidad": false,
       "fix/foreman-signature-default-panel": false,
       "feat/independent-foreman-signatures": false,
       "local/fix-mandatory-persistence-20261009": false,
@@ -69,7 +78,11 @@
       "release/2026-10-18-pending": false,
       "feat/visit-writing-assistant": false,
       "fix/visit-writing-runtime-configuration": false,
-      "fix/visit-writing-server-secret-isolation": false
+      "fix/visit-writing-server-secret-isolation": false,
+      "fix/sae-capacity-name-editor-20261025": false,
+      "fix/sae-persistent-alignment-default-20261025": false,
+      "fix/sae-bidirectional-code-guard-20261026": false,
+      "feat/partes-avisos-20261026": false
     }
   }
 }

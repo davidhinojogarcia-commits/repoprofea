@@ -108,3 +108,31 @@ Mantener el PR en borrador hasta verificar Free, controles de datos,
 credencial real, dos generaciones y revisión/incorporación/guardado/reapertura.
 El verificador con sesión solo solicita propuestas; no valida por sí solo
 la incorporación ni persistencia en la interfaz.
+
+
+## Preparación de fusión — 28/10/2026
+
+Se integra main `1f28695bfada3ea193b3886bc2cba5e1b51595f2` (v1.21.6,
+PR #332). Se resuelve el conflicto en `vercel.json` conservando todas las
+exclusiones de main y la de esta rama. No se fusiona el PR en main ni se despliega.
+
+El acceso a la mejora escrita se llama «Mejorar redacción»: escribir notas,
+solicitar propuesta, revisar y aplicar expresamente. La edición manual y el
+dictado por teclado existentes siguen disponibles. No se crean órdenes,
+firmas ni envíos al mejorar un texto.
+
+La regresión de navegador ahora comprueba también que una mejora escrita
+aceptada se guarda en el servidor de prueba y conserva su contenido y el
+segundo asunto intacto tras recargar y reabrir el acta para editar.
+El proveedor y la identidad siguen simulados: esto no acredita una sesión
+real ni generación con Groq. Registrar CI del nuevo HEAD; la ejecución
+40197025229 valida únicamente el HEAD anterior ff6f7d2.
+
+Se revisan de nuevo los metadatos de variables Vercel sin descifrar valores:
+no figura GROQ_API_KEY. No se configura ningún secreto ni se solicita una
+generación real. Para completar la aceptación pendiente, el titular debe
+introducir la credencial directamente en Vercel, verificar Free y controles
+de datos, y autorizar una preview del HEAD final. Después se comprueba mejora
+escrita real, revisión, incorporación, guardado y reapertura con su sesión.
+El caso de dictado existente necesita su propia validación si se usa.
+Mantener el borrador mientras no se complete la evidencia y la CI final.

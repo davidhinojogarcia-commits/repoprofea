@@ -152,6 +152,8 @@ self.addEventListener('push', (event) => {
     Promise.all([self.registration.showNotification(data.title, options),
       data.kind==='FOREMAN_DOCUMENT_AVAILABLE' ? self.clients.matchAll({type:'window',includeUncontrolled:true}).then(windows=>{
         for(const client of windows){const u=new URL(client.url);if(u.origin===self.location.origin&&u.pathname.replace(/\/$/,'')==='/encargados')client.postMessage({type:'FOREMAN_DOCUMENT_AVAILABLE',documentId:data.documentId});}
+      }) : data.kind==='PARTS_UPDATED' ? self.clients.matchAll({type:'window',includeUncontrolled:true}).then(windows=>{
+        for(const client of windows){const u=new URL(client.url);if(u.origin===self.location.origin)client.postMessage({type:'PARTS_UPDATED'});}
       }) : Promise.resolve()])
   );
 });

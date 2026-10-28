@@ -33,6 +33,8 @@ jobs:
             echo 'Business data must not use localStorage.'
             exit 1
           fi
+      - name: Validate voluntary rejection and worksite exits
+        run: npm run test:workforce-documents
       - name: Validate prevention persistence and permissions
         run: npm run test:prevention
       - name: Validate Tutor PROFEA local agent policy
@@ -99,6 +101,20 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Voluntary rejection and worksite exits in both portals (Chromium + WebKit)
+        run: npm run test:workforce-documents-browser
+      - name: Partes y avisos transactions, permissions, PDFs and browser workflows
+        run: |
+          npm run test:parts
+          PARTS_EVIDENCE_DIR=artifacts/parts npm run test:parts-browser
+      - name: Upload synthetic Partes browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partes-browser-evidence
+          path: artifacts/parts
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Auth recovery, isolation and browser races
         run: |
           node scripts/testAuthRecovery.mjs
@@ -198,6 +214,20 @@ jobs:
         run: npm run test:inventory-usage
       - name: Inventory usage browser regression
         run: npm run test:inventory-usage-browser
+      - name: Public worker QR privacy regression
+        run: npm run test:worker-qr-public
+      - name: Rehire prevention review
+        run: npm run test:rehire-prevention
+      - name: Registration QR autofill and confirmation
+        run: |
+          npm run test:registration-qr
+          BROWSER_ENGINE=webkit npm run test:registration-qr
+      - name: Worker card pairing isolation
+        run: npm run test:worker-card-pairing
+      - name: Worker card QR scan authorization
+        run: npm run test:worker-card-scan
+      - name: Worker card QR browser regression
+        run: npm run test:worker-card
       - name: TypeScript validation
         run: |
           set -o pipefail

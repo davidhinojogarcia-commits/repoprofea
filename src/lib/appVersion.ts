@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.21.3';
-export const APP_RELEASE_DATE = '18/10/2026';
+export const APP_VERSION = '1.21.6';
+export const APP_RELEASE_DATE = '28/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Rechazo voluntario y Salida de obra en ambos portales: borradores recuperables, doble firma, PDF privado versionado y diligencia de regreso independiente.',
+  'Nuevo registro: lectura del carnet QR con cámara móvil vinculada, confirmación de ficha y revisión preventiva antes de contratar.',
   'Actas 3.1: contenido por puntos, guardado automático, borrador sin códigos y firma presencial o remota independiente.',
   'Actas definitivas en el portal y distribución Gmail con reintentos; anexos comprimidos y conservación privada sin duplicar el PDF.',
   'Fotografías de incidencias reducidas antes de adjuntarlas; registro diario descargable con firmas de entrada y salida completas.',

@@ -32,6 +32,11 @@ export default function SaeCodeNotice({ state, currentCode, onDecision }: {
       {error && <p role="alert">{error}</p>}
     </div>
   );
+  if (state.issue?.startsWith('Código incompatible:')) return (
+    <p role="alert" className="w-full rounded-lg border border-red-500 bg-red-50 p-3 text-xs font-bold text-red-800 dark:bg-red-950/30 dark:text-red-200">
+      {state.issue}
+    </p>
+  );
   if (state.issue) return <p role="alert" className="w-full rounded-lg border border-amber-400 p-2 text-xs">{state.issue}</p>;
   if (!state.manual && state.automaticCode === currentCode) return (
     <p className="w-full text-xs text-slate-600 dark:text-slate-300" title={`Resultado guardado en la ${state.sourceFortnight === 2 ? 'segunda' : 'primera'} quincena: código ${state.sourceCode}`}>

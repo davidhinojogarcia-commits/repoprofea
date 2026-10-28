@@ -1,6 +1,6 @@
 import { reportOperationalError } from '../src/lib/operationalLog';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import ModalPortal from './ModalPortal';
 import { PlusCircle, FileText, User, Calendar, Briefcase, Phone, Ruler, Award, MapPin, AlertCircle, Upload, ArrowRight, CheckCircle2, HardHat, UserCheck, History, X } from 'lucide-react';
 import { Person } from '../types';
@@ -9,6 +9,9 @@ import { formatIban, formatSpanishSocialSecurityNumber, normalizeIban, normalize
 import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/services/annualHiringPeriodsService';
 import { useAuthShell } from './AuthGate';
 import { buildWorkerMasterRecords, searchWorkerMasterRecords, type WorkerMasterRecord } from '../src/lib/workerMaster';
+
+const WorkerCardScanner = lazy(() => import('./WorkerCardScanner'));
+const WorkerCardPairing = lazy(() => import('./WorkerCardPairing'));
 
 interface RegistrationFormProps {
   onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>) => void;
@@ -116,7 +119,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   savedCategorias,
   people = []
 }) => {
-  const { supervisorName } = useAuthShell();
+  const { supervisorName, user } = useAuthShell();
+  const accountId = user?.id || '';
   const today = new Date();
   const nextHiringMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   const savedFortnight = typeof window !== 'undefined'
@@ -172,9 +176,45 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const [matchedWorkerName, setMatchedWorkerName] = useState('');
   const [workerHistory, setWorkerHistory] = useState<Person[]>([]);
   const [isSameAnnualityActive, setIsSameAnnualityActive] = useState(false);
-  const [isAutoFormedOnReturn, setIsAutoFormedOnReturn] = useState(false);
+  const [requiresPreventionReview, setRequiresPreventionReview] = useState(false);
   const [workerLookupField, setWorkerLookupField] = useState<'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban' | null>(null);
   const workerMasterRecords = useMemo(() => buildWorkerMasterRecords(people), [people]);
+  const cardPeople = useMemo(() => people.filter(p => !p.ownerId || p.ownerId === accountId), [people, accountId]);
+  const cardMasterRecords = useMemo(() => buildWorkerMasterRecords(cardPeople), [cardPeople]);
+  const [scanningCard, setScanningCard] = useState(false);
+  const [pairingCard, setPairingCard] = useState(false);
+  const [cardCandidate, setCardCandidate] = useState<{ id: number; accountId: string } | null>(null);
+  const [cardMessage, setCardMessage] = useState('');
+  const cardPreviewRef = useRef<HTMLElement>(null);
+  const closeCardScanner = useCallback(() => setScanningCard(false), []);
+  // The QR carries only a reference. Resolve it against the authenticated
+  // directory; never trust personal data supplied by a QR or mobile event.
+  const previewScannedWorker = useCallback((id: number) => {
+    const person = cardPeople.find(p => Number(p.id) === id);
+    if (!person || !person.apellidosNombre?.trim() || analyzeDNI(person.dni).status !== 'valid') {
+      setCardMessage('La ficha no está disponible o su DNI/NIE necesita revisión en el directorio.');
+      return false;
+    }
+    setCardCandidate({ id, accountId });
+    setCardMessage('Carnet localizado. Confirma la identidad antes de rellenar el formulario.');
+    setPairingCard(false);
+    return true;
+  }, [cardPeople, accountId]);
+  const cardPerson = cardCandidate?.accountId === accountId
+    ? cardPeople.find(p => Number(p.id) === cardCandidate.id)
+    : undefined;
+  const cardMaster = cardPerson && analyzeDNI(cardPerson.dni).status === 'valid'
+    ? cardMasterRecords.find(w => w.key === cardPerson.dni.replace(/[\s-]/g, '').toUpperCase())
+    : undefined;
+  useEffect(() => {
+    setScanningCard(false);
+    setPairingCard(false);
+    setCardCandidate(null);
+    setCardMessage('');
+  }, [accountId]);
+  useEffect(() => {
+    if (cardCandidate) cardPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [cardCandidate]);
 
   const workerLookupQuery = workerLookupField ? String((formData as any)[workerLookupField] || '') : '';
   const workerSuggestions = useMemo(
@@ -182,16 +222,16 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     [workerLookupField, workerLookupQuery, workerMasterRecords]
   );
 
-  const applyWorkerMasterRecord = (worker: WorkerMasterRecord) => {
+  const applyWorkerMasterRecord = (worker: WorkerMasterRecord, fromCard = false) => {
     setFormData(prev => ({
       ...prev,
-      apellidosNombre: worker.apellidosNombre || prev.apellidosNombre,
-      dni: worker.dni || prev.dni,
-      fechaNacimiento: worker.fechaNacimiento || prev.fechaNacimiento,
-      telefono: worker.telefono || prev.telefono,
-      numeroSeguridadSocial: worker.numeroSeguridadSocial || prev.numeroSeguridadSocial,
-      iban: worker.iban || prev.iban,
-      calzado: worker.calzado && worker.calzado !== 'No necesita' ? worker.calzado : prev.calzado,
+      apellidosNombre: worker.apellidosNombre || (fromCard ? '' : prev.apellidosNombre),
+      dni: worker.dni || (fromCard ? '' : prev.dni),
+      fechaNacimiento: worker.fechaNacimiento || (fromCard ? '' : prev.fechaNacimiento),
+      telefono: worker.telefono || (fromCard ? '' : prev.telefono),
+      numeroSeguridadSocial: worker.numeroSeguridadSocial || (fromCard ? '' : prev.numeroSeguridadSocial),
+      iban: worker.iban || (fromCard ? '' : prev.iban),
+      calzado: worker.calzado && worker.calzado !== 'No necesita' ? worker.calzado : (fromCard ? '' : prev.calzado),
       supervisorResponsable: supervisorName,
       // Datos de contratación, PRL y reconocimiento se mantienen siempre separados.
       numOferta: prev.numOferta,
@@ -200,21 +240,28 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       quincena: prev.quincena,
       periodoInicio: prev.periodoInicio,
       periodoFin: prev.periodoFin,
-      formacion: prev.formacion,
-      lugarFormacion: prev.lugarFormacion,
-      necesitaReconocimiento: prev.necesitaReconocimiento,
-      citaDia: prev.citaDia,
-      citaHora: prev.citaHora,
-      sitioReconocimiento: prev.sitioReconocimiento,
-      documentacionCompleta: prev.documentacionCompleta,
-      observaciones: prev.observaciones,
+      formacion: '',
+      lugarFormacion: '',
+      necesitaReconocimiento: '',
+      citaDia: fromCard ? '' : prev.citaDia,
+      citaHora: fromCard ? '' : prev.citaHora,
+      sitioReconocimiento: fromCard ? '' : prev.sitioReconocimiento,
+      documentacionCompleta: '',
+      observaciones: fromCard ? '' : prev.observaciones,
     }));
-    const contracts = (people || []).filter(p =>
+    const contracts = (fromCard ? cardPeople : people).filter(p =>
       p.dni.replace(/[\s-]/g, '').toUpperCase() === worker.dni.replace(/[\s-]/g, '').toUpperCase()
     );
+    setRequiresPreventionReview(true);
     setMatchedWorkerName(worker.apellidosNombre);
     setWorkerHistory(contracts);
     setWorkerLookupField(null);
+    if (fromCard) {
+      setIsSameAnnualityActive(contracts.some(p => getContractYear(p) === qYear));
+      setShowHistoryModal(true);
+      setCardCandidate(null);
+      setCardMessage('Datos personales recuperados. Revisa los datos del nuevo contrato, los certificados PRL, el reconocimiento y la documentación antes de registrar.');
+    }
   };
 
   const renderWorkerSuggestions = (field: 'apellidosNombre' | 'dni' | 'telefono' | 'numeroSeguridadSocial' | 'iban') => {
@@ -351,16 +398,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
         const hasSameAnnuality = matchedContracts.some(p => getContractYear(p) === qYear);
         setIsSameAnnualityActive(hasSameAnnuality);
         
-        if (hasSameAnnuality) {
-          setFormData(prev => ({
-            ...prev,
-            necesitaReconocimiento: 'No',
-            calzado: 'No',
-            citaDia: '',
-            citaHora: '',
-            sitioReconocimiento: ''
-          }));
-        }
+
       } else {
         setIsSameAnnualityActive(false);
       }
@@ -418,12 +456,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           const hasSameAnnuality = matchedContracts.some(p => getContractYear(p) === qYear);
           setIsSameAnnualityActive(hasSameAnnuality);
 
-          // Si el trabajador ya fue registrado previamente sin formación ('No' o 'Sin formación'),
-          // al volver a salir se registra automáticamente como YA FORMADO ('Sí').
-          const hadNoFormacionInHistory = matchedContracts.some(
-            p => p.formacion === 'No' || p.formacion === 'Sin formación' || !p.formacion
-          );
-          setIsAutoFormedOnReturn(hadNoFormacionInHistory);
+          // La contratación anterior no acredita la formación ni la aptitud para el nuevo puesto.
+          setRequiresPreventionReview(true);
 
           setFormData(prev => ({
             ...prev,
@@ -442,13 +476,13 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             numeroSeguridadSocial: matchedPerson.numeroSeguridadSocial || prev.numeroSeguridadSocial,
             iban: matchedPerson.iban || prev.iban,
             categoria: matchedPerson.categoria || prev.categoria,
-            formacion: hadNoFormacionInHistory ? 'Sí' : (matchedPerson.formacion || prev.formacion || 'Sí'),
-            lugarFormacion: hadNoFormacionInHistory ? '' : (matchedPerson.lugarFormacion || prev.lugarFormacion),
-            documentacionCompleta: matchedPerson.documentacionCompleta || prev.documentacionCompleta,
+            formacion: '',
+            lugarFormacion: '',
+            documentacionCompleta: '',
             observaciones: prev.observaciones,
-            // Automatically select 'No' for medical checkup and footwear for repeated worker in same annuality
-            necesitaReconocimiento: hasSameAnnuality ? 'No' : 'Sí',
-            calzado: hasSameAnnuality ? 'No' : (matchedPerson.calzado && matchedPerson.calzado !== 'No' && matchedPerson.calzado !== 'No necesita' ? matchedPerson.calzado : ''),
+            // Revisar cada puesto antes de decidir si corresponde un reconocimiento.
+            necesitaReconocimiento: '',
+            calzado: '',
             citaDia: '',
             citaHora: '',
             sitioReconocimiento: ''
@@ -467,6 +501,10 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (cardCandidate) {
+      alert('Confirma la ficha del carnet o cancela su recuperación antes de registrar.');
+      return;
+    }
     if (!formData.dni || !formData.dni.trim()) {
       alert('⚠️ Por favor, introduzca el DNI/NIE del trabajador.');
       const inputEl = document.getElementById('dni-input');
@@ -571,6 +609,11 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       citaHora: '',
       sitioReconocimiento: ''
     }));
+    setRequiresPreventionReview(false);
+    setCardCandidate(null);
+    setCardMessage('');
+    setPairingCard(false);
+    setScanningCard(false);
     const formTop = document.getElementById('form-container');
     if (formTop) formTop.scrollIntoView({ behavior: 'smooth' });
   };
@@ -637,6 +680,28 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Alta de trabajador y datos necesarios para su incorporación PROFEA.</p>
         </div>
       </div>
+
+      <section className="mb-6 rounded-xl border border-blue-200 p-4 dark:border-blue-900" aria-label="Recuperar trabajador por carnet QR">
+        <h3 className="font-bold">Recuperar datos con el carnet QR</h3>
+        <p className="mt-1 text-sm">Vincula el móvil para leer el carnet o utiliza la cámara de este dispositivo. Confirma la ficha y revisa la nueva contratación antes de guardarla.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" disabled={pairingCard || scanningCard} onClick={() => { setCardCandidate(null); setCardMessage(''); setPairingCard(true); }} className="min-h-11 rounded-xl bg-[#00548E] px-4 py-2 font-bold text-white disabled:opacity-50">Vincular cámara del móvil</button>
+          <button type="button" disabled={pairingCard || scanningCard} onClick={() => { setCardCandidate(null); setCardMessage(''); setScanningCard(true); }} className="min-h-11 rounded-xl border px-4 py-2 font-bold disabled:opacity-50">Leer QR con este dispositivo</button>
+        </div>
+        {cardMessage && <p role="status" className="mt-3 text-sm">{cardMessage}</p>}
+        {pairingCard && <Suspense fallback={<p role="status">Preparando vinculación…</p>}><WorkerCardPairing key={accountId} onClose={() => setPairingCard(false)} onWorker={previewScannedWorker} /></Suspense>}
+        {scanningCard && <Suspense fallback={<p role="status">Preparando escáner…</p>}><WorkerCardScanner key={accountId} onClose={closeCardScanner} onFound={previewScannedWorker} /></Suspense>}
+        {cardCandidate && <section ref={cardPreviewRef} className="mt-4 rounded-xl border p-3" aria-label="Confirmar ficha del carnet">
+          {cardMaster ? <>
+            <h4 className="font-bold">{cardMaster.apellidosNombre}</h4>
+            <p>DNI/NIE: {cardMaster.dni}</p>
+            <p className="mt-2 text-sm">Se recuperarán los datos personales disponibles: nombre, documento, nacimiento, teléfono, Seguridad Social, IBAN y talla de calzado. Los datos ausentes quedarán vacíos.</p>
+            <p className="mt-2 text-sm">Se conservarán la obra, categoría, oferta y período que hayas elegido para el nuevo contrato. Debes comprobar los certificados PRL, su adecuación al puesto, el reconocimiento y la documentación.</p>
+            <button type="button" onClick={() => applyWorkerMasterRecord(cardMaster, true)} className="mt-3 min-h-11 rounded-xl bg-[#00548E] px-4 py-2 font-bold text-white">Confirmar ficha y rellenar datos</button>
+          </> : <p role="alert">La ficha ya no está disponible para esta cuenta. Vuelve a comprobar el acceso antes de escanear.</p>}
+          <button type="button" onClick={() => { setCardCandidate(null); setCardMessage('Recuperación cancelada. El formulario conserva sus datos.'); }} className="ml-2 mt-3 min-h-11 rounded-xl border px-4 py-2">Cancelar recuperación</button>
+        </section>}
+      </section>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         
@@ -859,7 +924,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                       <AlertCircle className="w-4 h-4 text-purple-500 shrink-0 mt-0.5 animate-pulse" />
                       <div>
                         <span className="font-bold uppercase tracking-wider block text-purple-800 dark:text-purple-200 text-[10px]">⚠️ REPETIDO EN LA MISMA ANUALIDAD ({qYear})</span>
-                        <p className="font-normal text-[11px] mt-0.5">Este trabajador ya ha sido contratado este año. Por normativa, <span className="font-bold underline">NO necesita botas ni reconocimiento médico</span> (se han configurado automáticamente a "No").</p>
+                        <p className="font-normal text-[11px] mt-0.5">Este trabajador ya ha sido contratado este año. Revisa la formación, el reconocimiento y el estado del calzado para el nuevo puesto.</p>
                       </div>
                     </div>
                   )}
@@ -964,13 +1029,9 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             )}
           </div>
 
-          {isAutoFormedOnReturn && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 font-medium animate-in fade-in duration-200">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-emerald-900 dark:text-emerald-200 uppercase tracking-wider block text-[10px]">✨ Formación Actualizada Automáticamente</span>
-                <p className="mt-0.5 text-[11px]">Trabajador registrado previamente sin formación: al re-incorporarse se registra automáticamente como <strong>YA FORMADO (Sí)</strong>.</p>
-              </div>
+          {requiresPreventionReview && (
+            <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Revisa los certificados de formación y la adecuación de la vigilancia de la salud al puesto. Una contratación anterior no acredita por sí sola esos requisitos.
             </div>
           )}
 
@@ -984,6 +1045,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 required 
                 className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm text-slate-800 dark:text-slate-100"
               >
+                <option value="" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">Seleccione tras revisar el puesto...</option>
                 <option value="Sí" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">Sí</option>
                 <option value="No" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">No</option>
               </select>
@@ -1177,7 +1239,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                   <AlertCircle className="w-5 h-5 text-purple-500 shrink-0 mt-0.5 animate-bounce" />
                   <div>
                     <span className="font-bold text-xs block mb-1 text-purple-800 dark:text-purple-200">⚠️ REPETIDO EN LA MISMA ANUALIDAD ({qYear})</span>
-                    Este trabajador ya cuenta con un contrato registrado en la misma anualidad (<span className="font-bold">{qYear}</span>). Por normativa, <span className="font-bold underline">NO necesita botas nuevas ni reconocimiento médico</span>. Se han configurado estas opciones automáticamente a "No".
+                    Este trabajador ya tiene un contrato en el año indicado (<span className="font-bold">{qYear}</span>). Comprueba la formación, el reconocimiento y los equipos para el nuevo puesto.
                   </div>
                 </div>
               ) : (

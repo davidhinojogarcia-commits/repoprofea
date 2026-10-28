@@ -218,6 +218,42 @@ try {
   await asUser(owner);await q("select set_config('test.sae.update','false',false)");
   await assert.rejects(sync(need,a,reverse.signature,true),/permitida/);
   await q("select set_config('test.sae.update','true',false)");
+  // Upgrade without changing the historical assertions above.
+  await db.exec('reset role');
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261026195158_sae_bidirectional_code_guard.sql',import.meta.url),'utf8'));
+  await reset();await patch(a,{category:'Peón'});await patch(b,{category:'Peón'});
+  await patch(b,{result_code:'2001'});
+  assert.equal((await q('select result_code from sae_candidates where id=$1',[a]))[0].result_code,'2500','reverse empty target now automatic');
+  assert.equal(await code(),'2001','reverse source never feeds back');
+  await assert.rejects(patch(a,{result_code:'2001'}),/Código incompatible/);
+  assert.equal((await q('select result_code from sae_candidates where id=$1',[a]))[0].result_code,'2500','conflicting write rolls back');
+  await sync();await sync();assert.equal(await code(),'2001');
+  await reset();await patch(a,{category:'Peón',result_code:'2200'});await patch(b,{category:'Peón',result_code:'2001'});
+  let manual=(await sync()).find(s=>s.candidateId===a);
+  assert.equal(manual.pendingCode,'2500','manual destination still requires confirmation');
+  await sync(need,a,manual.signature,true);
+  assert.equal((await q('select result_code from sae_candidates where id=$1',[a]))[0].result_code,'2500');
+  await reset();await patch(a,{result_code:'2212'});
+  await assert.rejects(patch(b,{result_code:'2212'}),/Código incompatible/,'all equal numeric results blocked');
+  await reset();await patch(a,{result_code:'2200',dni_nie:'111A'});await patch(b,{dni_nie:'222B',result_code:'2200'});
+  assert.equal(await code(),'2200','different documented identities are not merged');
+  await reset();await patch(a,{result_code:'2200'});await patch(b,{hiring_month:11,result_code:'2200'});
+  assert.equal(await code(),'2200','different month is outside the conflict scope');
+  await reset();
+  await assert.rejects(q("update sae_candidates set result_code='2001'"),/Código incompatible/,'multi-row updates cannot bypass validation');
+  // Simulate a pre-upgrade incompatible draft with triggers disabled only as fixture owner.
+  await db.exec('reset role; alter table sae_candidates disable trigger user');
+  await q("update sae_candidates set result_code='2001'");
+  await db.exec('alter table sae_candidates enable trigger user');await asUser(owner);
+  assert.match((await sync()).find(s=>s.candidateId===a).issue,/Código incompatible/,'legacy conflict remains visible');
+  const strictSnapshot=[{id:a,resultCode:'2001'}];
+  await assert.rejects(q('select sae_finalize_report_version($1,$2)',[first,JSON.stringify(strictSnapshot)]),/No se puede finalizar/);
+  await assert.rejects(q("update sae_reports set processing_status='finalized' where id=$1",[first]),/No se puede finalizar/);
+  await assert.rejects(q("update sae_needs set status='finalizada' where id=$1",[need]),/No se puede finalizar/);
+  await patch(a,{result_code:'2500'});
+  assert.equal((await q('select sae_finalize_report_version($1,$2) v',[first,JSON.stringify([{id:a,resultCode:'2500'}])]))[0].v,1);
+  await asUser(other);assert.equal((await q('select * from sae_candidates')).length,0);
+  console.log('PASS strict SAE: reverse automatic, manual confirmation, equal codes rejected, multirow rejection, legacy closure blocked, correction/finalization, owner isolation.');
   console.log('PASS reverse SAE: second-to-first 2500 proposal, explicit apply/keep, stale/repeat, no feedback, old drafts, qualified exclusion and registered target protection.');
   console.log('PASS SAE PostgreSQL: confirmation, 2500/2212, manual decisions, stale/double requests, cancellation, homonyms/DNI, work/month/year isolation, issued reports, late import, historical exclusion, RLS/ACL, rollback/recovery and protected audit.');
 } catch (error) { console.error(error.message, error.detail || '', error.where || '', error.internalQuery || ''); process.exitCode=1; }
