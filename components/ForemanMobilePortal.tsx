@@ -458,6 +458,15 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   };
   const availableQuincenas=useMemo<string[]>(()=>Array.from(new Set<string>((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})),[data?.workers]);
   const availableMonths=useMemo(()=>Array.from(new Set((data?.workers||[]).flatMap(worker=>monthsForWorker(worker)))).sort(),[data?.workers]);
+  const quincenaGroups=useMemo(()=>{
+    const groups=new Map<string,string[]>();
+    for(const period of availableQuincenas){
+      const month=(data?.workers||[]).filter(worker=>String(worker.quincena||'').trim()===period)
+        .map(worker=>String(worker.periodoInicio||'').slice(0,7)).filter(value=>/^\d{4}-\d{2}$/.test(value)).sort()[0]||'other';
+      groups.set(month,[...(groups.get(month)||[]),period]);
+    }
+    return [...groups.entries()].sort(([a],[b])=>a.localeCompare(b));
+  },[availableQuincenas,data?.workers]);
   const togglePeriodKey=(key:string)=>setSelectedPeriodKeys(current=>{
     const next=new Set(current);
     if(next.has(key))next.delete(key);else next.add(key);
@@ -850,36 +859,43 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     }));
   },[assignedMandatoryDocuments,data?.obra]);
 
-  const renderPeriodSelector=()=> <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <div className="text-base font-black text-slate-900">1. Selecciona el periodo o periodos</div>
-        <div className="mt-1 text-sm leading-5 text-slate-600">Elige una o varias quincenas o meses. Hasta que no selecciones un periodo no se mostrará ningún trabajador adicional, evitando mezclar personal de otros periodos.</div>
-      </div>
-      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black" >Limpiar selección</button>}
+  const renderPeriodSelector=()=> <div role="group" aria-label="Periodos de trabajo" className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3 dark:border-slate-700 dark:bg-slate-900">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Periodo de trabajo</h3>
+      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="min-h-[44px] rounded-xl border bg-white px-3 py-2 text-sm font-bold dark:bg-slate-800">Limpiar selección</button>}
     </div>
-    {!!availableQuincenas.length&&<div>
-      <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Quincenas</div>
-      <div className="flex flex-wrap gap-2">
-        {availableQuincenas.map(period=>{const key='q:'+period;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`min-h-[50px] rounded-xl border px-4 py-3 text-sm font-black leading-tight ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-800'}`}>{period}</button>;})}
-      </div>
-    </div>}
-    {!!availableMonths.length&&<div>
-      <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Meses</div>
-      <div className="flex flex-wrap gap-2">
-        {availableMonths.map(month=>{const key='m:'+month;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`min-h-[50px] rounded-xl border px-4 py-3 text-sm font-black leading-tight ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-800'}`}>{monthLabel(month)}</button>;})}
-      </div>
-    </div>}
-    <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-      <div className="text-base font-black text-[#00548E]">2. Comprueba los trabajadores</div>
-      <div className="mt-1 text-sm font-semibold text-slate-700">{documentWorkers.length} trabajador(es) · {periodLabel}</div>
+    <p className="text-sm text-slate-600 dark:text-slate-300">Añade una o varias quincenas o meses. Solo se mostrará el personal de los periodos elegidos.</p>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {!!availableQuincenas.length&&<label className="min-w-0 text-sm font-bold">Quincena o contrato
+        <select aria-label="Añadir quincena o contrato" value="" onChange={e=>{if(e.target.value)togglePeriodKey('q:'+e.target.value);}} className="mt-1 min-h-[50px] w-full min-w-0 rounded-xl border bg-white px-3 py-2 text-base dark:bg-slate-800">
+          <option value="">Añadir quincena…</option>
+          {quincenaGroups.map(([month,periods])=><optgroup key={month} label={month==='other'?'Otros periodos':monthLabel(month)}>
+            {periods.map(period=><option key={period} value={period} disabled={selectedPeriodKeys.has('q:'+period)}>{period}{selectedPeriodKeys.has('q:'+period)?' · Añadido':''}</option>)}
+          </optgroup>)}
+        </select>
+      </label>}
+      {!!availableMonths.length&&<label className="min-w-0 text-sm font-bold">Mes completo
+        <select aria-label="Añadir mes completo" value="" onChange={e=>{if(e.target.value)togglePeriodKey('m:'+e.target.value);}} className="mt-1 min-h-[50px] w-full min-w-0 rounded-xl border bg-white px-3 py-2 text-base dark:bg-slate-800">
+          <option value="">Añadir mes…</option>
+          {Array.from(new Set(availableMonths.map(month=>month.slice(0,4)))).map(year=><optgroup key={year} label={year}>
+            {availableMonths.filter(month=>month.startsWith(year+'-')).map(month=><option key={month} value={month} disabled={selectedPeriodKeys.has('m:'+month)}>{monthLabel(month)}{selectedPeriodKeys.has('m:'+month)?' · Añadido':''}</option>)}
+          </optgroup>)}
+        </select>
+      </label>}
     </div>
-    {!!documentWorkers.length&&<div className="max-h-56 overflow-y-auto rounded-xl border bg-white divide-y">
-      {documentWorkers.map(worker=><div key={worker.id} className="px-4 py-3.5">
-        <div className="text-sm font-black text-slate-800">{worker.apellidosNombre}</div>
-        <div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}{worker.quincena?' · '+worker.quincena:''}</div>
-      </div>)}
-    </div>}
+    {!availableQuincenas.length&&!availableMonths.length&&<p className="text-sm text-slate-500">No hay periodos disponibles en esta obra.</p>}
+    {!!selectedPeriodKeys.size&&<details className="rounded-xl border bg-white p-3 dark:bg-slate-800">
+      <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-bold">Ver o quitar periodos ({selectedPeriodKeys.size})</summary>
+      <ul className="mt-2 space-y-2">{[...selectedPeriodKeys].map(key=><li key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 pl-3 dark:bg-slate-900"><span className="min-w-0 break-words text-sm">{key.startsWith('q:')?key.slice(2):'Mes completo · '+monthLabel(key.slice(2))}</span><button type="button" aria-label={'Quitar '+(key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2)))} onClick={()=>togglePeriodKey(key)} className="min-h-[44px] shrink-0 px-3 text-sm font-bold text-rose-700 dark:text-rose-300">Quitar</button></li>)}</ul>
+    </details>}
+    <div role="status" className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-bold text-[#00548E] dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">{selectedPeriodKeys.size?`${selectedPeriodKeys.size} periodo(s) · ${documentWorkers.length} trabajador(es)`:'Selecciona un periodo para ver los trabajadores'}</div>
+    {!!documentWorkers.length&&<details className="rounded-xl border bg-white p-3 dark:bg-slate-800">
+      <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-bold">Ver trabajadores ({documentWorkers.length})</summary>
+      <div className="mt-2 max-h-56 overflow-y-auto divide-y">{documentWorkers.map(worker=><div key={worker.id} className="py-3">
+        <div className="text-sm font-black text-slate-800 dark:text-slate-100">{worker.apellidosNombre}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-300">{worker.dni} · {worker.categoria}{worker.quincena?' · '+worker.quincena:''}</div>
+      </div>)}</div>
+    </details>}
   </div>;
 
   const prepareImportedWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {

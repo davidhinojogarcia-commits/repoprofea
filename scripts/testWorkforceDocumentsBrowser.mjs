@@ -39,6 +39,7 @@ const worker = {
   obra: "Obra A",
   dni: "00000000T",
   categoria: "Peón",
+  quincena: "1ª Octubre 2026",
   periodoInicio: "2026-10-01",
   periodoFin: "2026-10-31",
 };
@@ -354,6 +355,17 @@ try {
     await page.getByRole("region", { name: "Rechazo voluntario", exact: true }).waitFor();
     await documents.selectOption("ausencia_trabajador");
     await page.getByLabel("Inicio de la ausencia", { exact: true }).waitFor();
+    const periods = page.getByRole("group", { name: "Periodos de trabajo", exact: true });
+    assert.ok((await periods.boundingBox()).height < 420, "Compact period selector fits on mobile");
+    await periods.getByRole("combobox", { name: "Añadir mes completo", exact: true }).selectOption("2026-10");
+    await periods.getByRole("combobox", { name: "Añadir quincena o contrato", exact: true }).selectOption("1ª Octubre 2026");
+    await periods.getByRole("status").getByText("2 periodo(s) · 1 trabajador(es)", { exact: true }).waitFor();
+    assert.equal(await periods.locator("details[open]").count(), 0, "Lists remain collapsed");
+    await periods.getByText("Ver o quitar periodos (2)", { exact: true }).click();
+    await periods.getByRole("button", { name: "Quitar Octubre 2026", exact: true }).click();
+    await periods.getByRole("status").getByText("1 periodo(s) · 1 trabajador(es)", { exact: true }).waitFor();
+    await periods.getByRole("button", { name: "Limpiar selección", exact: true }).click();
+    await periods.getByRole("status").getByText("Selecciona un periodo para ver los trabajadores", { exact: true }).waitFor();
     const panel = await signed(page, "salida_obra");
     await panel
       .getByLabel("Regreso efectivo comprobado")
