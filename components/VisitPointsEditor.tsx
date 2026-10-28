@@ -58,7 +58,7 @@ export function VisitPointsEditor({ content, onChange, onCreateOrder, recordId, 
   };
   return <section aria-label="Puntos de la visita" className="min-w-0 space-y-3">
     <h3 className="text-lg font-black">Contenido de la visita</h3>
-    <p className="text-sm">Escribe los asuntos uno a uno o dicta toda la visita y organízala con IA. Tú revisas y aceptas la propuesta.</p>
+    <p className="text-sm">Escribe tus notas y pulsa «Mejorar redacción». Revisa el resultado y decide si lo incorporas al acta. También puedes dictar con el teclado.</p>
     <div className="flex flex-wrap gap-2">
       <button type="button" className={button} disabled={points.length >= 100} onClick={() => onChange({ ...content, points: [...points, { id: crypto.randomUUID(), title: '', description: '', attachmentIds: [] }] })}>+ Añadir asunto</button>
       <button type="button" className={button} onClick={() => { setDictating(true); window.setTimeout(() => dictationRef.current?.focus(), 0); }}>Dictar visita</button>
@@ -69,11 +69,11 @@ export function VisitPointsEditor({ content, onChange, onCreateOrder, recordId, 
       <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={busy || !!proposal || !dictation.trim() || !content.worksiteId} onClick={() => void improve()}>Organizar dictado</button><button type="button" className={button} disabled={busy} onClick={() => { onDictationChange?.(''); setDictating(false); if (!proposal?.source) setProposal(null); }}>Descartar dictado</button></div>
       {!!dictation.trim() && <p className="text-sm">Este texto está pendiente de incorporar al acta. Su copia local no equivale a guardado en el servidor.</p>}
     </div>}
-    {busy && <p role="status">Preparando propuesta… Puedes seguir editando. La IA no crea órdenes.</p>}
+    {busy && <p role="status">Preparando propuesta… Puedes seguir editando.</p>}
     {error && <p role="alert" className="rounded-xl border border-red-300 p-3">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {proposal && <section ref={reviewRef} tabIndex={-1} aria-label="Propuesta de redacción" className="min-w-0 rounded-xl border-2 border-blue-500 p-3 space-y-3">
-      <h4 className="font-black">Revisar propuesta de IA</h4><p className="text-sm">Comprueba nombres, cifras, unidades y sentido. Esta propuesta no aprueba ni crea órdenes.</p>
+      <h4 className="font-black">Revisar redacción propuesta</h4><p className="text-sm">Comprueba nombres, cifras, unidades y sentido. Esta propuesta no aprueba ni crea órdenes.</p>
       <details><summary className="min-h-[44px] font-bold">Ver texto original</summary><p className="whitespace-pre-wrap break-words">{proposal.input.title}{proposal.input.title ? '\n' : ''}{proposal.input.text}</p></details>
       {proposal.value.warnings.map((w, i) => <p key={i} className="text-sm font-bold">Revisar: {w}</p>)}
       {proposal.value.points.map((p, i) => <div key={i} className="space-y-2"><label className="block">Título propuesto {i + 1}<input aria-label={'Título propuesto '+(i+1)} className={visitInput} maxLength={200} value={p.title} onChange={e => editProposal(i,{title:e.target.value})} /></label><label className="block">Contenido propuesto {i + 1}<textarea aria-label={'Contenido propuesto '+(i+1)} className={visitInput} rows={5} maxLength={20000} value={p.description} onChange={e => editProposal(i,{description:e.target.value})} /></label></div>)}
@@ -83,7 +83,7 @@ export function VisitPointsEditor({ content, onChange, onCreateOrder, recordId, 
     {points.map((p, i) => <fieldset key={p.id} className="min-w-0 rounded-xl border p-3 space-y-3"><legend className="font-bold">Punto {i + 1}</legend>
       <label className="block">Título (opcional)<input className={visitInput} value={p.title} maxLength={200} onChange={e => update(p.id, { title: e.target.value })} /></label>
       <label className="block font-bold">Descripción del punto {i + 1}<textarea aria-label={'Descripción del punto ' + (i + 1)} className={visitInput} rows={4} value={p.description} maxLength={20000} onChange={e => update(p.id, { description: e.target.value })} /></label>
-      <button type="button" className={button} disabled={busy || !!proposal || !p.description.trim() || !content.worksiteId} onClick={() => void improve(p)}>Mejorar y desarrollar</button>
+      <button type="button" className={button} disabled={busy || !!proposal || !p.description.trim() || !content.worksiteId} onClick={() => void improve(p)}>Mejorar redacción</button>
       {i > 0 && <button type="button" className={button} onClick={() => { try { onChange({...content,points:mergeWritingPoints(points,i)}); } catch(e:any) {setError(e.message);} }}>Unir punto {i + 1} con el anterior</button>}
       {!!content.attachments.length && <details><summary className="min-h-[44px] font-bold">Fotografías o anexos de este punto</summary>{content.attachments.map(a => <label key={a.id} className="flex min-h-[44px] items-center gap-2 break-words"><input type="checkbox" checked={p.attachmentIds.includes(a.id)} onChange={e => update(p.id, { attachmentIds: e.target.checked ? [...p.attachmentIds, a.id] : p.attachmentIds.filter(id => id !== a.id) })} />{a.name}</label>)}</details>}
       <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={i === 0} onClick={() => move(i, -1)} aria-label={'Subir punto ' + (i + 1)}>Subir</button><button type="button" className={button} disabled={i === points.length - 1} onClick={() => move(i, 1)} aria-label={'Bajar punto ' + (i + 1)}>Bajar</button><button type="button" className={button} onClick={() => onChange({ ...content, points: points.filter(x => x.id !== p.id) })}>Eliminar punto {i + 1}</button><button type="button" className={button} disabled={!p.description.trim()} onClick={() => onCreateOrder(p)}>Crear orden desde este punto</button></div>
