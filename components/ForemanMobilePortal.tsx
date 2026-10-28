@@ -1240,12 +1240,14 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
       </div>}
       <div
+        role="navigation" aria-label="Secciones del portal de encargados"
         className="fixed bottom-0 left-0 right-0 z-30 sm:static overflow-x-auto overscroll-x-contain bg-white/95 backdrop-blur border-t sm:border sm:rounded-2xl p-2 shadow-[0_-8px_30px_rgba(15,23,42,0.10)] sm:shadow-none"
         style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}
       >
         <div className="flex w-max min-w-full gap-2">
           <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
           <button onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
+          <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
           <button onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
           <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
           <button onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
@@ -1256,7 +1258,6 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         </div>
       </div>
 
-      {tab!=='parts'&&<button type="button" onClick={()=>setTab('parts')} className="min-h-[56px] w-full rounded-xl border border-blue-200 bg-white p-3 text-center font-black text-[#00548E] dark:bg-slate-900 dark:text-blue-200"><ClipboardList className="mr-2 inline h-5 w-5"/>Partes y avisos</button>}
       {tab==='parts' && <Suspense fallback={<p>Cargando partes y avisos…</p>}><PartsPanel token={token} onBack={()=>setTab('mandatory')}/></Suspense>}
       {tab==='visits' && <Suspense fallback={<p>Cargando actas de visitas…</p>}><ForemanVisitMinutes token={token} onOpenPdf={showPdfPreview} /></Suspense>}
       {tab==='prevention' && <PreventionSection token={token} savedObras={[data.obra]} foremanName={data.foremanName} />}

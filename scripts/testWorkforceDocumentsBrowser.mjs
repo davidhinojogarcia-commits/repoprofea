@@ -169,6 +169,12 @@ async function draw(page) {
   await page.mouse.up();
 }
 async function openDocuments(page) {
+  const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados" });
+  const parts = navigation.getByRole("button", { name: "Partes y avisos", exact: true });
+  await parts.waitFor();
+  assert.equal(await page.getByRole("button", { name: "Partes y avisos", exact: true }).count(), 1, "Single parts entry inside the navigation ribbon");
+  assert.equal(await parts.locator("svg").count(), 1, "Parts has an icon like the other entries");
+
   await page.getByRole("button", { name: "Documentos", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0, "Rejection is inside Documents");
   assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0, "Departure is inside Documents");
