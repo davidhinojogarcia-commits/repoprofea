@@ -10,7 +10,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import ModalPortal from './ModalPortal';
 import { PreventionSection } from './PreventionSection';
 import { appAlert, appConfirm } from '../src/lib/appDialog';
-import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Trash2, Wrench } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, ClipboardPenLine, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Trash2, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   type AdditionalWorksiteDocumentType,
@@ -184,7 +184,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'|'prevention'|'visits'|'parts'|'rechazo_voluntario'|'salida_obra'>(()=>new URLSearchParams(window.location.search).has('parts')?'parts':'mandatory');
+  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'|'prevention'|'visits'|'parts'>(()=>new URLSearchParams(window.location.search).has('parts')?'parts':'mandatory');
+  const [documentView,setDocumentView]=useState<'other'|'rechazo_voluntario'|'salida_obra'>('other');
   const [date,setDate]=useState(today());
   const [attendanceEvidence,setAttendanceEvidence]=useState<any>(null);
   const [attendanceSigning,setAttendanceSigning]=useState(false);
@@ -1249,16 +1250,13 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
           <button onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
           <button onClick={()=>setTab('control')} style={{flex:'0 0 auto',minWidth:122,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='control'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogIn className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control horario</span></button>
-          <button aria-label="Rechazo voluntario" onClick={()=>setTab('rechazo_voluntario')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='rechazo_voluntario'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/>Rechazo voluntario</button>
-          <button aria-label="Salida de obra" onClick={()=>setTab('salida_obra')} style={{flex:'0 0 auto',minWidth:115}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='salida_obra'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogOut className="w-5 h-5 mx-auto mb-1"/>Salida de obra</button>
           <button onClick={()=>setTab('documents')} style={{flex:'0 0 auto',minWidth:110,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
-          <button onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}>Actas de visitas</button>
+          <button onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
           <button onClick={()=>setTab('completed')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
         </div>
       </div>
 
       {tab!=='parts'&&<button type="button" onClick={()=>setTab('parts')} className="min-h-[56px] w-full rounded-xl border border-blue-200 bg-white p-3 text-center font-black text-[#00548E] dark:bg-slate-900 dark:text-blue-200"><ClipboardList className="mr-2 inline h-5 w-5"/>Partes y avisos</button>}
-      {(tab==='rechazo_voluntario'||tab==='salida_obra')&&<WorkforceDocumentsPanel key={tab} kind={tab} token={token}/>}
       {tab==='parts' && <Suspense fallback={<p>Cargando partes y avisos…</p>}><PartsPanel token={token} onBack={()=>setTab('mandatory')}/></Suspense>}
       {tab==='visits' && <Suspense fallback={<p>Cargando actas de visitas…</p>}><ForemanVisitMinutes token={token} onOpenPdf={showPdfPreview} /></Suspense>}
       {tab==='prevention' && <PreventionSection token={token} savedObras={[data.obra]} foremanName={data.foremanName} />}
@@ -1410,10 +1408,23 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         {operationalDocumentsFor('maquinaria').map(doc=>renderSigningDocument(doc))}
       </section>}
 
-      {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
+      {tab==='documents'&&<div className="space-y-4">
+        <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
+          <h2 className="text-lg font-black">Documentos</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona el documento que necesitas preparar o consultar.</p>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2" aria-label="Tipos de documentos">
+            {([
+              {id:'other',label:'Otros documentos',Icon:FileSignature},
+              {id:'rechazo_voluntario',label:'Rechazo voluntario',Icon:FileSignature},
+              {id:'salida_obra',label:'Salida de obra',Icon:LogOut},
+            ] as const).map(({id,label,Icon})=><button key={id} type="button" aria-pressed={documentView===id} onClick={()=>setDocumentView(id)} className={`min-h-[56px] flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black touch-manipulation ${documentView===id?'bg-[#00548E] border-[#00548E] text-white':'bg-white text-slate-700'}`}><Icon className="h-5 w-5 shrink-0"/><span>{label}</span></button>)}
+          </div>
+        </div>
+        {documentView!=='other'&&<WorkforceDocumentsPanel key={documentView} kind={documentView} token={token}/>}
+        {documentView==='other'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
           <h2 className="text-lg font-black">Otros documentos</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí quedan únicamente los documentos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario tienen ahora su propio botón en la cinta superior.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Prepara los modelos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario están disponibles en la cinta superior.</p>
         </div>
 
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -1502,6 +1513,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           {saving?'Guardando…':'Finalizar y enviar al supervisor'}
         </button>
       </section>}
+      </div>}
 
       {tab==='completed'&&<section className="space-y-3">
         <button onClick={()=>void refresh()} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-black touch-manipulation"><RefreshCw className="w-4 h-4"/>Actualizar</button>
