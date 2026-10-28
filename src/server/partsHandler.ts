@@ -76,7 +76,7 @@ const one = async (
 ) => (await db(table + "?" + params({ ...filters, select, limit: 1 })))[0];
 const embeddedWorksiteCode = (name: string) =>
   name.trim().match(/^(\d{5}\s+(?:GR|EE))(?=\s|$)/i)?.[1] || "";
-async function worksiteSnapshot(db: DB, owner: string, work: string) {
+export async function worksiteSnapshot(db: DB, owner: string, work: string) {
   // Foreman access stores the obra label, which can differ in casing or
   // surrounding whitespace from the canonical worksites configuration.
   // Never select an arbitrary worksite when more than one could match.
@@ -130,7 +130,7 @@ async function worksiteSnapshot(db: DB, owner: string, work: string) {
     municipality: rows[0].municipio || "",
   };
 }
-async function assetInput(
+export async function assetInput(
   input: any,
   purpose: "attachment" | "signature",
   id: string,
@@ -1106,7 +1106,7 @@ export function createPartsHandler(deps: Dependencies) {
     }
   };
 }
-async function partsDatabase(path: string, body?: any, method?: string) {
+export async function partsDatabase(path: string, body?: any, method?: string) {
   const response = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
     method: method || (body ? "POST" : "GET"),
     headers: {

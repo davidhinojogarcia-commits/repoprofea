@@ -33,6 +33,8 @@ jobs:
             echo 'Business data must not use localStorage.'
             exit 1
           fi
+      - name: Validate voluntary rejection and worksite exits
+        run: npm run test:workforce-documents
       - name: Validate prevention persistence and permissions
         run: npm run test:prevention
       - name: Validate Tutor PROFEA local agent policy

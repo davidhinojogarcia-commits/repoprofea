@@ -1,7 +1,7 @@
 {
-  "name": "sistema-contrataci\u00f3n-profea_dhg",
+  "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.21.5",
+  "version": "1.21.6",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -67,10 +67,13 @@
     "test:worker-card-scan": "node --import tsx scripts/testWorkerCardScan.mjs && node scripts/testWorkerCardScanBrowser.mjs",
     "test:worker-card-pairing": "node scripts/testWorkerCardPairing.mjs && node scripts/testWorkerCardPairingBrowser.mjs && node scripts/testWorkerCardPairingRecovery.mjs",
     "test:rehire-prevention": "node scripts/testRehirePreventionBrowser.mjs",
-    "test:registration-qr": "node scripts/testRegistrationQrBrowser.mjs"
+    "test:registration-qr": "node scripts/testRegistrationQrBrowser.mjs",
+    "test:workforce-documents": "node scripts/testWorkforceDocuments.mjs",
+    "test:workforce-documents-browser": "node scripts/testWorkforceDocumentsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkforceDocumentsBrowser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
+    "@pdf-lib/upng": "1.0.1",
     "@supabase/supabase-js": "^2.57.4",
     "date-fns": "^4.1.0",
     "exceljs": "4.4.0",
