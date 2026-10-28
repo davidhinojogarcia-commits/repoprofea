@@ -1,8 +1,9 @@
 import { jsPDF } from 'jspdf';
 import type { Person } from '../../types';
+import { OFFICIAL_LOGO_BASE64 } from '../assets/logoData';
 
 // Explicit allowlist: the shareable card never includes the worker's file or QR access token.
-export function generateWorkerCard(person: Person) {
+export function generateWorkerCard(person: Person, qrDataUrl?: string) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [95, 62], compress: true });
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, 95, 62, 'F');
@@ -42,19 +43,31 @@ export function generateWorkerCard(person: Person) {
     doc.text(label, 4, y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(fitLines(value, 66, maxLines, 7), 25, y);
+    doc.text(fitLines(value, qrDataUrl && y >= 29 ? 45 : 66, maxLines, 7), 25, y);
   };
-  const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : '—';
   field('DNI / NIE', person.dni, 28);
   field('CATEGORÍA', person.categoria || 'Peón', 34);
-  field('OBRA', person.obra, 40, 2);
-  field('CONTRATO', `${date(person.periodoInicio)} a ${date(person.periodoFin)}`, 50);
+  // Generic reusable card: no worksite or contract-period details.
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('IDENTIFICACIÓN PERSONAL · CONSULTA EL QR', 4, 45);
+  if (qrDataUrl) {
+    doc.addImage(qrDataUrl, 'PNG', 72, 29, 19, 19);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(4.6);
+    doc.setTextColor(100, 116, 139);
+    doc.text('CONSULTAR FICHA', 81.5, 50, { align: 'center' });
+  }
   doc.setDrawColor(226, 232, 240);
   doc.line(4, 54, 91, 54);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(100, 116, 139);
-  doc.text('Tarjeta personal de identificación PROFEA', 4, 58);
+  const logo = doc.getImageProperties(OFFICIAL_LOGO_BASE64);
+  const logoWidth = Math.min(30, 4.5 * logo.width / logo.height);
+  doc.addImage(OFFICIAL_LOGO_BASE64, 'PNG', 4, 55.5, logoWidth, 4.5);
+  doc.text('Identificación PROFEA', 91, 58, { align: 'right' });
   const name = person.apellidosNombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '') || 'Trabajador';
   return { doc, filename: `CARNE_PROFEA_${name}.pdf` };
 }
@@ -70,15 +83,17 @@ export function downloadWorkerCard(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
-export async function shareWorkerCard(file: File): Promise<'shared' | 'cancelled' | 'downloaded'> {
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'Carnet PROFEA' });
-      return 'shared';
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
-    }
+export async function shareWorkerCard(file: File): Promise<'shared' | 'cancelled' | 'unsupported'> {
+  // Request the operating system's native share sheet with the actual PNG attachment.
+  // No download or browser-specific destination menu should replace this action.
+  if (typeof navigator.share !== 'function' || !navigator.canShare?.({ files: [file] })) {
+    return 'unsupported';
   }
-  downloadWorkerCard(file, file.name);
-  return 'downloaded';
+  try {
+    await navigator.share({ files: [file], title: 'Carnet PROFEA' });
+    return 'shared';
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
+    throw error;
+  }
 }

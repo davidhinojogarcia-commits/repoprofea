@@ -1,3 +1,4 @@
+import WorkforceDocumentsPanel from './WorkforceDocumentsPanel';
 import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { appConfirm } from '../src/lib/appDialog';
@@ -16,6 +17,8 @@ import {
   Search,
   Trash2,
   Printer,
+  FileSignature,
+  LogOut,
 } from "lucide-react";
 import { Person } from "../types";
 import { getDocuments } from "../src/services/databaseService";
@@ -88,7 +91,7 @@ type CoreDocumentationView =
   | "formacion"
   | "maquinaria"
   | "control";
-type DocumentationView = CoreDocumentationView | AdditionalWorksiteDocumentType;
+type DocumentationView = CoreDocumentationView | AdditionalWorksiteDocumentType | "rechazo_voluntario" | "salida_obra";
 
 const WORKSITE_LAST_WORK_KEY = "profea:worksite-doc:last-work";
 const WORKSITE_LAST_VIEW_KEY = "profea:worksite-doc:last-view";
@@ -109,6 +112,7 @@ const DOCUMENTATION_VIEWS: DocumentationView[] = [
   "formacion",
   "maquinaria",
   "control",
+  "rechazo_voluntario", "salida_obra",
   ...ADDITIONAL_DOCUMENTATION_VIEWS,
 ];
 const storedDocumentationView = (): DocumentationView => {
@@ -708,6 +712,8 @@ export const WorksiteDocumentationPortal: React.FC = () => {
     { id: "formacion", label: "Formación e información", mobileLabel: "Formación", description: "Documento preventivo", icon: GraduationCap },
     { id: "maquinaria", label: "Autorización de maquinaria", mobileLabel: "Maquinaria", description: "Equipos por trabajador", icon: Wrench },
     { id: "control", label: "Control horario", mobileLabel: "Control", description: "Activos y prórrogas", icon: Clock },
+    { id: "rechazo_voluntario", label: "Rechazo voluntario", mobileLabel: "Rechazo voluntario", description: "Manifestación de persona contratada y firmas", icon: FileSignature },
+    { id: "salida_obra", label: "Salida de obra", mobileLabel: "Salida de obra", description: "Salida temporal y diligencia de regreso", icon: LogOut },
     ...(Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS) as [AdditionalWorksiteDocumentType, (typeof ADDITIONAL_WORKSITE_DOCUMENTS)[AdditionalWorksiteDocumentType]][]).map(
       ([id, definition], index) => ({
         id,
@@ -847,6 +853,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                       )}
                       <button
                         type="button"
+                        aria-label={item.label}
                         onClick={() => selectDocumentView(item.id)}
                         className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
                           selected
@@ -1434,6 +1441,7 @@ export const WorksiteDocumentationPortal: React.FC = () => {
                 </section>
               )}
 
+              {(activeDocumentView==='rechazo_voluntario'||activeDocumentView==='salida_obra')&&<WorkforceDocumentsPanel key={selectedWork+activeDocumentView} kind={activeDocumentView} work={selectedWork}/>}
               {ADDITIONAL_DOCUMENTATION_VIEWS.includes(activeDocumentView as AdditionalWorksiteDocumentType) && (
                 <AdditionalWorksiteDocumentsWorkspace
                   selectedWork={selectedWork}

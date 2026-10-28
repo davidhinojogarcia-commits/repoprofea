@@ -1,178 +1,75 @@
-import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, ExternalLink, FileText, Loader2, Share2, ShieldCheck, X } from 'lucide-react';
-import type { Person } from '../types';
-import { generateWorkerIDCardPDF } from '../src/lib/exportUtils';
+import { Download, Loader2, ShieldCheck, X } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { OFFICIAL_LOGO_BASE64 } from '../src/assets/logoData';
 import { resolveWorkerQrShare } from '../src/services/workerQrShareService';
 
-interface WorkerQrPortalProps {
-  token: string;
-}
+interface WorkerQrPortalProps { token: string; }
 
-const safeName = (value: unknown) => String(value || 'Trabajador').trim() || 'Trabajador';
+// This PDF is built only from the public verification result. It never combines
+// privileged data with a document that can be downloaded or shared anonymously.
+function makeVerificationPdf(checkedAt: Date): Blob {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  const image = doc.getImageProperties(OFFICIAL_LOGO_BASE64);
+  const width = Math.min(49, 10.5 * image.width / image.height);
+  doc.addImage(OFFICIAL_LOGO_BASE64, 'PNG', 195 - width, 5, width, 10.5);
+  doc.setTextColor(0, 84, 142);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('GESTIONPROFEA · VERIFICACIÓN DE CARNET', 15, 28);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Estado en el momento de la consulta: carnet activo', 15, 43);
+  doc.text(`Fecha de consulta: ${checkedAt.toLocaleString('es-ES')}`, 15, 51);
+  doc.text(doc.splitTextToSize('Esta consulta comprueba el estado del enlace en GestionProfea. No acredita la identidad de la persona portadora ni una contratación vigente.', 180), 15, 63);
+  return doc.output('blob');
+}
 
 export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
   const normalizedToken = useMemo(() => String(token || '').trim(), [token]);
-  const [history, setHistory] = useState<Person[]>([]);
+  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'error'>('loading');
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [pdfUrl, setPdfUrl] = useState('');
-  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
-  const [filename, setFilename] = useState('FICHA_PROFEA.pdf');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     let objectUrl = '';
-
-    const load = async () => {
-      setLoading(true);
-      setError('');
+    setStatus('loading');
+    setPdfUrl('');
+    setCheckedAt(null);
+    void (async () => {
       try {
         const records = await resolveWorkerQrShare(normalizedToken);
         if (!active) return;
-        if (!records.length) {
-          setError('Este código QR no es válido, ha sido revocado o la ficha ya no está disponible.');
-          return;
-        }
-
-        setHistory(records);
-        const worker = records[0];
-        const { doc, filename: generatedFilename } = await generateWorkerIDCardPDF(worker, records, { includeQr: false });
-        if (!active) return;
-
-        const blob = doc.output('blob');
-        objectUrl = URL.createObjectURL(blob);
-        setPdfBlob(blob);
+        if (!records.length) { setStatus('invalid'); return; }
+        const date = new Date();
+        objectUrl = URL.createObjectURL(makeVerificationPdf(date));
+        setCheckedAt(date);
         setPdfUrl(objectUrl);
-        setFilename(generatedFilename);
-        document.title = `Ficha PROFEA · ${safeName(worker.apellidosNombre)}`;
-      } catch (e: any) {
-        if (!active) return;
-        setError(e?.message || 'No se ha podido preparar la ficha del trabajador.');
-      } finally {
-        if (active) setLoading(false);
+        setStatus('valid');
+      } catch {
+        if (active) setStatus('error');
       }
-    };
-
-    void load();
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    })();
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [normalizedToken]);
 
-  const worker = history[0];
-
-  const downloadPdf = () => {
-    if (!pdfUrl) return;
-    const a = document.createElement('a');
-    a.href = pdfUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
-
-  const sharePdf = async () => {
-    if (!pdfBlob || !worker) return;
-    const file = new File([pdfBlob], filename, { type: 'application/pdf' });
-    try {
-      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-        await navigator.share({
-          files: [file],
-          title: `Ficha PROFEA · ${safeName(worker.apellidosNombre)}`,
-          text: 'Ficha del trabajador PROFEA',
-        });
-        return;
-      }
-    } catch (error: any) {
-      if (error?.name === 'AbortError') return;
-      reportOperationalError('No se pudo compartir el PDF desde el navegador:', error, 'warn');
-    }
-    downloadPdf();
-  };
-
-  const closeViewer = () => {
-    if (window.history.length > 1) window.history.back();
-    else window.close();
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-100 px-4 py-8 flex items-center justify-center">
-        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
-          <Loader2 className="mx-auto h-9 w-9 animate-spin text-[#00548E]" />
-          <h1 className="mt-4 text-lg font-black text-slate-900">Preparando ficha PDF</h1>
-          <p className="mt-2 text-sm text-slate-500">Abriendo el expediente asociado al código QR…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!worker || error) {
-    return (
-      <div className="min-h-screen bg-slate-100 px-4 py-8 flex items-center justify-center">
-        <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white p-8 text-center shadow-xl">
-          <ShieldCheck className="mx-auto h-10 w-10 text-amber-500" />
-          <h1 className="mt-4 text-xl font-black text-slate-900">Ficha no disponible</h1>
-          <p className="mt-3 text-sm text-slate-600">{error || 'No se ha encontrado la ficha.'}</p>
-          <button type="button" onClick={closeViewer} className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">
-            <X className="h-4 w-4" /> Cerrar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00548E]">Ficha QR PROFEA · solo lectura</div>
-            <div className="truncate text-sm font-black text-slate-900">{safeName(worker.apellidosNombre)}</div>
-          </div>
-          <button type="button" onClick={sharePdf} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] px-3 py-2.5 text-xs font-black text-white shadow-sm">
-            <Share2 className="h-4 w-4" /> Compartir
-          </button>
-          <button type="button" onClick={closeViewer} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600" aria-label="Cerrar">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-5 sm:py-6">
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-900">
-          <div className="flex items-start gap-2">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>Este QR abre únicamente esta ficha. No inicia sesión ni permite navegar por la aplicación.</span>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <button type="button" onClick={sharePdf} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-black text-white shadow-sm">
-            <Share2 className="h-4 w-4" /> Compartir PDF
-          </button>
-          <button type="button" onClick={downloadPdf} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
-            <Download className="h-4 w-4" /> Guardar PDF
-          </button>
-          <a href={pdfUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
-            <ExternalLink className="h-4 w-4" /> Abrir PDF
-          </a>
-        </div>
-
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
-          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 text-sm font-black text-slate-800">
-            <FileText className="h-4 w-4 text-[#00548E]" />
-            Expediente PDF · {history.length} registro{history.length === 1 ? '' : 's'} histórico{history.length === 1 ? '' : 's'}
-          </div>
-          <iframe
-            title={`Ficha PROFEA de ${safeName(worker.apellidosNombre)}`}
-            src={pdfUrl}
-            className="h-[calc(100vh-230px)] min-h-[540px] w-full bg-slate-100"
-          />
-        </section>
-      </main>
-    </div>
-  );
+  const closeViewer = () => { if (window.history.length > 1) window.history.back(); else window.close(); };
+  return <main className="min-h-screen bg-slate-100 px-4 py-8 flex items-center justify-center text-slate-900">
+    <section className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8">
+      {status === 'loading' ? <Loader2 className="h-9 w-9 animate-spin text-[#00548E]" /> : <ShieldCheck className="h-9 w-9 text-[#00548E]" />}
+      <h1 className="mt-4 text-xl font-black">Verificación de carnet PROFEA</h1>
+      {status === 'loading' && <p role="status" className="mt-3">Consultando el estado del carnet…</p>}
+      {status === 'invalid' && <p role="alert" className="mt-3">El código no es válido, ha sido revocado o ya no está disponible.</p>}
+      {status === 'error' && <p role="alert" className="mt-3">No se ha podido consultar el carnet. Comprueba la conexión y vuelve a intentarlo.</p>}
+      {status === 'valid' && <>
+        <p className="mt-3 font-bold text-emerald-700">Carnet activo en el momento de la consulta</p>
+        <p className="mt-2 text-sm text-slate-600">Consulta realizada: {checkedAt?.toLocaleString('es-ES')}</p>
+        <p className="mt-3 text-sm text-slate-600">Esta comprobación no acredita la identidad de la persona portadora ni una contratación vigente. Los datos laborales y preventivos requieren acceso autorizado.</p>
+        <a href={pdfUrl} download="VERIFICACION_PROFEA.pdf" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white"><Download className="h-4 w-4" /> Descargar PDF</a>
+      </>}
+      <button type="button" onClick={closeViewer} className="mt-5 flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2"><X className="h-4 w-4" /> Cerrar</button>
+    </section>
+  </main>;
 };

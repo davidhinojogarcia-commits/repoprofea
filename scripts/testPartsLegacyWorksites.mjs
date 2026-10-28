@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
 import {
   partsTestHarness,
   id,
   token,
-  otherToken,
-  wrongWorkToken,
   content,
   hash,
-  now,
-  day,
 } from "./partsTestHarness.mjs";
 const env = await partsTestHarness();
 const { invoke, db } = env;
@@ -66,6 +62,7 @@ const sign = (p) => ({
 try {
   // Configuration creates legacy works without codigo. Their UUID and owner, not
   // the presence of a second human label, establish the authorized identity.
+  let sample = 200;
   for (const legacyCode of ["", null, "   "]) {
     await db.query("update obras set codigo=$1 where id=$2", [legacyCode, id(20)]);
     const legacy = await call({ action: "context", token });
@@ -73,12 +70,19 @@ try {
     assert.equal(legacy.works[0].worksite.code, "");
     assert.equal(legacy.works[0].worksite.name, "Obra A");
     assert.deepEqual(legacy.workers.map((w) => w.id), [100, 101]);
+    const draft = await create(sample++);
+    assert.equal(draft.worksite.id, id(20));
+    assert.equal(draft.ownerId, id(1));
+    assert.equal(draft.worksite.code, "");
+    const signed = await command(draft, "submit", sign(draft));
+    assert.ok(signed.foremanSignature);
+    const file = (await call({ action: "pdf", token, id: signed.id })).file;
+    const bytes = Buffer.from(file.base64, "base64");
+    assert.equal(hash(bytes), file.sha256);
+    assert.ok((await PDFDocument.load(bytes)).getPageCount() > 0);
+    const saved = await db.query("select codigo from obras where id=$1", [id(20)]);
+    assert.equal(saved.rows[0].codigo, legacyCode, "Reading/signing must not populate codigo");
   }
-  const legacyDraft = await create(94);
-  assert.equal(legacyDraft.worksite.id, id(20));
-  assert.equal(legacyDraft.worksite.code, "");
-  const legacySigned = await command(legacyDraft, "submit", sign(legacyDraft));
-  assert.ok(legacySigned.foremanSignature, "Legacy work can be declared with a fresh signature");
   await db.query("update obras set codigo=$1 where id=$2", ["11002GR", id(20)]);
   // A duplicate within the same owner remains unsafe; a homonymous work owned
   // by another supervisor (fixture id 22) must never create ambiguity or leak.
@@ -86,5 +90,15 @@ try {
   assert.equal((await invoke({ action: "context", token })).status, 409);
   assert.equal((await invoke({ action: "create", token, id: id(95), operationId: randomUUID(), expected: 0, workerId: 100, kind: "service", content })).status, 409);
   await db.query("delete from obras where id=$1", [id(23)]);
+  // Cross-field collisions also remain ambiguous, regardless of code presence.
+  await db.query("insert into obras values($1,$2,'Obra distinta','Obra A','Prueba')", [id(24), id(1)]);
+  assert.equal((await invoke({ action: "context", token })).status, 409);
+  assert.equal((await invoke({ action: "create", token, id: id(96), operationId: randomUUID(), expected: 0, workerId: 100, kind: "service", content })).status, 409);
+  await db.query("delete from obras where id=$1", [id(24)]);
+  // UUID resolution survives renamed labels and stays scoped to the owner.
+  await db.query("update foreman_portal_access set obra=$1 where id=$2", [id(20), id(10)]);
+  assert.equal((await call({ action: "context", token })).works[0].worksite.id, id(20));
+  await db.query("update foreman_portal_access set obra=$1 where id=$2", [id(22), id(10)]);
+  assert.equal((await invoke({ action: "context", token })).status, 409);
   console.log("PASS legacy works: missing/blank/null code, context, stable UUID, signed declaration/PDF, ambiguity rejection and owner isolation");
 } finally { await env.close(); }

@@ -31,6 +31,8 @@ interface PersonListProps {
   onEmail: (dataToExport: Person[]) => void;
   onImport: (file: File) => void;
   onGenerateIDCard: (person: Person) => void;
+  onScanWorkerCard?: () => void;
+  onPairWorkerCard?: () => void;
   onExportHistoryPDF: (person: Person) => void;
   savedObras: string[];
   searchTerm: string;
@@ -91,6 +93,8 @@ export const PersonList: React.FC<PersonListProps> = ({
   onEmail,
   onImport,
   onGenerateIDCard,
+  onScanWorkerCard,
+  onPairWorkerCard,
   onExportHistoryPDF,
   savedObras,
   searchTerm,
@@ -573,6 +577,8 @@ export const PersonList: React.FC<PersonListProps> = ({
         </h2>
         <div className="flex flex-col gap-2 w-full md:w-auto">
           <div className="directorio-primary-actions flex flex-wrap gap-2 justify-end items-center">
+               {onPairWorkerCard && <button type="button" onClick={onPairWorkerCard} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-bold">Vincular cámara del móvil</button>}
+               {onScanWorkerCard && <button type="button" onClick={onScanWorkerCard} className="min-h-11 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-bold text-white">Escanear carnet con este dispositivo</button>}
                <input 
                  type="file" 
                  ref={fileInputRef} 

@@ -74,45 +74,65 @@ const one = async (
   filters: Record<string, string | number>,
   select = "*",
 ) => (await db(table + "?" + params({ ...filters, select, limit: 1 })))[0];
-async function worksiteSnapshot(db: DB, owner: string, work: string) {
-  const [byName, byCode] = await Promise.all([
-    db(
+const embeddedWorksiteCode = (name: string) =>
+  name.trim().match(/^(\d{5}\s+(?:GR|EE))(?=\s|$)/i)?.[1] || "";
+export async function worksiteSnapshot(db: DB, owner: string, work: string) {
+  // Foreman access stores the obra label, which can differ in casing or
+  // surrounding whitespace from the canonical worksites configuration.
+  // Never select an arbitrary worksite when more than one could match.
+  const key = work.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
+  if (!key) throw partFail("El acceso no tiene una obra asignada.", 409);
+  const matches = new Map<string, any>();
+  const legacyMatches = new Map<string, any>();
+  // Limit the scan and reject ambiguous/incomplete results rather than
+  // silently binding a personnel record to the wrong worksite.
+  for (let offset = 0; offset < 2000; offset += 250) {
+    const rows = await db(
       "obras?" +
         params({
           owner_id: "eq." + owner,
-          nombre: "eq." + work,
           select: "id,codigo,nombre,municipio",
-          limit: 2,
+          order: "id",
+          offset,
+          limit: 250,
         }),
-    ),
-    db(
-      "obras?" +
-        params({
-          owner_id: "eq." + owner,
-          codigo: "eq." + work,
-          select: "id,codigo,nombre,municipio",
-          limit: 2,
-        }),
-    ),
-  ]);
-  const rows = [
-    ...new Map([...byName, ...byCode].map((r) => [r.id, r])).values(),
-  ];
-  if (rows.length !== 1 || !rows[0].nombre?.trim())
+    );
+    for (const row of rows) {
+      const keys = [row.id, row.nombre, row.codigo]
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => v.trim().replace(/\s+/g, " ").toLocaleLowerCase("es"));
+      if (keys.includes(key)) matches.set(row.id, row);
+      const code = embeddedWorksiteCode(row.nombre || "");
+      if (code && row.nombre.trim().slice(code.length).trim()
+        .replace(/\s+/g, " ").toLocaleLowerCase("es") === key)
+        legacyMatches.set(row.id, row);
+    }
+    if (rows.length < 250) break;
+    if (offset === 1750)
+      throw partFail("Demasiadas obras para verificar la asignación.", 409);
+  }
+  const rows = [...(matches.size ? matches : legacyMatches).values()];
+  if (rows.length !== 1)
     throw partFail(
-      "No se puede identificar una única obra autorizada. Revisa su nombre en Configuración.",
+      "No se puede identificar de forma única la obra del encargado. Revisa su asignación en Configuración.",
+      409,
+    );
+  // UUID and owner establish identity; a separate code is optional.
+  // Preserve existing embedded references without inventing or persisting codes.
+  const code = rows[0].codigo?.trim() || embeddedWorksiteCode(rows[0].nombre || "");
+  if (!rows[0].nombre?.trim())
+    throw partFail(
+      "La obra identificada no tiene nombre en Configuración.",
       409,
     );
   return {
     id: rows[0].id,
-    // Legacy works store their reference in nombre; identity remains the owner-scoped UUID.
-    // Do not invent or persist an official code when it has never been configured.
-    code: rows[0].codigo?.trim() || "",
+    code,
     name: rows[0].nombre,
     municipality: rows[0].municipio || "",
   };
 }
-async function assetInput(
+export async function assetInput(
   input: any,
   purpose: "attachment" | "signature",
   id: string,
@@ -1088,7 +1108,7 @@ export function createPartsHandler(deps: Dependencies) {
     }
   };
 }
-async function partsDatabase(path: string, body?: any, method?: string) {
+export async function partsDatabase(path: string, body?: any, method?: string) {
   const response = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
     method: method || (body ? "POST" : "GET"),
     headers: {

@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/workforce-documents",
+      "destination": "/api/gmail?action=workforce-documents"
+    },
+    {
       "source": "/api/parts",
       "destination": "/api/gmail?action=parts"
     },
@@ -28,6 +32,7 @@
   "git": {
     "deploymentEnabled": {
       "fix/parts-existing-worksites-20261027": false,
+      "codex/carnet-qr-privacidad": false,
       "fix/foreman-signature-default-panel": false,
       "feat/independent-foreman-signatures": false,
       "local/fix-mandatory-persistence-20261009": false,
