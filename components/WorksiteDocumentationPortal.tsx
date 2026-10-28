@@ -8,6 +8,7 @@ import {
   ClipboardPenLine,
   FileDown,
   FileText,
+  FolderOpen,
   HardHat,
   Save,
   Users,
@@ -306,7 +307,7 @@ export const WorksiteDocumentationPortal: React.FC<{
 
   const selectDocumentView = (view: DocumentationView) => {
     setActiveDocumentView(view);
-    if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+    if (typeof window === "undefined" || window.innerWidth >= 768) return;
     window.requestAnimationFrame(() => {
       document.getElementById("worksite-doc-content")?.scrollIntoView({
         behavior: "smooth",
@@ -752,7 +753,7 @@ export const WorksiteDocumentationPortal: React.FC<{
     <div className="w-full text-slate-900 dark:text-slate-100">
       <div className="pb-6">
         <div className="max-w-[1580px] mx-auto space-y-3 sm:space-y-6">
-          <div role="navigation" aria-label="Documentos de obra" className="sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
+          <div role="navigation" aria-label="Documentos de obra" className="md:hidden sticky top-0 z-30 -mx-2 border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
             <div className="px-3 pt-3 pb-2 lg:hidden">
               <label className="block text-[10px] uppercase tracking-wider font-black text-slate-500 dark:text-slate-400">
                 Obra actual
@@ -802,10 +803,10 @@ export const WorksiteDocumentationPortal: React.FC<{
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-3 lg:gap-5 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] gap-3 lg:gap-5 items-start">
             <aside
               data-worksite-document-library="1"
-              className="hidden lg:block rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-fit lg:sticky lg:top-5"
+              className="hidden md:block rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-fit md:sticky md:top-5"
             >
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-black text-sm uppercase tracking-wider text-slate-600 dark:text-slate-300">
@@ -844,6 +845,66 @@ export const WorksiteDocumentationPortal: React.FC<{
                 )}
               </div>
 
+              <div className="my-4 border-t border-slate-200 dark:border-slate-800" />
+
+              <div className="mb-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#00548E] dark:text-blue-400" />
+                  <h2 className="font-black text-sm uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                    Biblioteca de documentación
+                  </h2>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Selecciona un apartado para trabajar en el panel derecho.
+                </p>
+              </div>
+
+              <nav aria-label="Documentos de obra" className="space-y-1.5">
+                {libraryItems.map((item) => {
+                  const Icon = item.icon;
+                  const selected = activeDocumentView === item.id;
+                  return (
+                    <React.Fragment key={item.id}>
+                      {item.section === "otros" && (
+                        <div className="pt-3 pb-1 px-1">
+                          <div className="border-t border-slate-200 dark:border-slate-800 mb-3" />
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            Otros documentos
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        aria-current={selected?"page":undefined}
+                        onClick={() => selectDocumentView(item.id)}
+                        className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
+                          item.tone==='red'
+                            ? selected ? "border-red-700 bg-red-700 text-white shadow-sm" : "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+                            : selected ? "border-[#00548E] bg-[#00548E] text-white shadow-sm" : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700"
+                        }`}
+                      >
+                        <Icon
+                          className={`w-4 h-4 shrink-0 ${
+                            selected ? "text-white" : item.tone==='red' ? "text-red-700 dark:text-red-200" : "text-slate-500 dark:text-slate-400"
+                          }`}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-xs font-black">{item.label}{item.id==='partes_avisos'&&partsUnread>0&&<span aria-label={`${partsUnread} avisos pendientes`} className="ml-2 rounded-full bg-red-700 px-2 py-0.5 text-xs text-white ring-1 ring-white">{partsUnread>99?'99+':partsUnread}</span>}</span>
+                          <span
+                            className={`block mt-0.5 text-[10px] truncate ${
+                              selected ? "text-white/80" : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >
+                            {item.description}
+                          </span>
+                        </span>
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+              </nav>
             </aside>
 
             <main id="worksite-doc-content" className="space-y-3 sm:space-y-5 min-w-0 scroll-mt-40">

@@ -435,6 +435,11 @@ try {
     await integratedVisit.waitFor();
     assert.equal(await integratedVisit.getAttribute("data-worksite"),id(20),"Visit receives the authorised worksite UUID");
     const parts=navigation.getByRole("button",{name:"Partes y avisos",exact:true});
+    const actaBox=await actas.boundingBox();
+    const partsBox=await parts.boundingBox();
+    if(width<768)assert.ok(Math.abs(actaBox.y-partsBox.y)<2,"Mobile keeps the horizontal ribbon");
+    else assert.ok(partsBox.y>actaBox.y,"Tablet and desktop keep the vertical document library");
+    assert.equal(await navigation.evaluate(element=>!!element.closest('aside')),width>=768,"Correct navigation layout for the device");
     await parts.click();
     const integratedParts=page.getByRole("region",{name:"Panel de partes integrado",exact:true});
     await integratedParts.waitFor();
