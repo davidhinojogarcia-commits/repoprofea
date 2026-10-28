@@ -1409,23 +1409,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         {operationalDocumentsFor('maquinaria').map(doc=>renderSigningDocument(doc))}
       </section>}
 
-      {tab==='documents'&&<div className="space-y-4">
-        <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
+      {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
+        <div>
           <h2 className="text-lg font-black">Documentos</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona el documento que necesitas preparar o consultar.</p>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2" aria-label="Tipos de documentos">
-            {([
-              {id:'other',label:'Otros documentos',Icon:FileSignature},
-              {id:'rechazo_voluntario',label:'Rechazo voluntario',Icon:FileSignature},
-              {id:'salida_obra',label:'Salida de obra',Icon:LogOut},
-            ] as const).map(({id,label,Icon})=><button key={id} type="button" aria-pressed={documentView===id} onClick={()=>setDocumentView(id)} className={`min-h-[56px] flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black touch-manipulation ${documentView===id?'bg-[#00548E] border-[#00548E] text-white':'bg-white text-slate-700'}`}><Icon className="h-5 w-5 shrink-0"/><span>{label}</span></button>)}
-          </div>
-        </div>
-        {documentView!=='other'&&<WorkforceDocumentsPanel key={documentView} kind={documentView} token={token}/>}
-        {documentView==='other'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
-        <div>
-          <h2 className="text-lg font-black">Otros documentos</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Prepara los modelos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario están disponibles en la cinta superior.</p>
         </div>
 
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -1438,6 +1425,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             type="button"
             onClick={()=>{
               setCorrectionDocumentId(String(d.id));
+              setDocumentView('other');
               setDocType(d.documentType as AdditionalWorksiteDocumentType);
               setWorkerId(Number(d.workerId||'')||'');
               setDate(String(d.workDate).slice(0,10));
@@ -1452,16 +1440,25 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           </button>)}
         </div>}
 
-        <div className="border-t pt-4">
-          <div className="text-base font-black">Otros documentos de obra</div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Selecciona primero el periodo para trabajar únicamente con el personal correspondiente.</p>
-        </div>
-        {renderPeriodSelector()}
+        {documentView==='other'&&renderPeriodSelector()}
         <label className="block text-sm font-black">Documento
-          <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});setCorrectionDocumentId('');}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+          <select value={documentView==='other'?docType:documentView} onChange={e=>{
+            const value=e.target.value;
+            if(value==='rechazo_voluntario'||value==='salida_obra'){
+              setDocumentView(value);
+            }else{
+              setDocumentView('other');
+              setDocType(value as AdditionalWorksiteDocumentType);
+              setAnswers({});setDocSignatures({});setCorrectionDocumentId('');
+            }
+          }} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
+            <option value="rechazo_voluntario">Rechazo voluntario</option>
+            <option value="salida_obra">Salida de obra</option>
           </select>
         </label>
+        {documentView!=='other'&&<WorkforceDocumentsPanel key={documentView} kind={documentView} token={token}/>}
+        {documentView==='other'&&<>
         <label className="block text-sm font-black">Trabajador
           <select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             <option value="">Seleccionar trabajador…</option>
@@ -1513,8 +1510,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         >
           {saving?'Guardando…':'Finalizar y enviar al supervisor'}
         </button>
+        </>}
       </section>}
-      </div>}
 
       {tab==='completed'&&<section className="space-y-3">
         <button onClick={()=>void refresh()} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-black touch-manipulation"><RefreshCw className="w-4 h-4"/>Actualizar</button>
