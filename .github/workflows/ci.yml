@@ -33,6 +33,8 @@ jobs:
             echo 'Business data must not use localStorage.'
             exit 1
           fi
+      - name: Validate voluntary rejection and worksite exits
+        run: npm run test:workforce-documents
       - name: Validate prevention persistence and permissions
         run: npm run test:prevention
       - name: Validate Tutor PROFEA local agent policy
@@ -99,6 +101,8 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Voluntary rejection and worksite exits in both portals (Chromium + WebKit)
+        run: npm run test:workforce-documents-browser
       - name: Partes y avisos transactions, permissions, PDFs and browser workflows
         run: |
           npm run test:parts

@@ -1,3 +1,4 @@
+import {workforceDocumentsHandler} from './src/server/workforceDocumentsHandler';
 import { reportOperationalError } from './src/lib/operationalLog.js';
 import { foremanPushHandler } from './src/server/foremanPushHandler';
 import {partsHandler} from './src/server/partsHandler';
@@ -255,6 +256,7 @@ async function startServer() {
   // It intentionally does not call Gemini or any external language-model provider.
   app.all("/api/foreman-push", foremanPushHandler);
   app.all("/api/parts", partsHandler);
+  app.all("/api/workforce-documents", workforceDocumentsHandler);
   app.all("/api/visit-minutes", visitMinutesHandler);
   app.post("/api/profea-tutor", profeaTutorHandler);
 

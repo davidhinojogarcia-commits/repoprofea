@@ -26,7 +26,11 @@ export const content = {
   attachments: [],
 };
 export const hash = (v) => createHash("sha256").update(v).digest("hex");
-export async function partsTestHarness() {
+export async function partsTestHarness(options = {}) {
+  const now = options.now || new Date().toISOString();
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Madrid",
+  }).format(new Date(now));
   const db = new PGlite();
   await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema extensions;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
@@ -113,6 +117,40 @@ export async function partsTestHarness() {
     "insert into parts_policies(owner_id,worksite_id,policy) values($1,$2,$3)",
     [id(1), id(20), JSON.stringify(approved)],
   );
+  if (options.workforce) {
+    await db.exec(
+      "alter table obras add empresa text default 'Entidad sintética',add cif text default 'X0000000T',add recurso_preventivo text default 'Encargado de prueba';alter table trabajadores add obra_id uuid,add dni text default '00000000T',add num_oferta text default 'SAE-TEST';",
+    );
+    await db.exec(
+      await fs.readFile(
+        new URL(
+          "../supabase/migrations/20261028063849_voluntary_and_worksite_exit.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+  }
+  if (options.workforce)
+    await db.exec(
+      await fs.readFile(
+        new URL(
+          "../supabase/migrations/20261028064248_workforce_documents_retained_worker_history.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+  if (options.workforce)
+    await db.exec(
+      await fs.readFile(
+        new URL(
+          "../supabase/migrations/20261028064947_workforce_documents_legacy_worksite_labels.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
   const out = new URL(
     "./.parts-handler-" + randomUUID() + ".mjs",
     import.meta.url,
@@ -120,6 +158,9 @@ export async function partsTestHarness() {
   await build({
     stdin: {
       contents:
+        (options.workforce
+          ? "export {createWorkforceDocumentsHandler} from './src/server/workforceDocumentsHandler';export * from './src/lib/workforceDocuments/domain';export {workforcePdf}from'./src/lib/workforceDocuments/pdf';"
+          : "") +
         "export {createPartsHandler,partContentHash,madridDayStart} from './src/server/partsHandler';export * from './src/lib/parts/domain';export {generatePartPdf}from'./src/lib/parts/pdf';export{dispatchPartsPush}from'./src/server/partsPush';",
       resolveDir: new URL("../", import.meta.url).pathname,
     },
@@ -173,7 +214,10 @@ export async function partsTestHarness() {
           args,
         )
       ).rows[0].result;
-      if (loseNext && table === "rpc/parts_commit") {
+      if (
+        loseNext &&
+        ["rpc/parts_commit", "rpc/workforce_document_commit"].includes(table)
+      ) {
         loseNext = false;
         throw Object.assign(Error("ack lost"), { status: 503 });
       }
@@ -209,7 +253,26 @@ export async function partsTestHarness() {
                 .join(" " + group[1] + " ") +
               ")"
             );
-          const match = item.match(/^(.+?)\.(eq|lt|gt|gte|lte)\.(.+)$/);
+          const match = item.match(/^(.+?)\.(eq|lt|gt|gte|lte|is|in)\.(.+)$/);
+          if (match?.[2] === "is" && match[3] === "null")
+            return field(match[1]) + " is null";
+          if (match?.[2] === "in") {
+            const items = match[3]
+              .slice(1, -1)
+              .split(",")
+              .map((x) => x.replace(/^"|"$/g, ""));
+            return (
+              field(match[1]) +
+              " in(" +
+              items
+                .map((x) => {
+                  args.push(x);
+                  return "$" + args.length;
+                })
+                .join(",") +
+              ")"
+            );
+          }
           if (!match) throw Error("Invalid fixture expression");
           args.push(match[3]);
           return (
@@ -243,12 +306,26 @@ export async function partsTestHarness() {
         conditions.push(field(k) + " is null");
         continue;
       }
-      if (!["eq", "neq", "gte", "lte", "gt", "lt"].includes(op))
+      if (!["eq", "neq", "gte", "lte", "gt", "lt", "ilike"].includes(op))
         throw Error("Unsupported op " + op);
-      args.push(k === "active" ? value === "true" : value);
+      args.push(
+        k === "active"
+          ? value === "true"
+          : op === "ilike"
+            ? value.replaceAll("*", "%")
+            : value,
+      );
       conditions.push(
         field(k) +
-          { eq: "=", neq: "<>", gte: ">=", lte: "<=", gt: ">", lt: "<" }[op] +
+          {
+            eq: "=",
+            neq: "<>",
+            gte: ">=",
+            lte: "<=",
+            gt: ">",
+            lt: "<",
+            ilike: " ilike ",
+          }[op] +
           "$" +
           args.length,
       );
@@ -335,7 +412,10 @@ export async function partsTestHarness() {
     ).rows;
   };
   const database = async (...args) => {
-    if (args[0] === "rpc/parts_commit" && beforeCommit) {
+    if (
+      ["rpc/parts_commit", "rpc/workforce_document_commit"].includes(args[0]) &&
+      beforeCommit
+    ) {
       const hook = beforeCommit;
       beforeCommit = null;
       await hook();
@@ -352,7 +432,11 @@ export async function partsTestHarness() {
     queue = promise.catch(() => {});
     return promise;
   };
-  const handler = module.createPartsHandler({
+  const handler = (
+    options.workforce
+      ? module.createWorkforceDocumentsHandler
+      : module.createPartsHandler
+  )({
     db: database,
     authenticate: async (req) => {
       const user = req.headers.authorization?.match(/^Bearer user-(\d)$/)?.[1];
@@ -360,7 +444,7 @@ export async function partsTestHarness() {
         throw Object.assign(Error("Sesión necesaria"), { status: 401 });
       return { id: id(Number(user)), email: "test@example.test" };
     },
-    now: () => now,
+    now: () => options.now || now,
     configured: () => true,
     onError: (e) => errors.push(e.message),
   });

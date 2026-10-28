@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/workforce-documents",
+      "destination": "/api/gmail?action=workforce-documents"
+    },
+    {
       "source": "/api/parts",
       "destination": "/api/gmail?action=parts"
     },
