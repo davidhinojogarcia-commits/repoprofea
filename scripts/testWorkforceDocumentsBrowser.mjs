@@ -168,6 +168,13 @@ async function draw(page) {
     await page.mouse.move(b.x + 25 + i * 10, b.y + 50 + (i % 2 ? 15 : -15));
   await page.mouse.up();
 }
+async function openDocuments(page) {
+  await page.getByRole("button", { name: "Documentos", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0, "Rejection is inside Documents");
+  assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0, "Departure is inside Documents");
+  assert.equal(await page.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(), 1, "Visit minutes has a navigation icon");
+  await page.getByRole("button", { name: "Documentos", exact: true }).click();
+}
 async function signed(page, kind) {
   await page
     .getByRole("button", {
@@ -337,6 +344,7 @@ try {
     page.setDefaultTimeout(20000);
     await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
     await page.goto(base);
+    await openDocuments(page);
     await page
       .getByRole("button", { name: "Rechazo voluntario", exact: true })
       .waitFor();
@@ -366,6 +374,7 @@ try {
       .waitFor();
     await page.waitForLoadState("networkidle");
     await page.reload();
+    await openDocuments(page);
     await page
       .getByRole("button", { name: "Salida de obra", exact: true })
       .click();
@@ -431,6 +440,7 @@ try {
     );
     await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
     await page.goto(base);
+    await openDocuments(page);
     await signed(page, "rechazo_voluntario");
     await page.waitForLoadState("networkidle");
     assert.deepEqual(errors, []);
@@ -443,6 +453,7 @@ try {
   lastPage = page;
   await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
   await page.goto(base);
+  await openDocuments(page);
   await page
     .getByRole("button", { name: "Salida de obra", exact: true })
     .click();
@@ -460,6 +471,7 @@ try {
   await page.getByRole("alert").waitFor();
   lostSave = false;
   await page.reload();
+  await openDocuments(page);
   await page
     .getByRole("button", { name: "Salida de obra", exact: true })
     .click();
