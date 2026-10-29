@@ -3,7 +3,7 @@ import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import ModalPortal from './ModalPortal';
 import { Person } from '../types';
-import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
+import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone, ScanLine } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleCalendarModal } from './GoogleCalendarModal';
@@ -13,6 +13,7 @@ import { PersonTable } from './PersonTable';
 import { CompactPersonCard } from './CompactPersonCard';
 import { BulkShareButton } from './BulkShareButton';
 import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
+import { directoryContractYear, matchesDirectoryTraining, type DirectoryTrainingFilter } from '../src/lib/directoryTrainingFilter';
 
 interface PersonListProps {
   people: Person[];
@@ -111,6 +112,8 @@ export const PersonList: React.FC<PersonListProps> = ({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showOnlyRepeaters, setShowOnlyRepeaters] = useState(false);
   const [showOnlyNoAptos, setShowOnlyNoAptos] = useState(false);
+  const [trainingFilter, setTrainingFilter] = useState<DirectoryTrainingFilter>('all');
+  const [contractYearFilter, setContractYearFilter] = useState('all');
   const [showImportModal, setShowImportModal] = useState(false);
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [viewLayout, setViewLayout] = useState<'table' | 'compact' | 'cards'>(() => {
@@ -352,6 +355,10 @@ export const PersonList: React.FC<PersonListProps> = ({
   };
 
   const uniqueQuincenas = useMemo(() => Array.from(new Set((people || []).map(p => p.quincena))).sort(), [people]);
+  const contractYears = useMemo(() => Array.from(new Set([
+    String(new Date().getFullYear()),
+    ...people.map(directoryContractYear).filter((year): year is string => year !== null),
+  ])).sort((a, b) => Number(b) - Number(a)), [people]);
 
   const sameDniWorkersMap = useMemo(() => {
     const map = new Map<string, Person[]>();
@@ -414,9 +421,9 @@ export const PersonList: React.FC<PersonListProps> = ({
       const matchesRepeater = !showOnlyRepeaters || isRepeaterWorker;
       const matchesNoApto = !showOnlyNoAptos || person.reconocimientoEstado === 'No Apto';
       
-      return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesNoApto;
+      return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesNoApto && matchesDirectoryTraining(person, trainingFilter, contractYearFilter);
     });
-  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos]);
+  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos, trainingFilter, contractYearFilter]);
 
   const isSelectionActive = selectedIds.length > 0;
   const peopleToExport = useMemo(
@@ -468,6 +475,13 @@ export const PersonList: React.FC<PersonListProps> = ({
     }
   };
   
+  const scanActions = (onScanWorkerCard || onPairWorkerCard) && (
+    <div role="group" aria-label="Lectura de carnet" className="flex flex-wrap items-center gap-2">
+      {onScanWorkerCard && <button type="button" onClick={onScanWorkerCard} className="min-h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-bold text-white"><ScanLine className="h-5 w-5 shrink-0" />Escanear carnet con este dispositivo</button>}
+      {onPairWorkerCard && <button type="button" onClick={onPairWorkerCard} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-bold">Vincular cámara del móvil</button>}
+    </div>
+  );
+
   if (people.length === 0) {
     return (
       <div className="ui-surface p-8 h-full flex flex-col items-center justify-center text-center text-slate-800 dark:text-slate-100">
@@ -485,6 +499,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-md">
           Complete el formulario para agregar registros o utilice la importación para cargar un archivo con listado de trabajadores.
         </p>
+        <div className="mt-4">{scanActions}</div>
 
         <AnimatePresence>
           {showImportModal && (
@@ -577,8 +592,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         </h2>
         <div className="flex flex-col gap-2 w-full md:w-auto">
           <div className="directorio-primary-actions flex flex-wrap gap-2 justify-end items-center">
-               {onPairWorkerCard && <button type="button" onClick={onPairWorkerCard} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-bold">Vincular cámara del móvil</button>}
-               {onScanWorkerCard && <button type="button" onClick={onScanWorkerCard} className="min-h-11 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-bold text-white">Escanear carnet con este dispositivo</button>}
                <input 
                  type="file" 
                  ref={fileInputRef} 
@@ -666,7 +679,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       </div>
 
-      <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col xl:flex-row items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
+      <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
         <div className="relative flex-1 flex items-center min-h-[52px]">
           <div className="pl-4 pr-2 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-slate-400 dark:text-slate-500" />
@@ -683,7 +696,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         <div className="hidden xl:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
         <div className="block xl:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
 
-        <div className="flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap items-stretch p-1.5 gap-1.5 xl:w-auto min-w-0">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch p-1.5 gap-1.5 min-w-0">
           <MultiSearchableDropdown
             options={savedObras}
             selectedValues={selectedObraFilter}
@@ -708,6 +721,22 @@ export const PersonList: React.FC<PersonListProps> = ({
           />
           <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
           <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+          <label className="flex flex-col justify-center gap-1 px-3 py-1 text-xs font-bold w-full sm:w-44">
+            Año de contratación
+            <select aria-label="Año de contratación" value={contractYearFilter} onChange={event => { setContractYearFilter(event.target.value); setSelectedIds([]); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
+              <option value="all">Todos los años</option>
+              {contractYears.map(year => <option key={year} value={year}>{year}</option>)}
+              <option value="unknown">Sin año registrado</option>
+            </select>
+          </label>
+          <label className="flex flex-col justify-center gap-1 px-3 py-1 text-xs font-bold w-full sm:w-72">
+            Formación
+            <select aria-label="Formación" value={trainingFilter} onChange={event => { setTrainingFilter(event.target.value as DirectoryTrainingFilter); setSelectedIds([]); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
+              <option value="all">Todos los estados</option>
+              <option value="trained">Con formación</option>
+              <option value="pending">Sin formación / pendiente</option>
+            </select>
+          </label>
           <button
             onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
             className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer whitespace-nowrap ${
@@ -737,6 +766,11 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       </div>
 
+      {(trainingFilter !== 'all' || contractYearFilter !== 'all') && <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span role="status">Resultados: {filteredPeople.length} · Formación por año de contratación.</span>
+        <button type="button" onClick={() => { setTrainingFilter('all'); setContractYearFilter('all'); setSelectedIds([]); }} className="min-h-11 rounded-xl border px-3 py-2 font-bold">Limpiar filtros de formación</button>
+      </div>}
+
       {noAptosCount > 0 && (
         <div className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
           <div className="flex items-center gap-2.5">
@@ -764,10 +798,11 @@ export const PersonList: React.FC<PersonListProps> = ({
         </div>
       )}
 
+      {filteredPeople.length === 0 && <div className="mb-4">{scanActions}</div>}
       {filteredPeople.length === 0 ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400 bg-slate-100/30 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
            <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-           <p className="text-sm font-medium">No se encontraron resultados para "{searchTerm}"</p>
+           <p className="text-sm font-medium">No se encontraron trabajadores con los filtros seleccionados{searchTerm ? ` para "${searchTerm}"` : ''}.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -896,6 +931,7 @@ export const PersonList: React.FC<PersonListProps> = ({
             )}
           </div>
 
+          {scanActions}
           {viewLayout === 'table' ? (
             <PersonTable
               people={filteredPeople}

@@ -31,6 +31,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "fix/worker-qr-camera-decoding-20261028": false,
       "fix/foreman-workforce-document-dropdown-20261028": false,
       "fix/foreman-parts-ribbon-red-20261028": false,
       "fix/foreman-documents-navigation-20261028": false,
