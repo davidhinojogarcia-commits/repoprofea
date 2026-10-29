@@ -17,6 +17,8 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
+      - name: Serverless TypeScript scope and incremental compiler regression
+        run: npm run typecheck:serverless
       - name: Validate Supabase-only runtime
         run: |
           test ! -f src/lib/firebase.ts

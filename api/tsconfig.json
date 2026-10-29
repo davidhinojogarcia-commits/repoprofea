@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["./**/*.ts", "../src/types/**/*.d.ts"],
+  "exclude": ["../scripts/**", "../dist/**", "../supabase/functions/**"]
+}
