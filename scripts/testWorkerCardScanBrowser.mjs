@@ -31,6 +31,20 @@ try {
  const base=`http://127.0.0.1:${server.address().port}/`;
  const page=await browser.newPage({viewport:{width:390,height:844}});
  page.on('pageerror',e=>errors.push(e.message));
+ // Force an already queued file-change event past disabled UI controls.
+ // The scanner's own latch must reject it too, not just the button.
+ const injectPhoto = () => page.evaluate(async()=>{
+  const blob=await(await fetch(window.photo)).blob();
+  const data=new DataTransfer();data.items.add(new File([blob],'carnet.png',{type:'image/png'}));
+  const input=document.querySelector('input[type=file]');input.files=data.files;
+  input.dispatchEvent(new Event('change',{bubbles:true}));
+ });
+ const assertPhotoLocked = async () => {
+  assert.equal(await page.getByRole('button',{name:'Leer una foto del QR',exact:true}).isDisabled(),true);
+  assert.equal(await page.getByLabel('Imagen del código QR',{exact:true}).isDisabled(),true);
+  await injectPhoto();
+  await page.waitForTimeout(700);
+ };
  if(engine==='chromium'){
   for(const query of ['', '?native=broken&transient=1', '?native=working']){
    await page.goto(base+query);
@@ -53,6 +67,8 @@ try {
   await page.getByRole('status').filter({hasText:'Carnet enviado al ordenador'}).waitFor();
   assert.equal(await page.evaluate(()=>window.sent.length),1);
   assert.equal(await page.evaluate(()=>window.calls||0),0,'Paired mobile uses its authenticated pairing transport');
+  await assertPhotoLocked();
+  assert.equal(await page.evaluate(()=>window.sent.length),1,'Camera then photo cannot send a duplicate without retry');
   await page.getByRole('button',{name:'Reintentar',exact:true}).click();
   await page.waitForFunction(()=>window.sent?.length===2);
   assert.equal(await page.evaluate(()=>window.opens),2,'Only explicit retry reopens the camera');
@@ -64,6 +80,20 @@ try {
  await page.waitForFunction(()=>window.testClosed===true,null,{timeout:15000});
  assert.equal(await page.evaluate(()=>window.found),42);
  assert.equal(await page.evaluate(()=>window.calls),1);
+ await assertPhotoLocked();
+ assert.equal(await page.evaluate(()=>window.calls),1,'Photo then photo cannot repeat the owner lookup');
+ await page.goto(base+'?photo=1&remote=1');
+ await page.getByRole('status').filter({hasText:'No se ha podido abrir la cámara'}).waitFor();
+ await injectPhoto();
+ await page.getByRole('status').filter({hasText:'Carnet enviado al ordenador'}).waitFor();
+ await assertPhotoLocked();
+ assert.equal(await page.evaluate(()=>window.sent.length),1,'Photo then photo cannot resend to the computer');
+ await page.getByRole('button',{name:'Reintentar',exact:true}).click();
+ await page.getByRole('status').filter({hasText:'No se ha podido abrir la cámara'}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Leer una foto del QR',exact:true}).isEnabled(),true);
+ await injectPhoto();
+ await page.waitForFunction(()=>window.sent?.length===2);
+ assert.equal(await page.evaluate(()=>window.opens),2,'Explicit retry resets both camera and photo latch');
  assert.deepEqual(errors,[],'No unhandled decoder/frame errors');
  console.log(`PASS ${engine}: real dense QR pixels, photo fallback and authenticated lookup; ${engine==='chromium'?'4K video with QR occupying 6% of frame, native and portable decoders, transient frame failure, stable camera across rerenders, foreign URL rejection, mobile pairing and explicit retry':'portable decoder without camera access'}. No physical phone or production writes.`);
 } finally {await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));}

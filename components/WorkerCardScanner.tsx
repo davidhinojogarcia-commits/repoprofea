@@ -14,6 +14,7 @@ export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: {
   const [message, setMessage] = useState('Solicitando acceso a la cámara…');
   const [restart, setRestart] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [completed, setCompleted] = useState(false);
   useEffect(() => { callbacks.current = { onClose, onFound, onRemoteToken }; }, [onClose, onFound, onRemoteToken]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); callbacks.current.onClose(); } };
@@ -37,6 +38,7 @@ export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: {
       const token = workerTokenFromQr(raw, window.location.origin);
       if (!token) { setMessage('QR leído, pero no corresponde a un carnet de esta aplicación.'); return false; }
       pending = true; done = true;
+      setCompleted(true);
       if (timer !== undefined) window.clearTimeout(timer);
       stopCamera();
       setBusy(true); setMessage('Comprobando carnet…');
@@ -76,7 +78,7 @@ export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: {
       } finally { scanning = false; schedule(); }
     };
     const readPhoto = async (file: File) => {
-      if (!active || pending) return;
+      if (!active || pending || done) return;
       if (!file.type.startsWith('image/') || file.size > 20_000_000) { setMessage('Elige una imagen del QR de menos de 20 MB.'); return; }
       pending = true; setBusy(true);
       if (timer !== undefined) window.clearTimeout(timer);
@@ -88,13 +90,13 @@ export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: {
         if (!active) return;
         const raw = decodeQrFrame(image, image.naturalWidth, image.naturalHeight, canvas);
         pending = false;
-        if (raw) { done = false; await accept(raw); }
+        if (raw) await accept(raw);
         else setMessage('No se distingue un QR en la imagen. Haz una foto más cercana, enfocada y sin reflejos.');
       } catch { if (active) setMessage('No se ha podido leer la imagen. Prueba con otra foto del QR.'); }
       finally { URL.revokeObjectURL(url); pending = false; if (active) { setBusy(false); schedule(); } }
     };
     photoReader.current = readPhoto;
-    setBusy(false); setMessage('Solicitando acceso a la cámara…');
+    setBusy(false); setCompleted(false); setMessage('Solicitando acceso a la cámara…');
     void (async () => {
       try {
         const Constructor = (window as unknown as { BarcodeDetector?: new (options: { formats: string[] }) => NativeDetector }).BarcodeDetector;
@@ -130,8 +132,8 @@ export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: {
         <header className="flex items-center justify-between gap-3"><h2 id="scan-title" className="font-bold flex items-center gap-2"><Camera className="h-5 w-5"/> Escanear carnet</h2><button type="button" aria-label="Cerrar escáner" onClick={onClose} className="min-h-11 min-w-11 rounded-xl border p-2"><X /></button></header>
         <div className="relative mt-4"><video ref={videoRef} muted playsInline autoPlay className="aspect-video w-full rounded-xl bg-slate-950 object-contain" aria-label="Vista de la cámara"/><div aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center"><div className="aspect-square h-3/4 rounded-xl border-2 border-white/80"/></div></div>
         <p role="status" className="mt-3 text-sm">{message}</p>
-        <input ref={inputRef} type="file" accept="image/*" aria-label="Imagen del código QR" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void photoReader.current?.(file); }}/>
-        <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => setRestart(n => n + 1)} className="min-h-11 rounded-xl border px-4 py-2 font-bold disabled:opacity-50">Reintentar</button><button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="min-h-11 inline-flex items-center gap-2 rounded-xl border px-4 py-2 font-bold disabled:opacity-50"><ImagePlus className="h-5 w-5"/>Leer una foto del QR</button></div>
+        <input ref={inputRef} type="file" accept="image/*" disabled={busy || completed} aria-label="Imagen del código QR" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void photoReader.current?.(file); }}/>
+        <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => setRestart(n => n + 1)} className="min-h-11 rounded-xl border px-4 py-2 font-bold disabled:opacity-50">Reintentar</button><button type="button" disabled={busy || completed} onClick={() => inputRef.current?.click()} className="min-h-11 inline-flex items-center gap-2 rounded-xl border px-4 py-2 font-bold disabled:opacity-50"><ImagePlus className="h-5 w-5"/>Leer una foto del QR</button></div>
       </section>
     </div>
   </ModalPortal>;

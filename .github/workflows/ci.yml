@@ -226,6 +226,8 @@ jobs:
         run: npm run test:worker-card-pairing
       - name: Worker card QR scan authorization
         run: npm run test:worker-card-scan
+      - name: Directory training filters and QR actions (Chromium + WebKit)
+        run: npm run test:directory-training
       - name: Worker card QR browser regression
         run: npm run test:worker-card
       - name: TypeScript validation
