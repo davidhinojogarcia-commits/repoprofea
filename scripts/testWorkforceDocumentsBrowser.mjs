@@ -429,6 +429,15 @@ try {
     assert.equal(await page.getByRole("button",{name:"Abrir actas de visitas",exact:true}).count(),0);
     assert.equal(await page.getByRole("button",{name:"Actas de visitas",exact:true}).count(),1,"No duplicate acta entry");
     assert.equal(await page.getByRole("button",{name:"Partes y avisos",exact:true}).count(),1,"No duplicate parts entry");
+    const otherSection=navigation.getByText("Otros documentos",{exact:true});
+    assert.equal(await otherSection.count(),1,"One visible Other documents section");
+    assert.ok(await otherSection.evaluate(heading=>{
+      const buttons=Array.from(heading.closest('[aria-label="Documentos de obra"]').querySelectorAll('button'));
+      return ['Rechazo voluntario','Salida de obra'].every(label=>{
+        const button=buttons.find(el=>el.getAttribute('aria-label')===label);
+        return heading&&button&&!!(heading.compareDocumentPosition(button)&Node.DOCUMENT_POSITION_FOLLOWING);
+      });
+    }),"Rejection and exit belong after the Other documents section on every device");
     const actas=navigation.getByRole("button",{name:"Actas de visitas",exact:true});
     await actas.click();
     const integratedVisit=page.getByRole("region",{name:"Panel de actas integrado",exact:true});

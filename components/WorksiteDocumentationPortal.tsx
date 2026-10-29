@@ -735,8 +735,6 @@ export const WorksiteDocumentationPortal: React.FC<{
     { id: "control", label: "Control horario", mobileLabel: "Control", description: "Activos y prórrogas", icon: Clock },
     { id: "actas_visitas", label: "Actas de visitas", mobileLabel: "Actas de visitas", description: "Acuerdos y firmas de la obra", icon: ClipboardPenLine },
     { id: "partes_avisos", label: "Partes y avisos", mobileLabel: "Partes y avisos", description: "Comunicaciones y revisión", icon: ClipboardList, tone: "red" },
-    { id: "rechazo_voluntario", label: "Rechazo voluntario", mobileLabel: "Rechazo voluntario", description: "Manifestación de persona contratada y firmas", icon: FileSignature },
-    { id: "salida_obra", label: "Salida de obra", mobileLabel: "Salida de obra", description: "Salida temporal y diligencia de regreso", icon: LogOut },
     ...(Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS) as [AdditionalWorksiteDocumentType, (typeof ADDITIONAL_WORKSITE_DOCUMENTS)[AdditionalWorksiteDocumentType]][]).map(
       ([id, definition], index) => ({
         id,
@@ -747,6 +745,8 @@ export const WorksiteDocumentationPortal: React.FC<{
         ...(index === 0 ? { section: "otros" as const } : {}),
       }),
     ),
+    { id: "rechazo_voluntario", label: "Rechazo voluntario", mobileLabel: "Rechazo voluntario", description: "Manifestación de persona contratada y firmas", icon: FileSignature },
+    { id: "salida_obra", label: "Salida de obra", mobileLabel: "Salida de obra", description: "Salida temporal y diligencia de regreso", icon: LogOut },
   ];
 
   return (
@@ -778,8 +778,14 @@ export const WorksiteDocumentationPortal: React.FC<{
                   const selected = activeDocumentView === item.id;
                   const mobileLabel = item.mobileLabel || item.label;
                   return (
+                    <React.Fragment key={item.id}>
+                      {item.section === "otros" && (
+                        <div className="flex shrink-0 items-center gap-2 border-l border-slate-300 dark:border-slate-700 pl-3 text-xs font-black text-slate-600 dark:text-slate-300">
+                          <FolderOpen className="w-4 h-4" />
+                          <span>Otros documentos</span>
+                        </div>
+                      )}
                     <button
-                      key={item.id}
                       type="button"
                       onClick={() => selectDocumentView(item.id)}
                       title={item.label}
@@ -797,6 +803,7 @@ export const WorksiteDocumentationPortal: React.FC<{
                         {mobileLabel}
                       </span>
                     </button>
+                    </React.Fragment>
                   );
                 })}
               </div>
