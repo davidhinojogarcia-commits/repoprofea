@@ -8,7 +8,18 @@ const configPath = ts.findConfigFile(path.join(root, 'api'), ts.sys.fileExists);
 assert.equal(configPath, path.join(root, 'api/tsconfig.json'), 'Functions must resolve their isolated TypeScript config');
 const raw = ts.readConfigFile(configPath, ts.sys.readFile);
 if (raw.error) throw new Error(ts.flattenDiagnosticMessageText(raw.error.messageText, '\n'));
-const config = ts.parseJsonConfigFileContent(raw.config, ts.sys, path.dirname(configPath), {}, configPath);
+// @vercel/node applies defaults to the immediate config BEFORE TypeScript
+// resolves extends. Model that order too: inherited bundler options alone
+// would otherwise be replaced by its NodeNext defaults during deployment.
+const compilerOptions = { ...raw.config.compilerOptions };
+compilerOptions.target ??= 'ES2021';
+compilerOptions.esModuleInterop ??= true;
+if (compilerOptions.module === undefined) {
+  compilerOptions.module = 'NodeNext';
+  compilerOptions.moduleResolution = 'NodeNext';
+  compilerOptions.strict = false;
+}
+const config = ts.parseJsonConfigFileContent({ ...raw.config, compilerOptions }, ts.sys, path.dirname(configPath), {}, configPath);
 assert.equal(config.errors.length, 0, 'Serverless TypeScript config must be valid');
 assert.ok(config.fileNames.length > 0, 'No empty function typecheck');
 assert.ok(!config.fileNames.some(file => file.startsWith(path.join(root, 'scripts') + path.sep)), 'Test mocks cannot enter the serverless type scope');

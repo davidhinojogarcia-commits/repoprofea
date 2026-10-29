@@ -31,8 +31,10 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "fix/vercel-inherited-options-20261029": false,
       "fix/vercel-fetch-types-20261029": false,
       "fix/worker-qr-camera-decoding-20261028": false,
+      "fix/supervisor-document-ribbon-20261028": false,
       "fix/foreman-workforce-document-dropdown-20261028": false,
       "fix/foreman-parts-ribbon-red-20261028": false,
       "fix/foreman-documents-navigation-20261028": false,

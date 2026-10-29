@@ -1,5 +1,10 @@
 {
   "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler"
+  },
   "include": ["./**/*.ts", "../src/types/**/*.d.ts"],
   "exclude": ["../scripts/**", "../dist/**", "../supabase/functions/**"]
 }
