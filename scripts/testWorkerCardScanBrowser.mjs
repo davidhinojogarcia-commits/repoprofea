@@ -15,8 +15,9 @@ await paint(params.has('invalid')?'https://foreign.example/?worker-qr='+token:va
 const old=document.createElement('canvas');old.width=960;old.height=540;old.getContext('2d').drawImage(frame,0,0,960,540);const px=old.getContext('2d').getImageData(0,0,960,540);window.oldDecoded=!!jsQR(px.data,960,540,{inversionAttempts:'attemptBoth'});
 window.photo=frame.toDataURL('image/png');window.valid=valid;window.changeQr=paint;window.opens=0;window.stops=0;
 setInterval(()=>void paint(),200);
-if(!navigator.mediaDevices)Object.defineProperty(navigator,'mediaDevices',{value:{}});
-Object.defineProperty(navigator.mediaDevices,'getUserMedia',{configurable:true,value:async constraints=>{window.opens++;window.constraints=constraints;if(params.has('photo'))throw new DOMException('denied','NotAllowedError');const stream=frame.captureStream(5);for(const track of stream.getTracks()){const stop=track.stop.bind(track);track.stop=()=>{window.stops++;stop();};}return stream;}});
+// Replace the navigator boundary itself: WebKit may expose different native
+// mediaDevices wrappers, so patching one wrapper's method is not reliable.
+Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async constraints=>{window.opens++;window.constraints=constraints;if(params.has('photo'))throw new DOMException('denied','NotAllowedError');const stream=frame.captureStream(5);for(const track of stream.getTracks()){const stop=track.stop.bind(track);track.stop=()=>{window.stops++;stop();};}return stream;}}});
 try{delete window.BarcodeDetector;}catch{}
 if(params.has('native'))window.BarcodeDetector=class{async detect(){if(params.get('native')==='broken')throw Error('unsupported source');return[{rawValue:content}];}};
 if(params.has('transient')){const original=CanvasRenderingContext2D.prototype.getImageData;let fail=true;CanvasRenderingContext2D.prototype.getImageData=function(...args){if(fail&&this.canvas!==frame&&this.canvas!==qr&&this.canvas!==old){fail=false;window.frameFailed=true;throw Error('frame unavailable');}return original.apply(this,args);};}
