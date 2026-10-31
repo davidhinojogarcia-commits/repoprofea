@@ -117,10 +117,12 @@ export async function worksiteSnapshot(db: DB, owner: string, work: string) {
       "No se puede identificar de forma única la obra del encargado. Revisa su asignación en Configuración.",
       409,
     );
+  // UUID and owner establish identity; a separate code is optional.
+  // Preserve existing embedded references without inventing or persisting codes.
   const code = rows[0].codigo?.trim() || embeddedWorksiteCode(rows[0].nombre || "");
-  if (!code || !rows[0].nombre?.trim())
+  if (!rows[0].nombre?.trim())
     throw partFail(
-      "La obra identificada no tiene código o nombre en Configuración.",
+      "La obra identificada no tiene nombre en Configuración.",
       409,
     );
   return {

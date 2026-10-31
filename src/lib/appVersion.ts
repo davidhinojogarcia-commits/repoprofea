@@ -1,12 +1,13 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.21.7';
-export const APP_RELEASE_DATE = '29/10/2026';
+export const APP_VERSION = '1.21.8';
+export const APP_RELEASE_DATE = '31/10/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Partes y avisos admite obras existentes sin código separado, con identificación por UUID y propietario y rechazo de coincidencias ambiguas.',
   'Actas de visitas y Partes y avisos dentro de Documentación de obra, sin accesos duplicados en el menú general; cinta móvil y biblioteca lateral en tablet y ordenador.',
   'Rechazo voluntario y Salida de obra agrupados en Otros documentos.',
   'Lector QR con cámara de mayor resolución, lectura desde foto y protección frente a duplicados; acceso al escáner encima de las fichas.',

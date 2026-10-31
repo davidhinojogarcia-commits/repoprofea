@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.21.7",
+  "version": "1.21.8",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -62,7 +62,7 @@
     "test:calendar-dates": "node scripts/testIntegratedCalendarDates.mjs",
     "test:worker-card": "node scripts/testWorkerCardBrowser.mjs",
     "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs",
-    "test:parts": "node scripts/testParts.mjs",
+    "test:parts": "node scripts/testPartsLegacyWorksites.mjs && node scripts/testParts.mjs",
     "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs",
     "test:worker-qr-public": "node scripts/testWorkerQrPublicPrivacy.mjs",
     "test:worker-card-scan": "node --import tsx scripts/testWorkerCardScan.mjs && node scripts/testWorkerCardScanBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkerCardScanBrowser.mjs",

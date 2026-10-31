@@ -31,6 +31,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "fix/parts-existing-worksites-20261027": false,
       "fix/vercel-inherited-options-20261029": false,
       "fix/vercel-fetch-types-20261029": false,
       "fix/worker-qr-camera-decoding-20261028": false,
