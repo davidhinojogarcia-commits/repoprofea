@@ -43,8 +43,6 @@ const PreventionSection = lazy(() => import('./components/PreventionSection').th
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
-const PartsPanel = lazy(()=>import('./components/PartsPanel'));
-const VisitMinutesPanel = lazy(() => import('./components/VisitMinutesPanel').then(module => ({ default: module.VisitMinutesPanel })));
 const Stats = lazy(() => import('./components/Stats').then(module => ({ default: module.Stats })));
 const RegistrationForm = lazy(() => import('./components/RegistrationForm').then(module => ({ default: module.RegistrationForm })));
 const PersonList = lazy(() => import('./components/PersonList').then(module => ({ default: module.PersonList })));
@@ -160,10 +158,10 @@ function App() {
     return 'light';
   });
 
-  const [activeView, setActiveView] = useState<ViewMode>(()=>new URLSearchParams(window.location.search).has('parts')?'partes_avisos':'dashboard');
-  const [visitWorksite, setVisitWorksite] = useState('');
+  const [activeView, setActiveView] = useState<ViewMode>(()=>new URLSearchParams(window.location.search).has('parts')?'documentacion_obra':'dashboard');
+  const [documentationEntry,setDocumentationEntry]=useState<{view:'actas_visitas'|'partes_avisos';worksite?:string;request:number}|undefined>(()=>new URLSearchParams(window.location.search).has('parts')?{view:'partes_avisos',request:0}:undefined);
   useEffect(() => {
-    const openVisit = (event: Event) => {setVisitWorksite(String((event as CustomEvent).detail?.worksite || ''));setActiveView('actas_visitas');};
+    const openVisit = (event: Event) => {const worksite=String((event as CustomEvent).detail?.worksite || '');setDocumentationEntry(previous=>({view:'actas_visitas',worksite,request:(previous?.request||0)+1}));setActiveView('documentacion_obra');};
     window.addEventListener('profea:open-visit-minutes',openVisit);
     return () => window.removeEventListener('profea:open-visit-minutes',openVisit);
   }, []);
@@ -2147,8 +2145,8 @@ function App() {
       </div>
 
       <Sidebar 
-        activeView={activeView} 
-        setActiveView={setActiveView} 
+        activeView={activeView==='actas_visitas'||activeView==='partes_avisos'?'documentacion_obra':activeView}
+        setActiveView={view=>{setDocumentationEntry(undefined);setActiveView(view);}}
         isCollapsed={isSidebarCollapsed} 
         setIsCollapsed={setIsSidebarCollapsed}
         isMobileOpen={isMobileMenuOpen}
@@ -2287,7 +2285,7 @@ function App() {
             </div>
           )}
 
-          {activeView === 'partes_avisos' && <Suspense fallback={<ViewLoadingFallback/>}><PartsPanel accountId={authenticatedUser.id}/></Suspense>}
+          {activeView === 'partes_avisos' && <Suspense fallback={<ViewLoadingFallback/>}><WorksiteDocumentationPortal initialDocumentView="partes_avisos" accountId={authenticatedUser.id} partsUnread={partsUnread}/></Suspense>}
           {activeView === 'directorio' && (
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
@@ -2350,7 +2348,7 @@ function App() {
 
           {activeView === 'documentacion_obra' && (
             <Suspense fallback={<ViewLoadingFallback />}>
-              <WorksiteDocumentationPortal />
+              <WorksiteDocumentationPortal accountId={authenticatedUser.id} partsUnread={partsUnread} initialDocumentView={documentationEntry?.view} initialWorksite={documentationEntry?.worksite} initialNavigationKey={documentationEntry?.request}/>
             </Suspense>
           )}
 
@@ -2361,7 +2359,7 @@ function App() {
           )}
 
           {activeView === 'actas_visitas' && (
-            <Suspense fallback={<ViewLoadingFallback />}><VisitMinutesPanel initialWorksite={visitWorksite}/></Suspense>
+            <Suspense fallback={<ViewLoadingFallback />}><WorksiteDocumentationPortal initialDocumentView="actas_visitas" initialWorksite={documentationEntry?.worksite} accountId={authenticatedUser.id} partsUnread={partsUnread}/></Suspense>
           )}
 
           {activeView === 'inventario' && (

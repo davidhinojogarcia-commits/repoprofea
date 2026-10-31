@@ -62,7 +62,7 @@ try{
  }
  const fidelity=await page.evaluate(()=>window.checkOriginalFidelity());assert.equal(fidelity.ok,true,JSON.stringify(fidelity));
  await page.reload();await page.getByRole('button',{name:'EPIs',exact:true}).click();await page.getByRole('button').filter({hasText:'epis.pdf'}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor();
- await page.getByRole('button',{name:'PERIODO DE PRUEBA',exact:true}).click();
+ await page.getByRole('combobox',{name:'Añadir quincena o contrato',exact:true}).selectOption('PERIODO DE PRUEBA');
  await page.getByRole('button',{name:/Preparar relación para firmas/}).click();await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();assert(await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'new document auto-expands with foreman panel');
  await page.getByRole('button',{name:'Control horario',exact:true}).click();await page.getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();
  await page.getByRole('button',{name:'Firmar como encargado',exact:true}).click();const attendanceCanvas=page.locator('canvas').last();const ab=await attendanceCanvas.boundingBox();await page.mouse.move(ab.x+20,ab.y+25);await page.mouse.down();await page.mouse.move(ab.x+120,ab.y+70,{steps:10});await page.mouse.up();await page.getByRole('button',{name:'Guardar',exact:true}).click();await page.getByText('Firma guardada y verificada',{exact:true}).waitFor();

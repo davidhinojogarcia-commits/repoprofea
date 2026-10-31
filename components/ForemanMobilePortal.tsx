@@ -10,7 +10,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import ModalPortal from './ModalPortal';
 import { PreventionSection } from './PreventionSection';
 import { appAlert, appConfirm } from '../src/lib/appDialog';
-import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Trash2, Wrench } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, ClipboardPenLine, Download, FileDown, FileSignature, GraduationCap, HardHat, Loader2, LogIn, LogOut, Maximize2, RefreshCw, RotateCcw, Save, Share2, ShieldCheck, Smartphone, Trash2, Wrench } from 'lucide-react';
 import {
   ADDITIONAL_WORKSITE_DOCUMENTS,
   type AdditionalWorksiteDocumentType,
@@ -184,7 +184,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [data,setData]=useState<ForemanPortalPayload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'|'prevention'|'visits'|'parts'|'rechazo_voluntario'|'salida_obra'>(()=>new URLSearchParams(window.location.search).has('parts')?'parts':'mandatory');
+  const [tab,setTab]=useState<'mandatory'|'epis'|'formacion'|'maquinaria'|'control'|'documents'|'completed'|'prevention'|'visits'|'parts'>(()=>new URLSearchParams(window.location.search).has('parts')?'parts':'mandatory');
+  const [documentView,setDocumentView]=useState<'other'|'rechazo_voluntario'|'salida_obra'>('other');
   const [date,setDate]=useState(today());
   const [attendanceEvidence,setAttendanceEvidence]=useState<any>(null);
   const [attendanceSigning,setAttendanceSigning]=useState(false);
@@ -457,6 +458,15 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   };
   const availableQuincenas=useMemo<string[]>(()=>Array.from(new Set<string>((data?.workers||[]).map(worker=>String(worker.quincena||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})),[data?.workers]);
   const availableMonths=useMemo(()=>Array.from(new Set((data?.workers||[]).flatMap(worker=>monthsForWorker(worker)))).sort(),[data?.workers]);
+  const quincenaGroups=useMemo(()=>{
+    const groups=new Map<string,string[]>();
+    for(const period of availableQuincenas){
+      const month=(data?.workers||[]).filter(worker=>String(worker.quincena||'').trim()===period)
+        .map(worker=>String(worker.periodoInicio||'').slice(0,7)).filter(value=>/^\d{4}-\d{2}$/.test(value)).sort()[0]||'other';
+      groups.set(month,[...(groups.get(month)||[]),period]);
+    }
+    return [...groups.entries()].sort(([a],[b])=>a.localeCompare(b));
+  },[availableQuincenas,data?.workers]);
   const togglePeriodKey=(key:string)=>setSelectedPeriodKeys(current=>{
     const next=new Set(current);
     if(next.has(key))next.delete(key);else next.add(key);
@@ -849,36 +859,43 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     }));
   },[assignedMandatoryDocuments,data?.obra]);
 
-  const renderPeriodSelector=()=> <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <div className="text-base font-black text-slate-900">1. Selecciona el periodo o periodos</div>
-        <div className="mt-1 text-sm leading-5 text-slate-600">Elige una o varias quincenas o meses. Hasta que no selecciones un periodo no se mostrará ningún trabajador adicional, evitando mezclar personal de otros periodos.</div>
-      </div>
-      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="shrink-0 min-h-[48px] rounded-xl border bg-white px-4 py-3 text-sm font-black" >Limpiar selección</button>}
+  const renderPeriodSelector=()=> <div role="group" aria-label="Periodos de trabajo" className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3 dark:border-slate-700 dark:bg-slate-900">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Periodo de trabajo</h3>
+      {selectedPeriodKeys.size>0&&<button type="button" onClick={()=>setSelectedPeriodKeys(new Set())} className="min-h-[44px] rounded-xl border bg-white px-3 py-2 text-sm font-bold dark:bg-slate-800">Limpiar selección</button>}
     </div>
-    {!!availableQuincenas.length&&<div>
-      <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Quincenas</div>
-      <div className="flex flex-wrap gap-2">
-        {availableQuincenas.map(period=>{const key='q:'+period;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`min-h-[50px] rounded-xl border px-4 py-3 text-sm font-black leading-tight ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-800'}`}>{period}</button>;})}
-      </div>
-    </div>}
-    {!!availableMonths.length&&<div>
-      <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Meses</div>
-      <div className="flex flex-wrap gap-2">
-        {availableMonths.map(month=>{const key='m:'+month;const active=selectedPeriodKeys.has(key);return <button key={key} type="button" onClick={()=>togglePeriodKey(key)} className={`min-h-[50px] rounded-xl border px-4 py-3 text-sm font-black leading-tight ${active?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-800'}`}>{monthLabel(month)}</button>;})}
-      </div>
-    </div>}
-    <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-      <div className="text-base font-black text-[#00548E]">2. Comprueba los trabajadores</div>
-      <div className="mt-1 text-sm font-semibold text-slate-700">{documentWorkers.length} trabajador(es) · {periodLabel}</div>
+    <p className="text-sm text-slate-600 dark:text-slate-300">Añade una o varias quincenas o meses. Solo se mostrará el personal de los periodos elegidos.</p>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {!!availableQuincenas.length&&<label className="min-w-0 text-sm font-bold">Quincena o contrato
+        <select aria-label="Añadir quincena o contrato" value="" onChange={e=>{if(e.target.value)togglePeriodKey('q:'+e.target.value);}} className="mt-1 min-h-[50px] w-full min-w-0 rounded-xl border bg-white px-3 py-2 text-base dark:bg-slate-800">
+          <option value="">Añadir quincena…</option>
+          {quincenaGroups.map(([month,periods])=><optgroup key={month} label={month==='other'?'Otros periodos':monthLabel(month)}>
+            {periods.map(period=><option key={period} value={period} disabled={selectedPeriodKeys.has('q:'+period)}>{period}{selectedPeriodKeys.has('q:'+period)?' · Añadido':''}</option>)}
+          </optgroup>)}
+        </select>
+      </label>}
+      {!!availableMonths.length&&<label className="min-w-0 text-sm font-bold">Mes completo
+        <select aria-label="Añadir mes completo" value="" onChange={e=>{if(e.target.value)togglePeriodKey('m:'+e.target.value);}} className="mt-1 min-h-[50px] w-full min-w-0 rounded-xl border bg-white px-3 py-2 text-base dark:bg-slate-800">
+          <option value="">Añadir mes…</option>
+          {Array.from(new Set(availableMonths.map(month=>month.slice(0,4)))).map(year=><optgroup key={year} label={year}>
+            {availableMonths.filter(month=>month.startsWith(year+'-')).map(month=><option key={month} value={month} disabled={selectedPeriodKeys.has('m:'+month)}>{monthLabel(month)}{selectedPeriodKeys.has('m:'+month)?' · Añadido':''}</option>)}
+          </optgroup>)}
+        </select>
+      </label>}
     </div>
-    {!!documentWorkers.length&&<div className="max-h-56 overflow-y-auto rounded-xl border bg-white divide-y">
-      {documentWorkers.map(worker=><div key={worker.id} className="px-4 py-3.5">
-        <div className="text-sm font-black text-slate-800">{worker.apellidosNombre}</div>
-        <div className="text-xs text-slate-500">{worker.dni} · {worker.categoria}{worker.quincena?' · '+worker.quincena:''}</div>
-      </div>)}
-    </div>}
+    {!availableQuincenas.length&&!availableMonths.length&&<p className="text-sm text-slate-500">No hay periodos disponibles en esta obra.</p>}
+    {!!selectedPeriodKeys.size&&<details className="rounded-xl border bg-white p-3 dark:bg-slate-800">
+      <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-bold">Ver o quitar periodos ({selectedPeriodKeys.size})</summary>
+      <ul className="mt-2 space-y-2">{[...selectedPeriodKeys].map(key=><li key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 pl-3 dark:bg-slate-900"><span className="min-w-0 break-words text-sm">{key.startsWith('q:')?key.slice(2):'Mes completo · '+monthLabel(key.slice(2))}</span><button type="button" aria-label={'Quitar '+(key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2)))} onClick={()=>togglePeriodKey(key)} className="min-h-[44px] shrink-0 px-3 text-sm font-bold text-rose-700 dark:text-rose-300">Quitar</button></li>)}</ul>
+    </details>}
+    <div role="status" className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-bold text-[#00548E] dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">{selectedPeriodKeys.size?`${selectedPeriodKeys.size} periodo(s) · ${documentWorkers.length} trabajador(es)`:'Selecciona un periodo para ver los trabajadores'}</div>
+    {!!documentWorkers.length&&<details className="rounded-xl border bg-white p-3 dark:bg-slate-800">
+      <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-bold">Ver trabajadores ({documentWorkers.length})</summary>
+      <div className="mt-2 max-h-56 overflow-y-auto divide-y">{documentWorkers.map(worker=><div key={worker.id} className="py-3">
+        <div className="text-sm font-black text-slate-800 dark:text-slate-100">{worker.apellidosNombre}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-300">{worker.dni} · {worker.categoria}{worker.quincena?' · '+worker.quincena:''}</div>
+      </div>)}</div>
+    </details>}
   </div>;
 
   const prepareImportedWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
@@ -1239,26 +1256,24 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
       </div>}
       <div
+        role="navigation" aria-label="Secciones del portal de encargados"
         className="fixed bottom-0 left-0 right-0 z-30 sm:static overflow-x-auto overscroll-x-contain bg-white/95 backdrop-blur border-t sm:border sm:rounded-2xl p-2 shadow-[0_-8px_30px_rgba(15,23,42,0.10)] sm:shadow-none"
         style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}
       >
         <div className="flex w-max min-w-full gap-2">
           <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
           <button onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
+          <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
           <button onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
           <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
           <button onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
           <button onClick={()=>setTab('control')} style={{flex:'0 0 auto',minWidth:122,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='control'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogIn className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control horario</span></button>
-          <button aria-label="Rechazo voluntario" onClick={()=>setTab('rechazo_voluntario')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='rechazo_voluntario'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/>Rechazo voluntario</button>
-          <button aria-label="Salida de obra" onClick={()=>setTab('salida_obra')} style={{flex:'0 0 auto',minWidth:115}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='salida_obra'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogOut className="w-5 h-5 mx-auto mb-1"/>Salida de obra</button>
           <button onClick={()=>setTab('documents')} style={{flex:'0 0 auto',minWidth:110,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
-          <button onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}>Actas de visitas</button>
+          <button onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
           <button onClick={()=>setTab('completed')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
         </div>
       </div>
 
-      {tab!=='parts'&&<button type="button" onClick={()=>setTab('parts')} className="min-h-[56px] w-full rounded-xl border border-blue-200 bg-white p-3 text-center font-black text-[#00548E] dark:bg-slate-900 dark:text-blue-200"><ClipboardList className="mr-2 inline h-5 w-5"/>Partes y avisos</button>}
-      {(tab==='rechazo_voluntario'||tab==='salida_obra')&&<WorkforceDocumentsPanel key={tab} kind={tab} token={token}/>}
       {tab==='parts' && <Suspense fallback={<p>Cargando partes y avisos…</p>}><PartsPanel token={token} onBack={()=>setTab('mandatory')}/></Suspense>}
       {tab==='visits' && <Suspense fallback={<p>Cargando actas de visitas…</p>}><ForemanVisitMinutes token={token} onOpenPdf={showPdfPreview} /></Suspense>}
       {tab==='prevention' && <PreventionSection token={token} savedObras={[data.obra]} foremanName={data.foremanName} />}
@@ -1412,8 +1427,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
-          <h2 className="text-lg font-black">Otros documentos</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí quedan únicamente los documentos independientes de Documentación de obra. EPIs, Formación e información, Maquinaria y Control horario tienen ahora su propio botón en la cinta superior.</p>
+          <h2 className="text-lg font-black">Documentos</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona el documento que necesitas preparar o consultar.</p>
         </div>
 
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -1426,6 +1441,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             type="button"
             onClick={()=>{
               setCorrectionDocumentId(String(d.id));
+              setDocumentView('other');
               setDocType(d.documentType as AdditionalWorksiteDocumentType);
               setWorkerId(Number(d.workerId||'')||'');
               setDate(String(d.workDate).slice(0,10));
@@ -1440,16 +1456,25 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           </button>)}
         </div>}
 
-        <div className="border-t pt-4">
-          <div className="text-base font-black">Otros documentos de obra</div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Son los mismos modelos de “Otros documentos” disponibles en Documentación de obra. Selecciona primero el periodo para trabajar únicamente con el personal correspondiente.</p>
-        </div>
-        {renderPeriodSelector()}
+        {documentView==='other'&&renderPeriodSelector()}
         <label className="block text-sm font-black">Documento
-          <select value={docType} onChange={e=>{setDocType(e.target.value as AdditionalWorksiteDocumentType);setAnswers({});setDocSignatures({});setCorrectionDocumentId('');}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+          <select value={documentView==='other'?docType:documentView} onChange={e=>{
+            const value=e.target.value;
+            if(value==='rechazo_voluntario'||value==='salida_obra'){
+              setDocumentView(value);
+            }else{
+              setDocumentView('other');
+              setDocType(value as AdditionalWorksiteDocumentType);
+              setAnswers({});setDocSignatures({});setCorrectionDocumentId('');
+            }
+          }} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
+            <option value="rechazo_voluntario">Rechazo voluntario</option>
+            <option value="salida_obra">Salida de obra</option>
           </select>
         </label>
+        {documentView!=='other'&&<WorkforceDocumentsPanel key={documentView} kind={documentView} token={token}/>}
+        {documentView==='other'&&<>
         <label className="block text-sm font-black">Trabajador
           <select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             <option value="">Seleccionar trabajador…</option>
@@ -1501,6 +1526,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         >
           {saving?'Guardando…':'Finalizar y enviar al supervisor'}
         </button>
+        </>}
       </section>}
 
       {tab==='completed'&&<section className="space-y-3">
