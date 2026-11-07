@@ -959,9 +959,26 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           </div>
         </div>
 
-        {!!fortnightDocumentGroups.length&&<div aria-label="Filtrar por quincena" className="flex flex-wrap gap-2 rounded-2xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-          {[{key:'' as const,label:'Todas las quincenas'},...fortnightDocumentGroups.map(group=>({key:group.key,label:`${documentFortnightLabel(group.key)} · ${group.total}`}))].map(option=><button key={option.key||'all'} type="button" aria-pressed={selectedDocsFortnight===option.key} onClick={()=>setSelectedDocsFortnight(option.key)} className={`min-h-[44px] rounded-xl border px-3 py-2 text-xs font-black ${selectedDocsFortnight===option.key?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}>{option.label}</button>)}
-        </div>}
+        {!!fortnightDocumentGroups.length && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+            <label htmlFor="foreman-documents-fortnight" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">
+              Filtrar documentos por quincena
+            </label>
+            <select
+              id="foreman-documents-fortnight"
+              value={selectedDocsFortnight}
+              onChange={event => setSelectedDocsFortnight(event.target.value)}
+              className="min-h-[48px] w-full min-w-0 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900 focus:border-[#00548E] focus:outline-none focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            >
+              <option value="">Todas las quincenas</option>
+              {fortnightDocumentGroups.map(group => (
+                <option key={group.key} value={group.key}>
+                  {`${documentFortnightLabel(group.key)} · ${group.total} documentos`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border border-slate-300 pl-9 pr-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"/></div>
