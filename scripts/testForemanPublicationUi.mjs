@@ -123,11 +123,14 @@ try {
  const headings=[...document.querySelectorAll('h3')].map(h=>h.textContent);
  assert(headings.some(h=>h.includes('1ª quincena'))&&headings.some(h=>h.includes('2ª quincena')),'both quincenas grouped inside month');
  assert.equal(document.querySelectorAll('article').length,2,'work and authoritative period month restrict documents');
- const secondHalf=[...document.querySelectorAll('[aria-label="Filtrar por quincena"] button')].find(b=>b.textContent.startsWith('2ª quincena'));
- await action(()=>secondHalf.click());
+ const fortnightSelect=document.getElementById('foreman-documents-fortnight');
+ assert(fortnightSelect,'accessible fortnight dropdown replaces horizontal button strip');
+ const secondHalf=[...fortnightSelect.options].find(option=>option.textContent.startsWith('2ª quincena'));
+ assert(secondHalf,'second half appears in dropdown');
+ await action(()=>{fortnightSelect.value=secondHalf.value;fortnightSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  assert.equal(document.querySelectorAll('article').length,1,'second quincena filters documents');
  assert(!document.querySelector('article').textContent.includes('FIRST_HALF'),'period key wins over work date');
- await action(()=>find('Todas las quincenas').click());
+ await action(()=>{fortnightSelect.value='';fortnightSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  assert.equal(document.querySelectorAll('article').length,2,'all quincenas restores documents without duplicates');
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Septiembre 2026')).click());
  assert.equal(document.querySelectorAll('article').length,1,'month change clears quincena filter');
