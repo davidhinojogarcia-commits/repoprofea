@@ -35,6 +35,7 @@ interface PersonListProps {
   onScanWorkerCard?: () => void;
   onPairWorkerCard?: () => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   savedObras: string[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -97,6 +98,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   onScanWorkerCard,
   onPairWorkerCard,
   onExportHistoryPDF,
+  renderPartsAction,
   savedObras,
   searchTerm,
   setSearchTerm,
@@ -944,6 +946,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               onEdit={onEdit}
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
+              renderPartsAction={renderPartsAction}
               onOpenCalendar={handleOpenCalendarForWorker}
               sameDniWorkersMap={sameDniWorkersMap}
             />
@@ -955,6 +958,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   ? sameDniWorkersMap.get(cleanDni)!
                   : [];
                 return (
+                  <div key={`parts-compact-${person.id}`} className="space-y-2">
                   <CompactPersonCard
                     key={`compact_person_${person.id}_${personIdx}`}
                     person={person}
@@ -967,7 +971,9 @@ export const PersonList: React.FC<PersonListProps> = ({
                     onOpenCalendar={handleOpenCalendarForWorker}
                     sameDniWorkers={sameDniWorkers}
                   />
-                );
+
+                    {renderPartsAction && <div className="px-2 pb-1">{renderPartsAction(person)}</div>}
+                  </div>                );
               })}
             </div>
           ) : (
@@ -979,6 +985,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               onEdit={onEdit}
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
+              renderPartsAction={renderPartsAction}
               onOpenCalendar={handleOpenCalendarForWorker}
               sameDniWorkersMap={sameDniWorkersMap}
             />
