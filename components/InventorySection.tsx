@@ -55,6 +55,7 @@ import {
   deleteInventoryMovement,
   ensureInventoryReady,
   listInventoryDocuments,
+  listInventoryExportSnapshot,
   listInventoryItems,
   listInventoryMaintenance,
   listInventoryMovements,
@@ -148,6 +149,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [coordinatorEmail, setCoordinatorEmail] = useState('');
   const [parkSaving, setParkSaving] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [fullExportBusy, setFullExportBusy] = useState<'excel' | 'pdf' | null>(null);
   const [excelImportBusy, setExcelImportBusy] = useState(false);
   const [excelImportNotice, setExcelImportNotice] = useState('');
   const excelImportRef = useRef<HTMLInputElement>(null);
@@ -245,6 +247,31 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
       alert(e?.message || 'No se pudo generar el informe de situación.');
     } finally {
       setPdfBusy(false);
+    }
+  };
+
+  const exportCompletePark = async (format: 'excel' | 'pdf') => {
+    if (!park || fullExportBusy) return;
+    if (!navigator.onLine) {
+      alert('Para exportar el parque completo es necesario disponer de conexión y sincronizar antes los cambios pendientes.');
+      return;
+    }
+    setFullExportBusy(format);
+    try {
+      const exportedPark = park;
+      const snapshot = await listInventoryExportSnapshot(exportedPark.id);
+      if (format === 'excel') {
+        const { exportInventoryParkExcel } = await import('../src/lib/inventoryExcelExport');
+        await exportInventoryParkExcel(exportedPark, snapshot);
+      } else {
+        const { exportInventoryParkFullPdf } = await import('../src/lib/inventoryFullPdf');
+        await exportInventoryParkFullPdf(exportedPark, snapshot);
+      }
+    } catch (e: any) {
+      reportOperationalError('inventory.complete-export', e);
+      alert(e?.message || 'No se pudo exportar el parque. No se generó un archivo parcial.');
+    } finally {
+      setFullExportBusy(null);
     }
   };
 
@@ -446,7 +473,9 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
     <div className="grid grid-cols-2 sm:flex gap-2">
       <button onClick={() => setEditingItem({ codigo: '', categoria: '', nombre: '', cantidad: 1, tipoGestion: 'individual', estado: 'Disponible', ubicacionActual: baseLocation, detalles: {}, observaciones: '', activo: true })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-3 text-sm font-bold"><Plus className="w-4 h-4" />Nuevo equipo</button>
-      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50" title="Incluye todas las herramientas y maquinaria dispuestas fuera del parque, asignadas a obra y con incidencias, con resumen final por obra"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
+      <button onClick={() => void exportCompletePark('excel')} disabled={Boolean(fullExportBusy)} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50" title="Exportar el inventario, supervisores y todos los registros históricos disponibles en un libro Excel institucional"><Download className="w-4 h-4" />{fullExportBusy==='excel'?'Generando Excel…':'Exportar Excel completo'}</button>
+      <button onClick={() => void exportCompletePark('pdf')} disabled={Boolean(fullExportBusy)} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white disabled:opacity-50" title="Informe institucional del parque completo, responsables, historial y documentación"><FileDown className="w-4 h-4" />{fullExportBusy==='pdf'?'Generando PDF…':'Exportar PDF completo'}</button>
+      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" title="Informe operativo de equipos desplazados, asignados y con incidencias"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
     </div>
 
     <details className="ui-surface p-4 group">
