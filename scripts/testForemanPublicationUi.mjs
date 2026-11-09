@@ -80,11 +80,14 @@ try {
 
  const beforeRefresh=portalReads;await action(()=>find('Actualizar documentos').click());
  assert.equal(portalReads,beforeRefresh+1,'manual refresh queries portal');
- const periodButton=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1'));
- await action(()=>periodButton.click());
+ const mobilePeriodSelect=document.getElementById('foreman-mandatory-period');
+ assert(mobilePeriodSelect,'mobile mandatory documents period dropdown is present');
+ assert.equal(mobilePeriodSelect.value,'','all periods is selected by default');
+ assert(mobilePeriodSelect.options.length>1,'the available periods are listed');
+ await action(()=>{mobilePeriodSelect.value=mobilePeriodSelect.options[1].value;mobilePeriodSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  doc.period_key='2026-07';await action(()=>find('Actualizar documentos').click());
- assert(document.body.textContent.includes('No hay documentos en los periodos seleccionados'),'filtered empty state explains hidden documents');
- await action(()=>find('Todos').click());
+ assert(document.body.textContent.includes('No hay documentos en el periodo seleccionado'),'filtered empty state explains hidden documents');
+ await action(()=>{mobilePeriodSelect.value='';mobilePeriodSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  assert([...document.querySelectorAll('button')].some(b=>b.textContent.includes('control.pdf')),'clear filters reveals new period');
 
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
@@ -137,7 +140,9 @@ try {
  assert(document.querySelector('article').textContent.includes('OTHER_MONTH'));
  doc.signatures={};doc.lifecycle_status='ASSIGNED';doc.period_key='2026-10';doc.status='pending';
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
- await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1')).click());
+ const unsignedPeriodSelect=document.getElementById('foreman-mandatory-period');
+ assert(unsignedPeriodSelect,'period dropdown exists for unsigned mandatory documents');
+ await action(()=>{unsignedPeriodSelect.value=unsignedPeriodSelect.options[1].value;unsignedPeriodSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  const beforeUnsigned=signatureReads;
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(signatureReads,beforeUnsigned,'unsigned document has no signature images to download');
