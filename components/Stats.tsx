@@ -198,126 +198,80 @@ export const Stats: React.FC<StatsProps> = ({
 
       {/* Controles de Filtro */}
       <div className="ui-surface p-5 sm:p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-2xl">
-              <Filter className="w-5 h-5 text-brand-primary dark:text-blue-400" />
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-brand-primary/10 p-2.5 dark:bg-brand-primary/20">
+            <Filter className="h-5 w-5 text-brand-primary dark:text-blue-400" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100">Filtros y acciones</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Selecciona el periodo y la obra antes de generar informes.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-700 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          <section aria-label="Filtros de consulta" className="min-w-0 space-y-4">
+            <div>
+              <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">Periodo de consulta</h3>
+              <div role="group" aria-label="Periodo de consulta" className="grid grid-cols-2 gap-2">
+                {([
+                  { mode: 'mes_actual', label: 'Mes actual', icon: CalendarDays },
+                  { mode: 'ano_actual', label: 'Año en curso', icon: Calendar },
+                  { mode: 'origen', label: 'Histórico', icon: History },
+                  { mode: 'fechas', label: 'Personalizado', icon: Clock },
+                ] as const).map(({ mode, label, icon: Icon }) => (
+                  <button key={mode} type="button" onClick={() => setFilterMode(mode)}
+                    aria-pressed={filterMode === mode}
+                    className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors sm:text-sm ${filterMode === mode
+                      ? 'border-[#00548E] bg-[#00548E] text-white shadow-sm'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700'}`}>
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">Filtros y acciones</h2>
-              <p className="text-slate-400 dark:text-slate-500 text-xs">Acota la información y genera los informes institucionales desde una única zona.</p>
+              <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">Selección de obra</h3>
+              <div className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+                <MultiSearchableDropdown
+                  options={registeredObras}
+                  selectedValues={obraFilter}
+                  onChange={setObraFilter}
+                  placeholder="Obra: Todas"
+                  allLabel="Todas las obras"
+                  icon={<MapPin className="h-4 w-4" />}
+                  className="!w-full"
+                  buttonClassName="!w-full !min-h-[44px] !border-none !bg-transparent !py-2 !text-slate-700 !shadow-none hover:!bg-slate-100 dark:!text-slate-200 dark:hover:!bg-slate-700/40"
+                />
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            {/* Botón de Exportar Resumen Estadístico PDF */}
+          <section aria-label="Informes y consultas" className="min-w-0 space-y-2">
+            <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">Informes y consultas</h3>
             {onExportStatsSummaryPDF && (
-              <button
-                type="button"
-                onClick={onExportStatsSummaryPDF}
-                className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
-                title="Exportar documento PDF formateado con el resumen de estadísticas actual para entrega administrativa"
-              >
-                <FileText className="w-4 h-4" /> Resumen estadístico formaciones
+              <button type="button" onClick={onExportStatsSummaryPDF}
+                title="Exportar resumen de estadísticas en PDF"
+                className="flex min-h-[52px] w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-bold text-slate-800 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700">
+                <FileText className="h-5 w-5 shrink-0 text-[#00548E] dark:text-blue-300" />
+                <span className="min-w-0 flex-1">Resumen estadístico de formaciones</span>
               </button>
             )}
-
-            {/* Botón de Informe Periódico */}
-            {onOpenReportModal && (
-              <button
-                type="button"
-                onClick={onOpenReportModal}
-                className={`${BUTTON_PRIMARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
-              >
-                <FileText className="w-4 h-4" /> Análisis mano de obra
-              </button>
-            )}
-
-            {/* Botón de Relación nominal de trabajadores por obra */}
             {onExportObraSummary && (
-              <button
-                type="button"
-                onClick={onExportObraSummary}
-                className={`${BUTTON_SECONDARY} w-full sm:w-auto text-xs uppercase tracking-wider`}
-                title="Exportar dossier a pie de obra del personal asignado"
-              >
-                <Building2 className="w-4 h-4" /> Relación nominal de trabajadores por obra
+              <button type="button" onClick={onExportObraSummary}
+                title="Exportar relación nominal de trabajadores por obra"
+                className="flex min-h-[52px] w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-bold text-slate-800 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700">
+                <Building2 className="h-5 w-5 shrink-0 text-[#00548E] dark:text-blue-300" />
+                <span className="min-w-0 flex-1">Relación nominal de trabajadores por obra</span>
               </button>
             )}
-
-            {/* Filtro por Obra */}
-            <div className="w-full sm:w-auto min-w-[200px] border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-              <MultiSearchableDropdown
-                options={registeredObras}
-                selectedValues={obraFilter}
-                onChange={setObraFilter}
-                placeholder="Obra: Todas"
-                allLabel="Todas las obras"
-                icon={<MapPin className="w-4 h-4" />}
-                className="!w-full"
-                buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/40 !shadow-none !h-full !py-2 !text-slate-700 dark:!text-slate-200"
-              />
-            </div>
-
-            {/* Selector de Modo con Filtros Rápidos */}
-            <div className="flex flex-wrap items-center p-1 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700/80 gap-1">
-              <button
-                type="button"
-                onClick={() => setFilterMode('origen')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  filterMode === 'origen' 
-                    ? 'bg-white dark:bg-slate-700 text-brand-primary dark:text-blue-400 shadow-sm' 
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                }`}
-                title="Mostrar todo el historial de contrataciones"
-              >
-                <History className="w-3.5 h-3.5" />
-                Histórico
+            {onOpenReportModal && (
+              <button type="button" onClick={onOpenReportModal}
+                className="flex min-h-[52px] w-full items-center gap-3 rounded-xl border border-[#00548E] bg-[#00548E] px-4 py-3 text-left text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#003f70]">
+                <BarChart3 className="h-5 w-5 shrink-0" />
+                <span className="min-w-0 flex-1">Análisis de mano de obra</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterMode('mes_actual')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  filterMode === 'mes_actual' 
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-500/20' 
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                }`}
-                title={`Filtrar por el mes actual (${currentMonthLabel})`}
-              >
-                <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
-                Mes Actual
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterMode('ano_actual')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  filterMode === 'ano_actual' 
-                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-500/20' 
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                }`}
-                title={`Filtrar por el año en curso (${currentYearLabel})`}
-              >
-                <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-                Año en Curso
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterMode('fechas')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  filterMode === 'fechas' 
-                    ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-500/20' 
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                }`}
-                title="Especificar un rango de fechas personalizado"
-              >
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                Personalizado
-              </button>
-            </div>
-          </div>
+            )}
+          </section>
         </div>
 
         {/* Indicador o Inputs de Filtro de Fecha */}
