@@ -86,7 +86,7 @@ try {
  assert(mobilePeriodSelect.options.length>1,'the available periods are listed');
  await action(()=>{mobilePeriodSelect.value=mobilePeriodSelect.options[1].value;mobilePeriodSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  doc.period_key='2026-07';await action(()=>find('Actualizar documentos').click());
- assert(document.body.textContent.includes('No hay documentos en los periodos seleccionados'),'filtered empty state explains hidden documents');
+ assert(document.body.textContent.includes('No hay documentos en el periodo seleccionado'),'filtered empty state explains hidden documents');
  await action(()=>{mobilePeriodSelect.value='';mobilePeriodSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
  assert([...document.querySelectorAll('button')].some(b=>b.textContent.includes('control.pdf')),'clear filters reveals new period');
 
