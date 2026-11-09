@@ -958,7 +958,6 @@ export const PersonList: React.FC<PersonListProps> = ({
                   ? sameDniWorkersMap.get(cleanDni)!
                   : [];
                 return (
-                  <div key={`parts-compact-${person.id}`} className="space-y-2">
                   <CompactPersonCard
                     key={`compact_person_${person.id}_${personIdx}`}
                     person={person}
@@ -968,12 +967,10 @@ export const PersonList: React.FC<PersonListProps> = ({
                     onEdit={onEdit}
                     onGenerateIDCard={onGenerateIDCard}
                     onExportHistoryPDF={onExportHistoryPDF}
+                    renderPartsAction={renderPartsAction}
                     onOpenCalendar={handleOpenCalendarForWorker}
                     sameDniWorkers={sameDniWorkers}
                   />
-
-                    {renderPartsAction && <div className="px-2 pb-1">{renderPartsAction(person)}</div>}
-                  </div>
                 );
               })}
             </div>
