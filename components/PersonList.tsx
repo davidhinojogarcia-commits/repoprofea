@@ -53,7 +53,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
     void (async () => {
       try {
         const collected: PartSummary[] = [];
-        let cursor: string | null = null;
+        let cursor: unknown = null;
         const cursors = new Set<string>();
         // El servidor decide los expedientes accesibles. No solicitar datos de otro supervisor.
         for (let page = 0; page < 200; page++) {
@@ -64,13 +64,14 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
             if (!Number.isSafeInteger(workerId) || workerId <= 0) throw new Error('Expediente sin identificación de trabajador verificable.');
             collected.push({ workerId, status: String(row.status || ''), repetition: Number(row.reiteration_level || 0) });
           }
-          const next = result.cursor ? String(result.cursor) : null;
-          if (!next) {
+          const next: unknown = result.cursor ?? null;
+          if (next === null || next === '') {
             if (active) { setPartsRecords(collected); setPartsLoaded(true); }
             return;
           }
-          if (next === cursor || cursors.has(next)) throw new Error('Paginación de expedientes inconsistente.');
-          cursors.add(next);
+          const cursorKey = JSON.stringify(next);
+          if (!cursorKey || cursors.has(cursorKey)) throw new Error('Paginación de expedientes inconsistente.');
+          cursors.add(cursorKey);
           cursor = next;
         }
         throw new Error('Historial demasiado extenso: no se permite aplicar filtros sobre resultados incompletos.');
