@@ -973,7 +973,8 @@ export const PersonList: React.FC<PersonListProps> = ({
                   />
 
                     {renderPartsAction && <div className="px-2 pb-1">{renderPartsAction(person)}</div>}
-                  </div>                );
+                  </div>
+                );
               })}
             </div>
           ) : (
