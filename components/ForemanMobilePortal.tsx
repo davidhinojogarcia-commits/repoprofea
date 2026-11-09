@@ -1363,7 +1363,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             {periodGroup.documents.map(doc=>renderSigningDocument(doc))}
           </div>)}
         </div>)}
-        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en los periodos seleccionados. Pulsa Todos para ver todos los documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
+        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en el periodo seleccionado. Elige Todos los periodos para ver todos los documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
       </section>}
 
       {tab==='epis'&&<section className="space-y-3">
