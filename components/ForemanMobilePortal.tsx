@@ -791,11 +791,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     !selectedMandatoryPeriodKeys.size || selectedMandatoryPeriodKeys.has(String(doc.periodKey||doc.workDate||'sin-periodo'))
   );
 
-  const toggleMandatoryPeriod=(key:string)=>setSelectedMandatoryPeriodKeys(current=>{
-    const next=new Set(current);
-    if(next.has(key))next.delete(key);else next.add(key);
-    return next;
-  });
+  const selectMandatoryPeriod=(key:string)=>setSelectedMandatoryPeriodKeys(key?new Set([key]):new Set());
 
   const signatureLoadsRef=useRef(new Map<string,Promise<void>>());
   const activePortalTokenRef=useRef(token);
@@ -1336,11 +1332,20 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen Inicio, Control de presencia, Contratos y Prórrogas enviados por el supervisor. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
         </div>
         {documentsUpdatedAt&&<p role="status" className="px-1 text-xs text-slate-600 dark:text-slate-300">Última consulta: {documentsUpdatedAt} · {allAssignedMandatoryDocuments.length} documento(s) enviados a esta obra.</p>}
-        <div className="rounded-2xl border bg-white p-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:'touch'}}>
-            <button type="button" onClick={()=>setSelectedMandatoryPeriodKeys(new Set())} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black ${selectedMandatoryPeriodKeys.size===0?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>Todos</button>
-            {mandatoryPeriodOptions.map(option=><button key={option.key} type="button" onClick={()=>toggleMandatoryPeriod(option.key)} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black whitespace-nowrap ${selectedMandatoryPeriodKeys.has(option.key)?'border-[#00548E] bg-[#00548E] text-white':'bg-slate-50 text-slate-700'}`}>{option.label} · {option.count}</button>)}
-          </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+          <label htmlFor="foreman-mandatory-period" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">
+            Periodo
+          </label>
+          <select
+            id="foreman-mandatory-period"
+            aria-label="Filtrar documentos por periodo"
+            value={selectedMandatoryPeriodKeys.size===1?[...selectedMandatoryPeriodKeys][0]:''}
+            onChange={event=>selectMandatoryPeriod(event.target.value)}
+            className="min-h-[48px] w-full min-w-0 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-base font-bold text-slate-900 focus:border-[#00548E] focus:outline-none focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          >
+            <option value="">Todos los periodos</option>
+            {mandatoryPeriodOptions.map(option=><option key={option.key} value={option.key}>{option.label} · {option.count} {option.count===1?'documento':'documentos'}</option>)}
+          </select>
         </div>
         {assignedByWorksiteAndPeriod.map(group=><div key={group.worksite} className="space-y-3">
           <div className="rounded-2xl border-2 border-[#00548E]/20 bg-white px-4 py-3 shadow-sm">
