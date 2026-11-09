@@ -133,14 +133,13 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
     props.people.filter(person => (statusFilters.length === 0 || statusFilters.includes(getStatus(person))) && (!partsLoaded || recordMatch(Number(person.id)))),
     [props.people, statusFilters, partsLoaded, recordMatch],
   );
-  const openParts = useCallback((person: Person) => { if (partsLoaded) setPartsWorker(Number(person.id)); }, [partsLoaded]);
+  const openParts = useCallback((person: Person) => setPartsWorker(Number(person.id)), []);
   const renderPartsAction = useCallback((person: Person) => {
-    if (!partsLoaded) return null;
     const num = relatedRecords(Number(person.id)).length;
     return <button type="button" onClick={() => openParts(person)}
       aria-label={`Consultar partes y avisos de ${person.apellidosNombre}`}
       className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#00548E]/30 bg-blue-50 px-3 py-2 text-xs font-bold text-[#00548E] hover:bg-blue-100 dark:border-blue-700 dark:bg-slate-800 dark:text-blue-200">
-      Partes y avisos <span className="rounded-full bg-[#00548E] px-2 py-0.5 text-white">{num}</span>
+      Partes y avisos {partsLoaded ? <span className="rounded-full bg-[#00548E] px-2 py-0.5 text-white">{num}</span> : <span className="text-[10px] font-normal">Consultar</span>}
     </button>;
   }, [partsLoaded, relatedRecords, openParts]);
 
