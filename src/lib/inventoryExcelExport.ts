@@ -110,7 +110,7 @@ export async function exportInventoryParkExcel(park: InventoryPark, snapshot: Sn
   sheet('Inventario', ['Código','Categoría','Equipo','Marca','Modelo','Serie','Matrícula','Cantidad','Gestión','Estado','Ubicación','Obra','Responsable de uso','Supervisor responsable','Activo','Alta','Última actualización','Observaciones','Detalles'], snapshot.items.map(i=>[
     i.codigo,i.categoria,i.nombre,i.marca,i.modelo,i.numeroSerie,i.matricula,i.cantidad,i.tipoGestion,
     i.estado,i.ubicacionActual,i.obraActualId,i.responsableActual,i.supervisorResponsableNombre,
-    i.activo?'Sí':'No',fmt(i.createdAt),fmt(i.updatedAt),i.observaciones,i.detalles,
+    i.activo?'Sí':'No',fmt(i.createdAt),fmt(i.updatedAt),i.observaciones,JSON.stringify(i.detalles || {}),
   ]));
   const itemNames = new Map(snapshot.items.map(i=>[i.id,`${i.codigo} · ${i.nombre}`]));
   sheet('Trazabilidad', ['Fecha y hora','Equipo','Tipo de movimiento','Origen','Destino','Obra','Estado anterior','Estado nuevo','Responsable ID','Registrado por','Coordenadas','Fotografías (rutas)','Observaciones','ID de movimiento'],
