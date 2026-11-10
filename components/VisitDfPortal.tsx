@@ -50,16 +50,15 @@ export function VisitDfPortal({token}:{token:string}){
       {!session ? <section className="space-y-3">
         <h2 className="font-bold">Verificación de identidad</h2>
         <p className="text-sm text-slate-600">Recibirás un código de seis cifras en el correo de la Dirección Facultativa autorizado para esta visita.</p>
-        {!sent ? <button className={primary+' w-full'} disabled={busy} onClick={()=>void perform(async()=>{
+        <button className={secondary+' w-full'} disabled={busy} onClick={()=>void perform(async()=>{
           await visitRequest({action:'df-challenge',token},{public:true});setSent(true);setMessage('Código enviado. Comprueba tu correo.');
-        })}>Enviar código al correo</button> : <>
-          <label className="block text-sm font-bold">Código recibido
-            <input className={inputClass} autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code}
-              onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} />
-          </label>
-          <button className={primary+' w-full'} disabled={busy||code.length!==6} onClick={authenticate}>Verificar y acceder</button>
-          <p className="text-xs text-slate-500">El código caduca en 10 minutos. Si necesitas otro, espera al menos un minuto.</p>
-        </>}
+        })}>{sent?'Solicitar otro código':'Enviar código al correo'}</button>
+        <label className="block text-sm font-bold">Código recibido
+          <input className={inputClass} autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code}
+            onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} />
+        </label>
+        <button className={primary+' w-full'} disabled={busy||code.length!==6} onClick={authenticate}>Verificar y acceder</button>
+        <p className="text-xs text-slate-500">El código caduca en 10 minutos. Si recargas esta pantalla, puedes introducir el código ya recibido sin pedir otro.</p>
       </section> : <section className="space-y-4">
         <div className="rounded-xl bg-slate-50 p-3">
           <p className="font-black">{record?.number||'Acta de visita'}</p>
