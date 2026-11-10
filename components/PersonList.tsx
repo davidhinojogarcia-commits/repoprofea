@@ -148,15 +148,17 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
   const chosenLinkedPeople = chosenPerson ? props.people.filter(person => (samePersonIds.get(Number(chosenPerson.id)) || []).includes(Number(person.id))) : [];
 
   return <div>
-    {props.people.length > 0 && <DirectoryStatusFilter value={statusFilters} onChange={setStatusFilters} counts={counts} />}
     <PersonListView {...props} people={visiblePeople} renderPartsAction={renderPartsAction}
+      renderMedicalFilter={<DirectoryStatusFilter value={statusFilters} onChange={setStatusFilters} counts={counts} />}
+      extendedFiltersActive={statusFilters.length > 0 || partsFilter !== 'all'}
+      onClearExtendedFilters={() => {setStatusFilters([]);setPartsFilter('all');}}
       renderPartsFilter={
-        <div className="flex min-w-0 w-full flex-col justify-center gap-1 px-1 py-1">
+        <div className="flex min-w-0 w-full flex-col justify-center gap-1.5">
           <label htmlFor="directory-parts-filter" className="text-xs font-bold text-slate-700 dark:text-slate-200">Partes y avisos</label>
           <div className="flex min-w-0 w-full items-center gap-2">
             <select id="directory-parts-filter" aria-label="Partes y avisos" value={partsFilter} disabled={!partsLoaded}
               onChange={event => setPartsFilter(event.target.value as PartsFilter)}
-              className="min-h-11 min-w-0 w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
+              className="min-h-11 min-w-0 w-full flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
               <option value="all">Todos</option>
               <option value="with">Con partes o avisos</option>
               <option value="without">Sin partes ni avisos</option>
