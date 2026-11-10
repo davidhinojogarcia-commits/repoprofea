@@ -4,8 +4,7 @@ import {
   DOCUMENT_KINDS,
   DOCUMENT_STATUS,
   COMMON_FIELDS,
-  REJECTION_FIELDS,
-  EXIT_FIELDS,
+  fieldsForKind,
   declaration,
   documentVariant,
   RECEIPT_TEXT,
@@ -109,7 +108,9 @@ export function workforcePdf(
   );
   text(
     "Contratación",
-    `Referencia: ${p.content.contractReference || p.worker.reference}\nPeriodo registrado: ${p.worker.start || "Pendiente"} / ${p.worker.end || "Pendiente"}${p.worker.offer ? " · Oferta SAE: " + p.worker.offer : ""}`,
+    p.kind === "rechazo_voluntario"
+      ? `Código de obra: ${p.worksite.code}\nPeriodo previsto de contratación: ${p.worker.start || "Pendiente"} a ${p.worker.end || "Pendiente"}`
+      : `Referencia: ${p.content.contractReference || p.worker.reference}\nPeriodo registrado: ${p.worker.start || "Pendiente"} / ${p.worker.end || "Pendiente"}${p.worker.offer ? " · Oferta SAE: " + p.worker.offer : ""}`,
   );
   if (returnOnly) {
     const r = p.returnEntry;
@@ -127,10 +128,7 @@ export function workforcePdf(
       "Actuación vinculada al documento firmado de salida, que se conserva íntegro. La previsión inicial no se convierte en un fichaje ni en un tiempo real acreditado.",
     );
   } else {
-    const fields = [
-      ...COMMON_FIELDS,
-      ...(p.kind === "rechazo_voluntario" ? REJECTION_FIELDS : EXIT_FIELDS),
-    ];
+    const fields = fieldsForKind(p.kind);
     for (const f of fields) {
       const v = p.content[f.key];
       if (!v || ["workerNotes", "foremanNotes", "reasonBrief"].includes(f.key))
@@ -149,18 +147,22 @@ export function workforcePdf(
       );
     }
     text("Manifestación de la persona trabajadora", declaration(p));
-    text(
-      "Observaciones del trabajador",
-      p.content.workerNotes || "Sin observaciones",
-    );
+    if (p.kind === "salida_obra") {
+      text(
+        "Observaciones del trabajador",
+        p.content.workerNotes || "Sin observaciones",
+      );
+    }
     text(
       "Constancia del encargado",
       `${p.foreman.name} · ${p.foreman.id}\n${RECEIPT_TEXT}`,
     );
-    text(
-      "Observaciones del encargado",
-      p.content.foremanNotes || "Sin observaciones",
-    );
+    if (p.kind === "salida_obra") {
+      text(
+        "Observaciones del encargado",
+        p.content.foremanNotes || "Sin observaciones",
+      );
+    }
     for (const role of ["worker", "foreman"] as const) {
       const s = p.signatures[role];
       room(58);
