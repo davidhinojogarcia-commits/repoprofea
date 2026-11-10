@@ -13,7 +13,7 @@ const tokenPattern=/^[a-zA-Z0-9_-]{43}$/;
 const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const q=(fields:Record<string,string>)=>new URLSearchParams(fields).toString();
 const fresh=()=>randomBytes(32).toString('base64url');
-const isDf=(role:unknown)=>/arquitect|direcci[oó]n facultativa|director(?:a)? de (?:obra|ejecuci[oó]n)|t[eé]cnic[oa] facultativ/i.test(String(role||''));
+const isDf=(role:unknown)=>/arquitect|direcci[oó]n (?:facultativa|de (?:obra|ejecuci[oó]n))|director(?:a)? de (?:obra|ejecuci[oó]n)|t[eé]cnic[oa] facultativ/i.test(String(role||''));
 const sessionValid=(invite:any,session:unknown,digest:Dependencies['digest'])=>
   typeof session==='string'&&tokenPattern.test(session)&&invite.session_hash===digest(session)&&new Date(invite.session_expires_at||0).getTime()>Date.now();
 
