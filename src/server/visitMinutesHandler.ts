@@ -7,6 +7,7 @@ import { generateVisitMinutesPdf } from '../lib/visitMinutesPdf.js';
 import {visitAssetRows,hydrateVisitAssets,cachedVisitDraft,visitDraftDescriptor,visitTotalLimit} from './visitAssets.js';
 import {putVisitObject,storedVisitBytes,visitFileDescriptor} from './visitFileStorage.js';
 import { assistVisitWriting, visitWritingStatus } from './visitWriting.js';
+import { handleDfGuest, handleDfOwner } from './visitDfContributions.js';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), {
   status
 });
@@ -389,6 +390,8 @@ export async function visitMinutesHandler(req: any, res: any) {
     if(action==='writing-status')return res.json({ok:true,writing:visitWritingStatus()});
     if (!SERVICE_KEY) throw fail('El servidor de actas no está configurado.', 503);
     if(action.startsWith('foreman-visits-'))return await handleVisitOrders(req,b,res,null,'',{database,digest,validateAttachments});
+    const dfDependencies = {database,digest,ownerRecord,sendCode:async(ownerId:string,email:string,subject:string,body:string)=>{await sendVisitMime(ownerId,email,{subject,body},randomUUID());}};
+    if(['df-challenge','df-verify','df-portal-get','df-submit'].includes(action))return await handleDfGuest(b,res,dfDependencies);
     if (['challenge', 'verify', 'portal', 'portal-command', 'portal-pdf'].includes(action)) {
       const {
         access,
@@ -484,6 +487,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     }
     const user = await activeUser(req),
       auth = String(req.headers?.authorization || '');
+    if(['df-invite','df-revoke','df-list','df-review'].includes(action))return await handleDfOwner(b,res,dfDependencies,user,auth);
     if(isOrderAction(action))return await handleVisitOrders(req,b,res,user,auth,{database,digest,validateAttachments});
     if(action==='assist-writing'){
       if(!uuidValid(b.worksiteId))throw fail('Selecciona una obra válida.',400);
