@@ -410,7 +410,7 @@ export async function processAdministrativeMandatoryInbox(options?: {
     ),
   );
   const pendingPdfs = pendingAttachments.filter(attachment =>
-    /\\.pdf$/i.test(attachment.filename) || attachment.mimeType === 'application/pdf',
+    /\.pdf$/i.test(attachment.filename) || attachment.mimeType === 'application/pdf',
   );
   if (!pendingPdfs.length) {
     return {
