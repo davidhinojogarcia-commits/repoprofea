@@ -562,15 +562,15 @@ export function VisitMinutesPanel({
             : 0;
           const active=record?.id===r.id;
           return <article aria-label={'Acta '+r.number} key={r.id}
-            className={`min-w-0 rounded-xl border px-3 py-2.5 ${active?'border-[#00548E] bg-blue-50 dark:bg-blue-950/30':'border-slate-200 dark:border-slate-700'}`}>
+            className={`min-w-0 rounded-xl border px-3 py-2 shadow-sm ${active?'border-[#00548E] bg-blue-50 dark:bg-blue-950/30':'border-slate-200 dark:border-slate-700'}`}>
             <button aria-label={'Abrir acta '+r.number} disabled={busy} onClick={()=>void run(()=>open(r.id))}
-              className="flex min-h-11 w-full min-w-0 items-start justify-between gap-2 text-left">
+              className="flex min-h-11 w-full min-w-0 items-start justify-between gap-2 rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E]">
               <span className="min-w-0 flex-1">
                 <strong className="block truncate text-sm font-black text-slate-900 dark:text-slate-100">{r.number} · v{r.version}</strong>
                 <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-slate-300" title={r.worksite}>{r.worksite}</span>
                 <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">{String(r.visit_date).slice(0,10)}{pending>0?` · ${pending} pendiente(s)`:''}</span>
               </span>
-              <span className="max-w-[43%] shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-center text-[11px] font-bold text-[#00548E] dark:bg-slate-800 dark:text-blue-300">{VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</span>
+              <span className="max-w-[45%] shrink-0 break-words rounded-lg bg-slate-100 px-2 py-1 text-center text-xs font-bold leading-tight text-[#00548E] dark:bg-slate-800 dark:text-blue-300">{VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</span>
             </button>
             {r.isOwner&&r.status!=='cancelled'&&<div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">
               <button aria-label={'Editar acta '+r.number} disabled={busy} className={button+' w-full'} onClick={()=>void run(()=>editActa(r.id))}>Editar</button>

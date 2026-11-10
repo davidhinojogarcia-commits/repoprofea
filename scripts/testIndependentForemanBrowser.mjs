@@ -40,12 +40,22 @@ try{
  await server.listen();browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const url='http://127.0.0.1:'+server.httpServer.address().port+'/foreman-test';await page.goto(url);await page.getByRole('button',{name:'Actualizar documentos',exact:true}).waitFor();
+ const sections={'EPIs':'epis','Formación':'formacion','Maquinaria':'maquinaria','Control horario':'control','Finalizados':'completed'};
+ const openSection=async label=>{
+  if(await page.evaluate(()=>innerWidth<640)) {
+   const picker=page.getByRole('combobox',{name:'Sección del portal'});
+   await picker.selectOption(sections[label]);
+   assert.equal(await picker.inputValue(),sections[label],label+' selected on mobile');
+  } else {
+   await page.getByRole('navigation',{name:'Secciones del portal de encargados en pantallas grandes'}).getByRole('button',{name:label,exact:true}).click();
+  }
+ };
  for(const type of ['inicio','control_presencia','contrato','prorroga']){
   await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
   assert.equal(await page.getByRole('button',{name:'Firmar como encargado',exact:true}).count(),0,type+' has no independent signing');
  }
  for(const [tab,type] of [['EPIs','epis'],['Formación','formacion'],['Maquinaria','maquinaria']]){
-  await page.getByRole('button',{name:tab,exact:true}).click();await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
+  await openSection(tab);await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
   const sign=page.getByRole('button',{name:'Firmar como encargado',exact:true});await sign.waitFor();assert(await page.getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'missing foreman signature blocks each native document without setup');
   for(const [width,height] of [[390,844],[820,1180],[1440,900]])for(const dark of [false,true]){
    await page.setViewportSize({width,height});await page.evaluate(d=>document.documentElement.classList.toggle('dark',d),dark);await sign.scrollIntoViewIfNeeded();
@@ -61,13 +71,13 @@ try{
   assert(await page.evaluate(()=>window.testApi.checkWorkers()),'worker signatures untouched');
  }
  const fidelity=await page.evaluate(()=>window.checkOriginalFidelity());assert.equal(fidelity.ok,true,JSON.stringify(fidelity));
- await page.reload();await page.getByRole('button',{name:'EPIs',exact:true}).click();await page.getByRole('button').filter({hasText:'epis.pdf'}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor();
+ await page.reload();await openSection('EPIs');await page.getByRole('button').filter({hasText:'epis.pdf'}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor();
  await page.getByRole('combobox',{name:'Añadir quincena o contrato',exact:true}).selectOption('PERIODO DE PRUEBA');
  await page.getByRole('button',{name:/Preparar relación para firmas/}).click();await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();assert(await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'new document auto-expands with foreman panel');
- await page.getByRole('button',{name:'Control horario',exact:true}).click();await page.getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();
+ await openSection('Control horario');await page.getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();
  await page.getByRole('button',{name:'Firmar como encargado',exact:true}).click();const attendanceCanvas=page.locator('canvas').last();const ab=await attendanceCanvas.boundingBox();await page.mouse.move(ab.x+20,ab.y+25);await page.mouse.down();await page.mouse.move(ab.x+120,ab.y+70,{steps:10});await page.mouse.up();await page.getByRole('button',{name:'Guardar',exact:true}).click();await page.getByText('Firma guardada y verificada',{exact:true}).waitFor();
  await page.evaluate(()=>{document.getElementById('root').style.cssText='position:relative;z-index:22000';});
- await page.evaluate(()=>window.finishFixtures());await page.getByRole('button',{name:'Finalizados',exact:true}).click();await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+ await page.evaluate(()=>window.finishFixtures());await openSection('Finalizados');await page.getByRole('button',{name:'Actualizar',exact:true}).click();
  for(const [type,label] of [['epis','Entrega de EPIs'],['formacion','Formación e información'],['maquinaria','Autorización de maquinaria'],['stored-contract','Contrato de trabajo']]){
   const card=page.locator('section > div').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
   await card.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.getByText(label+' · PDF firmado',{exact:true}).waitFor();await page.locator('canvas').first().waitFor();
