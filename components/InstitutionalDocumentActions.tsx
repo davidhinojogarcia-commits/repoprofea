@@ -49,7 +49,7 @@ export function InstitutionalDocumentActions({
           className={`profea-institutional-document-actions__secondary-grid ${expanded ? 'is-expanded' : ''}`}
           aria-label="Otras acciones del documento"
           onClick={event => {
-            if (event.target instanceof Element && event.target.closest('button:not(:disabled)')) {
+            if ((event.target as HTMLElement).closest?.('button:not(:disabled)')) {
               setExpanded(false);
             }
           }}
