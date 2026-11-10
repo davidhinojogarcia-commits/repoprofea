@@ -1,11 +1,8 @@
-import React, { useRef } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import './InstitutionalDocumentActions.css';
 
-/**
- * Shared institutional action layout for supervisor document cards.
- * Child actions retain their own handlers, disabled states and permission checks.
- */
+/** Shared institutional action layout. Action callbacks and permission guards stay with the caller. */
 export function InstitutionalDocumentActions({
   primary,
   secondary,
@@ -15,34 +12,51 @@ export function InstitutionalDocumentActions({
   secondary: React.ReactNode;
   hasPrimary?: boolean;
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const summaryRef = useRef<HTMLElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
   return (
-    <div className="profea-institutional-document-actions min-w-0" aria-label="Acciones del documento">
-      {hasPrimary && <div className="profea-institutional-document-actions__primary" aria-label="Acciones principales">{primary}</div>}
-      <details
-        ref={detailsRef}
-        className="profea-institutional-document-actions__secondary"
-        onKeyDown={event => {
-          if (event.key === 'Escape' && detailsRef.current?.open) {
-            detailsRef.current.open = false;
-            summaryRef.current?.focus();
-            event.stopPropagation();
-          }
-        }}
-        onClickCapture={event => {
-          if (!(event.target instanceof Element)) return;
-          const action = event.target.closest('button');
-          if (action && !action.disabled && detailsRef.current?.open) {
-            detailsRef.current.open = false;
-          }
-        }}
-      >
-        <summary ref={summaryRef} className="profea-institutional-document-actions__toggle">
+    <div
+      className="profea-institutional-document-actions min-w-0"
+      aria-label="Acciones del documento"
+      onKeyDown={event => {
+        if (event.key === 'Escape' && expanded) {
+          event.stopPropagation();
+          setExpanded(false);
+          triggerRef.current?.focus();
+        }
+      }}
+    >
+      {hasPrimary && (
+        <div className="profea-institutional-document-actions__primary" aria-label="Acciones principales">
+          {primary}
+        </div>
+      )}
+      <div className="profea-institutional-document-actions__secondary">
+        <button
+          type="button"
+          ref={triggerRef}
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          className="profea-institutional-document-actions__toggle"
+          onClick={() => setExpanded(current => !current)}
+        >
           <span>Más acciones</span><ChevronDown aria-hidden="true" size={18} />
-        </summary>
-        <div className="profea-institutional-document-actions__secondary-grid" aria-label="Otras acciones del documento">{secondary}</div>
-      </details>
+        </button>
+        <div
+          id={contentId}
+          className={`profea-institutional-document-actions__secondary-grid ${expanded ? 'is-expanded' : ''}`}
+          aria-label="Otras acciones del documento"
+          onClick={event => {
+            if (event.target instanceof Element && event.target.closest('button:not(:disabled)')) {
+              setExpanded(false);
+            }
+          }}
+        >
+          {secondary}
+        </div>
+      </div>
     </div>
   );
 }
