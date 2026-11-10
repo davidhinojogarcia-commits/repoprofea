@@ -80,8 +80,8 @@ try {
  assert(navigation,'mobile portal has guided icon-button ribbon');
  assert.equal(document.getElementById('foreman-section-picker'),null,'mobile dropdown removed');
  const labels=['Control, inicios y contratos','Prevención','Partes y avisos','EPIs','Formación','Maquinaria','Control horario','Documentos','Actas de visitas','Finalizados'];
- assert.deepEqual([...navigation.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')||button.textContent.replace(/\\s+/g,' ').trim()),labels,'all ten sections stay accessible');
- await action(()=>navigation.querySelector('button[aria-label="Actas de visitas"]')?.click()||find('Actas de visitas').click());
+ assert.deepEqual([...navigation.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')||button.textContent.replace(/\s+/g,' ').trim()),labels,'all ten sections stay accessible');
+ await action(()=>navigation.querySelector('button[aria-label="Actas de visitas"]').click());
  assert(document.querySelector('[data-testid=actual-visit-tab]'),'guided ribbon opens visits');
  await action(()=>navigation.querySelector('button[aria-label="Control, inicios y contratos"]').click());
  assert(!document.querySelector('[data-testid=actual-visit-tab]'),'guided ribbon returns to mandatory');
