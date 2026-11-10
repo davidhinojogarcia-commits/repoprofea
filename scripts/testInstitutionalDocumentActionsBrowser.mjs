@@ -10,9 +10,10 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const server=await createServer({root,configFile:false,plugins:[
  react(),
  {name:'document-action-test-page',configureServer(server){
-    server.middlewares.use('/__document-actions',(_req,res)=>{
+    server.middlewares.use('/__document-actions',async (_req,res)=>{
       res.setHeader('Content-Type','text/html; charset=utf-8');
-      res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/scripts/documentActionsHarness.tsx"></script></body></html>');
+      const html='<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/scripts/documentActionsHarness.tsx"></script></body></html>';
+      res.end(await server.transformIndexHtml('/__document-actions',html));
     });
  }}
 ],server:{host:'127.0.0.1',port:0},logLevel:'error'});
