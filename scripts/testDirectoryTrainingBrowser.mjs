@@ -64,6 +64,7 @@ try {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'ALERTA DE PREVENCIÓN DE CONTRATACIÓN' }).count(), 0, 'medical warning hidden until No aptos is selected');
     await page.getByText('Más filtros', { exact: true }).click();
     const year = page.getByLabel('Año de contratación', { exact: true });
     const training = page.getByLabel('Formación', { exact: true });
@@ -126,6 +127,7 @@ try {
     await page.locator('summary[aria-label="Aptitud médica"]').click();
     await page.getByText('No aptos', { exact: true }).click();
     await scope([5]);
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'ALERTA DE PREVENCIÓN DE CONTRATACIÓN' }).count(), 1, 'selected No aptos shows red warning');
     await page.getByRole('button', { name: 'Todas las aptitudes', exact: true }).click();
     await scope([2, 4, 5]);
     await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
