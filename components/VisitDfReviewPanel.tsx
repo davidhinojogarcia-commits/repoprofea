@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import type { VisitRecord } from '../src/lib/visitMinutes';
 import { visitRequest } from '../src/services/visitMinutesService';
@@ -9,6 +9,7 @@ type Invitation={person_id:string;expires_at:string;revoked:boolean};
 const btn='min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#00548E] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200';
 export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{record:VisitRecord;dirty:boolean;onUpdated:(record:VisitRecord)=>void;onPendingChange?:(count:number)=>void}){
   const [items,setItems]=useState<Contribution[]>([]);
+  const detailsRef=useRef<HTMLDetailsElement>(null);
   const [invitations,setInvitations]=useState<Invitation[]>([]);
   const [selected,setSelected]=useState('');
   const [link,setLink]=useState('');
@@ -22,12 +23,13 @@ export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{rec
   const load=async()=>{
     const result=await visitRequest({action:'df-list',id:record.id});
     setItems(result.contributions);
+    if(result.contributions.some((p:Contribution)=>p.status==='pending')&&detailsRef.current)detailsRef.current.open=true;
     onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);
     setInvitations(result.invitations||[]);
     setError('');
   };
   useEffect(()=>{let cancelled=false;setItems([]);setInvitations([]);setLink('');setQr('');setError('');setMessage('');
-    void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{if(!cancelled){setItems(result.contributions);onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);setInvitations(result.invitations||[]);}}).catch((e:any)=>{if(!cancelled)setError(e.message);});
+    void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{if(!cancelled){setItems(result.contributions);if(result.contributions.some((p:Contribution)=>p.status==='pending')&&detailsRef.current)detailsRef.current.open=true;onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);setInvitations(result.invitations||[]);}}).catch((e:any)=>{if(!cancelled)setError(e.message);});
     return()=>{cancelled=true;};
   },[record.id,record.version]);
   useEffect(()=>{
@@ -38,13 +40,14 @@ export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{rec
         if(!active)return;
         const contributions:Contribution[]=result.contributions||[];
         setItems(contributions);
+        if(contributions.some(point=>point.status==='pending')&&detailsRef.current)detailsRef.current.open=true;
         onPendingChange?.(contributions.filter(point=>point.status==='pending').length);
         setInvitations(result.invitations||[]);
         setError('');
       }).catch((e:any)=>{if(active)setError(e?.message||'No se pudieron actualizar las aportaciones de Dirección Facultativa.');});
     };
     document.addEventListener('visibilitychange',refresh);
-    const timer=window.setInterval(refresh,30000);
+    const timer=window.setInterval(refresh,20000);
     return()=>{active=false;document.removeEventListener('visibilitychange',refresh);window.clearInterval(timer);};
   },[record.id,record.version]);
   useEffect(()=>{let cancelled=false;if(!link){setQr('');return;}
@@ -88,7 +91,7 @@ export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{rec
     await navigator.clipboard.writeText(link);
     setMessage('Enlace copiado. Envíalo únicamente a la Dirección Facultativa indicada.');
   });
-  return <details onToggle={event=>{if(event.currentTarget.open)void load().catch((e:any)=>setError(e?.message||'No se pudieron consultar las aportaciones.'));}} aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+  return <details ref={detailsRef} onToggle={event=>{if(event.currentTarget.open)void load().catch((e:any)=>setError(e?.message||'No se pudieron consultar las aportaciones.'));}} aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
     <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm font-black text-[#00548E] dark:text-blue-200">
       <span>Aportaciones de Dirección Facultativa · Revisar e integrar</span>
       <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-xs dark:bg-slate-900">{items.filter(p=>p.status==='pending').length} pendientes</span>
