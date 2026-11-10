@@ -7,7 +7,7 @@ import { appPrompt } from '../src/lib/appDialog';
 type Contribution={id:string;person_id:string;title:string;description:string;status:'pending'|'accepted'|'rejected'|'returned';return_reason?:string|null;created_at:string};
 type Invitation={person_id:string;expires_at:string;revoked:boolean};
 const btn='min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#00548E] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200';
-export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;dirty:boolean;onUpdated:(record:VisitRecord)=>void}){
+export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{record:VisitRecord;dirty:boolean;onUpdated:(record:VisitRecord)=>void;onPendingChange?:(count:number)=>void}){
   const [items,setItems]=useState<Contribution[]>([]);
   const [invitations,setInvitations]=useState<Invitation[]>([]);
   const [selected,setSelected]=useState('');
@@ -22,10 +22,11 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
   const load=async()=>{
     const result=await visitRequest({action:'df-list',id:record.id});
     setItems(result.contributions);
+    onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);
     setInvitations(result.invitations||[]);
   };
   useEffect(()=>{let cancelled=false;setItems([]);setInvitations([]);setLink('');setQr('');setError('');setMessage('');
-    void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{if(!cancelled){setItems(result.contributions);setInvitations(result.invitations||[]);}}).catch((e:any)=>{if(!cancelled)setError(e.message);});
+    void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{if(!cancelled){setItems(result.contributions);onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);setInvitations(result.invitations||[]);}}).catch((e:any)=>{if(!cancelled)setError(e.message);});
     return()=>{cancelled=true;};
   },[record.id,record.version]);
   useEffect(()=>{
