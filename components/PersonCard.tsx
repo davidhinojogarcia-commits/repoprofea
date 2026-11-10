@@ -27,6 +27,7 @@ interface PersonCardProps {
   onEdit: (person: Person) => void;
   onGenerateIDCard: (person: Person) => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   onOpenCalendar: (person: Person) => void;
   isSyncActive?: boolean;
   onToggleSync?: (id: number) => void;
@@ -47,6 +48,7 @@ export const PersonCard: React.FC<PersonCardProps> = React.memo(({
   onEdit,
   onGenerateIDCard,
   onExportHistoryPDF,
+  renderPartsAction,
   onOpenCalendar,
   isSyncActive = false,
   onToggleSync,
@@ -626,6 +628,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                   </ul>
                 </div>
               )}
+              {renderPartsAction && <div className="mt-3">{renderPartsAction(person)}</div>}
             </div>
 
             {/* Action Buttons */}

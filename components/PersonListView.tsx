@@ -35,6 +35,7 @@ interface PersonListProps {
   onScanWorkerCard?: () => void;
   onPairWorkerCard?: () => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   savedObras: string[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -97,6 +98,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   onScanWorkerCard,
   onPairWorkerCard,
   onExportHistoryPDF,
+  renderPartsAction,
   savedObras,
   searchTerm,
   setSearchTerm,
@@ -944,6 +946,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               onEdit={onEdit}
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
+              renderPartsAction={renderPartsAction}
               onOpenCalendar={handleOpenCalendarForWorker}
               sameDniWorkersMap={sameDniWorkersMap}
             />
@@ -964,6 +967,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                     onEdit={onEdit}
                     onGenerateIDCard={onGenerateIDCard}
                     onExportHistoryPDF={onExportHistoryPDF}
+                    renderPartsAction={renderPartsAction}
                     onOpenCalendar={handleOpenCalendarForWorker}
                     sameDniWorkers={sameDniWorkers}
                   />
@@ -979,6 +983,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               onEdit={onEdit}
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
+              renderPartsAction={renderPartsAction}
               onOpenCalendar={handleOpenCalendarForWorker}
               sameDniWorkersMap={sameDniWorkersMap}
             />

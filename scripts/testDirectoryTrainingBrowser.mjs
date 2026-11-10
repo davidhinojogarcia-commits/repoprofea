@@ -35,6 +35,7 @@ const stubs = {
   GoogleCalendarModal: 'export const GoogleCalendarModal=()=>null',
   directoryCommunications: 'export const sendDirectoryCommunication=async()=>{}',
   workerImportService: 'export const moveWorkersToTrashBulk=async()=>{}',
+  partsService: 'export const partsRequest=async()=>({rows:[],cursor:null})',
   WorkerCardScanner: "export default function Scanner(){window.scanOpens++;return null}",
   WorkerCardPairing: "export default function Pairing(){window.pairOpens++;return null}",
 };

@@ -26,6 +26,7 @@ interface CompactPersonCardProps {
   onEdit: (person: Person) => void;
   onGenerateIDCard: (person: Person) => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   onOpenCalendar: (person: Person) => void;
   isSyncActive?: boolean;
   onToggleSync?: (id: number) => void;
@@ -92,6 +93,7 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
   onEdit,
   onGenerateIDCard,
   onExportHistoryPDF,
+  renderPartsAction,
   onOpenCalendar,
   sameDniWorkers = []
 }) => {
@@ -336,6 +338,8 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
           )}
         </div>
       )}
+
+      {renderPartsAction && <div className="mt-3">{renderPartsAction(person)}</div>}
 
       <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800">
         <button type="button" onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1.5 -ml-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer touch-manipulation">
