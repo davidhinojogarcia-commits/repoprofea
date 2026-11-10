@@ -102,7 +102,9 @@ begin
  if p_accept then
    points=coalesce(r.state #> '{content,points}','[]'::jsonb);
    if jsonb_typeof(points)<>'array' or jsonb_array_length(points)>=100 then raise exception 'Límite de puntos del acta'; end if;
-   point=jsonb_build_object('id',gen_random_uuid(),'title',c.title,'description',c.description,'attachmentIds',jsonb_build_array());
+   point=jsonb_build_object('id',gen_random_uuid(),
+     'title',left('Aportación DF · '||coalesce(nullif(c.title,''),'Punto de visita'),200),
+     'description',c.description,'attachmentIds',jsonb_build_array());
    update public.visit_minutes set
      state=jsonb_set(state,'{content,points}',points||jsonb_build_array(point),true),
      revision=revision+1,updated_at=now()
@@ -112,7 +114,7 @@ begin
     reviewed_at=now(),reviewer=p_owner where id=p_id;
  insert into public.visit_minutes_events(record_id,version,actor,event,details)
  values(r.id,r.version,p_owner::text,case when p_accept then 'df-point-accepted' else 'df-point-rejected' end,
-   jsonb_build_object('contributionId',c.id,'personId',c.person_id));
+   jsonb_build_object('contributionId',c.id,'personId',c.person_id,'source','direccion-facultativa'));
  return true;
 end $$;
 revoke all on function public.visit_df_challenge(uuid,text),public.visit_df_verify(uuid,text,text),
