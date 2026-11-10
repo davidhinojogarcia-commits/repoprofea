@@ -26,6 +26,7 @@ export async function visitTestServer({sourceRef,gmailConnection,handlerSource}=
  await db.exec(await fs.readFile(new URL('../supabase/migrations/20261017083229_visit_work_orders.sql',import.meta.url),'utf8'));
  await db.exec(await fs.readFile(new URL('../supabase/migrations/20261017160440_visit_minutes_mixed_signatures.sql',import.meta.url),'utf8'));
  await db.exec(await fs.readFile(new URL('../supabase/migrations/20261018085541_visit_minutes_points_assets.sql',import.meta.url),'utf8'));
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261110140000_visit_df_contributions.sql',import.meta.url),'utf8'));
  for(const n of [1,2,3,4])await db.query('insert into profiles(id,email,active) values($1,$2,$3)',[id(n),`supervisor${n}@example.test`,n!==4]);
  await db.query('insert into obras values($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)',[id(10),id(1),content.worksite,content.code,content.municipality,'Obra sintética',id(11),id(2),'Obra ajena','99999GR','Otra localidad','']);
  await db.query('insert into data_permissions(user_id,resource_type,resource_id,can_read) values($1,$2,$3,true)',[id(3),'obra',id(10)]);

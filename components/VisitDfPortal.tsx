@@ -1,0 +1,90 @@
+import React, { useRef, useState } from 'react';
+import { visitRequest } from '../src/services/visitMinutesService';
+import { VisitVoiceDictation } from './VisitVoiceDictation';
+
+type GuestContribution = {id:string;title:string;description:string;status:'pending'|'accepted'|'rejected';created_at:string};
+const inputClass='mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00548E]';
+const primary='min-h-12 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50';
+const secondary='min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 font-bold text-[#00548E]';
+export function VisitDfPortal({token}:{token:string}){
+  const [session,setSession]=useState('');
+  const [code,setCode]=useState('');
+  const [sent,setSent]=useState(false);
+  const [record,setRecord]=useState<{number:string;worksite:string;date:string}|null>(null);
+  const [items,setItems]=useState<GuestContribution[]>([]);
+  const [title,setTitle]=useState('');
+  const [description,setDescription]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [message,setMessage]=useState('');
+  const operation = useRef(crypto.randomUUID());
+  const perform=async(work:()=>Promise<void>)=>{
+    if(busy)return;setBusy(true);setError('');setMessage('');
+    try{await work();}catch(e:any){setError(e.message||'No se pudo completar la operación.');}
+    finally{setBusy(false);}
+  };
+  const list=async(key:string)=>{
+    const result=await visitRequest({action:'df-portal-get',token,session:key},{public:true});
+    setRecord(result.record);setItems(result.contributions);
+  };
+  const authenticate=()=>void perform(async()=>{
+    const result=await visitRequest({action:'df-verify',token,code},{public:true});
+    setSession(result.session);setRecord(result.record);
+    await list(result.session);
+  });
+  const submit=()=>void perform(async()=>{
+    if(!session||!description.trim())throw new Error('Completa el texto del punto.');
+    await visitRequest({action:'df-submit',token,session,title,description,operation:operation.current},{public:true});
+    operation.current=crypto.randomUUID();
+    setTitle('');setDescription('');await list(session);
+    setMessage('Punto enviado al supervisor para su revisión. Puedes añadir otro.');
+  });
+  return <main className="min-h-screen bg-slate-100 px-3 py-5 text-slate-900">
+    <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6">
+      <header className="border-b border-slate-200 pb-3">
+        <p className="text-xs font-extrabold uppercase tracking-wide text-[#00548E]">Diputación de Cádiz · PROFEA</p>
+        <h1 className="mt-2 text-xl font-black">Aportaciones de Dirección Facultativa</h1>
+        <p className="mt-1 text-sm text-slate-600">Solo puedes añadir tus propios puntos; no podrás editar los del supervisor.</p>
+      </header>
+      {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {message && <p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">{message}</p>}
+      {!session ? <section className="space-y-3">
+        <h2 className="font-bold">Verificación de identidad</h2>
+        <p className="text-sm text-slate-600">Recibirás un código de seis cifras en el correo de la Dirección Facultativa autorizado para esta visita.</p>
+        <button className={secondary+' w-full'} disabled={busy} onClick={()=>void perform(async()=>{
+          await visitRequest({action:'df-challenge',token},{public:true});setSent(true);setMessage('Código enviado. Comprueba tu correo.');
+        })}>{sent?'Solicitar otro código':'Enviar código al correo'}</button>
+        <label className="block text-sm font-bold">Código recibido
+          <input className={inputClass} autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code}
+            onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} />
+        </label>
+        <button className={primary+' w-full'} disabled={busy||code.length!==6} onClick={authenticate}>Verificar y acceder</button>
+        <p className="text-xs text-slate-500">El código caduca en 10 minutos. Si recargas esta pantalla, puedes introducir el código ya recibido sin pedir otro.</p>
+      </section> : <section className="space-y-4">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="font-black">{record?.number||'Acta de visita'}</p>
+          <p className="text-sm">{record?.worksite}</p><p className="text-xs text-slate-600">{record?.date}</p>
+        </div>
+        <h2 className="text-lg font-bold">Redactar nuevo punto</h2>
+        <label className="block text-sm font-bold">Título (opcional)
+          <input maxLength={200} className={inputClass} value={title} onChange={e=>setTitle(e.target.value)} />
+        </label>
+        <label className="block text-sm font-bold">Descripción del punto
+          <textarea aria-label="Descripción de la aportación" rows={6} maxLength={20000} className={inputClass}
+            value={description} onChange={e=>setDescription(e.target.value)} placeholder="Describe las observaciones o instrucciones de la visita…"/>
+        </label>
+        <VisitVoiceDictation value={description} onChange={setDescription} disabled={busy} label="Dictar punto con micrófono"/>
+        <button className={primary+' w-full'} disabled={busy||!description.trim()} onClick={submit}>
+          Enviar punto al supervisor
+        </button>
+        <p className="text-xs text-slate-600">Se envía como propuesta, no como instrucción aprobada. Las órdenes formales se tramitan en el acta por el emisor competente.</p>
+        <h3 className="font-bold">Tus aportaciones ({items.length})</h3>
+        {items.map((point,i)=><article key={point.id} className="space-y-1 rounded-xl border border-slate-200 p-3">
+          <p className="font-bold">{i+1}. {point.title||'Punto de visita'}</p>
+          <p className="whitespace-pre-wrap break-words text-sm">{point.description}</p>
+          <p className="text-xs text-slate-600">{point.status==='pending'?'Pendiente de revisión':point.status==='accepted'?'Incorporado al acta':'No incorporado'}</p>
+        </article>)}
+      </section>}
+    </div>
+  </main>;
+}
