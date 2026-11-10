@@ -182,10 +182,12 @@ async function draw(page) {
 }
 async function openDocuments(page) {
   assert.equal(await page.locator("#foreman-section-picker").count(),0,"No mobile section dropdown remains");
+  const navigation=page.getByRole("navigation",{name:"Secciones del portal de encargados",exact:true});
+  await navigation.waitFor();
   const labels=["Prevención","Partes y avisos","EPIs","Formación","Maquinaria","Control horario","Documentos","Actas de visitas","Finalizados"];
-  const visibleText=await page.locator("body").innerText();
-  for(const label of labels)assert(visibleText.includes(label),"Ribbon includes section "+label);
-  const documentsButton=page.locator('button').filter({hasText:/^Documentos$/}).first();
+  assert.equal(await navigation.getByRole("button").count(),10,"All ten section buttons exist in portrait and landscape");
+  for(const label of labels)assert.equal(await navigation.getByRole("button",{name:label,exact:true}).count(),1,"Ribbon includes section "+label);
+  const documentsButton=navigation.getByRole("button",{name:"Documentos",exact:true});
   await documentsButton.click();
   await page.getByRole("combobox", { name: "Documento", exact: true }).waitFor();
 }
