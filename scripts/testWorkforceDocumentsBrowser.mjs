@@ -181,17 +181,26 @@ async function draw(page) {
   await page.mouse.up();
 }
 async function openDocuments(page) {
-  const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados" });
-  const parts = navigation.getByRole("button", { name: "Partes y avisos", exact: true });
-  await parts.waitFor();
-  assert.equal(await page.getByRole("button", { name: "Partes y avisos", exact: true }).count(), 1, "Single parts entry inside the navigation ribbon");
-  assert.equal(await parts.locator("svg").count(), 1, "Parts has an icon like the other entries");
-
-  await page.getByRole("button", { name: "Documentos", exact: true }).waitFor();
+  const mobile = await page.evaluate(() => window.innerWidth < 640);
+  if (mobile) {
+    const section = page.getByRole("combobox", { name: "Sección del portal" });
+    await section.waitFor();
+    assert.deepEqual(
+      await section.locator("option").evaluateAll(options => options.map(option => option.value)),
+      ["mandatory","prevention","parts","epis","formacion","maquinaria","control","documents","visits","completed"],
+      "All ten portal sections remain available on mobile",
+    );
+    await section.selectOption("documents");
+  } else {
+    const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados en pantallas grandes" });
+    const parts = navigation.getByRole("button", { name: "Partes y avisos", exact: true });
+    await parts.waitFor();
+    assert.equal(await parts.locator("svg").count(), 1, "Desktop parts retains its icon");
+    assert.equal(await navigation.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(), 1, "Desktop visit minutes retains an icon");
+    await navigation.getByRole("button", { name: "Documentos", exact: true }).click();
+  }
   assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0, "Rejection is inside Documents");
   assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0, "Departure is inside Documents");
-  assert.equal(await page.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(), 1, "Visit minutes has a navigation icon");
-  await page.getByRole("button", { name: "Documentos", exact: true }).click();
 }
 async function signed(page, kind) {
   await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption(kind);
