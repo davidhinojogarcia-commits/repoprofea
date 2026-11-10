@@ -82,7 +82,9 @@ try {
     await training.selectOption('pending');
     await scope([2, 4, 5]);
     await page.waitForFunction(() => window.__profeaDirectoryExportScope.hasSelection === false);
+    await page.getByRole('button', { name: 'Informes' }).click();
     await page.locator('[data-encargados-relation-row] button').first().click();
+    await page.getByRole('button', { name: 'Informes' }).click();
     assert.deepEqual(await page.evaluate(() => window.exports.at(-1)), [2, 4, 5]);
     const search = page.getByPlaceholder('Buscar por nombre, DNI, oferta, obra o categoría...');
     await search.fill('Bruno');await scope([2]);
