@@ -95,9 +95,13 @@ export async function handleDfOwner(body:any,res:any,deps:Dependencies,user:{id:
     return res.json({ok:true});
   }
   if(action==='df-list'){
-    const contributions=await db('visit_df_contributions?'+q({select:'id,person_id,title,description,status,created_at,reviewed_at',
-      record_id:'eq.'+r.id,version:'eq.'+r.version,order:'created_at.asc',limit:'100'}));
-    return res.json({ok:true,contributions});
+    const [contributions,invitations]=await Promise.all([
+      db('visit_df_contributions?'+q({select:'id,person_id,title,description,status,created_at,reviewed_at',
+        record_id:'eq.'+r.id,version:'eq.'+r.version,order:'created_at.asc',limit:'100'})),
+      db('visit_df_invitations?'+q({select:'person_id,expires_at,revoked',
+        record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'40'}))
+    ]);
+    return res.json({ok:true,contributions,invitations});
   }
   if(action==='df-review'){
     if(!uuidPattern.test(String(body.contributionId||''))||typeof body.accept!=='boolean')
