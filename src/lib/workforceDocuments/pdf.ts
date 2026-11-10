@@ -3,7 +3,6 @@ import { OFFICIAL_LOGO_BASE64 } from "../../assets/logoData.js";
 import {
   DOCUMENT_KINDS,
   DOCUMENT_STATUS,
-  COMMON_FIELDS,
   fieldsForKind,
   declaration,
   documentVariant,
