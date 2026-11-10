@@ -84,7 +84,7 @@ begin
    raise exception 'Acta no disponible para aportaciones'; end if;
  if char_length(p_title)>200 or char_length(btrim(p_description)) not between 1 and 20000 then
    raise exception 'Punto no válido'; end if;
- select count(*) into n from public.visit_df_contributions where invitation_id=p_id;
+ select count(*) into n from public.visit_df_contributions where record_id=r.id and version=r.version;
  if n>=100 then raise exception 'Límite de aportaciones alcanzado'; end if;
  insert into public.visit_df_contributions(invitation_id,operation_id,record_id,version,person_id,title,description)
  values(v.id,p_operation,v.record_id,v.version,v.person_id,coalesce(p_title,''),btrim(p_description))
