@@ -55,8 +55,12 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     await navigator.clipboard.writeText(link);
     setMessage('Enlace copiado. Envíalo únicamente a la Dirección Facultativa indicada.');
   });
-  return <section aria-label="Aportaciones de Dirección Facultativa" className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-    <h3 className="text-base font-black">Aportaciones de Dirección Facultativa</h3>
+  return <details aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+    <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm font-black text-[#00548E] dark:text-blue-200">
+      <span>Colaboración · Dirección Facultativa</span>
+      <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-xs dark:bg-slate-900">{items.filter(p=>p.status==='pending').length} pendientes</span>
+    </summary>
+    <div className="space-y-3 border-t border-slate-200 p-3 dark:border-slate-700">
     <p className="text-sm text-slate-700 dark:text-slate-200">La DF solo añade puntos. Tú decides cuáles se incorporan. Las órdenes de obra siguen el circuito de autorización habitual.</p>
     {dirty&&<p role="status" className="text-sm font-bold text-amber-800 dark:text-amber-300">Guarda los cambios locales para habilitar la colaboración y evitar sobrescribir datos.</p>}
     {!people.length?<p className="text-sm">Añade una arquitecta, arquitecto o Dirección Facultativa con correo en Participantes y guarda el borrador.</p>:<>
@@ -93,5 +97,6 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     </article>)}
     {error&&<p role="alert" className="text-sm font-bold text-red-700 dark:text-red-300">{error}</p>}
     {message&&<p role="status" className="text-sm text-[#00548E] dark:text-blue-200">{message}</p>}
-  </section>;
+    </div>
+  </details>;
 }
