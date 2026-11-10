@@ -48,9 +48,7 @@
   opacity: .55;
   cursor: not-allowed;
 }
-.profea-institutional-document-actions__toggle {
-  display: none;
-}
+.profea-institutional-document-actions__toggle { display: none !important; }
 @media (max-width: 767px) {
   .profea-institutional-document-actions__primary,
   .profea-institutional-document-actions__secondary-grid {
@@ -59,7 +57,7 @@
   .profea-institutional-document-actions__primary > :only-child { grid-column: 1 / -1; }
   .profea-institutional-document-actions__toggle {
     min-height: 44px;
-    display: flex;
+    display: flex !important;
     width: 100%;
     align-items: center;
     justify-content: space-between;
@@ -71,13 +69,12 @@
     color: #00548e;
     font-size: 14px;
     font-weight: 600;
-    list-style: none;
   }
-  .profea-institutional-document-actions__toggle::-webkit-details-marker { display:none; }
-  .profea-institutional-document-actions__secondary[open] .profea-institutional-document-actions__toggle svg {
+  .profea-institutional-document-actions__toggle[aria-expanded='true'] svg {
     transform: rotate(180deg);
   }
-  .profea-institutional-document-actions__secondary-grid { margin-top: 8px; }
+  .profea-institutional-document-actions__secondary-grid { display: none; margin-top: 8px; }
+  .profea-institutional-document-actions__secondary-grid.is-expanded { display: grid; }
   .dark .profea-institutional-document-actions__toggle {
     background:#0f172a;
     border-color:#475569;
@@ -85,7 +82,5 @@
   }
 }
 @media (min-width: 768px) {
-  .profea-institutional-document-actions__secondary:not([open]) > .profea-institutional-document-actions__secondary-grid {
-    display: grid !important; /* Desktop actions are always visible, even when details is closed. */
-  }
+  .profea-institutional-document-actions__secondary-grid { display: grid; }
 }
