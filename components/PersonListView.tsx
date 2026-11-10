@@ -37,6 +37,9 @@ interface PersonListProps {
   onExportHistoryPDF: (person: Person) => void;
   renderPartsAction?: (person: Person) => React.ReactNode;
   renderPartsFilter?: React.ReactNode;
+  renderMedicalFilter?: React.ReactNode;
+  onClearExtendedFilters?: () => void;
+  extendedFiltersActive?: boolean;
   savedObras: string[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -101,6 +104,9 @@ export const PersonList: React.FC<PersonListProps> = ({
   onExportHistoryPDF,
   renderPartsAction,
   renderPartsFilter,
+  renderMedicalFilter,
+  onClearExtendedFilters,
+  extendedFiltersActive,
   savedObras,
   searchTerm,
   setSearchTerm,
@@ -115,7 +121,6 @@ export const PersonList: React.FC<PersonListProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showOnlyRepeaters, setShowOnlyRepeaters] = useState(false);
-  const [showOnlyNoAptos, setShowOnlyNoAptos] = useState(false);
   const [trainingFilter, setTrainingFilter] = useState<DirectoryTrainingFilter>('all');
   const [contractYearFilter, setContractYearFilter] = useState('all');
   const [showImportModal, setShowImportModal] = useState(false);
@@ -425,11 +430,10 @@ export const PersonList: React.FC<PersonListProps> = ({
       const cleanDni = person.dni ? person.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
       const isRepeaterWorker = cleanDni ? repeaterDniSet.has(cleanDni) : false;
       const matchesRepeater = !showOnlyRepeaters || isRepeaterWorker;
-      const matchesNoApto = !showOnlyNoAptos || person.reconocimientoEstado === 'No Apto';
       
-      return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesNoApto && matchesDirectoryTraining(person, trainingFilter, contractYearFilter);
+      return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesDirectoryTraining(person, trainingFilter, contractYearFilter);
     });
-  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos, trainingFilter, contractYearFilter]);
+  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, trainingFilter, contractYearFilter]);
 
   const isSelectionActive = selectedIds.length > 0;
   const peopleToExport = useMemo(
@@ -659,78 +663,28 @@ export const PersonList: React.FC<PersonListProps> = ({
         )}
       </div>
 
-      <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
-        <div className="relative flex-1 flex items-center min-h-[52px]">
-          <div className="pl-4 pr-2 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-slate-400 dark:text-slate-500" />
-          </div>
-          <input
-            type="text"
-            placeholder="Buscar por nombre, DNI, oferta, obra o categoría..."
-            className="w-full py-3 pr-4 bg-transparent border-none focus:outline-none focus:ring-0 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      <section aria-labelledby="directory-filters-title" className="relative z-20 mb-5 min-w-0 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 id="directory-filters-title" className="text-sm font-extrabold">Filtros del directorio</h3>
+          <button type="button" onClick={() => {setSearchTerm('');setSelectedObraFilter(['Todas']);setSelectedQuincenaFilter(['Todas']);setTrainingFilter('all');setContractYearFilter('all');setShowOnlyRepeaters(false);setSelectedIds([]);onClearExtendedFilters?.();}} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200">Limpiar filtros</button>
         </div>
-
-        <div className="hidden xl:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
-        <div className="block xl:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
-
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          <MultiSearchableDropdown
-            options={savedObras}
-            selectedValues={selectedObraFilter}
-            onChange={setSelectedObraFilter}
-            placeholder="Obra: Todas"
-            allLabel="Todas las obras"
-            icon={<MapPin className="w-4 h-4" />}
-            className="!w-full !min-w-0"
-            buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
-          />
-          <div className="hidden"></div>
-          <div className="hidden"></div>
-          <MultiSearchableDropdown
-            options={uniqueQuincenas}
-            selectedValues={selectedQuincenaFilter}
-            onChange={setSelectedQuincenaFilter}
-            placeholder="Quincena: Todas"
-            allLabel="Todas las quincenas"
-            icon={<Clock className="w-4 h-4" />}
-            className="!w-full sm:!w-48 xl:!w-60"
-            buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
-          />
-          <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
-          <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-          <label className="flex min-w-0 w-full flex-col justify-center gap-1 px-1 py-1 text-xs font-bold">
-            Año de contratación
-            <select aria-label="Año de contratación" value={contractYearFilter} onChange={event => { setContractYearFilter(event.target.value); setSelectedIds([]); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
-              <option value="all">Todos los años</option>
-              {contractYears.map(year => <option key={year} value={year}>{year}</option>)}
-              <option value="unknown">Sin año registrado</option>
-            </select>
-          </label>
-          <label className="flex min-w-0 w-full flex-col justify-center gap-1 px-1 py-1 text-xs font-bold">
-            Formación
-            <select aria-label="Formación" value={trainingFilter} onChange={event => { setTrainingFilter(event.target.value as DirectoryTrainingFilter); setSelectedIds([]); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
-              <option value="all">Todos los estados</option>
-              <option value="trained">Con formación</option>
-              <option value="pending">Sin formación / pendiente</option>
-            </select>
-          </label>
-          {renderPartsFilter && <div className="min-w-0 w-full">{renderPartsFilter}</div>}
-          <button
-            onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
-            className={`flex min-h-11 min-w-0 w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all cursor-pointer ${
-              showOnlyRepeaters 
-                ? 'bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-300 dark:border-purple-800 shadow-sm ring-2 ring-purple-500/20' 
-                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'
-            }`}
-          >
-            <History className={`w-3.5 h-3.5 ${showOnlyRepeaters ? 'text-purple-600 dark:text-purple-400 animate-pulse' : 'text-slate-500 dark:text-slate-400'}`} />
-            <span>Repetidores</span>
-          </button>
-
-          {noAptosCount > 0 && (
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Obra</span><MultiSearchableDropdown options={savedObras} selectedValues={selectedObraFilter} onChange={value => { setSelectedObraFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<MapPin className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
+          <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Periodo / quincena</span><MultiSearchableDropdown options={uniqueQuincenas} selectedValues={selectedQuincenaFilter} onChange={value => { setSelectedQuincenaFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<Clock className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Año de contratación<select aria-label="Año de contratación" value={contractYearFilter} onChange={(event) => {setContractYearFilter(event.target.value);setSelectedIds([]);}} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos los años</option>{contractYears.map(year => <option key={year} value={year}>{year}</option>)}<option value="unknown">Sin año registrado</option></select></label>
+          {renderMedicalFilter && <div className="min-w-0">{renderMedicalFilter}</div>}
+        </div>
+        <details className="group mt-3 min-w-0">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200 [&::-webkit-details-marker]:hidden"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/> Más filtros</summary>
+          <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Formación<select aria-label="Formación" value={trainingFilter} onChange={(event) => {setTrainingFilter(event.target.value as DirectoryTrainingFilter);setSelectedIds([]);}} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos los estados</option><option value="trained">Con formación</option><option value="pending">Sin formación / pendiente</option></select></label>
+            {renderPartsFilter && <div className="min-w-0">{renderPartsFilter}</div>}
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Repetidores<select aria-label="Repetidores" value={showOnlyRepeaters ? 'only' : 'all'} onChange={(event) => {setShowOnlyRepeaters(event.target.value === 'only');setSelectedIds([]);}} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos</option><option value="only">Solo repetidores</option></select></label>
+          </div>
+        </details>
+        {(trainingFilter !== 'all' || contractYearFilter !== 'all' || showOnlyRepeaters || extendedFiltersActive) && <p role="status" className="mt-3 text-xs text-slate-600 dark:text-slate-300">Hay filtros activos. Usa «Limpiar filtros» para restablecer el Directorio.</p>}
+      </section>
+      {noAptosCount > 0 && (
             <button
               onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
               className={`flex min-h-11 min-w-0 w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all cursor-pointer ${
