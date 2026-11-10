@@ -756,7 +756,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       const month=monthNames[Math.max(0,Number(match[2])-1)]||match[2];
       return `${match[3].toUpperCase()==='1Q'?'1ª quincena':'2ª quincena'} · ${month} ${match[1]}`;
     }
+    const monthKey=key.match(/^(\d{4})-(\d{2})$/);
     const date=String(doc.workDate||'').slice(0,10);
+    if(monthKey && !date.startsWith(key)){
+      const names=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      return `Mes de ${names[Math.max(0,Number(monthKey[2])-1)]||monthKey[2]} ${monthKey[1]}`;
+    }
     if(/^\d{4}-\d{2}-\d{2}$/.test(date)){
       const [year,month,day]=date.split('-');
       const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
