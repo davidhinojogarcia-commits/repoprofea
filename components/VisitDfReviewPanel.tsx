@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import type { VisitRecord } from '../src/lib/visitMinutes';
 import { visitRequest } from '../src/services/visitMinutesService';
+import { appPrompt } from '../src/lib/appDialog';
 
-type Contribution={id:string;person_id:string;title:string;description:string;status:'pending'|'accepted'|'rejected';created_at:string};
+type Contribution={id:string;person_id:string;title:string;description:string;status:'pending'|'accepted'|'rejected'|'returned';return_reason?:string|null;created_at:string};
 type Invitation={person_id:string;expires_at:string;revoked:boolean};
 const btn='min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#00548E] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200';
 export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;dirty:boolean;onUpdated:(record:VisitRecord)=>void}){
@@ -53,6 +54,19 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     await load();
     setMessage(accept?'Punto incorporado al acta. Comprueba su contenido antes de firmas.':'Aportación no incorporada; se conserva su registro.');
   });
+  const returnForCorrection=(item:Contribution)=>void run(async()=>{
+    if(dirty)throw new Error('Guarda o descarta tus cambios antes de devolver una aportación.');
+    const reason=await appPrompt('Indica qué debe corregir la Dirección Facultativa.',{
+      title:'Devolver aportación para corrección',placeholder:'Motivo de la devolución'
+    });
+    if(reason===null)return;
+    if(!reason.trim()||reason.trim().length>1000)throw new Error('Indica un motivo de 1 a 1000 caracteres.');
+    const result=await visitRequest({action:'df-return',id:record.id,revision:record.revision,
+      contributionId:item.id,reason:reason.trim()});
+    onUpdated(result.record);
+    await load();
+    setMessage('Aportación devuelta. La DF verá el motivo al abrir su enlace y podrá enviar un nuevo punto.');
+  });
   const share=()=>void run(async()=>{
     if(!link)return;
     if(navigator.share){try{await navigator.share({url:link,title:'Redacción de puntos de visita PROFEA'});return;}catch(e:any){if(e?.name==='AbortError')return;}}
@@ -94,9 +108,11 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     {items.map(item=><article key={item.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
       <strong>{item.title||'Punto sin título'}</strong>
       <p className="whitespace-pre-wrap break-words text-sm">{item.description}</p>
-      <p className="text-xs text-slate-600 dark:text-slate-300">Aportado por {record.state.participants.find(p=>p.id===item.person_id)?.firstName||'Dirección Facultativa'} {record.state.participants.find(p=>p.id===item.person_id)?.lastName||''} · {new Date(item.created_at).toLocaleString('es-ES')} · {item.status==='pending'?'Pendiente de revisión':item.status==='accepted'?'Incorporado':'No incorporado'}</p>
-      {item.status==='pending'&&<div className="grid grid-cols-2 gap-2">
+      <p className="text-xs text-slate-600 dark:text-slate-300">Aportado por {record.state.participants.find(p=>p.id===item.person_id)?.firstName||'Dirección Facultativa'} {record.state.participants.find(p=>p.id===item.person_id)?.lastName||''} · {new Date(item.created_at).toLocaleString('es-ES')} · {item.status==='pending'?'Pendiente de revisión':item.status==='accepted'?'Incorporado':item.status==='returned'?'Devuelto para corrección':'No incorporado'}</p>
+      {item.status==='returned'&&item.return_reason&&<p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">Motivo: {item.return_reason}</p>}
+      {item.status==='pending'&&<div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-3">
         <button type="button" className={btn} disabled={busy||dirty} onClick={()=>review(item,true)}>Incorporar al acta</button>
+        <button type="button" className={btn} disabled={busy||dirty} onClick={()=>returnForCorrection(item)}>Devolver para corregir</button>
         <button type="button" className={btn} disabled={busy||dirty} onClick={()=>review(item,false)}>No incorporar</button>
       </div>}
     </article>)}
