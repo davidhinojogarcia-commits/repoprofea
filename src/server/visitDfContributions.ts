@@ -59,9 +59,9 @@ export async function handleDfGuest(body:any,res:any,deps:Dependencies) {
   if(action==='df-submit'){
     const title=String(body.title||'').trim();
     const description=String(body.description||'').trim();
-    if(title.length>200||description.length<1||description.length>20000)throw invalid('Redacta un punto válido de hasta 20.000 caracteres.');
+    if(title.length>200||description.length<1||description.length>20000||!uuidPattern.test(String(body.operation||'')))throw invalid('Redacta un punto válido e identifica el envío.');
     const id=await db('rpc/visit_df_submit',{
-      p_id:invite.id,p_session_hash:digest(body.session),p_title:title,p_description:description
+      p_id:invite.id,p_session_hash:digest(body.session),p_operation:body.operation,p_title:title,p_description:description
     });
     if(!uuidPattern.test(String(id||'')))throw invalid('No se pudo confirmar el envío del punto.',503);
     return res.json({ok:true,id,message:'Punto recibido. Queda pendiente de revisión por el supervisor.'});
