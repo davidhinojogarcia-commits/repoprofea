@@ -1266,29 +1266,9 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <div className="mt-1">{error}</div>
         <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
       </div>}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:hidden" role="navigation" aria-label="Secciones del portal de encargados">
-        <label htmlFor="foreman-section-picker" className="mb-1 block text-xs font-bold text-slate-600 dark:text-slate-300">Sección del portal</label>
-        <select
-          id="foreman-section-picker"
-          value={tab}
-          onChange={event => setTab(event.target.value as typeof tab)}
-          className="min-h-[48px] w-full min-w-0 rounded-xl border border-[#00548E] bg-white px-3 py-2 text-base font-bold text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] dark:bg-slate-800 dark:text-white"
-        >
-          <option value="mandatory">Control, inicios y contratos</option>
-          <option value="prevention">Prevención</option>
-          <option value="parts">Partes y avisos</option>
-          <option value="epis">EPIs</option>
-          <option value="formacion">Formación</option>
-          <option value="maquinaria">Maquinaria</option>
-          <option value="control">Control horario</option>
-          <option value="documents">Documentos</option>
-          <option value="visits">Actas de visitas</option>
-          <option value="completed">Finalizados</option>
-        </select>
-      </div>
       <div
-        role="navigation" aria-label="Secciones del portal de encargados en pantallas grandes"
-        className="hidden sm:block overflow-x-auto overscroll-x-contain rounded-2xl border bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+        role="navigation" aria-label="Secciones del portal de encargados"
+        className="w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
         style={{WebkitOverflowScrolling:'touch'}}
       >
         <div className="flex w-max min-w-full gap-2">
