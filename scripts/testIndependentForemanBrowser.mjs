@@ -40,15 +40,9 @@ try{
  await server.listen();browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const url='http://127.0.0.1:'+server.httpServer.address().port+'/foreman-test';await page.goto(url);await page.getByRole('button',{name:'Actualizar documentos',exact:true}).waitFor();
- const sections={'EPIs':'epis','Formación':'formacion','Maquinaria':'maquinaria','Control horario':'control','Finalizados':'completed'};
  const openSection=async label=>{
-  if(await page.evaluate(()=>innerWidth<640)) {
-   const picker=page.getByRole('combobox',{name:'Sección del portal'});
-   await picker.selectOption(sections[label]);
-   assert.equal(await picker.inputValue(),sections[label],label+' selected on mobile');
-  } else {
-   await page.getByRole('navigation',{name:'Secciones del portal de encargados en pantallas grandes'}).getByRole('button',{name:label,exact:true}).click();
-  }
+  const navigation=page.getByRole('navigation',{name:'Secciones del portal de encargados'});
+  await navigation.getByRole('button',{name:label,exact:true}).click();
  };
  for(const type of ['inicio','control_presencia','contrato','prorroga']){
   await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
