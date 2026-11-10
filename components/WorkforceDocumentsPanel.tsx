@@ -22,7 +22,6 @@ import { appConfirm, appPrompt } from "../src/lib/appDialog";
 import {
   DOCUMENT_KINDS,
   DOCUMENT_STATUS,
-  COMMON_FIELDS,
   fieldsForKind,
   REJECTION_REASONS,
   declaration,
@@ -32,7 +31,6 @@ import {
   madridInput,
   madridCandidates,
   stamp,
-  type Field,
   type DocumentKind,
   type Content,
   type WorkforceDocument,
