@@ -50,6 +50,12 @@ const database=async(path,body,auth,method)=>{
     contributions.push({id,invitation_id:invite.id,operation_id:body.p_operation,record_id:record.id,version:1,person_id:personId,
       title:body.p_title,description:body.p_description,status:'pending'});return id;
   }
+  if(path==='rpc/visit_df_return'){
+    const item=contributions.find(x=>x.id===body.p_id);
+    assert(item&&item.status==='pending');
+    assert.equal(body.p_revision,record.revision);
+    item.status='returned';item.return_reason=body.p_reason;return true;
+  }
   if(path==='rpc/visit_df_review'){
     const item=contributions.find(x=>x.id===body.p_id);
     assert(item&&item.status==='pending');assert.equal(body.p_revision,record.revision);
@@ -93,6 +99,15 @@ await handleDfOwner({action:'df-review',id:recordId,revision:1,contributionId:co
 assert.equal(record.state.content.points.length,2);assert.deepEqual(record.state.content.points[0],baseline);
 assert.equal(record.state.content.points[1].description,'Revisar las cotas antes de hormigonar');
 await assert.rejects(handleDfOwner({action:'df-review',id:recordId,revision:1,contributionId:contributions[0].id,accept:true},respond(),deps,actor,'token'),/cambiado|pendiente/);
+const correctionOp='80000000-0000-4000-8000-000000000002';
+await handleDfGuest({action:'df-submit',token,session,operation:correctionOp,
+  title:'Corrección',description:'Texto que requiere revisión'},respond(),deps);
+const returned=contributions.at(-1);
+await handleDfOwner({action:'df-return',id:recordId,revision:record.revision,
+  contributionId:returned.id,reason:'Corrige las cotas del plano'},respond(),deps,actor,'token');
+assert.equal(returned.status,'returned');
+assert.equal(returned.return_reason,'Corrige las cotas del plano');
+assert.equal(record.state.content.points.length,2,'return never edits supervisor or approved points');
 await handleDfOwner({action:'df-revoke',id:recordId,personId},respond(),deps,actor,'token');
 await assert.rejects(handleDfGuest({action:'df-submit',token,session,description:'No debe entrar'},respond(),deps),/revocada/);
-console.log('PASS: DF personal-link direct session, legacy OTP, owner isolation, restricted portal, submission, append-only review, stale rejection and revocation; database mocked.');
+console.log('PASS: DF personal-link direct session, legacy OTP, owner isolation, return-with-reason, restricted portal, submission, append-only review, stale rejection and revocation; database mocked.');
