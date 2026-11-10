@@ -22,9 +22,8 @@ import { appConfirm, appPrompt } from "../src/lib/appDialog";
 import {
   DOCUMENT_KINDS,
   DOCUMENT_STATUS,
-  COMMON_FIELDS,
-  REJECTION_FIELDS,
-  EXIT_FIELDS,
+  fieldsForKind,
+  REJECTION_REASONS,
   declaration,
   documentVariant,
   RECEIPT_TEXT,
@@ -32,7 +31,6 @@ import {
   madridInput,
   madridCandidates,
   stamp,
-  type Field,
   type DocumentKind,
   type Content,
   type WorkforceDocument,
@@ -46,6 +44,8 @@ type Draft = {
   workerId: number;
   content: Content;
   expected: number;
+  workerStart?: string;
+  workerEnd?: string;
   operation?: Record<string, unknown>;
 };
 export function DocumentInstant({
@@ -340,10 +340,7 @@ export default function WorkforceDocumentsPanel({
           }
         : d,
     );
-  const fields = [
-    ...COMMON_FIELDS,
-    ...(kind === "rechazo_voluntario" ? REJECTION_FIELDS : EXIT_FIELDS),
-  ].filter(
+  const fields = fieldsForKind(kind).filter(
     (f) =>
       !(
         (f.key === "returnAt" && content.returnMode !== "at") ||
@@ -367,7 +364,7 @@ export default function WorkforceDocumentsPanel({
       <p className="text-sm">
         {kind === "salida_obra"
           ? "Comunicación de salida temporal. En una urgencia, la documentación puede quedar en borrador y completarse después con las fechas reales."
-          : "Personas contratadas: distinguir no incorporación, cese expreso y rechazo de tarea o riesgo sin voluntad de cesar."}
+          : "Comunicación voluntaria del trabajador. El código de obra y el periodo de contratación se toman automáticamente de su ficha; el órgano competente determinará sus efectos laborales."}
       </p>
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">
@@ -413,9 +410,11 @@ export default function WorkforceDocumentsPanel({
                         id: crypto.randomUUID(),
                         workerId: w.id,
                         expected: 0,
+                        workerStart: w.periodo_inicio || "",
+                        workerEnd: w.periodo_fin || "",
                         content: {
                           communication: new Date().toISOString(),
-                          contractReference: "",
+                          ...(kind === "salida_obra" ? { contractReference: "" } : {}),
                           ...(kind === "salida_obra"
                             ? {
                                 returnMode: "unknown",
@@ -459,13 +458,41 @@ export default function WorkforceDocumentsPanel({
                 Guardar cambios retira las firmas de la nueva versión; las
                 anteriores permanecen en el historial.
               </p>
+              {kind === "rechazo_voluntario" && (
+                <div className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:grid-cols-2">
+                  <p className="min-w-0 text-sm"><strong className="block text-xs text-slate-600 dark:text-slate-300">Referencia de contratación · código de obra</strong><span className="mt-1 block break-words font-bold text-[#00548E] dark:text-blue-300">{record?.worksite.code || context.worksite.code || "Pendiente de configurar"}</span></p>
+                  <p className="min-w-0 text-sm"><strong className="block text-xs text-slate-600 dark:text-slate-300">Periodo previsto de contratación</strong><span className="mt-1 block font-bold">{record?.worker.start || draft.workerStart || "Pendiente"} a {record?.worker.end || draft.workerEnd || "Pendiente"}</span></p>
+                </div>
+              )}
               <fieldset
                 disabled={busy || !!pending.current}
-                className="grid gap-4 md:grid-cols-2"
+                className="grid min-w-0 gap-4 md:grid-cols-2"
               >
                 {fields.map((f) => (
-                  <div key={f.key}>
-                    {f.type === "instant" ? (
+                  <div key={f.key} className={kind === "rechazo_voluntario" && f.key === "reason" ? "min-w-0 md:col-span-2" : "min-w-0"}>
+                    {kind === "rechazo_voluntario" && f.key === "reason" ? (
+                      <div className="space-y-2">
+                        <label className="block text-sm font-bold">
+                          Motivo
+                          <select aria-label="Motivo" className={input}
+                            value={REJECTION_REASONS.some(reason => reason === content.reason) ? content.reason : content.reason ? "other" : ""}
+                            onChange={e => patch("reason", e.target.value === "other" ? "Otro" : e.target.value)}>
+                            <option value="">Seleccionar motivo…</option>
+                            {REJECTION_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}
+                            <option value="other">Otro motivo · escribir manualmente</option>
+                          </select>
+                        </label>
+                        {content.reason && !REJECTION_REASONS.some(reason => reason === content.reason) && (
+                          <label className="block text-sm font-bold">
+                            Especificar motivo
+                            <textarea aria-label="Especificar motivo" maxLength={500} rows={3} className={input}
+                              placeholder="Explica brevemente el motivo, sin incluir diagnósticos ni datos íntimos"
+                              value={content.reason === "Otro" ? "" : content.reason}
+                              onChange={e => patch("reason", e.target.value || "Otro")}/>
+                          </label>
+                        )}
+                      </div>
+                    ) : f.type === "instant" ? (
                       <DocumentInstant
                         label={f.label}
                         value={content[f.key] || ""}
@@ -509,13 +536,9 @@ export default function WorkforceDocumentsPanel({
                   </div>
                 ))}
               </fieldset>
-              {["task", "risk"].includes(content.intention) &&
-                kind === "rechazo_voluntario" && (
-                  <p role="alert">
-                    No corresponde un cese voluntario. Conserva este borrador y
-                    utiliza Prevención o Partes y avisos.
-                  </p>
-                )}
+              {kind === "rechazo_voluntario" && (
+                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">No utilizar este documento para comunicar exclusivamente un riesgo o el rechazo de una tarea sin intención de dejar el puesto; en ese caso corresponde Prevención o Partes y avisos.</p>
+              )}
               <button
                 className={button + " bg-[#00548E] text-white"}
                 disabled={busy}
