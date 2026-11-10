@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { visitRequest } from '../src/services/visitMinutesService';
 import { VisitVoiceDictation } from './VisitVoiceDictation';
 
@@ -8,8 +8,8 @@ const primary='min-h-12 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white d
 const secondary='min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 font-bold text-[#00548E]';
 export function VisitDfPortal({token}:{token:string}){
   const [session,setSession]=useState('');
-  const [code,setCode]=useState('');
-  const [sent,setSent]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [retry,setRetry]=useState(0);
   const [record,setRecord]=useState<{number:string;worksite:string;date:string}|null>(null);
   const [items,setItems]=useState<GuestContribution[]>([]);
   const [title,setTitle]=useState('');
@@ -27,11 +27,20 @@ export function VisitDfPortal({token}:{token:string}){
     const result=await visitRequest({action:'df-portal-get',token,session:key},{public:true});
     setRecord(result.record);setItems(result.contributions);
   };
-  const authenticate=()=>void perform(async()=>{
-    const result=await visitRequest({action:'df-verify',token,code},{public:true});
-    setSession(result.session);setRecord(result.record);
-    await list(result.session);
-  });
+  useEffect(()=>{
+    let cancelled=false;
+    setLoading(true);setError('');setSession('');setItems([]);
+    void (async()=>{
+      try {
+        const opened=await visitRequest({action:'df-open',token},{public:true});
+        const result=await visitRequest({action:'df-portal-get',token,session:opened.session},{public:true});
+        if(!cancelled){setSession(opened.session);setRecord(result.record);setItems(result.contributions);}
+      } catch(e:any) {
+        if(!cancelled)setError(e?.message||'No se pudo abrir la invitación. Comprueba el enlace o solicita otro.');
+      } finally {if(!cancelled)setLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[token,retry]);
   const submit=()=>void perform(async()=>{
     if(!session||!description.trim())throw new Error('Completa el texto del punto.');
     await visitRequest({action:'df-submit',token,session,title,description,operation:operation.current},{public:true});
@@ -48,18 +57,10 @@ export function VisitDfPortal({token}:{token:string}){
       </header>
       {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {message && <p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">{message}</p>}
-      {!session ? <section className="space-y-3">
-        <h2 className="font-bold">Verificación de identidad</h2>
-        <p className="text-sm text-slate-600">Recibirás un código de seis cifras en el correo de la Dirección Facultativa autorizado para esta visita.</p>
-        <button className={secondary+' w-full'} disabled={busy} onClick={()=>void perform(async()=>{
-          await visitRequest({action:'df-challenge',token},{public:true});setSent(true);setMessage('Código enviado. Comprueba tu correo.');
-        })}>{sent?'Solicitar otro código':'Enviar código al correo'}</button>
-        <label className="block text-sm font-bold">Código recibido
-          <input className={inputClass} autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code}
-            onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} />
-        </label>
-        <button className={primary+' w-full'} disabled={busy||code.length!==6} onClick={authenticate}>Verificar y acceder</button>
-        <p className="text-xs text-slate-500">El código caduca en 10 minutos. Si recargas esta pantalla, puedes introducir el código ya recibido sin pedir otro.</p>
+      {!session ? <section className="space-y-3" aria-live="polite">
+        <p className="text-sm text-slate-700">{loading?'Comprobando la invitación personal…':'No se ha podido abrir la invitación. El enlace puede haber caducado o estar revocado.'}</p>
+        {!loading&&<button type="button" className={secondary+' w-full'} onClick={()=>setRetry(current=>current+1)}>Reintentar acceso</button>}
+        <p className="text-xs text-slate-500">Este enlace permite proponer puntos en esta acta, pero no acredita identidad profesional ni autoriza firmas u órdenes de obra.</p>
       </section> : <section className="space-y-4">
         <div className="rounded-xl bg-slate-50 p-3">
           <p className="font-black">{record?.number||'Acta de visita'}</p>
