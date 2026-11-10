@@ -61,6 +61,8 @@ jobs:
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
       - name: Worker annual lookup projection and pagination
         run: npm run test:worker-annual-lookup
+      - name: Verify idle Gmail scans avoid unnecessary REST reads
+        run: npm run test:idle-gmail-consumption
       - name: Ensure diagnostics do not expose private payloads
         run: npm run test:operational-logs
       - name: Validate foreman document integrity
