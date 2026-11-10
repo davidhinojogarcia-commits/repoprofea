@@ -186,6 +186,8 @@ jobs:
         run: node --import tsx scripts/testVisitDfContributions.mjs
       - name: DF migration security and append-only invariants
         run: node scripts/testVisitDfSql.mjs
+      - name: DF collaboration end-to-end with isolated PostgreSQL
+        run: node scripts/testVisitDfPostgres.mjs
       - name: Signed attendance PDFs
         run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
