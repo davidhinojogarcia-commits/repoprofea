@@ -8,6 +8,8 @@ let user = { id: 'owner-A' };
 let calls = [];
 let revision = 1;
 let rpcReads=0;
+let offlineWrites=0;
+let failNextOfflineWrite=false;
 let authChanged;
 let channelChanged;
 globalThis.__cacheTest = {
@@ -19,6 +21,13 @@ globalThis.__cacheTest = {
     rpc: async () => ({data:{revision:++rpcReads},error:null}),
     functions: {invoke:async()=>({data:null,error:null})},
   }),
+};
+globalThis.__offlineWrites = () => {
+  offlineWrites++;
+  if (failNextOfflineWrite) {
+    failNextOfflineWrite=false;
+    throw new Error('synthetic offline persistence failure');
+  }
 };
 globalThis.fetch = async (url, options) => {
   calls.push({url,options});
@@ -33,7 +42,7 @@ try {
       b.onResolve({filter:/\.\/offlineStore$/},()=>({path:'offline',namespace:'test'}));
       b.onLoad({filter:/.*/,namespace:'test'},({path})=>({contents:path==='sdk'
         ? 'export const {createClient}=globalThis.__cacheTest;'
-        : 'export const offlineCacheKey=(...args)=>JSON.stringify(args); export const readOfflineCache=async()=>null; export const writeOfflineCache=async()=>{}; export const applyRestMutationToCachedReads=async()=>{}; export const enqueueOfflineOperation=async()=>{}; export const listOfflineOperations=async()=>[]; export const removeOfflineOperation=async()=>{}; export const setOfflineSyncActivity=async()=>{}; export const updateOfflineOperationFailure=async()=>{};'}));
+        : 'export const offlineCacheKey=(...args)=>JSON.stringify(args); export const readOfflineCache=async()=>null; export const writeOfflineCache=async()=>{globalThis.__offlineWrites?.()}; export const applyRestMutationToCachedReads=async()=>{}; export const enqueueOfflineOperation=async()=>{}; export const listOfflineOperations=async()=>[]; export const removeOfflineOperation=async()=>{}; export const setOfflineSyncActivity=async()=>{}; export const updateOfflineOperationFailure=async()=>{};'}));
     }}]});
   const {supabase,ReadResponseCache,getDocuments,subscribeToDocuments} = await import(out.href);
   // A save creates a new read generation: a subsequent fresh query must not
@@ -65,10 +74,21 @@ try {
   const freshRpc=await supabase.rpc('resolve_foreman_portal',{p_token:'test'},{fresh:true});
   assert.notDeepEqual(freshRpc,rpcFirst,'portal refresh bypasses cached RPC payload');
 
+  // A failed IndexedDB write must not leave a warm cache entry that skips
+  // future attempts to persist the network response for offline use.
+  failNextOfflineWrite=true;
+  await assert.rejects(supabase.query('cache_retry',{query:'select=id'}),/synthetic offline persistence failure/);
+  const retryWrites=offlineWrites;
+  await supabase.query('cache_retry',{query:'select=id'});
+  assert.equal(offlineWrites,retryWrites+1,'a failed persistence attempt is retried on the next read');
+  calls=[];
+
   const options = {query:'select=id,name'};
   const first = await supabase.query('trabajadores',options);
+  const persistedAfterFirst = offlineWrites;
   first[0].name = 'edited locally';
   assert.equal((await supabase.query('trabajadores',options))[0].name,'revision-1');
+  assert.equal(offlineWrites,persistedAfterFirst,'memory-cache hits avoid redundant IndexedDB writes');
   assert.equal(calls.length,1,'repeated list read uses memory without leaking mutable objects');
   user = {id:'owner-B'};
   await supabase.query('trabajadores',options);
@@ -77,8 +97,10 @@ try {
   await supabase.query('trabajadores',{method:'PATCH',query:'id=eq.1',body:{name:'changed'}});
   assert.equal((await supabase.query('trabajadores',options))[0].name,'revision-2');
   const before = calls.length;
+  const writesBeforeFresh = offlineWrites;
   await supabase.query('trabajadores',{...options,fresh:true});
   assert.equal(calls.length,before+1,'explicit refresh bypasses cached response');
+  assert.equal(offlineWrites,writesBeforeFresh+1,'fresh network response still persists for offline use');
   await supabase.rpc('patch_user_settings',{p_patch:{}});
   const afterRpc = calls.length;
   await supabase.query('trabajadores',options);
@@ -114,7 +136,9 @@ try {
   let time = 0, loads = 0;
   const cache = new ReadResponseCache(()=>time,100);
   const load = async()=>({count:++loads});
-  await cache.read('a',load,10); await cache.read('a',load,10);
+  let hits=0;
+  await cache.read('a',load,10,()=>hits++); await cache.read('a',load,10,()=>hits++);
+  assert.equal(hits,1,'cache callback is invoked only on a real memory hit');
   assert.equal(loads,1); time = 11; await cache.read('a',load,10); assert.equal(loads,2);
   let resolve;
   const pending = cache.read('race',()=>new Promise(r=>resolve=r));
