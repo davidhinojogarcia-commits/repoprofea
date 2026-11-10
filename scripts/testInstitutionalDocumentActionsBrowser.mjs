@@ -26,9 +26,12 @@ try{
     try{
       const page=await browser.newPage({viewport:{width:390,height:844}});
       const errors=[];
-      page.on('pageerror',e=>errors.push(e.message));
+      page.on('pageerror',e=>errors.push('JS: '+e.message));
+      page.on('console',m=>{if(m.type()==='error')errors.push('console: '+m.text());});
+      page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url());});
       await page.goto(url);
-      await page.locator('.profea-institutional-document-actions').waitFor();
+      try { await page.locator('.profea-institutional-document-actions').waitFor({timeout:15000}); }
+      catch (error) { throw new Error(name+' mount failed. Browser errors: '+JSON.stringify(errors)+'; page: '+(await page.locator('body').innerText()).slice(0,1400)+'; html: '+(await page.content()).slice(0,1400),{cause:error}); }
       const toggle=page.getByRole('button',{name:'Más acciones'});
       assert.equal(await toggle.isVisible(),true,name+' mobile toggle visible');
       assert.equal(await page.getByRole('button',{name:'Marcar revisado'}).isVisible(),true);
