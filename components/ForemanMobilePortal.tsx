@@ -1255,7 +1255,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <div className="mt-1">{error}</div>
         <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
       </div>}
-      <div className="sticky top-[78px] z-10 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 sm:hidden" role="navigation" aria-label="Secciones del portal de encargados">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:hidden" role="navigation" aria-label="Secciones del portal de encargados">
         <label htmlFor="foreman-section-picker" className="mb-1 block text-xs font-bold text-slate-600 dark:text-slate-300">Sección del portal</label>
         <select
           id="foreman-section-picker"
