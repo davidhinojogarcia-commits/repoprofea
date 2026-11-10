@@ -663,6 +663,13 @@ export const PersonList: React.FC<PersonListProps> = ({
         )}
       </div>
 
+      <div className="mb-4 flex min-h-[52px] min-w-0 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 focus-within:border-[#00548E] focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-900">
+        <Search aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
+        <input type="search" aria-label="Buscar trabajadores" placeholder="Buscar por nombre, DNI, oferta, obra o categoría..."
+          value={searchTerm} onChange={event => setSearchTerm(event.target.value)}
+          className="min-h-11 w-full min-w-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500 dark:text-slate-100 dark:placeholder:text-slate-400" />
+      </div>
+
       <section aria-labelledby="directory-filters-title" className="relative z-20 mb-5 min-w-0 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 id="directory-filters-title" className="text-sm font-extrabold">Filtros del directorio</h3>
