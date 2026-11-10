@@ -36,8 +36,26 @@ try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await(engine==='webkit'?webkit:chromium).launch({headless:true});
  const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();debugPage=page;page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(() => {
+   window.__recognizer = null;
+   window.SpeechRecognition = class {
+     constructor(){this.onresult=null;this.onerror=null;this.onend=null;}
+     start(){window.__recognizer=this;}
+     stop(){this.onend?.();}
+     abort(){this.onend?.();}
+     emit(transcripts){this.onresult?.({resultIndex:0,results:transcripts.map(text=>({isFinal:true,0:{transcript:text}}))});}
+   };
+ });
  await page.goto(base);await page.getByRole('button',{name:'Nueva acta de visita',exact:true}).click();
  const point=n=>page.getByLabel('Descripción del punto '+n,{exact:true}),proposed=()=>page.getByRole('region',{name:'Propuesta de redacción',exact:true});
+ await page.getByRole('button',{name:'Dictar punto',exact:true}).first().click();
+ await page.evaluate(()=>window.__recognizer.emit(['Revisar las cotas']));
+ assert.equal(await point(1).inputValue(),'Revisar las cotas');
+ await page.evaluate(()=>window.__recognizer.emit(['Revisar las cotas']));
+ assert.equal(await point(1).inputValue(),'Revisar las cotas','final recognition result must not duplicate');
+ await page.evaluate(()=>window.__recognizer.emit(['Revisar las cotas','antes del hormigonado']));
+ assert.equal(await point(1).inputValue(),'Revisar las cotas antes del hormigonado');
+ await page.getByRole('button',{name:'Detener dictado',exact:true}).first().click();
  await point(1).fill('No ejecutar. Pendiente de comprobar 1,50 m.');await page.getByRole('button',{name:'+ Añadir asunto',exact:true}).click();await point(2).fill('Segundo asunto intacto.');
  const before=calls.filter(a=>a==='assist-writing').length;
  await page.getByRole('button',{name:'Mejorar redacción',exact:true}).first().evaluate(el=>{el.click();el.click();});await proposed().waitFor();
