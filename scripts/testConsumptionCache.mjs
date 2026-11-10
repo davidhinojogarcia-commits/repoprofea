@@ -9,6 +9,7 @@ let calls = [];
 let revision = 1;
 let rpcReads=0;
 let offlineWrites=0;
+let failNextOfflineWrite=false;
 let authChanged;
 let channelChanged;
 globalThis.__cacheTest = {
@@ -21,7 +22,13 @@ globalThis.__cacheTest = {
     functions: {invoke:async()=>({data:null,error:null})},
   }),
 };
-globalThis.__offlineWrites = () => { offlineWrites++; };
+globalThis.__offlineWrites = () => {
+  offlineWrites++;
+  if (failNextOfflineWrite) {
+    failNextOfflineWrite=false;
+    throw new Error('synthetic offline persistence failure');
+  }
+};
 globalThis.fetch = async (url, options) => {
   calls.push({url,options});
   return new Response(JSON.stringify([{id:'1',name:`revision-${revision}`,data:{name:`revision-${revision}`},owner_id:user.id}]), {status:200});
@@ -66,6 +73,15 @@ try {
   assert.deepEqual(await supabase.rpc('resolve_foreman_portal',{p_token:'test'}),rpcFirst,'normal RPC reads remain cached');
   const freshRpc=await supabase.rpc('resolve_foreman_portal',{p_token:'test'},{fresh:true});
   assert.notDeepEqual(freshRpc,rpcFirst,'portal refresh bypasses cached RPC payload');
+
+  // A failed IndexedDB write must not leave a warm cache entry that skips
+  // future attempts to persist the network response for offline use.
+  failNextOfflineWrite=true;
+  await assert.rejects(supabase.query('cache_retry',{query:'select=id'}),/synthetic offline persistence failure/);
+  const retryWrites=offlineWrites;
+  await supabase.query('cache_retry',{query:'select=id'});
+  assert.equal(offlineWrites,retryWrites+1,'a failed persistence attempt is retried on the next read');
+  calls=[];
 
   const options = {query:'select=id,name'};
   const first = await supabase.query('trabajadores',options);
