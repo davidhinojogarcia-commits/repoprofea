@@ -1266,32 +1266,16 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <div className="mt-1">{error}</div>
         <button type="button" onClick={()=>void refresh()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black"><RefreshCw className="h-4 w-4"/>Reintentar sin salir</button>
       </div>}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:hidden" role="navigation" aria-label="Secciones del portal de encargados">
-        <label htmlFor="foreman-section-picker" className="mb-1 block text-xs font-bold text-slate-600 dark:text-slate-300">Sección del portal</label>
-        <select
-          id="foreman-section-picker"
-          value={tab}
-          onChange={event => setTab(event.target.value as typeof tab)}
-          className="min-h-[48px] w-full min-w-0 rounded-xl border border-[#00548E] bg-white px-3 py-2 text-base font-bold text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] dark:bg-slate-800 dark:text-white"
-        >
-          <option value="mandatory">Control, inicios y contratos</option>
-          <option value="prevention">Prevención</option>
-          <option value="parts">Partes y avisos</option>
-          <option value="epis">EPIs</option>
-          <option value="formacion">Formación</option>
-          <option value="maquinaria">Maquinaria</option>
-          <option value="control">Control horario</option>
-          <option value="documents">Documentos</option>
-          <option value="visits">Actas de visitas</option>
-          <option value="completed">Finalizados</option>
-        </select>
-      </div>
       <div
-        role="navigation" aria-label="Secciones del portal de encargados en pantallas grandes"
-        className="hidden sm:block overflow-x-auto overscroll-x-contain rounded-2xl border bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
-        style={{WebkitOverflowScrolling:'touch'}}
+        role="navigation" aria-label="Secciones del portal de encargados"
+        className="min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
       >
-        <div className="flex w-max min-w-full gap-2">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1 sm:hidden">
+          <span className="text-sm font-black text-[#00548E] dark:text-blue-300">Sección del portal</span>
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Desliza para ver más <span aria-hidden="true">→</span></span>
+        </div>
+        <div className="overflow-x-auto overscroll-x-contain rounded-xl pb-2 touch-pan-x" style={{WebkitOverflowScrolling:'touch'}} tabIndex={0} aria-label="Desplaza horizontalmente para elegir una sección">
+          <div className="flex w-max min-w-full gap-2">
           <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
           <button onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
           <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
@@ -1302,6 +1286,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <button onClick={()=>setTab('documents')} style={{flex:'0 0 auto',minWidth:110,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
           <button onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
           <button onClick={()=>setTab('completed')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
+          </div>
         </div>
       </div>
 
