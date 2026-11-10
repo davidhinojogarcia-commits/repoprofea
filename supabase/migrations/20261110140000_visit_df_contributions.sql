@@ -22,6 +22,7 @@ create index if not exists visit_df_invitation_record on public.visit_df_invitat
 create table if not exists public.visit_df_contributions (
  id uuid primary key default gen_random_uuid(),
  invitation_id uuid not null references public.visit_df_invitations(id),
+ operation_id uuid not null,
  record_id uuid not null references public.visit_minutes(id) on delete cascade,
  version integer not null,
  person_id uuid not null,
@@ -31,6 +32,7 @@ create table if not exists public.visit_df_contributions (
  created_at timestamptz not null default now(),
  reviewed_at timestamptz,
  reviewer uuid references public.profiles(id),
+ constraint visit_df_unique_request unique(invitation_id,operation_id),
  constraint visit_df_title_length check (char_length(title) <= 200),
  constraint visit_df_description_length check (char_length(btrim(description)) between 1 and 20000)
 );
@@ -69,7 +71,7 @@ begin
  where id=p_id;
  return true;
 end $$;
-create or replace function public.visit_df_submit(p_id uuid,p_session_hash text,p_title text,p_description text)
+create or replace function public.visit_df_submit(p_id uuid,p_session_hash text,p_operation uuid,p_title text,p_description text)
 returns uuid language plpgsql security definer set search_path='' as $$
 declare v public.visit_df_invitations; r public.visit_minutes; result uuid; n integer;
 begin
@@ -84,8 +86,12 @@ begin
    raise exception 'Punto no válido'; end if;
  select count(*) into n from public.visit_df_contributions where invitation_id=p_id;
  if n>=100 then raise exception 'Límite de aportaciones alcanzado'; end if;
- insert into public.visit_df_contributions(invitation_id,record_id,version,person_id,title,description)
- values(v.id,v.record_id,v.version,v.person_id,coalesce(p_title,''),btrim(p_description)) returning id into result;
+ insert into public.visit_df_contributions(invitation_id,operation_id,record_id,version,person_id,title,description)
+ values(v.id,p_operation,v.record_id,v.version,v.person_id,coalesce(p_title,''),btrim(p_description))
+ on conflict (invitation_id,operation_id) do nothing returning id into result;
+ if result is null then
+   select id into result from public.visit_df_contributions where invitation_id=v.id and operation_id=p_operation;
+ end if;
  return result;
 end $$;
 -- Atomic review: only the owner can append DF text; never replace existing points.
@@ -118,6 +124,6 @@ begin
  return true;
 end $$;
 revoke all on function public.visit_df_challenge(uuid,text),public.visit_df_verify(uuid,text,text),
- public.visit_df_submit(uuid,text,text,text),public.visit_df_review(uuid,uuid,integer,boolean) from public,anon,authenticated;
+ public.visit_df_submit(uuid,text,uuid,text,text),public.visit_df_review(uuid,uuid,integer,boolean) from public,anon,authenticated;
 grant execute on function public.visit_df_challenge(uuid,text),public.visit_df_verify(uuid,text,text),
  public.visit_df_submit(uuid,text,text,text),public.visit_df_review(uuid,uuid,integer,boolean) to service_role;
