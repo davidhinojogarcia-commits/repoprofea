@@ -3,7 +3,7 @@ import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import ModalPortal from './ModalPortal';
 import { Person } from '../types';
-import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone, ScanLine } from 'lucide-react';
+import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone, ScanLine, ChevronDown } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleCalendarModal } from './GoogleCalendarModal';
@@ -36,6 +36,7 @@ interface PersonListProps {
   onPairWorkerCard?: () => void;
   onExportHistoryPDF: (person: Person) => void;
   renderPartsAction?: (person: Person) => React.ReactNode;
+  renderPartsFilter?: React.ReactNode;
   savedObras: string[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -99,6 +100,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   onPairWorkerCard,
   onExportHistoryPDF,
   renderPartsAction,
+  renderPartsFilter,
   savedObras,
   searchTerm,
   setSearchTerm,
@@ -117,6 +119,8 @@ export const PersonList: React.FC<PersonListProps> = ({
   const [trainingFilter, setTrainingFilter] = useState<DirectoryTrainingFilter>('all');
   const [contractYearFilter, setContractYearFilter] = useState('all');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showReports, setShowReports] = useState(false);
+  const [reportType, setReportType] = useState<'encargados' | 'medical' | 'footwear' | 'training'>('encargados');
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [viewLayout, setViewLayout] = useState<'table' | 'compact' | 'cards'>(() => {
     try {
@@ -478,9 +482,9 @@ export const PersonList: React.FC<PersonListProps> = ({
   };
   
   const scanActions = (onScanWorkerCard || onPairWorkerCard) && (
-    <div role="group" aria-label="Lectura de carnet" className="flex flex-wrap items-center gap-2">
-      {onScanWorkerCard && <button type="button" onClick={onScanWorkerCard} className="min-h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-bold text-white"><ScanLine className="h-5 w-5 shrink-0" />Escanear carnet con este dispositivo</button>}
-      {onPairWorkerCard && <button type="button" onClick={onPairWorkerCard} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-bold">Vincular cámara del móvil</button>}
+    <div role="group" aria-label="Lectura de carnet" className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+      {onScanWorkerCard && <button type="button" onClick={onScanWorkerCard} className="inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-xl bg-[#00548E] px-3 py-3 text-center text-sm font-bold text-white"><ScanLine className="h-5 w-5 shrink-0" />Escanear carnet con este dispositivo</button>}
+      {onPairWorkerCard && <button type="button" onClick={onPairWorkerCard} className="min-h-12 min-w-0 w-full rounded-xl border border-slate-300 px-3 py-3 text-center text-sm font-bold dark:border-slate-600">Vincular cámara del móvil</button>}
     </div>
   );
 
@@ -587,98 +591,72 @@ export const PersonList: React.FC<PersonListProps> = ({
   }
 
   return (
-    <div id="directorio-section" className="ui-surface p-4 sm:p-6 lg:p-8 text-slate-800 dark:text-slate-100">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-800 gap-4">
-        <h2 className="text-[var(--ui-text)] text-xl sm:text-2xl font-black tracking-tight flex items-center">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white mr-3"><User className="w-5 h-5" /></span> Directorio ({people.length})
-        </h2>
-        <div className="flex flex-col gap-2 w-full md:w-auto">
-          <div className="directorio-primary-actions flex flex-wrap gap-2 justify-end items-center">
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 onChange={handleFileChange} 
-                 accept=".xlsx, .xls, .json, .pdf" 
-                 className="hidden" 
-               />
-
-
-
-          </div>
-          <div className="text-right text-[11px] font-black uppercase tracking-[0.16em] text-slate-700 dark:text-slate-200">Acciones informativas rápidas</div>
-          <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
-               <div className="flex flex-col gap-2 w-full sm:w-auto">
-                 <div data-encargados-relation-row="1" className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación de trabajadores para encargados:</span>
-                   <button onClick={() => onExportPDF(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-red-500/20' : ''}`}>
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-                   </button>
-                   <button onClick={() => onExport(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-emerald-500/20' : ''}`}>
-                      <Download className="w-3 h-3 mr-1.5" /> Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-slate-950 dark:border-emerald-300 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar el PDF y compartirlo con el recurso preventivo configurado"
-                   >
-                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Reconocimientos Médicos:</span>
-                   <button onClick={() => onExportRRMMPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportRRMMExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('medical' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Resumen Calzado:</span>
-                   <button onClick={() => onExportCalzadoPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportCalzadoExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('footwear' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Formación PRL 20h:</span>
-                   <button onClick={() => onExportPRLPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportPRLExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('training' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-               </div>
-          </div>
+    <div id="directorio-section" className="ui-surface min-w-0 p-3 sm:p-5 lg:p-7 text-slate-800 dark:text-slate-100">
+      <div className="mb-4 min-w-0 border-b border-slate-200 pb-4 dark:border-slate-800">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-4">
+          <h2 className="flex min-w-0 items-center gap-2 text-lg font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white"><User className="h-5 w-5" /></span>
+            <span className="min-w-0 truncate">Directorio <span className="text-slate-500 dark:text-slate-400">({people.length})</span></span>
+          </h2>
+          <button type="button" aria-expanded={showReports} aria-controls="directory-reports-panel"
+            onClick={() => setShowReports(value => !value)}
+            className="inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#003f70] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00548E] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 sm:gap-2 sm:px-4">
+            <FileText className="h-4 w-4 shrink-0" /><span>Informes</span><ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${showReports ? 'rotate-180' : ''}`}/>
+          </button>
         </div>
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls, .json, .pdf" className="hidden" />
+        {showReports && (
+          <section id="directory-reports-panel" aria-label="Informes y comunicaciones del Directorio"
+            className="mt-3 min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/60 sm:p-4">
+            <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2 lg:items-end">
+              <label className="flex min-w-0 flex-col gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                Seleccionar informe
+                <select aria-label="Seleccionar informe del Directorio" value={reportType} onChange={e => setReportType(e.target.value as typeof reportType)}
+                  className="min-h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-[#00548E] focus:outline-none focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                  <option value="encargados">Relación de trabajadores para encargados</option>
+                  <option value="medical">Reconocimientos médicos</option>
+                  <option value="footwear">Resumen de calzado</option>
+                  <option value="training">Formación PRL 20 horas</option>
+                </select>
+              </label>
+              <div className="min-w-0">
+                <div className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">Exportar o compartir</div>
+                <div data-encargados-relation-row={reportType === 'encargados' ? '1' : undefined} className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+                  <button type="button" onClick={() => {
+                    if(reportType === 'encargados') onExportPDF(peopleToExport);
+                    else if(reportType === 'medical') onExportRRMMPDF(peopleToExport);
+                    else if(reportType === 'footwear') onExportCalzadoPDF(peopleToExport);
+                    else onExportPRLPDF(peopleToExport);
+                  }} className="inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-white px-2 py-3 text-sm font-bold text-red-800 hover:bg-red-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30">
+                    <FileText className="h-4 w-4 shrink-0" /> PDF
+                  </button>
+                  <button type="button" onClick={() => {
+                    if(reportType === 'encargados') onExport(peopleToExport);
+                    else if(reportType === 'medical') onExportRRMMExcel(peopleToExport);
+                    else if(reportType === 'footwear') onExportCalzadoExcel(peopleToExport);
+                    else onExportPRLExcel(peopleToExport);
+                  }} className="inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-2 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30">
+                    <Download className="h-4 w-4 shrink-0" /> Excel
+                  </button>
+                  {reportType === 'encargados' ? (
+                    <button type="button" onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
+                      className="col-span-2 inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-2 py-3 text-sm font-bold text-white hover:bg-emerald-800 sm:col-span-1">
+                      <MessageCircle className="h-4 w-4 shrink-0" /> WhatsApp
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => void sendDirectoryCommunication(reportType as 'medical' | 'footwear' | 'training', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                      className="col-span-2 inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2 py-3 text-sm font-bold text-sky-900 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200 sm:col-span-1">
+                      <Mail className="h-4 w-4 shrink-0" /> Mail
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400" role="status">
+              {isSelectionActive ? `Se aplicará a ${peopleToExport.length} trabajadores seleccionados.` : `Se aplicará a los ${peopleToExport.length} trabajadores del ámbito visible según los filtros.`}
+            </p>
+          </section>
+        )}
       </div>
 
       <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
@@ -698,7 +676,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         <div className="hidden xl:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
         <div className="block xl:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
 
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch p-1.5 gap-1.5 min-w-0">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <MultiSearchableDropdown
             options={savedObras}
             selectedValues={selectedObraFilter}
@@ -706,11 +684,11 @@ export const PersonList: React.FC<PersonListProps> = ({
             placeholder="Obra: Todas"
             allLabel="Todas las obras"
             icon={<MapPin className="w-4 h-4" />}
-            className="!w-full sm:!w-48 xl:!w-60"
+            className="!w-full !min-w-0"
             buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
           />
-          <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
-          <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+          <div className="hidden"></div>
+          <div className="hidden"></div>
           <MultiSearchableDropdown
             options={uniqueQuincenas}
             selectedValues={selectedQuincenaFilter}
@@ -723,7 +701,7 @@ export const PersonList: React.FC<PersonListProps> = ({
           />
           <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
           <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-          <label className="flex flex-col justify-center gap-1 px-3 py-1 text-xs font-bold w-full sm:w-44">
+          <label className="flex min-w-0 w-full flex-col justify-center gap-1 px-1 py-1 text-xs font-bold">
             Año de contratación
             <select aria-label="Año de contratación" value={contractYearFilter} onChange={event => { setContractYearFilter(event.target.value); setSelectedIds([]); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
               <option value="all">Todos los años</option>
@@ -731,7 +709,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               <option value="unknown">Sin año registrado</option>
             </select>
           </label>
-          <label className="flex flex-col justify-center gap-1 px-3 py-1 text-xs font-bold w-full sm:w-72">
+          <label className="flex min-w-0 w-full flex-col justify-center gap-1 px-1 py-1 text-xs font-bold">
             Formación
             <select aria-label="Formación" value={trainingFilter} onChange={event => { setTrainingFilter(event.target.value as DirectoryTrainingFilter); setSelectedIds([]); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
               <option value="all">Todos los estados</option>
@@ -739,9 +717,10 @@ export const PersonList: React.FC<PersonListProps> = ({
               <option value="pending">Sin formación / pendiente</option>
             </select>
           </label>
+          {renderPartsFilter && <div className="min-w-0 w-full">{renderPartsFilter}</div>}
           <button
             onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
-            className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer whitespace-nowrap ${
+            className={`flex min-h-11 min-w-0 w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all cursor-pointer ${
               showOnlyRepeaters 
                 ? 'bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-300 dark:border-purple-800 shadow-sm ring-2 ring-purple-500/20' 
                 : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'
@@ -754,7 +733,7 @@ export const PersonList: React.FC<PersonListProps> = ({
           {noAptosCount > 0 && (
             <button
               onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+              className={`flex min-h-11 min-w-0 w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all cursor-pointer ${
                 showOnlyNoAptos 
                   ? 'bg-red-600 text-white border-red-700 shadow-sm ring-2 ring-red-500/20' 
                   : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80'
@@ -831,12 +810,12 @@ export const PersonList: React.FC<PersonListProps> = ({
                 </label>
               </div>
 
-              <div className="profea-directory-view-switcher grid grid-cols-[0.78fr_1.42fr_1fr] sm:flex items-center gap-1 w-full sm:w-auto bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+              <div className="profea-directory-view-switcher grid min-w-0 w-full grid-cols-[0.85fr_1.35fr_1fr] items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-2xs dark:border-slate-700 dark:bg-slate-900 sm:w-auto sm:flex">
                 <button
                   type="button"
                   id="btn-view-table"
                   onClick={() => handleSetViewLayout('table')}
-                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 min-h-11 py-2 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     viewLayout === 'table'
                       ? 'bg-[#00548E] dark:bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -850,7 +829,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   type="button"
                   id="btn-view-compact"
                   onClick={() => handleSetViewLayout('compact')}
-                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 min-h-11 py-2 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     viewLayout === 'compact'
                       ? 'bg-[#00548E] dark:bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -864,7 +843,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   type="button"
                   id="btn-view-cards"
                   onClick={() => handleSetViewLayout('cards')}
-                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 min-h-11 py-2 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     viewLayout === 'cards'
                       ? 'bg-[#00548E] dark:bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -894,11 +873,11 @@ export const PersonList: React.FC<PersonListProps> = ({
                   </span>
                 )}
                 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid w-full grid-cols-2 items-stretch gap-2 sm:flex sm:w-auto sm:flex-wrap">
                   {onEditMultiple && (
                     <button 
                       onClick={handleBulkEdit}
-                      className="flex items-center justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-[#00548E] dark:text-blue-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-blue-200 dark:border-blue-800/80 cursor-pointer"
+                      className="flex min-h-11 min-w-0 items-center justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-[#00548E] dark:text-blue-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-blue-200 dark:border-blue-800/80 cursor-pointer"
                       title="Editar trabajadores seleccionados"
                     >
                       <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar Masivo
@@ -907,7 +886,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   <BulkShareButton resourceType="trabajadores" resourceIds={selectedIds} />
                   <button 
                     onClick={handleOpenCalendarForSelected}
-                    className="flex items-center justify-center bg-[#00548E]/10 hover:bg-[#00548E]/20 text-[#00548E] dark:text-blue-300 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-[#00548E]/20 dark:border-blue-800/80 cursor-pointer"
+                    className="flex min-h-11 min-w-0 items-center justify-center bg-[#00548E]/10 hover:bg-[#00548E]/20 text-[#00548E] dark:text-blue-300 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-[#00548E]/20 dark:border-blue-800/80 cursor-pointer"
                     title="Añadir a Google Calendar los seleccionados"
                   >
                     <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#00548E] dark:text-blue-400" /> Google Calendar
@@ -915,7 +894,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   {onDeleteMultiple && (
                     <button 
                       onClick={handleBulkDelete}
-                      className="flex items-center justify-center bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-red-200 dark:border-red-900/60 cursor-pointer"
+                      className="flex min-h-11 min-w-0 items-center justify-center bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-red-200 dark:border-red-900/60 cursor-pointer"
                       title="Eliminar trabajadores seleccionados"
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Eliminar Masivo
