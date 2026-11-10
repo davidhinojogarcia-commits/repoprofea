@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { visitRequest } from '../src/services/visitMinutesService';
 import { VisitVoiceDictation } from './VisitVoiceDictation';
 
@@ -33,7 +33,8 @@ export function VisitDfPortal({token}:{token:string}){
   });
   const submit=()=>void perform(async()=>{
     if(!session||!description.trim())throw new Error('Completa el texto del punto.');
-    await visitRequest({action:'df-submit',token,session,title,description},{public:true});
+    await visitRequest({action:'df-submit',token,session,title,description,operation:operation.current},{public:true});
+    operation.current=crypto.randomUUID();
     setTitle('');setDescription('');await list(session);
     setMessage('Punto enviado al supervisor para su revisión. Puedes añadir otro.');
   });
