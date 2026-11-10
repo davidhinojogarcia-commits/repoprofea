@@ -33,6 +33,14 @@ export async function handleDfGuest(body:any,res:any,deps:Dependencies) {
   const {database:db,digest}=deps;
   const action=String(body.action||'');
   const {invite,record}=await guest(body.token,db,digest);
+  if(action==='df-open'){
+    const session=fresh();
+    const success=await db('rpc/visit_df_open',{
+      p_id:invite.id,p_token_hash:digest(body.token),p_session_hash:digest(session)
+    });
+    if(success!==true)throw invalid('Invitación caducada, revocada o no autorizada.',403);
+    return res.json({ok:true,session,record:{number:record.number,worksite:record.worksite,date:record.visit_date},access:'personal-link'});
+  }
   if(action==='df-challenge'){
     if(invite.requests>=10||Date.parse(invite.otp_requested_at||0)>Date.now()-60000)throw invalid('Espera un minuto antes de pedir otro código. El enlace admite un máximo de diez solicitudes.',429);
     const code=String(randomInt(0,1_000_000)).padStart(6,'0');
@@ -101,7 +109,7 @@ export async function handleDfOwner(body:any,res:any,deps:Dependencies,user:{id:
       db('visit_df_invitations?'+q({select:'person_id,expires_at,revoked',
         record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'40'}))
     ]);
-    return res.json({ok:true,contributions,invitations});
+    return res.json({ok:true,contributions,invitations,pending:contributions.filter((c:any)=>c.status==='pending').length});
   }
   if(action==='df-review'){
     if(!uuidPattern.test(String(body.contributionId||''))||typeof body.accept!=='boolean')
