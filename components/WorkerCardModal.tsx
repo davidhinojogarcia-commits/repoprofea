@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Download, Loader2, Share2, X } from 'lucide-react';
+import { Download, Loader2, Share2, Printer, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import type { Person } from '../types';
-import { downloadWorkerCard, generateWorkerCard, shareWorkerCard } from '../src/lib/workerCard';
+import { downloadWorkerCard, generateWorkerCard, generateDniSizedPrintSheet, shareWorkerCard } from '../src/lib/workerCard';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import QRCode from 'qrcode';
 import { ensureWorkerQrShare } from '../src/services/workerQrShareService';
 
 export default function WorkerCardModal({ person, onClose }: { person: Person; onClose: () => void }) {
-  const [card, setCard] = useState<{ url: string; image: File; pdf: Blob; pdfName: string } | null>(null);
+  const [card, setCard] = useState<{ url: string; image: File; pdf: Blob; pdfName: string; printPdf: Blob; printName: string } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [sharing, setSharing] = useState(false);
@@ -43,7 +43,8 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
       if (cancelled) return;
       const image = new File([blob], filename.replace(/\.pdf$/, '.png'), { type: 'image/png' });
       url = URL.createObjectURL(image);
-      setCard({ url, image, pdf: doc.output('blob'), pdfName: filename });
+      const { doc: printDoc, filename: printName } = generateDniSizedPrintSheet(canvas.toDataURL('image/png'));
+      setCard({ url, image, pdf: doc.output('blob'), pdfName: filename, printPdf: printDoc.output('blob'), printName });
     })().catch(e => { if (!cancelled) setError(e.message || 'No se ha podido preparar el carnet.'); })
       .finally(() => { void task?.destroy().catch(() => undefined); });
     return () => {
@@ -77,8 +78,8 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
     }
   };
   return <ModalPortal label="Carnet del trabajador">
-    <div className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3">
-      <section role="dialog" aria-modal="true" aria-labelledby="worker-card-title" className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-4 text-slate-900 shadow-xl dark:bg-slate-900 dark:text-slate-100">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-2 sm:p-3">
+      <section role="dialog" aria-modal="true" aria-labelledby="worker-card-title" className="max-h-[94dvh] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl bg-white p-4 text-slate-900 shadow-xl dark:bg-slate-900 dark:text-slate-100 sm:max-h-[90dvh] sm:p-5">
         <header className="mb-4 flex items-center justify-between gap-3">
           <h2 id="worker-card-title" className="font-bold">Carnet del trabajador</h2>
           <button type="button" onClick={onClose} aria-label="Cerrar carnet" className="min-h-11 min-w-11 rounded-xl border p-3"><X className="h-5 w-5" /></button>
@@ -89,7 +90,20 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
             <button type="button" disabled={sharing} onClick={share} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50"><Share2 className="h-4 w-4" />Compartir tarjeta</button>
             <button type="button" onClick={() => downloadWorkerCard(card.image, card.image.name)} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-bold"><Download className="h-4 w-4" />Descargar imagen</button>
           </div>
-          <button type="button" onClick={() => downloadWorkerCard(card.pdf, card.pdfName)} className="mt-3 min-h-11 text-sm underline">Descargar PDF para imprimir</button>
+          <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+            <h3 className="text-sm font-extrabold text-[#00548E] dark:text-blue-300">Imprimir el carnet</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300">Elige «Tamaño DNI» para obtener una hoja A4 con la tarjeta de 85,60 × 53,98 mm. Imprime al 100 % (tamaño real), sin ajustar la página.</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => downloadWorkerCard(card.printPdf, card.printName)}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70]">
+                <Printer className="h-4 w-4" /> PDF tamaño DNI · A4
+              </button>
+              <button type="button" onClick={() => downloadWorkerCard(card.pdf, card.pdfName)}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold dark:border-slate-600">
+                <Download className="h-4 w-4" /> PDF original
+              </button>
+            </div>
+          </div>
           {notice && <p role="status" className="mt-2 text-sm">{notice}</p>}
         </> : <p role="status" className="flex items-center gap-2 p-6"><Loader2 className="h-5 w-5 animate-spin" />Preparando carnet…</p>}
       </section>
