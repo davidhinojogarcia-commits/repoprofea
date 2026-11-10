@@ -91,3 +91,32 @@
     max-width: 55%;
   }
 }
+
+/* Compact layout for narrow phones: keep every action readable without horizontal overflow. */
+@media (max-width: 379px) {
+  .profea-institutional-document-actions__primary,
+  .profea-institutional-document-actions__secondary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .profea-institutional-document-actions__primary > :only-child {
+    grid-column: auto;
+  }
+}
+
+/* Preserve visible keyboard focus in both themes, including the mobile disclosure. */
+.profea-institutional-document-actions :is(button, a):focus-visible {
+  outline: 3px solid var(--ui-brand-700, #00548e);
+  outline-offset: 3px;
+}
+.dark .profea-institutional-document-actions :is(button, a):focus-visible {
+  outline-color: #8fc4dc;
+}
+.profea-institutional-document-actions__toggle svg {
+  transition: transform var(--ui-motion-fast, 120ms) ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .profea-institutional-document-actions__toggle svg,
+  .profea-institutional-document-actions button {
+    transition: none;
+  }
+}
