@@ -184,6 +184,8 @@ jobs:
         run: npm run test:visit-writing-browser
       - name: DF collaboration permissions and contribution regression
         run: node --import tsx scripts/testVisitDfContributions.mjs
+      - name: DF migration security and append-only invariants
+        run: node scripts/testVisitDfSql.mjs
       - name: Signed attendance PDFs
         run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
