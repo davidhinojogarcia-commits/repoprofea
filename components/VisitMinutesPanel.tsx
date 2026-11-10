@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import {VisitPointsEditor} from './VisitPointsEditor';
+import {VisitDfReviewPanel} from './VisitDfReviewPanel';
 import {VisitAttachmentsEditor} from './VisitAttachmentsEditor';
 import {VisitParticipantsEditor} from './VisitParticipantsEditor';
 import {VisitOnsiteFlow} from './VisitOnsiteFlow';
@@ -600,6 +601,7 @@ export function VisitMinutesPanel({
         <details className="rounded-xl border p-3"><summary className="min-h-[44px] cursor-pointer font-bold">Más datos de la visita (opcional)</summary><div className="grid gap-3 sm:grid-cols-2">{([['end','Hora final','time'],['location','Emplazamiento','text'],['municipality','Municipio','text'],['promoter','Promotor','text'],['author','Redacta: nombre y apellidos','text'],['authorRole','Cargo del autor','text'],['authorEmail','Correo del autor','email'],['authorPhone','Teléfono del autor','tel'],['nextVisit','Próxima visita (opcional)','date']] as const).map(([key,label,type])=><label key={key} className="text-sm font-bold">{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div></details>
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
         <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={addForeman} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
+        {record?.canWrite && record.status==='draft' && <VisitDfReviewPanel record={record} dirty={dirty} onUpdated={install} />}
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
         {writingPending&&<p className="text-sm">Aplica o descarta la propuesta y el dictado pendiente antes de revisar y firmar.</p>}<div className="visit-draft-actions grid min-w-0 grid-cols-2 gap-2"><button type="button" className={button+" w-full"} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary+" w-full"} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewAndSign()}>Revisar y firmar</button></div>
         {people.some(p=>p.modality==='remote'&&p.reviewRequired)&&<button type="button" className={button} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewDraft()}>Enviar borrador a participantes remotos</button>}
