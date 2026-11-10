@@ -123,7 +123,7 @@ try {
     await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
     await year.selectOption('2026');await training.selectOption('pending');
-    await page.getByRole('button', { name: 'Aptitud médica', exact: true }).click();
+    await page.locator('summary[aria-label="Aptitud médica"]').click();
     await page.getByText('No aptos', { exact: true }).click();
     await scope([5]);
     await page.getByRole('button', { name: 'Todas las aptitudes', exact: true }).click();
