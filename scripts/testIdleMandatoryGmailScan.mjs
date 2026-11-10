@@ -60,7 +60,7 @@ try {
   assert.deepEqual(reads, [], 'already imported PDFs must not trigger directory requests');
 
   messages = [{ id: 'mail-2', attachments: [
-    { filename: 'new.pdf', mimeType: 'application/pdf' },
+    { filename: 'new.pdf' }, // Gmail can omit mimeType; filename remains authoritative
   ] }];
   result = await run();
   assert.deepEqual(reads, ['trabajadores', 'obras'], 'new PDFs still load directory and worksite data');
