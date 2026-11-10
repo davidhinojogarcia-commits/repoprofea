@@ -12,6 +12,7 @@ for(const name of ['visit_df_challenge','visit_df_verify','visit_df_submit','vis
 }
 assert.match(sql,/revoke all on function public\.visit_df_challenge[\s\S]+from public,anon,authenticated;/i);
 assert.match(sql,/grant execute on function public\.visit_df_challenge[\s\S]+to service_role;/i);
+assert.match(sql,/public\.visit_df_submit\(uuid,text,uuid,text,text\),public\.visit_df_review\(uuid,uuid,integer,boolean\) to service_role;/i);
 assert.match(sql,/r\.status<>'draft'/);
 assert.match(sql,/r\.revision<>p_revision/);
 assert.match(sql,/r\.owner_id<>p_owner/);
