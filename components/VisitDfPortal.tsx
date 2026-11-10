@@ -17,6 +17,7 @@ export function VisitDfPortal({token}:{token:string}){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
+  const operation = useRef(crypto.randomUUID());
   const perform=async(work:()=>Promise<void>)=>{
     if(busy)return;setBusy(true);setError('');setMessage('');
     try{await work();}catch(e:any){setError(e.message||'No se pudo completar la operación.');}
