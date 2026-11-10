@@ -69,7 +69,7 @@ function invalidateReadCache() {
   cacheChannel?.postMessage('invalidate');
 }
 client.auth.onAuthStateChange(() => { readResponseCache.clear(); requestLimiter.invalidateReads(); });
-async function performNetworkRequest(path: string, options: RequestInit = {}, fresh = false): Promise<any> {
+async function performNetworkRequest(path: string, options: RequestInit = {}, fresh = false, onMemoryCacheHit?: () => void): Promise<any> {
   const user = await getSessionUser();
   const method = String(options.method || 'GET').toUpperCase();
   const key = JSON.stringify([path, Array.from(new Headers(options.headers).entries()).sort()]);
@@ -94,6 +94,7 @@ async function performNetworkRequest(path: string, options: RequestInit = {}, fr
     JSON.stringify([user?.id || 'anonymous', key]),
     load,
     !fresh ? cacheTtl : 0,
+    onMemoryCacheHit,
   );
 }
 
@@ -186,8 +187,11 @@ async function request(path: string, options: RequestInit = {}, fresh = false, n
       throw new Error('Sin conexión y sin una copia local disponible de estos datos.');
     }
     try {
-      const result = await performNetworkRequest(path, options, fresh);
-      await writeOfflineCache(cacheKey, result);
+      let servedFromMemory = false;
+      const result = await performNetworkRequest(path, options, fresh, () => { servedFromMemory = true; });
+      // A memory-cache hit already has a persisted copy from its network fetch.
+      // Do not write the same response repeatedly to IndexedDB on every view.
+      if (!servedFromMemory) await writeOfflineCache(cacheKey, result);
       return result;
     } catch (error) {
       if (!isNetworkFailure(error)) throw error;
