@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Download, Loader2, Share2, Printer, X } from 'lucide-react';
+import React, { Suspense, useEffect, useState } from 'react';
+import { Download, Loader2, Share2, Printer, ShieldCheck, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import type { Person } from '../types';
 import { downloadWorkerCard, generateWorkerCard, generateDniSizedPrintSheet, shareWorkerCard } from '../src/lib/workerCard';
@@ -7,11 +7,14 @@ import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import QRCode from 'qrcode';
 import { ensureWorkerQrShare } from '../src/services/workerQrShareService';
 
+const InspectionAccessManager = React.lazy(() => import('./InspectionAccessManager'));
+
 export default function WorkerCardModal({ person, onClose }: { person: Person; onClose: () => void }) {
   const [card, setCard] = useState<{ url: string; image: File; pdf: Blob; pdfName: string; printPdf: Blob; printName: string } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [inspectionExpanded, setInspectionExpanded] = useState(false);
   useEffect(() => {
     let cancelled = false;
     let url = '';
@@ -103,6 +106,18 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
                 <Download className="h-4 w-4" /> PDF original
               </button>
             </div>
+          </div>
+          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+            <button type="button" aria-expanded={inspectionExpanded} aria-controls="card-inspection-access"
+              onClick={() => setInspectionExpanded(value => !value)}
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#00548E]/30 px-4 py-3 text-sm font-bold text-[#00548E] dark:border-blue-700 dark:text-blue-300">
+              <ShieldCheck className="h-4 w-4"/> Acceso temporal a Inspección y Dirección Facultativa
+            </button>
+            {inspectionExpanded && <div id="card-inspection-access" className="mt-3">
+              <Suspense fallback={<p role="status">Preparando acceso seguro…</p>}>
+                <InspectionAccessManager person={person}/>
+              </Suspense>
+            </div>}
           </div>
           {notice && <p role="status" className="mt-2 text-sm">{notice}</p>}
         </> : <p role="status" className="flex items-center gap-2 p-6"><Loader2 className="h-5 w-5 animate-spin" />Preparando carnet…</p>}
