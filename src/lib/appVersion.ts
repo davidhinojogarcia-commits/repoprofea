@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.22.3';
+export const APP_VERSION = '1.22.4';
 export const APP_RELEASE_DATE = '10/11/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Portal de encargados: navegación por cinta de botones disponible en móviles verticales y horizontales, con orientación visual para deslizar.',
+  'El selector de quincenas sigue siendo desplegable, con las acciones guiadas y documentos preservados.',
   'Portal de encargados: quincenas en un desplegable nativo ordenado, con número de documentos y filtros sincronizados.',
   'Portal de encargados: acciones guiadas simples, encabezados claros, tarjetas compactas y alineación institucional.',
   'Dirección Facultativa: acceso directo para aportaciones mediante enlace personal o QR, sin introducir código de correo para redactar.',
