@@ -84,3 +84,10 @@
 @media (min-width: 768px) {
   .profea-institutional-document-actions__secondary-grid { display: grid; }
 }
+
+@media (min-width: 1536px) {
+  .foreman-documents-dashboard .profea-institutional-document-actions {
+    flex: 0 1 55%;
+    max-width: 55%;
+  }
+}
