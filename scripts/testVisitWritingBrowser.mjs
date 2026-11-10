@@ -50,11 +50,12 @@ try{
  const point=n=>page.getByLabel('Descripción del punto '+n,{exact:true}),proposed=()=>page.getByRole('region',{name:'Propuesta de redacción',exact:true});
  await page.getByRole('button',{name:'Dictar punto',exact:true}).first().click();
  await page.evaluate(()=>window.__recognizer.emit(['Revisar las cotas']));
- assert.equal(await point(1).inputValue(),'Revisar las cotas');
+ await page.waitForFunction(()=>document.querySelector('textarea[aria-label="Descripción del punto 1"]')?.value==='Revisar las cotas');
  await page.evaluate(()=>window.__recognizer.emit(['Revisar las cotas']));
+ await page.waitForTimeout(100);
  assert.equal(await point(1).inputValue(),'Revisar las cotas','final recognition result must not duplicate');
  await page.evaluate(()=>window.__recognizer.emit(['Revisar las cotas','antes del hormigonado']));
- assert.equal(await point(1).inputValue(),'Revisar las cotas antes del hormigonado');
+ await page.waitForFunction(()=>document.querySelector('textarea[aria-label="Descripción del punto 1"]')?.value==='Revisar las cotas antes del hormigonado');
  await page.getByRole('button',{name:'Detener dictado',exact:true}).first().click();
  await point(1).fill('No ejecutar. Pendiente de comprobar 1,50 m.');await page.getByRole('button',{name:'+ Añadir asunto',exact:true}).click();await point(2).fill('Segundo asunto intacto.');
  const before=calls.filter(a=>a==='assist-writing').length;
