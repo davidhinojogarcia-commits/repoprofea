@@ -399,10 +399,32 @@ export async function processAdministrativeMandatoryInbox(options?: {
 
   options?.onProgress?.('Consultando Gmail de la administrativa…');
   const messages = await scanAdministrativeGmail(administrativeEmail);
+  const existing = options?.existingSourceKeys || new Set<string>();
+  // Scheduled scans often find only already-imported messages. In that case
+  // there is no document to classify, so loading up to 5,000 workers and
+  // 1,000 worksites would waste two REST requests and their associated logs.
+  // Keep the same count of skipped non-PDF attachments as the normal flow.
+  const pendingAttachments = messages.flatMap(message =>
+    (message.attachments || []).filter(attachment =>
+      !existing.has(`${message.id}|${attachment.filename}`),
+    ),
+  );
+  const pendingPdfs = pendingAttachments.filter(attachment =>
+    /\.pdf$/i.test(attachment.filename) || attachment.mimeType === 'application/pdf',
+  );
+  if (!pendingPdfs.length) {
+    return {
+      scannedMessages: messages.length,
+      importedDocuments: 0,
+      skippedAttachments: pendingAttachments.length,
+      warnings: [],
+      pendingWorksiteDocuments: 0,
+      missingDirectoryWorkers: [],
+    };
+  }
   const workers = await getDocuments<Person>('trabajadores', { limitCount: 5000 });
   const worksiteCatalog = await getDocuments<any>('obras', { limitCount: 1000 });
   const knownWorksites = options?.obraCandidates?.length ? options.obraCandidates : worksiteCatalog.map((obra:any)=>String(obra?.nombre||'').trim()).filter(Boolean);
-  const existing = options?.existingSourceKeys || new Set<string>();
   const warnings: string[] = [];
   const missingDirectoryWorkers = new Set<string>();
   let importedDocuments = 0;
