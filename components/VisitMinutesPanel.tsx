@@ -515,7 +515,7 @@ export function VisitMinutesPanel({
     <header className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0"><h1 className="text-xl font-black tracking-tight sm:text-2xl">Actas de visitas</h1><p className="mt-1 text-xs text-slate-600 dark:text-slate-300 sm:text-sm">Redactar · Revisar y firmar · Seguimiento</p></div>
-        <button type="button" disabled={!loaded || busy || autoSaving || !!recovery || !works.length} onClick={() => void run(() => start())} className={primary + ' w-full shrink-0 sm:w-auto'}>+ Nueva acta</button>
+        <button type="button" disabled={!loaded || busy || autoSaving || !!recovery || !works.length} aria-label="Nueva acta de visita" onClick={() => void run(() => start())} className={primary + ' w-full shrink-0 sm:w-auto'}>+ Nueva acta</button>
       </div>
     </header>
     {recovery&&<section className="rounded-xl border border-amber-300 p-3 space-y-2"><p>Hay un borrador pendiente en este dispositivo. No está confirmado en el servidor.</p><div className="grid grid-cols-2 gap-2"><button className={primary} onClick={restoreDraft}>Recuperar borrador</button><button className={button} onClick={()=>void run(async()=>{if(await appConfirm('¿Descartar la copia pendiente de este dispositivo?')){await clearVisitDraft(draftUser);setRecovery(null);}})}>Descartar copia local</button></div></section>}
