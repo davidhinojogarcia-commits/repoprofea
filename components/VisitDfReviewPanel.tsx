@@ -24,15 +24,28 @@ export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{rec
     setItems(result.contributions);
     onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);
     setInvitations(result.invitations||[]);
+    setError('');
   };
   useEffect(()=>{let cancelled=false;setItems([]);setInvitations([]);setLink('');setQr('');setError('');setMessage('');
     void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{if(!cancelled){setItems(result.contributions);onPendingChange?.(result.contributions.filter((p:Contribution)=>p.status==='pending').length);setInvitations(result.invitations||[]);}}).catch((e:any)=>{if(!cancelled)setError(e.message);});
     return()=>{cancelled=true;};
   },[record.id,record.version]);
   useEffect(()=>{
-    const onVisible=()=>{if(document.visibilityState==='visible')void load().catch(()=>undefined);};
-    document.addEventListener('visibilitychange',onVisible);
-    return()=>document.removeEventListener('visibilitychange',onVisible);
+    let active=true;
+    const refresh=()=>{
+      if(document.visibilityState!=='visible')return;
+      void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{
+        if(!active)return;
+        const contributions:Contribution[]=result.contributions||[];
+        setItems(contributions);
+        onPendingChange?.(contributions.filter(point=>point.status==='pending').length);
+        setInvitations(result.invitations||[]);
+        setError('');
+      }).catch((e:any)=>{if(active)setError(e?.message||'No se pudieron actualizar las aportaciones de Dirección Facultativa.');});
+    };
+    document.addEventListener('visibilitychange',refresh);
+    const timer=window.setInterval(refresh,30000);
+    return()=>{active=false;document.removeEventListener('visibilitychange',refresh);window.clearInterval(timer);};
   },[record.id,record.version]);
   useEffect(()=>{let cancelled=false;if(!link){setQr('');return;}
     void QRCode.toDataURL(link,{width:260,margin:2,errorCorrectionLevel:'M'}).then(image=>{if(!cancelled)setQr(image);}).catch(()=>{if(!cancelled)setQr('');});
@@ -75,7 +88,7 @@ export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{rec
     await navigator.clipboard.writeText(link);
     setMessage('Enlace copiado. Envíalo únicamente a la Dirección Facultativa indicada.');
   });
-  return <details aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+  return <details onToggle={event=>{if(event.currentTarget.open)void load().catch((e:any)=>setError(e?.message||'No se pudieron consultar las aportaciones.'));}} aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
     <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm font-black text-[#00548E] dark:text-blue-200">
       <span>Aportaciones de Dirección Facultativa · Revisar e integrar</span>
       <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-xs dark:bg-slate-900">{items.filter(p=>p.status==='pending').length} pendientes</span>
