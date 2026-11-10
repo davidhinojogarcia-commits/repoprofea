@@ -38,6 +38,7 @@ interface PersonListProps {
   renderPartsAction?: (person: Person) => React.ReactNode;
   renderPartsFilter?: React.ReactNode;
   renderMedicalFilter?: React.ReactNode;
+  showMedicalWarning?: boolean;
   onClearExtendedFilters?: () => void;
   extendedFiltersActive?: boolean;
   savedObras: string[];
@@ -105,6 +106,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   renderPartsAction,
   renderPartsFilter,
   renderMedicalFilter,
+  showMedicalWarning = false,
   onClearExtendedFilters,
   extendedFiltersActive,
   savedObras,
@@ -670,7 +672,7 @@ export const PersonList: React.FC<PersonListProps> = ({
           className="min-h-11 w-full min-w-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500 dark:text-slate-100 dark:placeholder:text-slate-400" />
       </div>
 
-      <section aria-labelledby="directory-filters-title" className="relative z-20 mb-5 min-w-0 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:p-4">
+      <section aria-labelledby="directory-filters-title" data-directory-filters="true" className="relative z-20 mb-5 min-w-0 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 id="directory-filters-title" className="text-sm font-extrabold">Filtros del directorio</h3>
           <button type="button" onClick={() => {setSearchTerm('');setSelectedObraFilter(['Todas']);setSelectedQuincenaFilter(['Todas']);setTrainingFilter('all');setContractYearFilter('all');setShowOnlyRepeaters(false);setSelectedIds([]);onClearExtendedFilters?.();}} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200">Limpiar filtros</button>
@@ -678,21 +680,21 @@ export const PersonList: React.FC<PersonListProps> = ({
         <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Obra</span><MultiSearchableDropdown options={savedObras} selectedValues={selectedObraFilter} onChange={value => { setSelectedObraFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<MapPin className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
           <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Periodo / quincena</span><MultiSearchableDropdown options={uniqueQuincenas} selectedValues={selectedQuincenaFilter} onChange={value => { setSelectedQuincenaFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<Clock className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Año de contratación<select aria-label="Año de contratación" value={contractYearFilter} onChange={(event) => {setContractYearFilter(event.target.value);setSelectedIds([]);}} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos los años</option>{contractYears.map(year => <option key={year} value={year}>{year}</option>)}<option value="unknown">Sin año registrado</option></select></label>
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Año de contratación<select aria-label="Año de contratación" value={contractYearFilter} onChange={(event) => {setContractYearFilter(event.target.value);setSelectedIds([]);}} className="min-h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos los años</option>{contractYears.map(year => <option key={year} value={year}>{year}</option>)}<option value="unknown">Sin año registrado</option></select></label>
           {renderMedicalFilter && <div className="min-w-0">{renderMedicalFilter}</div>}
         </div>
         <details className="group mt-3 min-w-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200 [&::-webkit-details-marker]:hidden"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/> Más filtros</summary>
           <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Formación<select aria-label="Formación" value={trainingFilter} onChange={(event) => {setTrainingFilter(event.target.value as DirectoryTrainingFilter);setSelectedIds([]);}} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos los estados</option><option value="trained">Con formación</option><option value="pending">Sin formación / pendiente</option></select></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Formación<select aria-label="Formación" value={trainingFilter} onChange={(event) => {setTrainingFilter(event.target.value as DirectoryTrainingFilter);setSelectedIds([]);}} className="min-h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos los estados</option><option value="trained">Con formación</option><option value="pending">Sin formación / pendiente</option></select></label>
             {renderPartsFilter && <div className="min-w-0">{renderPartsFilter}</div>}
             <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Repetidores<select aria-label="Repetidores" value={showOnlyRepeaters ? 'only' : 'all'} onChange={(event) => {setShowOnlyRepeaters(event.target.value === 'only');setSelectedIds([]);}} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="all">Todos</option><option value="only">Solo repetidores</option></select></label>
           </div>
         </details>
         {(trainingFilter !== 'all' || contractYearFilter !== 'all' || showOnlyRepeaters || extendedFiltersActive) && <p role="status" className="mt-3 text-xs text-slate-600 dark:text-slate-300">Hay filtros activos. Usa «Limpiar filtros» para restablecer el Directorio.</p>}
       </section>
-      {noAptosCount > 0 && (
-        <div className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
+      {showMedicalWarning && noAptosCount > 0 && (
+        <div role="alert" className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 animate-bounce" />
             <div>
@@ -700,7 +702,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                 Alerta de Prevención de Contratación:
               </span>
               <span>
-                Hay <strong>{noAptosCount} trabajador(es) con Reconocimiento Médico "No Apto"</strong> {noAptoDocIncompleteCount > 0 && `(${noAptoDocIncompleteCount} con Documentación bloqueada en 'No')`}. Sus fichas cuentan con indicador de advertencia persistente y resaltado en rojo para evitar contrataciones erróneas.
+                ⚠️ ⛔️ Hay <strong>{noAptosCount} trabajador(es) con Reconocimiento Médico "No Apto"</strong> {noAptoDocIncompleteCount > 0 && `(${noAptoDocIncompleteCount} con Documentación bloqueada en 'No')`}. Sus fichas cuentan con indicador de advertencia persistente y resaltado en rojo para evitar contrataciones erróneas.
               </span>
             </div>
           </div>
@@ -739,7 +741,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                 </label>
               </div>
 
-              <div className="profea-directory-view-switcher grid min-w-0 w-full grid-cols-[0.85fr_1.35fr_1fr] items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-2xs dark:border-slate-700 dark:bg-slate-900 sm:w-auto sm:flex">
+              <div className="profea-directory-view-switcher grid min-w-0 w-full grid-cols-3 items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-2xs dark:border-slate-700 dark:bg-slate-900 sm:w-auto sm:flex">
                 <button
                   type="button"
                   id="btn-view-table"
