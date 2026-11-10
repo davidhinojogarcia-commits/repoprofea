@@ -86,6 +86,7 @@ try{
  await reopenedPage.getByRole('button',{name:'Editar acta '+r.number,exact:true}).click();
  for(const [firstName,lastName,role,phone] of expectedProfiles){
    const person=reopenedPage.locator('details').filter({has:reopenedPage.locator('input[value="'+phone+'"]')});
+   if(!(await person.evaluate(el=>el.open))) await person.locator('summary').click();
    await person.getByLabel('Teléfono',{exact:true}).waitFor();
    assert.equal(await person.count(),1);
    assert.equal(await person.getByLabel('Nombre',{exact:true}).inputValue(),firstName);
