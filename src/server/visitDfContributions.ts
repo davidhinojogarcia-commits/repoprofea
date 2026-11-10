@@ -33,6 +33,14 @@ export async function handleDfGuest(body:any,res:any,deps:Dependencies) {
   const {database:db,digest}=deps;
   const action=String(body.action||'');
   const {invite,record}=await guest(body.token,db,digest);
+  if(action==='df-open'){
+    const session=fresh();
+    const success=await db('rpc/visit_df_open',{
+      p_id:invite.id,p_token_hash:digest(body.token),p_session_hash:digest(session)
+    });
+    if(success!==true)throw invalid('Invitación caducada, revocada o no autorizada.',403);
+    return res.json({ok:true,session,record:{number:record.number,worksite:record.worksite,date:record.visit_date},access:'personal-link'});
+  }
   if(action==='df-challenge'){
     if(invite.requests>=10||Date.parse(invite.otp_requested_at||0)>Date.now()-60000)throw invalid('Espera un minuto antes de pedir otro código. El enlace admite un máximo de diez solicitudes.',429);
     const code=String(randomInt(0,1_000_000)).padStart(6,'0');
@@ -52,7 +60,7 @@ export async function handleDfGuest(body:any,res:any,deps:Dependencies) {
   if(!sessionValid(invite,body.session,digest))throw invalid('Verifica tu correo para redactar los puntos.',401);
   if(action==='df-portal-get'){
     const contributions=await db('visit_df_contributions?'+q({
-      select:'id,title,description,status,created_at',invitation_id:'eq.'+invite.id,order:'created_at.asc',limit:'100'
+      select:'id,title,description,status,return_reason,created_at',invitation_id:'eq.'+invite.id,order:'created_at.asc',limit:'100'
     }));
     return res.json({ok:true,record:{number:record.number,worksite:record.worksite,date:record.visit_date},contributions});
   }
@@ -96,12 +104,26 @@ export async function handleDfOwner(body:any,res:any,deps:Dependencies,user:{id:
   }
   if(action==='df-list'){
     const [contributions,invitations]=await Promise.all([
-      db('visit_df_contributions?'+q({select:'id,person_id,title,description,status,created_at,reviewed_at',
+      db('visit_df_contributions?'+q({select:'id,person_id,title,description,status,return_reason,created_at,reviewed_at',
         record_id:'eq.'+r.id,version:'eq.'+r.version,order:'created_at.asc',limit:'100'})),
       db('visit_df_invitations?'+q({select:'person_id,expires_at,revoked',
         record_id:'eq.'+r.id,version:'eq.'+r.version,limit:'40'}))
     ]);
-    return res.json({ok:true,contributions,invitations});
+    return res.json({ok:true,contributions,invitations,pending:contributions.filter((c:any)=>c.status==='pending').length});
+  }
+  if(action==='df-return'){
+    const reason=String(body.reason||'').trim();
+    if(!uuidPattern.test(String(body.contributionId||''))||reason.length<1||reason.length>1000)
+      throw invalid('Indica un motivo de devolución válido.');
+    if(!Number.isInteger(body.revision)||body.revision!==r.revision)
+      throw invalid('El borrador ha cambiado. Actualiza antes de devolver.',409);
+    const [c]=await db('visit_df_contributions?'+q({select:'id',id:'eq.'+body.contributionId,
+      record_id:'eq.'+r.id,version:'eq.'+r.version,status:'eq.pending',limit:'1'}));
+    if(!c)throw invalid('La aportación no está pendiente o no pertenece a esta acta.',409);
+    const done=await db('rpc/visit_df_return',{p_id:c.id,p_owner:user.id,p_revision:r.revision,p_reason:reason});
+    if(done!==true)throw invalid('No se pudo confirmar la devolución.',409);
+    const updated=await deps.ownerRecord(r.id,user.id,auth,true);
+    return res.json({ok:true,record:updated});
   }
   if(action==='df-review'){
     if(!uuidPattern.test(String(body.contributionId||''))||typeof body.accept!=='boolean')

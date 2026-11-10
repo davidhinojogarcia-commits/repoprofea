@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.22.1';
+export const APP_VERSION = '1.22.2';
 export const APP_RELEASE_DATE = '10/11/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Dirección Facultativa: acceso directo para aportaciones mediante enlace personal o QR, sin introducir código de correo para redactar.',
+  'Actas de visitas: recepción de propuestas de DF para revisión del supervisor, integración auditada en el mismo borrador y bloqueo de firma si quedan puntos pendientes.',
   'Portal de encargados: selector compacto de diez secciones en móvil, sin cinta inferior ni espacio sobrante, manteniendo la barra en tablet y escritorio.',
   'Actas de visitas: tarjetas más compactas para supervisor y encargado, con acciones PDF y lectura ordenadas.',
   'Acciones documentales: botones coherentes en móviles estrechos, foco accesible y respeto al movimiento reducido.',

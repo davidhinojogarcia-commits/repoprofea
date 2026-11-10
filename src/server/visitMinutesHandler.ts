@@ -41,6 +41,7 @@ async function database(path: string, body?: any, authorization?: string, method
     if(/visit_contacts_email_unique/.test(message))throw fail('Ya hay un contacto con ese correo. Edita el contacto existente.',409);
     if(/Sin permisos|Sin permiso|Sin competencia|Encargado sin autorización|Acta no autorizada|Obra no autorizada|Cuenta no activa|Acceso revocado/.test(message))throw fail('El permiso o enlace ya no está vigente. Actualiza y comprueba el acceso.',403);
     if(/envío en curso/.test(message))throw fail('Hay un envío en curso. Comprueba su resultado antes de cambiar la versión.',409);
+    if(/Existen aportaciones de Dirección Facultativa pendientes/.test(message))throw fail('Hay aportaciones de Dirección Facultativa pendientes. Revisa e integra o descarta todas antes de cerrar para firma.',409);
     if(/demasiado grande|Archivo final inválido/.test(message))throw fail('El acta o PDF supera los límites de tamaño. Revisa los anexos antes de continuar.',413);
     const stale = /Revisión desactualizada|Operación reutilizada|duplicate key/i.test(message);
     throw fail(stale ? 'Otra operación cambió estos datos. Recarga y revisa antes de guardar.' : 'No se pudo acceder a las actas. Comprueba los permisos y que la migración del módulo esté instalada.', stale ? 409 : response.status === 401 || response.status === 403 ? 403 : 503);
@@ -391,7 +392,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     if (!SERVICE_KEY) throw fail('El servidor de actas no está configurado.', 503);
     if(action.startsWith('foreman-visits-'))return await handleVisitOrders(req,b,res,null,'',{database,digest,validateAttachments});
     const dfDependencies = {database,digest,ownerRecord,sendCode:async(ownerId:string,email:string,subject:string,body:string)=>{await sendVisitMime(ownerId,email,{subject,body},randomUUID());}};
-    if(['df-challenge','df-verify','df-portal-get','df-submit'].includes(action))return await handleDfGuest(b,res,dfDependencies);
+    if(['df-open','df-challenge','df-verify','df-portal-get','df-submit'].includes(action))return await handleDfGuest(b,res,dfDependencies);
     if (['challenge', 'verify', 'portal', 'portal-command', 'portal-pdf'].includes(action)) {
       const {
         access,
@@ -487,7 +488,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     }
     const user = await activeUser(req),
       auth = String(req.headers?.authorization || '');
-    if(['df-invite','df-revoke','df-list','df-review'].includes(action))return await handleDfOwner(b,res,dfDependencies,user,auth);
+    if(['df-invite','df-revoke','df-list','df-review','df-return'].includes(action))return await handleDfOwner(b,res,dfDependencies,user,auth);
     if(isOrderAction(action))return await handleVisitOrders(req,b,res,user,auth,{database,digest,validateAttachments});
     if(action==='assist-writing'){
       if(!uuidValid(b.worksiteId))throw fail('Selecciona una obra válida.',400);
@@ -850,6 +851,12 @@ export async function visitMinutesHandler(req: any, res: any) {
           if(state.content.attachments.reduce((n,a)=>n+(a.bytes||Buffer.from(a.base64,'base64').length),0)>visitTotalLimit())throw fail('Los anexos superan el máximo total configurado.');
           if(state.content.worksiteId!==r.obra_id||state.content.attachments.some(a=>a.fileId&&!r.state.content.attachments.some(old=>old.fileId===a.fileId&&old.sha256===a.sha256&&old.bytes===a.bytes&&old.mime===a.mime)))await visitAssetRows(database,state,user.id);
           await validateAttachments(state);await assertVisitOrders(database,state,r.id,true);
+        }
+        if(command.type==='review'){
+          const pending=await database('visit_df_contributions?'+query({
+            select:'id',record_id:'eq.'+r.id,version:'eq.'+r.version,status:'eq.pending',limit:'1'
+          }));
+          if(pending.length)throw fail('Hay aportaciones de Dirección Facultativa pendientes. Abre «Revisar e integrar» antes de preparar la firma.',409);
         }
         if(['review','finalize'].includes(command.type))await assertVisitOrders(database,state,r.id);
         if (command.type === 'review' || command.type === 'open-signing') extras = await linksAndJobs(r, state, command.type === 'review' ? 'review' : 'signing');

@@ -26,6 +26,13 @@ const database=async(path,body,auth,method)=>{
   if(path.startsWith('visit_df_contributions?'))return rows(path,contributions);
   if(path==='visit_minutes_events')return [body];
   if(path==='rpc/visit_minutes_owner_can_write')return true;
+  if(path==='rpc/visit_df_open'){
+    const invite=invites.find(i=>i.id===body.p_id);
+    if(!invite||invite.revoked||invite.token_hash!==body.p_token_hash||record.status!=='draft')return false;
+    invite.session_hash=body.p_session_hash;
+    invite.session_expires_at=new Date(Date.now()+7200000).toISOString();
+    return true;
+  }
   if(path==='rpc/visit_df_challenge'){
     const invite=invites.find(i=>i.id===body.p_id);if(!invite||invite.requests>=10)return false;
     invite.otp_hash=body.p_hash;invite.requests++;return true;
@@ -42,6 +49,12 @@ const database=async(path,body,auth,method)=>{
     const id='60000000-0000-4000-8000-'+String(contributions.length+1).padStart(12,'0');
     contributions.push({id,invitation_id:invite.id,operation_id:body.p_operation,record_id:record.id,version:1,person_id:personId,
       title:body.p_title,description:body.p_description,status:'pending'});return id;
+  }
+  if(path==='rpc/visit_df_return'){
+    const item=contributions.find(x=>x.id===body.p_id);
+    assert(item&&item.status==='pending');
+    assert.equal(body.p_revision,record.revision);
+    item.status='returned';item.return_reason=body.p_reason;return true;
   }
   if(path==='rpc/visit_df_review'){
     const item=contributions.find(x=>x.id===body.p_id);
@@ -66,6 +79,12 @@ assert.equal(invites.length,1);
 const url=new URL(res.result.url),token=new URLSearchParams(url.hash.slice(1)).get('visit-df');
 assert(token&&token.length===43);
 await assert.rejects(handleDfGuest({action:'df-portal-get',token,session:'bad'},respond(),deps),/Verifica/);
+res=respond();await handleDfGuest({action:'df-open',token},res,deps);
+const directSession=res.result.session;
+assert.equal(directSession.length,43,'direct personal link grants short-lived session without email');
+assert.equal(sends,0,'opening the personal link never emails a code');
+await handleDfGuest({action:'df-portal-get',token,session:directSession},respond(),deps);
+
 await handleDfGuest({action:'df-challenge',token},respond(),deps);assert.equal(sends,1);
 await assert.rejects(handleDfGuest({action:'df-verify',token,code:'000000'},respond(),deps),/incorrecto/);
 res=respond();await handleDfGuest({action:'df-verify',token,code:lastCode},res,deps);
@@ -80,6 +99,15 @@ await handleDfOwner({action:'df-review',id:recordId,revision:1,contributionId:co
 assert.equal(record.state.content.points.length,2);assert.deepEqual(record.state.content.points[0],baseline);
 assert.equal(record.state.content.points[1].description,'Revisar las cotas antes de hormigonar');
 await assert.rejects(handleDfOwner({action:'df-review',id:recordId,revision:1,contributionId:contributions[0].id,accept:true},respond(),deps,actor,'token'),/cambiado|pendiente/);
+const correctionOp='80000000-0000-4000-8000-000000000002';
+await handleDfGuest({action:'df-submit',token,session,operation:correctionOp,
+  title:'Corrección',description:'Texto que requiere revisión'},respond(),deps);
+const returned=contributions.at(-1);
+await handleDfOwner({action:'df-return',id:recordId,revision:record.revision,
+  contributionId:returned.id,reason:'Corrige las cotas del plano'},respond(),deps,actor,'token');
+assert.equal(returned.status,'returned');
+assert.equal(returned.return_reason,'Corrige las cotas del plano');
+assert.equal(record.state.content.points.length,2,'return never edits supervisor or approved points');
 await handleDfOwner({action:'df-revoke',id:recordId,personId},respond(),deps,actor,'token');
 await assert.rejects(handleDfGuest({action:'df-submit',token,session,description:'No debe entrar'},respond(),deps),/revocada/);
-console.log('PASS: DF invite owner isolation, OTP verification, restricted portal, submission, append-only review, stale rejection and revocation; database mocked.');
+console.log('PASS: DF personal-link direct session, legacy OTP, owner isolation, return-with-reason, restricted portal, submission, append-only review, stale rejection and revocation; database mocked.');
