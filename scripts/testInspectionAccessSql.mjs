@@ -7,7 +7,7 @@ const outsider='22222222-2222-4222-8222-222222222222';
 const inspector='33333333-3333-4333-8333-333333333333';
 const other='44444444-4444-4444-8444-444444444444';
 const db=new PGlite();
-const execute = async(sql)=>db.query(sql);
+const execute = async(sql,params)=>db.query(sql,params);
 const identity = async(id)=>{await execute('set role authenticated');await execute("select set_config('request.jwt.claim.sub', $1, false)",[id]);};
 try {
  await db.exec(`
