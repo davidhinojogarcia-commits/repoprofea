@@ -391,7 +391,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     if (!SERVICE_KEY) throw fail('El servidor de actas no está configurado.', 503);
     if(action.startsWith('foreman-visits-'))return await handleVisitOrders(req,b,res,null,'',{database,digest,validateAttachments});
     const dfDependencies = {database,digest,ownerRecord,sendCode:async(ownerId:string,email:string,subject:string,body:string)=>{await sendVisitMime(ownerId,email,{subject,body},randomUUID());}};
-    if(['df-challenge','df-verify','df-portal-get','df-submit'].includes(action))return await handleDfGuest(b,res,dfDependencies);
+    if(['df-open','df-challenge','df-verify','df-portal-get','df-submit'].includes(action))return await handleDfGuest(b,res,dfDependencies);
     if (['challenge', 'verify', 'portal', 'portal-command', 'portal-pdf'].includes(action)) {
       const {
         access,
