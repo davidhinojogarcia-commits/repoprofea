@@ -149,6 +149,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
 
   return <div>
     <PersonListView {...props} people={visiblePeople} renderPartsAction={renderPartsAction}
+      showMedicalWarning={statusFilters.includes('no_apto')}
       renderMedicalFilter={<DirectoryStatusFilter value={statusFilters} onChange={setStatusFilters} counts={counts} />}
       extendedFiltersActive={statusFilters.length > 0 || partsFilter !== 'all'}
       onClearExtendedFilters={() => {setStatusFilters([]);setPartsFilter('all');}}
