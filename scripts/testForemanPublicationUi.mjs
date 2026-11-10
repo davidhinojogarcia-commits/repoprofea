@@ -79,6 +79,11 @@ try {
  const navigation=document.querySelector('nav[aria-label="Secciones del portal de encargados"],div[role="navigation"][aria-label="Secciones del portal de encargados"]');
  assert(navigation,'mobile portal has guided icon-button ribbon');
  assert.equal(document.getElementById('foreman-section-picker'),null,'mobile dropdown removed');
+ assert(!navigation.className.includes('hidden')&&!navigation.className.includes('sm:block'),'mobile ribbon is visible regardless of portrait width');
+ const touchTrack=navigation.querySelector('[aria-label="Desliza horizontalmente por los botones de secciones"]');
+ assert(touchTrack&&touchTrack.className.includes('overflow-x-auto'),'portrait section ribbon has independent horizontal scrolling');
+ assert(navigation.textContent.includes('Desliza para ver más'),'portrait mode gives a discoverable swipe hint');
+
  const labels=['Control, inicios y contratos','Prevención','Partes y avisos','EPIs','Formación','Maquinaria','Control horario','Documentos','Actas de visitas','Finalizados'];
  assert.deepEqual([...navigation.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')||button.textContent.replace(/\s+/g,' ').trim()),labels,'all ten sections stay accessible');
  await action(()=>navigation.querySelector('button[aria-label="Actas de visitas"]').click());
