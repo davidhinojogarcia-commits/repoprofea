@@ -191,7 +191,17 @@ async function request(path: string, options: RequestInit = {}, fresh = false, n
       const result = await performNetworkRequest(path, options, fresh, () => { servedFromMemory = true; });
       // A memory-cache hit already has a persisted copy from its network fetch.
       // Do not write the same response repeatedly to IndexedDB on every view.
-      if (!servedFromMemory) await writeOfflineCache(cacheKey, result);
+      if (!servedFromMemory) {
+        try {
+          await writeOfflineCache(cacheKey, result);
+        } catch (error) {
+          // The network response must not remain warm in memory without a
+          // durable offline copy: otherwise later hits would skip persistence.
+          readResponseCache.clear();
+          requestLimiter.invalidateReads();
+          throw error;
+        }
+      }
       return result;
     } catch (error) {
       if (!isNetworkFailure(error)) throw error;
