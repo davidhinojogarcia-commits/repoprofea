@@ -27,6 +27,11 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     void visitRequest({action:'df-list',id:record.id}).then((result:any)=>{if(!cancelled){setItems(result.contributions);setInvitations(result.invitations||[]);}}).catch((e:any)=>{if(!cancelled)setError(e.message);});
     return()=>{cancelled=true;};
   },[record.id,record.version]);
+  useEffect(()=>{
+    const onVisible=()=>{if(document.visibilityState==='visible')void load().catch(()=>undefined);};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>document.removeEventListener('visibilitychange',onVisible);
+  },[record.id,record.version]);
   useEffect(()=>{let cancelled=false;if(!link){setQr('');return;}
     void QRCode.toDataURL(link,{width:260,margin:2,errorCorrectionLevel:'M'}).then(image=>{if(!cancelled)setQr(image);}).catch(()=>{if(!cancelled)setQr('');});
     return()=>{cancelled=true;};
@@ -39,7 +44,7 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     if(dirty)throw new Error('Guarda antes los cambios del borrador.');
     if(!recipient)throw new Error('Añade una Dirección Facultativa con correo y guarda el borrador.');
     const result=await visitRequest({action:'df-invite',id:record.id,personId:recipient});
-    setLink(result.url);await load();setMessage('Invitación de siete días creada. La DF verificará su correo para redactar.');
+    setLink(result.url);await load();setMessage('Enlace personal de siete días creado. La DF podrá entrar directamente para proponer puntos; no sirve para firmar.');
   });
   const review=(item:Contribution,accept:boolean)=>void run(async()=>{
     if(dirty)throw new Error('Guarda o descarta los cambios locales antes de incorporar aportaciones externas.');
@@ -57,11 +62,11 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
   });
   return <details aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
     <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm font-black text-[#00548E] dark:text-blue-200">
-      <span>Colaboración · Dirección Facultativa</span>
+      <span>Aportaciones de Dirección Facultativa · Revisar e integrar</span>
       <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-xs dark:bg-slate-900">{items.filter(p=>p.status==='pending').length} pendientes</span>
     </summary>
     <div className="space-y-3 border-t border-slate-200 p-3 dark:border-slate-700">
-    <p className="text-sm text-slate-700 dark:text-slate-200">La DF solo añade puntos. Tú decides cuáles se incorporan. Las órdenes de obra siguen el circuito de autorización habitual.</p>
+    <p className="text-sm text-slate-700 dark:text-slate-200">Las aportaciones recibidas se guardan junto a este borrador. Incorpora o descarta cada propuesta antes de cerrar el acta para firma. Tus puntos originales se conservan y las órdenes siguen su circuito de autorización.</p>
     {dirty&&<p role="status" className="text-sm font-bold text-amber-800 dark:text-amber-300">Guarda los cambios locales para habilitar la colaboración y evitar sobrescribir datos.</p>}
     {!people.length?<p className="text-sm">Añade una arquitecta, arquitecto o Dirección Facultativa con correo en Participantes y guarda el borrador.</p>:<>
       <label className="block text-xs font-bold">Dirección Facultativa autorizada
@@ -71,7 +76,7 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
       </label>
       <button type="button" className={btn+' w-full'} disabled={busy||dirty} onClick={invite}>{activeInvitation?'Renovar enlace de Dirección Facultativa':'Invitar a Dirección Facultativa a redactar'}</button>
       {link&&<div className="space-y-2 rounded-xl border border-blue-200 bg-white p-3 dark:bg-slate-900">
-        <p className="text-sm font-bold">Acceso temporal y personal · verifica correo</p>
+        <p className="text-sm font-bold">Acceso directo por enlace o QR · solo aportaciones</p>
         {qr&&<img src={qr} alt="Código QR para la invitación personal de Dirección Facultativa" width={220} height={220} className="mx-auto max-w-full rounded-lg"/>}
         <label className="block text-xs font-bold">Enlace para compartir
           <input type="text" className="mt-1 w-full rounded-xl border p-2 text-xs dark:bg-slate-900" readOnly value={link} onFocus={e=>e.target.select()}/>
@@ -89,9 +94,9 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
     {items.map(item=><article key={item.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
       <strong>{item.title||'Punto sin título'}</strong>
       <p className="whitespace-pre-wrap break-words text-sm">{item.description}</p>
-      <p className="text-xs text-slate-500">{record.state.participants.find(p=>p.id===item.person_id)?.firstName||'DF'} · {item.status==='pending'?'Pendiente de revisión':item.status==='accepted'?'Incorporado':'No incorporado'}</p>
+      <p className="text-xs text-slate-600 dark:text-slate-300">Aportado por {record.state.participants.find(p=>p.id===item.person_id)?.firstName||'Dirección Facultativa'} {record.state.participants.find(p=>p.id===item.person_id)?.lastName||''} · {new Date(item.created_at).toLocaleString('es-ES')} · {item.status==='pending'?'Pendiente de revisión':item.status==='accepted'?'Incorporado':'No incorporado'}</p>
       {item.status==='pending'&&<div className="grid grid-cols-2 gap-2">
-        <button type="button" className={btn} disabled={busy||dirty} onClick={()=>review(item,true)}>Incorporar</button>
+        <button type="button" className={btn} disabled={busy||dirty} onClick={()=>review(item,true)}>Incorporar al acta</button>
         <button type="button" className={btn} disabled={busy||dirty} onClick={()=>review(item,false)}>No incorporar</button>
       </div>}
     </article>)}
