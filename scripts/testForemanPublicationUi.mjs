@@ -91,12 +91,21 @@ try {
 
  const beforeRefresh=portalReads;await action(()=>find('Actualizar documentos').click());
  assert.equal(portalReads,beforeRefresh+1,'manual refresh queries portal');
- const periodButton=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1'));
- await action(()=>periodButton.click());
+ const periodPicker=document.getElementById('foreman-mandatory-period');
+ assert(periodPicker&&periodPicker.tagName==='SELECT','mandatory document period is a native accessible dropdown');
+ assert.equal(periodPicker.options[0].value,'','first option lists all periods');
+ assert.equal(periodPicker.options[1].value,'2026-10','fortnight selector exposes actual period key');
+ assert.match(periodPicker.options[1].textContent,/Octubre 2026 · 1 doc\./,'period option contains readable month, year and document count');
+ const quickActions=document.querySelector('[aria-label="Acciones guiadas de documentos"]');
+ assert(quickActions&&quickActions.querySelectorAll('button').length===2,'guided ribbon only exposes working actions');
+ await action(()=>{periodPicker.value='2026-10';periodPicker.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ assert.equal(document.getElementById('foreman-mandatory-period').value,'2026-10','selector keeps selected period');
  doc.period_key='2026-07';await action(()=>find('Actualizar documentos').click());
- assert(document.body.textContent.includes('No hay documentos en los periodos seleccionados'),'filtered empty state explains hidden documents');
- await action(()=>find('Todos').click());
+ assert(document.body.textContent.includes('No hay documentos en la quincena seleccionada'),'filtered empty state explains hidden documents');
+ await action(()=>quickActions.querySelector('button').click());
+ assert.equal(document.getElementById('foreman-mandatory-period').value,'','Todos resets period selector');
  assert([...document.querySelectorAll('button')].some(b=>b.textContent.includes('control.pdf')),'clear filters reveals new period');
+ assert.equal(document.getElementById('foreman-mandatory-period').options[1].value,'2026-07','refreshed selector reflects current periods');
 
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,false,'all signatures allow send');

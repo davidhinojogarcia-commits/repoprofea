@@ -756,7 +756,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       const month=monthNames[Math.max(0,Number(match[2])-1)]||match[2];
       return `${match[3].toUpperCase()==='1Q'?'1ª quincena':'2ª quincena'} · ${month} ${match[1]}`;
     }
+    const monthKey=key.match(/^(\d{4})-(\d{2})$/);
     const date=String(doc.workDate||'').slice(0,10);
+    if(monthKey && !date.startsWith(key)){
+      const names=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      return `Mes de ${names[Math.max(0,Number(monthKey[2])-1)]||monthKey[2]} ${monthKey[1]}`;
+    }
     if(/^\d{4}-\d{2}-\d{2}$/.test(date)){
       const [year,month,day]=date.split('-');
       const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -776,12 +781,18 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     for(const doc of allAssignedMandatoryDocuments){
       const key=String(doc.periodKey||doc.workDate||'sin-periodo');
       const current=byKey.get(key);
-      const latest=Date.parse(String(doc.workDate||''))||0;
+      // The declared fortnight wins over the upload/creation date for chronological ordering.
+      const match=key.match(/^(\d{4})-(\d{2})(?:-(1Q|2Q))?$/i);
+      const year=match?Number(match[1]):0;
+      const month=match?Number(match[2]):0;
+      const periodDate=match&&month>=1&&month<=12
+        ? Date.UTC(year,month-1,match[3]?.toUpperCase()==='2Q'?16:1)
+        : Date.parse(String(doc.workDate||''))||0;
       if(current){
         current.count+=1;
-        current.latest=Math.max(current.latest,latest);
+        current.latest=Math.max(current.latest,periodDate);
       }else{
-        byKey.set(key,{key,label:periodDisplayLabel(doc),count:1,latest});
+        byKey.set(key,{key,label:periodDisplayLabel(doc),count:1,latest:periodDate});
       }
     }
     return [...byKey.values()].sort((a,b)=>b.latest-a.latest||a.label.localeCompare(b.label,'es'));
@@ -791,11 +802,11 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     !selectedMandatoryPeriodKeys.size || selectedMandatoryPeriodKeys.has(String(doc.periodKey||doc.workDate||'sin-periodo'))
   );
 
-  const toggleMandatoryPeriod=(key:string)=>setSelectedMandatoryPeriodKeys(current=>{
-    const next=new Set(current);
-    if(next.has(key))next.delete(key);else next.add(key);
-    return next;
-  });
+  const selectMandatoryPeriod=(key:string)=>
+    setSelectedMandatoryPeriodKeys(key?new Set([key]):new Set());
+  const mandatoryPeriodValue=selectedMandatoryPeriodKeys.size===1?[...selectedMandatoryPeriodKeys][0]:'';
+  const mandatorySelectedLabel=mandatoryPeriodOptions.find(option=>option.key===mandatoryPeriodValue)?.label||'Todos los periodos';
+
 
   const signatureLoadsRef=useRef(new Map<string,Promise<void>>());
   const activePortalTokenRef=useRef(token);
@@ -1038,13 +1049,13 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     const canFinalize=requiredSignatureTotal>0&&pendingRequired===0&&(!foremanRequired||foremanSigned);
     const expanded=expandedMandatoryDocuments.has(doc.id);
 
-    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 overflow-hidden rounded-2xl bg-white border shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
-      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="flex w-full items-start justify-between gap-3 p-4 text-left">
+    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
+      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="flex min-h-[62px] w-full min-w-0 items-start justify-between gap-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] sm:p-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="mt-0.5 shrink-0 text-[#00548E]">{expanded?<ChevronDown className="h-5 w-5"/>:<ChevronRight className="h-5 w-5"/>}</span>
           <div className="min-w-0">
             <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
-            <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
+            <div className="mt-0.5 truncate text-sm font-bold text-[#00548E] dark:text-blue-300" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
             <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
             {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-amber-700">{unresolvedAnchorCount} trabajador(es) pendientes de localizar con seguridad en el PDF</div>}
           </div>
@@ -1351,15 +1362,34 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       </section>}
 
       {tab==='mandatory'&&<section className="space-y-3">
-        <div className="rounded-2xl bg-white border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-black">Control, inicios y contratos</h2><button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"><RefreshCw className="w-4 h-4"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}</button></div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen Inicio, Control de presencia, Contratos y Prórrogas enviados por el supervisor. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
-        </div>
-        {documentsUpdatedAt&&<p role="status" className="px-1 text-xs text-slate-600 dark:text-slate-300">Última consulta: {documentsUpdatedAt} · {allAssignedMandatoryDocuments.length} documento(s) enviados a esta obra.</p>}
-        <div className="rounded-2xl border bg-white p-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:'touch'}}>
-            <button type="button" onClick={()=>setSelectedMandatoryPeriodKeys(new Set())} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black ${selectedMandatoryPeriodKeys.size===0?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>Todos</button>
-            {mandatoryPeriodOptions.map(option=><button key={option.key} type="button" onClick={()=>toggleMandatoryPeriod(option.key)} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black whitespace-nowrap ${selectedMandatoryPeriodKeys.has(option.key)?'border-[#00548E] bg-[#00548E] text-white':'bg-slate-50 text-slate-700'}`}>{option.label} · {option.count}</button>)}
+        <div className="min-w-0 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+          <div>
+            <h2 className="text-lg font-black leading-tight text-slate-900 dark:text-slate-100">Control, inicios y contratos</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Documentos enviados por el supervisor, listos para consultar y firmar.</p>
+          </div>
+          <label htmlFor="foreman-mandatory-period" className="block text-sm font-bold text-slate-700 dark:text-slate-200">1. Selecciona la quincena</label>
+          <select
+            id="foreman-mandatory-period"
+            aria-label="Periodo o quincena de documentos"
+            value={mandatoryPeriodValue}
+            onChange={event=>selectMandatoryPeriod(event.target.value)}
+            className="min-h-[50px] w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-base font-bold text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+          >
+            <option value="">Todos los periodos · {allAssignedMandatoryDocuments.length} doc.</option>
+            {mandatoryPeriodOptions.map(option=><option key={option.key} value={option.key}>{option.label} · {option.count} doc.</option>)}
+          </select>
+          <div role="group" aria-label="Acciones guiadas de documentos" className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={()=>selectMandatoryPeriod('')} aria-pressed={!selectedMandatoryPeriodKeys.size}
+              className={`min-h-[48px] min-w-0 rounded-xl border px-3 py-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] ${!selectedMandatoryPeriodKeys.size?'border-[#00548E] bg-[#00548E] text-white':'border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'}`}>Todos</button>
+            <button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments}
+              className="inline-flex min-h-[48px] min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 py-2 text-sm font-bold text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+              <RefreshCw className="h-4 w-4 shrink-0"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}
+            </button>
+          </div>
+          <div role="status" className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
+            <p>2. Abre un documento para revisar o firmar.</p>
+            <p>{assignedMandatoryDocuments.length} de {allAssignedMandatoryDocuments.length} documentos · {mandatorySelectedLabel}</p>
+            {documentsUpdatedAt&&<p>Última consulta: {documentsUpdatedAt}</p>}
           </div>
         </div>
         {assignedByWorksiteAndPeriod.map(group=><div key={group.worksite} className="space-y-3">
@@ -1378,7 +1408,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             {periodGroup.documents.map(doc=>renderSigningDocument(doc))}
           </div>)}
         </div>)}
-        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en los periodos seleccionados. Pulsa Todos para ver todos los documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
+        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en la quincena seleccionada. Pulsa «Todos» para ver los demás documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
       </section>}
 
       {tab==='epis'&&<section className="space-y-3">
