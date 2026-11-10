@@ -23,7 +23,7 @@ try {
  for(const width of [390,820,1440]){
   await page.setViewportSize({width,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  for(const name of ['Compartir tarjeta','Descargar imagen','Cerrar carnet']){
+  for(const name of ['Compartir tarjeta','Descargar imagen','PDF tamaño DNI · A4','PDF original','Cerrar carnet']){
    const button=page.getByRole('button',{name,exact:true});await button.scrollIntoViewIfNeeded();
    assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44&&r.x>=0&&r.right<=innerWidth}));
   }
@@ -39,11 +39,12 @@ try {
  const text=(await(await parsed.getPage(1)).getTextContent()).items.map(i=>i.str).join(' ');
  assert(text.includes('García Fernández'.toUpperCase()));assert(!text.includes('01/01/2027'));
 assert(!text.includes('OBRA'));
-assert(!text.includes('CONTRATO'));
+assert(!text.includes('CONTRATO'));assert(!text.includes('12345678Z'),'No exponer DNI completo en tarjeta compartible');
  for(const forbidden of ['PRIVATE_','HISTORIAL','1960','FICHA COMPLETA','worker-qr'])assert(!text.includes(forbidden),forbidden);
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF para imprimir'}).click();assert((await dl).suggestedFilename().endsWith('.pdf'));
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF original'}).click();
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF tamaño DNI · A4'}).click();assert((await dl).suggestedFilename().includes('DNI_A4'));assert((await dl).suggestedFilename().endsWith('.pdf'));
  // Native image sharing must receive the actual PNG, even on desktop.
  await page.evaluate(()=>{
    Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:({files})=>files?.[0]?.type==='image/png'});
