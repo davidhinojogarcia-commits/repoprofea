@@ -72,6 +72,7 @@ class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErro
 const App = React.lazy(() => import('./App'));
 const MedicalAppointmentConfirmationPortal = React.lazy(() => import('./components/MedicalAppointmentConfirmationPortal').then(module => ({ default: module.MedicalAppointmentConfirmationPortal })));
 const WorkerQrPortal = React.lazy(() => import('./components/WorkerQrPortal').then(module => ({ default: module.WorkerQrPortal })));
+const InspectionAccessPortal = React.lazy(() => import('./components/InspectionAccessPortal'));
 const RemoteScannerPortal = React.lazy(() => import('./components/RemoteScannerPortal').then(module => ({ default: module.RemoteScannerPortal })));
 const ForemanMobilePortal = React.lazy(() => import('./components/ForemanMobilePortal').then(module => ({ default: module.ForemanMobilePortal })));
 const VisitMinutesPortal = React.lazy(() => import('./components/VisitMinutesPortal').then(module => ({ default: module.VisitMinutesPortal })));
@@ -111,6 +112,7 @@ const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || 
 const cardPairToken = new URLSearchParams(window.location.hash.slice(1)).get('card-pair')?.trim() || '';
 const WorkerCardPairMobile = React.lazy(() => import('./components/WorkerCardPairMobile'));
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
+const inspectionAccessId = initialSearchParams.get('inspection-access')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
 const FOREMAN_DEVICE_TOKEN_KEY = 'pfea_foreman_device_token_v1';
 const FOREMAN_DEVICE_COOKIE_KEY = 'pfea_foreman_device_token_v1';
@@ -186,6 +188,8 @@ ReactDOM.createRoot(rootElement).render(
         <ForemanUnlinkedScreen />
       ) : cardPairToken ? (
         <AuthGate><React.Suspense fallback={<RouteLoadingFallback />}><WorkerCardPairMobile token={cardPairToken} /></React.Suspense></AuthGate>
+      ) : inspectionAccessId ? (
+        <React.Suspense fallback={<RouteLoadingFallback />}><InspectionAccessPortal id={inspectionAccessId} /></React.Suspense>
       ) : workerQrToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><WorkerQrPortal token={workerQrToken} /></React.Suspense>
       ) : remoteScannerToken ? (
