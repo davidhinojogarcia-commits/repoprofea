@@ -45,8 +45,8 @@ export function generateWorkerCard(person: Person, qrDataUrl?: string) {
     doc.setTextColor(15, 23, 42);
     doc.text(fitLines(value, qrDataUrl && y >= 29 ? 45 : 66, maxLines, 7), 25, y);
   };
-  field('DNI / NIE', person.dni, 28);
-  field('CATEGORÍA', person.categoria || 'Peón', 34);
+  // A shareable physical card must not expose the complete national identifier.
+  field('CATEGORÍA', person.categoria || 'Peón', 30);
   // Generic reusable card: no worksite or contract-period details.
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.2);
@@ -96,4 +96,42 @@ export async function shareWorkerCard(file: File): Promise<'shared' | 'cancelled
     if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
     throw error;
   }
+}
+
+/**
+ * ID-1 physical dimensions (ISO/IEC 7810): 85.60 × 53.98 mm.
+ * Place the entire card artwork without distortion in a clearly outlined
+ * physical-size rectangle on an A4 sheet for ordinary office printers.
+ * The user must print at 100 % / actual size (never fit to page).
+ */
+export function generateDniSizedPrintSheet(imageDataUrl: string) {
+  if (!/^data:image\/png;base64,/.test(imageDataUrl)) {
+    throw new Error('Solo se admite la imagen PNG generada del carnet.');
+  }
+  const width = 85.60;
+  const height = 53.98;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  const left = (210 - width) / 2;
+  const top = 35;
+  const ratio = 95 / 62;
+  const drawWidth = Math.min(width, height * ratio);
+  const drawHeight = drawWidth / ratio;
+  doc.setFillColor(255,255,255);
+  doc.rect(left, top, width, height, 'F');
+  doc.addImage(imageDataUrl, 'PNG', left + (width - drawWidth) / 2, top + (height - drawHeight) / 2, drawWidth, drawHeight);
+  doc.setDrawColor(90, 108, 130);
+  doc.setLineWidth(0.18);
+  doc.rect(left, top, width, height, 'S');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(0,84,142);
+  doc.text('CARNET PROFEA · IMPRESIÓN A TAMAÑO DNI', 15, 16);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(60,70,84);
+  doc.setFontSize(9);
+  doc.text('Tamaño final: 85,60 × 53,98 mm. Imprimir al 100 % (tamaño real), sin ajustar a página.', 15, 24);
+  doc.text('Recortar por el borde de la tarjeta. El código QR permite verificar el estado del carnet.', 15, 29);
+  doc.setFontSize(8);
+  doc.text('No acredita por sí solo una contratación vigente ni sustituye al documento oficial de identidad.', 15, 102);
+  return { doc, filename: 'CARNET_PROFEA_TAMANO_DNI_A4.pdf' };
 }
