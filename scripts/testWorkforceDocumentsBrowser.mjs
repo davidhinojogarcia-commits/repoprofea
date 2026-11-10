@@ -181,24 +181,13 @@ async function draw(page) {
   await page.mouse.up();
 }
 async function openDocuments(page) {
-  const mobile = await page.evaluate(() => window.innerWidth < 640);
-  if (mobile) {
-    const section = page.getByRole("combobox", { name: "Sección del portal" });
-    await section.waitFor();
-    assert.deepEqual(
-      await section.locator("option").evaluateAll(options => options.map(option => option.value)),
-      ["mandatory","prevention","parts","epis","formacion","maquinaria","control","documents","visits","completed"],
-      "All ten portal sections remain available on mobile",
-    );
-    await section.selectOption("documents");
-  } else {
-    const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados en pantallas grandes" });
-    const parts = navigation.getByRole("button", { name: "Partes y avisos", exact: true });
-    await parts.waitFor();
-    assert.equal(await parts.locator("svg").count(), 1, "Desktop parts retains its icon");
-    assert.equal(await navigation.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(), 1, "Desktop visit minutes retains an icon");
-    await navigation.getByRole("button", { name: "Documentos", exact: true }).click();
-  }
+  const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados" });
+  const buttons = navigation.getByRole("button");
+  assert.equal(await buttons.count(),10,"All ten portal sections remain accessible as guided ribbon buttons");
+  assert.equal(await page.locator("#foreman-section-picker").count(),0,"No mobile dropdown remains");
+  assert.equal(await navigation.getByRole("button", { name: "Partes y avisos", exact: true }).locator("svg").count(),1,"Parts retains its icon");
+  assert.equal(await navigation.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(),1,"Visits retains its icon");
+  await navigation.getByRole("button", { name: "Documentos", exact: true }).click();
   await page.getByRole("combobox", { name: "Documento", exact: true }).waitFor();
 }
 async function signed(page, kind) {
