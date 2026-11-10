@@ -523,7 +523,11 @@ export function VisitMinutesPanel({
     {error&&<div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-red-800">{error}<button type="button" className="ml-3 underline" onClick={()=>window.location.reload()}>Recargar módulo</button></div>}
     {message&&<p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-950 dark:bg-blue-950 dark:text-blue-100">{message}</p>}
     {busy&&<p role="status">Procesando… No cierres esta pantalla hasta recibir confirmación.</p>}
-    <section aria-label="Listado de actas" className="min-w-0 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+    <details open={!content} className="min-w-0 rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 text-sm font-bold text-[#00548E] dark:text-blue-300 sm:px-4">
+        <span>Consultar actas anteriores</span><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">{records.length} acta(s)</span>
+      </summary>
+      <div className="min-w-0 space-y-3 border-t border-slate-200 p-3 dark:border-slate-700 sm:p-4">
       <div className="grid min-w-0 grid-cols-2 items-end gap-2 sm:grid-cols-3">
         <label className="min-w-0 text-xs font-bold">Obra
           <select className={visitInput} value={workFilter} onChange={e=>setWorkFilter(e.target.value)} disabled={busy}>
@@ -585,7 +589,8 @@ export function VisitMinutesPanel({
         setRecords(current=>[...current,...r.records.filter((n:any)=>!current.some(x=>x.id===n.id))]);
         setHasMore(r.hasMore);
       })}>Cargar siguientes actas</button>}
-    </section>
+      </div>
+    </details>
     {content && <section ref={editorRef} tabIndex={-1} className="space-y-4">
       <nav aria-label="Etapas del acta" className="grid grid-cols-2 gap-1 text-xs font-bold">{['Redactar','Revisar y firmar'].map((label,i)=><span key={label} aria-current={(record&&record.status!=='draft'?1:0)===i?'step':undefined} className="rounded-lg border p-2">{i+1}. {label}</span>)}</nav><div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
       {canEdit ? <fieldset disabled={busy||attachmentBusy} className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
