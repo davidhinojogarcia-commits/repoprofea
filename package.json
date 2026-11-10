@@ -65,14 +65,15 @@
     "test:parts": "node scripts/testPartsLegacyWorksites.mjs && node scripts/testParts.mjs",
     "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs",
     "test:worker-qr-public": "node scripts/testWorkerQrPublicPrivacy.mjs",
-    "test:worker-card-scan": "node --import tsx scripts/testWorkerCardScan.mjs && node scripts/testWorkerCardScanBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkerCardScanBrowser.mjs && npm run test:worker-card-print",
+    "test:worker-card-scan": "node --import tsx scripts/testWorkerCardScan.mjs && node scripts/testWorkerCardScanBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkerCardScanBrowser.mjs && npm run test:worker-card-print && npm run test:inspection-access",
     "test:directory-training": "node scripts/testDirectoryTrainingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testDirectoryTrainingBrowser.mjs",
     "test:worker-card-pairing": "node scripts/testWorkerCardPairing.mjs && node scripts/testWorkerCardPairingBrowser.mjs && node scripts/testWorkerCardPairingRecovery.mjs",
     "test:rehire-prevention": "node scripts/testRehirePreventionBrowser.mjs",
     "test:registration-qr": "node scripts/testRegistrationQrBrowser.mjs",
     "test:workforce-documents": "node scripts/testWorkforceDocuments.mjs",
     "test:workforce-documents-browser": "node scripts/testWorkforceDocumentsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkforceDocumentsBrowser.mjs",
-    "test:worker-card-print": "node --import tsx scripts/testWorkerCardDniPrint.mjs"
+    "test:worker-card-print": "node --import tsx scripts/testWorkerCardDniPrint.mjs",
+    "test:inspection-access": "node scripts/testInspectionAccessSql.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
