@@ -75,6 +75,7 @@ const WorkerQrPortal = React.lazy(() => import('./components/WorkerQrPortal').th
 const RemoteScannerPortal = React.lazy(() => import('./components/RemoteScannerPortal').then(module => ({ default: module.RemoteScannerPortal })));
 const ForemanMobilePortal = React.lazy(() => import('./components/ForemanMobilePortal').then(module => ({ default: module.ForemanMobilePortal })));
 const VisitMinutesPortal = React.lazy(() => import('./components/VisitMinutesPortal').then(module => ({ default: module.VisitMinutesPortal })));
+const VisitDfPortal = React.lazy(() => import('./components/VisitDfPortal').then(module => ({ default: module.VisitDfPortal })));
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 const normalizeLegacyLoginRoute = () => {
@@ -106,6 +107,7 @@ if ('serviceWorker' in navigator) {
 }
 const initialSearchParams = new URLSearchParams(window.location.search);
 const visitToken = new URLSearchParams(window.location.hash.slice(1)).get('visit') || '';
+const visitDfToken = new URLSearchParams(window.location.hash.slice(1)).get('visit-df') || '';
 const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 const cardPairToken = new URLSearchParams(window.location.hash.slice(1)).get('card-pair')?.trim() || '';
@@ -176,7 +178,9 @@ ReactDOM.createRoot(rootElement).render(
     <RootErrorBoundary>
       <>
         <AppDialogHost />
-        {visitToken ? (
+        {visitDfToken ? (
+          <React.Suspense fallback={<RouteLoadingFallback />}><VisitDfPortal token={visitDfToken}/></React.Suspense>
+        ) : visitToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><VisitMinutesPortal token={visitToken}/></React.Suspense>
       ) : isMedicalConfirmation ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><MedicalAppointmentConfirmationPortal /></React.Suspense>
