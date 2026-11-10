@@ -685,28 +685,6 @@ export const PersonList: React.FC<PersonListProps> = ({
         {(trainingFilter !== 'all' || contractYearFilter !== 'all' || showOnlyRepeaters || extendedFiltersActive) && <p role="status" className="mt-3 text-xs text-slate-600 dark:text-slate-300">Hay filtros activos. Usa «Limpiar filtros» para restablecer el Directorio.</p>}
       </section>
       {noAptosCount > 0 && (
-            <button
-              onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
-              className={`flex min-h-11 min-w-0 w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all cursor-pointer ${
-                showOnlyNoAptos 
-                  ? 'bg-red-600 text-white border-red-700 shadow-sm ring-2 ring-red-500/20' 
-                  : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80'
-              }`}
-              title="Filtrar trabajadores con reconocimiento No Apto"
-            >
-              <AlertTriangle className={`w-3.5 h-3.5 ${showOnlyNoAptos ? 'text-white' : 'text-red-600 dark:text-red-400 animate-pulse'}`} />
-              <span>No Aptos ({noAptosCount})</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {(trainingFilter !== 'all' || contractYearFilter !== 'all') && <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-        <span role="status">Resultados: {filteredPeople.length} · Formación por año de contratación.</span>
-        <button type="button" onClick={() => { setTrainingFilter('all'); setContractYearFilter('all'); setSelectedIds([]); }} className="min-h-11 rounded-xl border px-3 py-2 font-bold">Limpiar filtros de formación</button>
-      </div>}
-
-      {noAptosCount > 0 && (
         <div className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 animate-bounce" />
@@ -719,17 +697,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all border cursor-pointer ${
-              showOnlyNoAptos
-                ? 'bg-red-600 text-white border-red-700 shadow-sm'
-                : 'bg-white hover:bg-red-100 text-red-700 border-red-300 dark:bg-slate-900 dark:hover:bg-red-950/80'
-            }`}
-          >
-            {showOnlyNoAptos ? 'Mostrar todos' : `Filtrar No Aptos (${noAptosCount})`}
-          </button>
+
         </div>
       )}
 
