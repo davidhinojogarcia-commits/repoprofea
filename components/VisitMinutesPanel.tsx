@@ -19,8 +19,8 @@ import { visitRequest, downloadVisitFile, visitFileBytes, visitDraftValidationCo
 import { madridDate, personName, VISIT_STATUS_LABELS, type VisitContent, type VisitPerson, type VisitRecord, type VisitCommand, type VisitContact, madridTimestamp } from '../src/lib/visitMinutes';
 import { VisitMinutesReadView } from './VisitMinutesReadView';
 import { visitInput } from './VisitContactsPanel';
-const button = 'min-h-[46px] rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold disabled:opacity-50 dark:border-slate-600';
-const primary = button + ' bg-[#00548E] text-white';
+const button = 'inline-flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-bold leading-snug text-slate-900 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800';
+const primary = button + ' !border-[#00548E] !bg-[#00548E] !text-white hover:!bg-[#004374]';
 const VisitPdfPreview=lazy(()=>import('./VisitPdfPreview'));
 const emptyPerson = (): VisitPerson => ({
   id: crypto.randomUUID(),
@@ -511,29 +511,89 @@ export function VisitMinutesPanel({
     setMailError('');setMailNotice('PDF definitivo conservado y publicado.');setMail(finalMail);await deliverMail(finalized,finalMail);
   });
   const openOnsite=(p:VisitPerson)=>{setOnsite({personId:p.id,kind:record?.state.responses[p.id]?'signature':'response'});setOnsiteAck(false);};
-  return <main className="visit-minutes-mobile mx-auto max-w-6xl space-y-4 text-slate-900 dark:text-slate-100">
-    <header className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"><h1 className="text-2xl font-black">Actas de visitas de obra</h1><p className="mt-2 text-sm">Registra órdenes e instrucciones, revisa el documento, recoge firmas y sigue su ejecución entre visitas.</p><button disabled={!loaded || busy || autoSaving || !!recovery || !works.length} onClick={() => void run(() => start())} className={primary + ' mt-4'}>Nueva acta de visita</button></header>
-    {recovery&&<section className="rounded-xl border border-amber-300 p-4 space-y-2"><p>Hay un borrador pendiente en este dispositivo. No está confirmado en el servidor.</p><button className={primary} onClick={restoreDraft}>Recuperar borrador</button><button className={button} onClick={()=>void run(async()=>{if(await appConfirm('¿Descartar la copia pendiente de este dispositivo?')){await clearVisitDraft(draftUser);setRecovery(null);}})}>Descartar copia local</button></section>}{syncState&&<p role="status" aria-label="Estado de guardado">{syncState}</p>}{error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800">{error}<button type="button" className="ml-3 underline" onClick={() => window.location.reload()}>Recargar módulo</button></div>}{message && <p role="status" className="rounded-xl bg-blue-50 p-4 text-blue-900">{message}</p>}{busy && <p role="status">Procesando… No cierres esta pantalla hasta recibir confirmación.</p>}
-    <section className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-3"><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm font-bold">Obra<select className={visitInput} value={workFilter} onChange={e => setWorkFilter(e.target.value)} disabled={busy}><option value="">Todas las obras accesibles</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label><label className="text-sm font-bold">Estado<select aria-label="Estado de las actas" className={visitInput} disabled={busy} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">No eliminadas</option>{Object.entries(VISIT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{k==='cancelled'?'Eliminadas / anuladas':v}</option>)}</select></label><form onSubmit={e => {
-          e.preventDefault();
-          setQuery(search);
-        }}><label className="text-sm font-bold">Número, obra o asistente<input className={visitInput} value={search} onChange={e => setSearch(e.target.value)} maxLength={100} /></label><button className={button + ' mt-1'} disabled={busy}>Buscar actas</button></form></div>
-      <div className="grid grid-cols-2 gap-3"><label>Desde<input type="date" className={visitInput} value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label><label>Hasta<input type="date" className={visitInput} value={toDate} onChange={e=>setToDate(e.target.value)}/></label></div>
-      {loading && <p role="status">Cargando actas…</p>}<div className="grid gap-2 sm:grid-cols-2">{records.map(r => <article aria-label={'Acta '+r.number} key={r.id} className={'rounded-xl border p-4 '+(record?.id===r.id?'border-blue-500 bg-blue-50 dark:bg-blue-950':'border-slate-200 dark:border-slate-700')}><button aria-label={'Abrir acta '+r.number} disabled={busy} onClick={()=>void run(()=>open(r.id))} className="w-full min-h-[46px] text-left"><strong>{r.number} · v{r.version}</strong><p className="mt-1">{r.worksite}</p><p className="text-sm">{String(r.visit_date).slice(0,10)} · {VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</p>{r.action_summary&&<p className="mt-1 text-xs">{r.status==='draft'?'Pendientes de revisar':r.status==='signing'?'Pendientes de firma':'Pendientes de actuar'}: {(r.status==='signing'?r.action_summary.signatures:r.action_summary.reviews).map((p:any)=>p.name).join(', ')||'Ninguno'}</p>}</button>{r.isOwner&&r.status!=='cancelled'&&<div className="mt-3 grid grid-cols-2 gap-2"><button aria-label={'Editar acta '+r.number} disabled={busy} className={button} onClick={()=>void run(()=>editActa(r.id))}>Editar</button><button aria-label={'Eliminar acta '+r.number} disabled={busy} className={button+' text-red-700 dark:text-red-300'} onClick={()=>void run(()=>deleteActa(r.id))}>Eliminar</button></div>}</article>)}</div>{loaded && !loading && !records.length && <p>No hay actas que coincidan con los filtros.</p>}{hasMore && <button disabled={busy} className={button} onClick={() => void run(async () => {
-        const r = await visitRequest({
-          action: 'list',
-          worksiteId: workFilter,
-          fromDate,toDate,
-      status: statusFilter,
-          search: query,
-          offset: records.length
-        });
-        setRecords(current => [...current, ...r.records.filter((n: any) => !current.some(x => x.id === n.id))]);
+  return <main className="visit-minutes-mobile mx-auto w-full min-w-0 max-w-6xl space-y-3 text-slate-900 dark:text-slate-100 sm:space-y-4">
+    <header className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0"><h1 className="text-xl font-black tracking-tight sm:text-2xl">Actas de visitas</h1><p className="mt-1 text-xs text-slate-600 dark:text-slate-300 sm:text-sm">Redactar · Revisar y firmar · Seguimiento</p></div>
+        <button type="button" disabled={!loaded || busy || autoSaving || !!recovery || !works.length} aria-label="Nueva acta de visita" onClick={() => void run(() => start())} className={primary + ' w-full shrink-0 sm:w-auto'}>Nueva acta de visita</button>
+      </div>
+    </header>
+    {recovery&&<section className="rounded-xl border border-amber-300 p-3 space-y-2"><p>Hay un borrador pendiente en este dispositivo. No está confirmado en el servidor.</p><div className="grid grid-cols-2 gap-2"><button className={primary} onClick={restoreDraft}>Recuperar borrador</button><button className={button} onClick={()=>void run(async()=>{if(await appConfirm('¿Descartar la copia pendiente de este dispositivo?')){await clearVisitDraft(draftUser);setRecovery(null);}})}>Descartar copia local</button></div></section>}
+    {syncState&&<p role="status" aria-label="Estado de guardado" className="text-xs text-slate-600 dark:text-slate-300">{syncState}</p>}
+    {error&&<div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-red-800">{error}<button type="button" className="ml-3 underline" onClick={()=>window.location.reload()}>Recargar módulo</button></div>}
+    {message&&<p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-950 dark:bg-blue-950 dark:text-blue-100">{message}</p>}
+    {busy&&<p role="status">Procesando… No cierres esta pantalla hasta recibir confirmación.</p>}
+    <details open={!content} className="min-w-0 rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 text-sm font-bold text-[#00548E] dark:text-blue-300 sm:px-4">
+        <span>Consultar actas anteriores</span><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">{records.length} acta(s)</span>
+      </summary>
+      <div className="min-w-0 space-y-3 border-t border-slate-200 p-3 dark:border-slate-700 sm:p-4">
+      <div className="grid min-w-0 grid-cols-2 items-end gap-2 sm:grid-cols-3">
+        <label className="min-w-0 text-xs font-bold">Obra
+          <select className={visitInput} value={workFilter} onChange={e=>setWorkFilter(e.target.value)} disabled={busy}>
+            <option value="">Todas las obras</option>{works.map(w=><option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}
+          </select>
+        </label>
+        <label className="min-w-0 text-xs font-bold">Estado
+          <select aria-label="Estado de las actas" className={visitInput} disabled={busy} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+            <option value="">No eliminadas</option>{Object.entries(VISIT_STATUS_LABELS).map(([k,v])=><option key={k} value={k}>{k==='cancelled'?'Eliminadas / anuladas':v}</option>)}
+          </select>
+        </label>
+        <details className="col-span-2 min-w-0 rounded-xl border border-slate-200 dark:border-slate-700 sm:col-span-1">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl px-3 text-sm font-bold text-[#00548E] dark:text-blue-300">Buscar y filtrar por fecha</summary>
+          <form onSubmit={e=>{e.preventDefault();setQuery(search);}} className="grid min-w-0 gap-2 border-t border-slate-200 p-3 dark:border-slate-700">
+            <label className="min-w-0 text-xs font-bold">Número, obra o asistente
+              <input className={visitInput} value={search} onChange={e=>setSearch(e.target.value)} maxLength={100}/>
+            </label>
+            <div className="grid min-w-0 grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+              <label className="min-w-0 text-xs font-bold">Desde<input type="date" className={visitInput} value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
+              <label className="min-w-0 text-xs font-bold">Hasta<input type="date" className={visitInput} value={toDate} onChange={e=>setToDate(e.target.value)}/></label>
+            </div>
+            <button type="submit" className={primary+' w-full'} disabled={busy}>Buscar actas</button>
+          </form>
+        </details>
+      </div>
+      {loading&&<p role="status">Cargando actas…</p>}
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        {records.map(r=>{
+          const pending=r.action_summary
+            ? (r.status==='signing'?r.action_summary.signatures:r.action_summary.reviews).length
+            : 0;
+          const active=record?.id===r.id;
+          return <article aria-label={'Acta '+r.number} key={r.id}
+            className={`min-w-0 rounded-xl border px-3 py-2.5 ${active?'border-[#00548E] bg-blue-50 dark:bg-blue-950/30':'border-slate-200 dark:border-slate-700'}`}>
+            <button aria-label={'Abrir acta '+r.number} disabled={busy} onClick={()=>void run(()=>open(r.id))}
+              className="flex min-h-11 w-full min-w-0 items-start justify-between gap-2 text-left">
+              <span className="min-w-0 flex-1">
+                <strong className="block truncate text-sm font-black text-slate-900 dark:text-slate-100">{r.number} · v{r.version}</strong>
+                <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-slate-300" title={r.worksite}>{r.worksite}</span>
+                <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">{String(r.visit_date).slice(0,10)}{pending>0?` · ${pending} pendiente(s)`:''}</span>
+              </span>
+              <span className="max-w-[43%] shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-center text-[11px] font-bold text-[#00548E] dark:bg-slate-800 dark:text-blue-300">{VISIT_STATUS_LABELS[r.status as keyof typeof VISIT_STATUS_LABELS]}</span>
+            </button>
+            {r.isOwner&&r.status!=='cancelled'&&<div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">
+              <button aria-label={'Editar acta '+r.number} disabled={busy} className={button+' w-full'} onClick={()=>void run(()=>editActa(r.id))}>Editar</button>
+              <details className="min-w-0 rounded-xl border border-slate-300 dark:border-slate-600">
+                <summary className="flex min-h-11 cursor-pointer items-center justify-center px-2 text-sm font-bold">Más opciones</summary>
+                <div className="border-t border-slate-200 p-2 dark:border-slate-700">
+                  <button aria-label={'Eliminar acta '+r.number} disabled={busy} className={button+' w-full !text-red-700 dark:!text-red-300'} onClick={()=>void run(()=>deleteActa(r.id))}>Eliminar acta</button>
+                </div>
+              </details>
+            </div>}
+          </article>;
+        })}
+      </div>
+      {loaded&&!loading&&!records.length&&<p className="text-sm text-slate-600 dark:text-slate-300">No hay actas que coincidan con los filtros.</p>}
+      {hasMore&&<button disabled={busy} className={button+' w-full'} onClick={()=>void run(async()=>{
+        const r=await visitRequest({action:'list',worksiteId:workFilter,fromDate,toDate,status:statusFilter,search:query,offset:records.length});
+        setRecords(current=>[...current,...r.records.filter((n:any)=>!current.some(x=>x.id===n.id))]);
         setHasMore(r.hasMore);
-      })}>Cargar siguientes actas</button>}</section>
+      })}>Cargar siguientes actas</button>}
+      </div>
+    </details>
     {content && <section ref={editorRef} tabIndex={-1} className="space-y-4">
       <nav aria-label="Etapas del acta" className="grid grid-cols-2 gap-1 text-xs font-bold">{['Redactar','Revisar y firmar'].map((label,i)=><span key={label} aria-current={(record&&record.status!=='draft'?1:0)===i?'step':undefined} className="rounded-lg border p-2">{i+1}. {label}</span>)}</nav><div className="flex flex-wrap gap-2 items-center"><h2 className="text-xl font-black">{record ? `${record.number} · v${record.version} · ${VISIT_STATUS_LABELS[record.status]}` : 'Nueva visita'}</h2>{dirty && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Cambios sin guardar</span>}</div>
-      {canEdit ? <fieldset disabled={busy||attachmentBusy} className="rounded-2xl border bg-white p-4 sm:p-6 dark:border-slate-700 dark:bg-slate-900 space-y-5">
+      {canEdit ? <fieldset disabled={busy||attachmentBusy} className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
         <legend className="font-black">Datos de la visita</legend>
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Obra<select disabled={!creating} className={visitInput} value={content.worksiteId} onChange={e => void run(()=>changeWorksite(e.target.value))}><option value="">Selecciona una obra…</option>{works.map(w => <option key={w.id} value={w.id}>{w.codigo} · {w.nombre}</option>)}</select></label>{([['date','Fecha','date'],['start','Hora inicio','time']] as const).map(([key,label,type])=><label className="text-sm font-bold" key={key}>{label}<input className={visitInput} type={type} value={content[key]} onChange={e=>setContent({...content,[key]:e.target.value})}/></label>)}</div>
         <div key={editFocus+':'+content.worksiteId}><VisitPointsEditor content={content} onChange={setContent} onCreateOrder={setOrderSeed} recordId={record?.id} dictation={dictation} onDictationChange={setDictation} onPending={setWritingPending}/></div>
@@ -541,23 +601,36 @@ export function VisitMinutesPanel({
         <VisitWorkOrdersEditor content={content} people={people} onChange={setContent} orderSeed={orderSeed} onOrderSeedHandled={()=>setOrderSeed(null)}/>
         <VisitParticipantsEditor people={people} contacts={contacts} worksiteId={content.worksiteId} supervisor={supervisor} technician={technician} onChange={setPeople} onAddContact={addContact} onAddProfile={addProfile} onAddManual={()=>setPeople([...people,emptyPerson()])} onAddForeman={addForeman} onSaveContact={p=>void run(()=>saveUsualContact(p))}/>
         <VisitAttachmentsEditor content={content} onChange={setContent} totalLimit={attachmentTotal} onProcessing={setAttachmentBusy}/>
-        {writingPending&&<p className="text-sm">Aplica o descarta la propuesta y el dictado pendiente antes de revisar y firmar.</p>}<div className="visit-draft-actions"><button type="button" className={button} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewAndSign()}>Revisar y firmar</button></div>
+        {writingPending&&<p className="text-sm">Aplica o descarta la propuesta y el dictado pendiente antes de revisar y firmar.</p>}<div className="visit-draft-actions grid min-w-0 grid-cols-2 gap-2"><button type="button" className={button+" w-full"} disabled={autoSaving||attachmentBusy} onClick={save}>Guardar borrador</button><button type="button" className={primary+" w-full"} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewAndSign()}>Revisar y firmar</button></div>
         {people.some(p=>p.modality==='remote'&&p.reviewRequired)&&<button type="button" className={button} disabled={busy||autoSaving||attachmentBusy||writingPending||!online} onClick={()=>void reviewDraft()}>Enviar borrador a participantes remotos</button>}
       </fieldset> : record && <VisitMinutesReadView state={record.state} number={record.number} />}
-      {record && <div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 space-y-4">
+      {record && <div className="min-w-0 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4">
         {!record.canWrite && <p className="font-bold">Consulta de obra compartida. Solo el autor puede modificar o distribuir esta acta.</p>}
-        <div className="flex flex-wrap gap-2"><button disabled={busy} className={button} onClick={() => void run(async () => downloadVisitFile(await visitRequest({
-            action: 'pdf',
-            id: record.id
-          })))}>{record.status === 'signed' ? 'Descargar PDF firmado' : 'Consultar PDF de esta versión'}</button><button disabled={busy} className={button} onClick={() => void run(() => open(record.id))}>Actualizar</button><button disabled={busy} className={button} onClick={() => void run(async () => setHistory(await visitRequest({
-            action: 'history',
-            id: record.id
-          })))}>Trazabilidad y versiones</button>
-          {record.canWrite&&<>{record.state.content.workflow!=='3.1'&&['review','changes','rejected'].includes(record.status)&&<button disabled={busy||!canOpenSigning} className={primary} onClick={()=>preview('signing')}>Abrir firmas y avisar</button>}{['review','changes','rejected','signing'].includes(record.status)&&<button disabled={busy||!canFinalize} className={primary} onClick={finalizeActa}>Finalizar acta y enviar</button>}{record.status==='signed'&&<><button disabled={busy} className={primary} onClick={()=>preview('final')}>Reintentar distribución pendiente</button><button disabled={busy} className={button} onClick={()=>void run(()=>start(record))}>Nueva visita con órdenes pendientes</button></>}{record.status!=='cancelled'&&<><button disabled={busy} className={button} onClick={()=>void run(()=>editActa(record.id))}>{record.status==='signed'?'Generar versión rectificativa':'Editar acta'}</button><button disabled={busy} className={button+' text-red-700 dark:text-red-300'} onClick={()=>void run(()=>deleteActa(record.id))}>{record.status==='signed'?'Anular acta justificadamente':'Eliminar acta'}</button></>}</>}
+        <div className="grid min-w-0 grid-cols-2 gap-2">
+          <button disabled={busy} className={button+' w-full'} onClick={()=>void run(async()=>downloadVisitFile(await visitRequest({action:'pdf',id:record.id})))}>
+            {record.status==='signed'?'Descargar PDF firmado':'Consultar PDF de esta versión'}
+          </button>
+          <button disabled={busy} className={button+' w-full'} onClick={()=>void run(()=>open(record.id))}>Actualizar</button>
+          {record.canWrite&&record.state.content.workflow!=='3.1'&&['review','changes','rejected'].includes(record.status)&&
+            <button disabled={busy||!canOpenSigning} className={primary+' col-span-2 w-full'} onClick={()=>preview('signing')}>Abrir firmas y avisar</button>}
+          {record.canWrite&&['review','changes','rejected','signing'].includes(record.status)&&
+            <button disabled={busy||!canFinalize} className={primary+' col-span-2 w-full'} onClick={finalizeActa}>Finalizar acta y enviar</button>}
+          <details className="col-span-2 min-w-0 rounded-xl border border-slate-200 dark:border-slate-700">
+            <summary className="flex min-h-11 cursor-pointer items-center justify-center px-3 text-sm font-bold text-[#00548E] dark:text-blue-300">Más opciones del acta</summary>
+            <div className="grid min-w-0 grid-cols-2 gap-2 border-t border-slate-200 p-2 dark:border-slate-700">
+              <button disabled={busy} className={button+' w-full'} onClick={()=>void run(async()=>setHistory(await visitRequest({action:'history',id:record.id})))}>Trazabilidad y versiones</button>
+              {record.canWrite&&record.status!=='cancelled'&&<button disabled={busy} className={button+' w-full'} onClick={()=>void run(()=>editActa(record.id))}>{record.status==='signed'?'Rectificar acta':'Editar acta'}</button>}
+              {record.canWrite&&record.status==='signed'&&<>
+                <button disabled={busy} className={button+' w-full'} onClick={()=>preview('final')}>Reintentar distribución</button>
+                <button disabled={busy} className={button+' w-full'} onClick={()=>void run(()=>start(record))}>Nueva visita con órdenes pendientes</button>
+              </>}
+              {record.canWrite&&record.status!=='cancelled'&&<button disabled={busy} className={button+' col-span-2 w-full !text-red-700 dark:!text-red-300'} onClick={()=>void run(()=>deleteActa(record.id))}>{record.status==='signed'?'Anular acta justificadamente':'Eliminar acta'}</button>}
+            </div>
+          </details>
         </div>
         {['review','changes','rejected'].includes(record.status)&&Object.values(record.state.responses).some((r:any)=>r.decision!=='agree')&&<label className="block font-bold">Tratamiento de observaciones y discrepancias<textarea className={visitInput} value={reviewClosure} onChange={e=>setReviewClosure(e.target.value)} placeholder="Explica la resolución o la conservación de las reservas. Si cambia el contenido, crea una nueva versión."/></label>}
         {record.status === 'review' && !canOpenSigning && <p className="text-sm text-amber-700 dark:text-amber-300">Faltan revisiones del contenido. El silencio no equivale a aceptación.</p>}
-        {(()=>{const p=visitProgress(record.state);return <section aria-label="Resumen de participación" className="rounded-xl bg-blue-50 p-4 text-blue-950"><p>Revisiones: {p.reviewed}/{p.reviews} · Pendientes: {p.reviews-p.reviewed}</p><p>Firmas obligatorias: {p.signed}/{p.signatures} · Pendientes: {p.signatures-p.signed}</p><p>Errores de envío: {jobs.filter(j=>j.version===record.version&&['failed','uncertain'].includes(j.status)).length}</p>{record.status==='signed'&&<p>{jobs.some(j=>j.version===record.version&&j.kind==='final'&&j.status!=='sent')?'PDF definitivo conservado y publicado · distribución pendiente':'PDF definitivo conservado y publicado'}</p>}</section>})()}
+        {(()=>{const p=visitProgress(record.state);return <section aria-label="Resumen de participación" className="grid grid-cols-2 gap-2 rounded-xl bg-blue-50 p-3 text-xs font-medium text-blue-950 dark:bg-blue-950 dark:text-blue-100 sm:text-sm"><p>Revisiones: {p.reviewed}/{p.reviews} · Pendientes: {p.reviews-p.reviewed}</p><p>Firmas obligatorias: {p.signed}/{p.signatures} · Pendientes: {p.signatures-p.signed}</p><p>Errores de envío: {jobs.filter(j=>j.version===record.version&&['failed','uncertain'].includes(j.status)).length}</p>{record.status==='signed'&&<p>{jobs.some(j=>j.version===record.version&&j.kind==='final'&&j.status!=='sent')?'PDF definitivo conservado y publicado · distribución pendiente':'PDF definitivo conservado y publicado'}</p>}</section>})()}
         {record.canWrite&&['review','changes','rejected','signing'].includes(record.status)&&<section className="space-y-3"><h3 className="font-black">Participación y firmas</h3>{record.state.participants.filter(p=>p.reviewRequired).map(p=><article key={p.id} aria-label={'Participación de '+personName(p)} className="rounded-xl border p-3 space-y-2"><strong>{personName(p)}</strong><p className="text-sm">{record.state.responses[p.id]?.decision==='agree'?'Conforme':record.state.responses[p.id]?.decision==='changes'?'Con observaciones':record.state.responses[p.id]?.decision==='reject'?'Disconforme':'Pendiente de revisión'} · {record.state.signatures[p.id]?'Firmado':'Firma pendiente'}</p><div className="flex flex-wrap gap-2">{p.attended&&p.modality!=='remote'&&!record.state.signatures[p.id]&&<button disabled={busy} className={primary} onClick={()=>openOnsite(p)}>Revisar y firmar aquí</button>}{p.modality==='remote'&&!record.state.signatures[p.id]&&<><button disabled={busy} className={button} onClick={()=>void run(async()=>{const key=record.id+':remote-signing:'+p.id;if(operation.current?.key!==key)operation.current={key,id:crypto.randomUUID()};const result=await visitRequest({action:'remind',kind:'signing',id:record.id,personId:p.id,operation:operation.current.id});operation.current=null;setJobs(result.jobs);setMessage(result.delivery==='sent'?'Solicitud de firma remota aceptada por Gmail. La persona debe verificar su correo.':'Solicitud pendiente de confirmación.');})}>Solicitar firma remota protegida</button><button disabled={busy} className={button} onClick={()=>void run(async()=>{const result=await visitRequest({action:'link',id:record.id,personId:p.id});setLink(result.url);setMessage('Acceso personal de siete días. No lo compartas con otras personas.');})}>Generar / renovar enlace personal</button><button disabled={busy} className={button} onClick={()=>void run(async()=>{await visitRequest({action:'revoke-link',id:record.id,personId:p.id});setLink('');setMessage('Acceso revocado.');})}>Revocar enlace</button></>}{!record.state.signatures[p.id]&&p.signing!=='none'&&<button disabled={busy} className={button} onClick={()=>void run(async()=>{if(await appConfirm('Se invalidará el acceso anterior. ¿Cambiar la modalidad de esta persona?'))await mutate({type:'modality',personId:p.id,modality:p.modality==='remote'?'in-person':'remote'});})}>Cambiar a {p.modality==='remote'?'presencial':'remota'}</button>}</div></article>)}</section>}
         {link&&<label className="block font-bold">Enlace personal: entrégalo solo a su destinatario<input className={visitInput} readOnly value={link} onFocus={e=>e.currentTarget.select()}/></label>}
         {onsite&&<VisitOnsiteFlow record={record} person={record.state.participants.find(p=>p.id===onsite.personId)!} busy={busy} error={error} identityChecked={onsiteAck} onIdentityChecked={setOnsiteAck} onClose={()=>setOnsite(null)} onSubmit={command=>void run(async()=>{await mutate(command);})}/>}
@@ -574,7 +647,7 @@ export function VisitMinutesPanel({
               } as any)[j.status]} · {j.attempts} intento(s)</p><p>Revisión: {({agree:'Conforme con el contenido',changes:'Con observaciones',reject:'Disconforme'} as any)[record.state.responses[j.person_id]?.decision||'']||(record.state.participants.find(p=>p.id===j.person_id)?.reviewRequired?'Pendiente de revisión':'No requiere revisión')} · {record.state.signatures[j.person_id]?'Firmado':record.state.participants.find(p=>p.id===j.person_id)?.signing==='none'?'No requiere firma':record.status==='signing'?'Pendiente de firma':record.status==='signed'?'Firma opcional no aportada':'Firma no habilitada'}</p>{j.error_code&&<p>Código: {j.error_code}</p>}{j.message_id&&<p>Identificador Gmail: {j.message_id}</p>}{['uncertain','sending'].includes(j.status)&&<button className={button} disabled={busy} onClick={()=>reconcileMail(j.id)}>Comprobar en Enviados</button>}{record.canWrite && ['pending', 'failed'].includes(j.status) && <button disabled={busy} className={button + ' mt-2'} onClick={() => void run(async () => {
               const result=await visitRequest({action:'preview-mail',id:record.id,kind:j.kind});setMailError('');setMailNotice('');setGmailRequired(false);setMail({kind:j.kind,messages:result.messages,sender:result.sender});
             })}>Reintentar correos pendientes</button>}</div>)}</section>}
-        <VisitWorkOrdersFollowup worksiteId={record.obra_id} />
+        <details className="rounded-xl border border-slate-200 dark:border-slate-700"><summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-bold text-[#00548E] dark:text-blue-300">Seguimiento de órdenes de obra</summary><div className="border-t border-slate-200 p-3 dark:border-slate-700"><VisitWorkOrdersFollowup worksiteId={record.obra_id} /></div></details>
         {history && <section className="space-y-2"><h3 className="font-black">Versiones archivadas y trazabilidad</h3>{history.versions.map((v: any) => <button key={v.version} disabled={busy} className={button} onClick={() => void run(async () => downloadVisitFile(await visitRequest({
             action: 'pdf',
             id: record.id,

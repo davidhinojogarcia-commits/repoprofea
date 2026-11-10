@@ -314,18 +314,18 @@ export function VisitWorkOrdersEditor({
       </fieldset>)}
       <button
         type="button"
-        className={btn}
+        className={btn+" min-h-11 w-full text-sm sm:w-auto"}
         disabled={!context || busy}
         onClick={()=>add()}
       >
-        + AÑADIR ORDEN O INSTRUCCIÓN
+        + Añadir orden o instrucción
       </button>
-      <section className="rounded-xl border p-3 space-y-2">
-        <h4 className="font-black">ÓRDENES PENDIENTES DE VISITAS ANTERIORES</h4>
-        <p className="text-sm">
-          Se enlazan por su identificador, sin duplicar la orden original ni su
-          historial.
-        </p>
+      <details className="min-w-0 rounded-xl border border-slate-200 dark:border-slate-700">
+        <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-bold text-[#00548E] dark:text-blue-300">
+          Órdenes pendientes anteriores ({pending.filter(o=>!orders.some(x=>x.id===o.id)).length})
+        </summary>
+        <div className="space-y-2 border-t border-slate-200 p-3 dark:border-slate-700">
+          <p className="text-xs text-slate-600 dark:text-slate-300">Se enlazan por su identificador sin duplicar la orden ni su historial.</p>
         {pending
           .filter((o) => !orders.some((x) => x.id === o.id))
           .map((o) => (
@@ -389,8 +389,9 @@ export function VisitWorkOrdersEditor({
             Cargar más pendientes
           </button>
         )}
-        {!pending.length && <p>Sin órdenes pendientes.</p>}
-      </section></>}
+        {!pending.length && <p className="text-sm">Sin órdenes pendientes.</p>}
+        </div>
+      </details></>}
     </section>
   );
 }
