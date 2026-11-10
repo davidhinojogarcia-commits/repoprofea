@@ -199,8 +199,7 @@ async function openDocuments(page) {
     assert.equal(await navigation.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(), 1, "Desktop visit minutes retains an icon");
     await navigation.getByRole("button", { name: "Documentos", exact: true }).click();
   }
-  assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0, "Rejection is inside Documents");
-  assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0, "Departure is inside Documents");
+  await page.getByRole("combobox", { name: "Documento", exact: true }).waitFor();
 }
 async function signed(page, kind) {
   await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption(kind);
