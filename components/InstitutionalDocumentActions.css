@@ -1,0 +1,93 @@
+/* Reusable institutional action tokens: one visual language in both portals. */
+.profea-institutional-document-actions {
+  --profea-action-radius: 12px;
+  --profea-action-min-height: 44px;
+  --profea-action-gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  gap: var(--profea-action-gap);
+  width: 100%;
+}
+.profea-institutional-document-actions__primary,
+.profea-institutional-document-actions__secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,168px),1fr));
+  gap: var(--profea-action-gap);
+  min-width: 0;
+  align-items: stretch;
+}
+.profea-institutional-document-actions__primary:empty { display: none; }
+.profea-institutional-document-actions button {
+  min-height: var(--profea-action-min-height);
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: var(--profea-action-radius);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.profea-institutional-document-actions button svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.profea-institutional-document-actions button:focus-visible,
+.profea-institutional-document-actions__toggle:focus-visible {
+  outline: 2px solid #00548e;
+  outline-offset: 2px;
+}
+.profea-institutional-document-actions button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+.profea-institutional-document-actions__toggle { display: none !important; }
+@media (max-width: 767px) {
+  .profea-institutional-document-actions__primary,
+  .profea-institutional-document-actions__secondary-grid {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+  .profea-institutional-document-actions__primary > :only-child { grid-column: 1 / -1; }
+  .profea-institutional-document-actions__toggle {
+    min-height: 44px;
+    display: flex !important;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 9px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #fff;
+    color: #00548e;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .profea-institutional-document-actions__toggle[aria-expanded='true'] svg {
+    transform: rotate(180deg);
+  }
+  .profea-institutional-document-actions__secondary-grid { display: none; margin-top: 8px; }
+  .profea-institutional-document-actions__secondary-grid.is-expanded { display: grid; }
+  .dark .profea-institutional-document-actions__toggle {
+    background:#0f172a;
+    border-color:#475569;
+    color:#bfdbfe;
+  }
+}
+@media (min-width: 768px) {
+  .profea-institutional-document-actions__secondary-grid { display: grid; }
+}
+
+@media (min-width: 1536px) {
+  .foreman-documents-dashboard .profea-institutional-document-actions {
+    flex: 0 1 55%;
+    max-width: 55%;
+  }
+}

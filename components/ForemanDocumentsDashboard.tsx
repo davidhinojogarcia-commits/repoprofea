@@ -22,6 +22,7 @@ import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSup
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
+import { InstitutionalDocumentActions } from './InstitutionalDocumentActions';
 import ModalPortal from './ModalPortal';
 import MandatoryWorksiteReviewModal from './MandatoryWorksiteReviewModal';
 import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, withdrawMandatoryDocumentV2, getSupervisorMandatorySignedPdfV2, saveMandatoryWorkerSelectionV2, returnMandatoryDocumentV2, reviewSubmittedMandatoryDocumentV2, reopenMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
@@ -1006,8 +1007,29 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
           <div className="mt-1 text-[11px]">El documento no se bloquea: podrán firmar porque aparecen en el PDF importado.</div>
         </div>}{card.item.correction_pending&&<p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
-        <div className="foreman-document-actions flex w-full min-w-0 flex-wrap content-start items-start gap-2 2xl:w-auto 2xl:max-w-[55%]">
-          <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
+        <InstitutionalDocumentActions
+          hasPrimary={Boolean(
+            (card.kind==='mandatory' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && ['ANALYZED','NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','PDF_VALIDATION_ERROR','SUBMITTED','RECEIVED'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))) ||
+            (card.kind==='mandatory' && String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW') ||
+            (card.kind==='mandatory' && card.status==='completed') ||
+            card.status==='completed' ||
+            card.kind==='attendance' ||
+            (card.kind==='mandatory' && allowsForemanSignature(card.item.document_type) && card.item.details?.originalPdfMode!=='overlay')
+          )}
+          primary={<>
+            {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['ANALYZED','NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','PDF_VALIDATION_ERROR'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))&&<button disabled={editBusy} onClick={()=>void sendMandatoryToPortal(card.item as DbMandatory)} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:opacity-50"><Send className="w-4 h-4"/>Enviar al portal de encargados</button>}
+            {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW'&&<button onClick={()=>void openPendingWorksiteReview(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-black text-white"><Building2 className="w-4 h-4"/>Asignar obra</button>}
+            {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&card.status==='completed'&&['SUBMITTED','RECEIVED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void markMandatoryV2Reviewed(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}
+            {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && (
+            <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
+          )}
+            {(card.kind==='attendance'||(card.kind==='mandatory'&&allowsForemanSignature(card.item.document_type)&&card.item.details?.originalPdfMode!=='overlay'))&&<button type="button" onClick={()=>setSignatureSettings(card)} className="min-h-[48px] rounded-xl border px-3 py-2 text-xs font-black">Firma encargado</button>}
+            {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))) && (
+            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
+          )}
+          </>}
+          secondary={<>
+            <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
             <button onClick={()=>{if(card.item.details?.originalPdfPurged){restoreOriginalTargetRef.current=card.id;restoreOriginalInputRef.current?.click();}else void downloadStoredMandatoryPdf(card.item as DbMandatory,'original');}} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><FileSignature className="w-4 h-4"/>{card.item.details?.originalPdfPurged?'Reimportar original':'Original'}</button>
             {['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&
@@ -1018,25 +1040,18 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                 <Pencil className="w-4 h-4"/>Ajustar firmas
               </button>}
           </>}
-          {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['ANALYZED','NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','PDF_VALIDATION_ERROR'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))&&<button disabled={editBusy} onClick={()=>void sendMandatoryToPortal(card.item as DbMandatory)} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:opacity-50"><Send className="w-4 h-4"/>Enviar al portal de encargados</button>}
           {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))&&<button disabled={editBusy} onClick={()=>void withdrawMandatoryFromPortal(card.item as DbMandatory)} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-black text-amber-900 disabled:opacity-50"><RotateCcw className="w-4 h-4"/>Retirar del portal para corregir</button>}
-          {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW'&&<button onClick={()=>void openPendingWorksiteReview(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-black text-white"><Building2 className="w-4 h-4"/>Asignar obra</button>}
           {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='PDF_VALIDATION_ERROR'&&<button onClick={()=>void reopenMandatoryV2ForRepair(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs font-black text-rose-800"><RotateCcw className="w-4 h-4"/>Reabrir para reparar</button>}
-          {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&card.status==='completed'&&['SUBMITTED','RECEIVED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void markMandatoryV2Reviewed(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}
           {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['SUBMITTED','RECEIVED','REVIEWED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void returnMandatoryV2ForCorrection(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>}
           <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>{card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))?'Trabajadores':'Editar'}</button>
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
-          {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && (
-            <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
-          )}
-            {(card.kind==='attendance'||(card.kind==='mandatory'&&allowsForemanSignature(card.item.document_type)&&card.item.details?.originalPdfMode!=='overlay'))&&<button type="button" onClick={()=>setSignatureSettings(card)} className="min-h-[48px] rounded-xl border px-3 py-2 text-xs font-black">Configurar firma del encargado</button>}
-          {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))) && (
-            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
-          )}
+
+
           {(card.status==='completed'||card.status==='reviewed')&&!(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')))&&(
             <button onClick={()=>void returnForCorrection(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-xs font-black"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>
           )}
-        </div>
+          </>}
+        />
       </div>
     </article>)}</section>)}</div>}
       </div>
