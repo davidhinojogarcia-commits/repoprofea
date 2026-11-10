@@ -130,14 +130,17 @@ try {
     },
     403,
   );
+  assert.equal(p.content.contractReference, undefined, "El código de obra debe venir de la instantánea autorizada");
+  assert.equal(p.content.regime, undefined, "No conservar campos jurídicos obsoletos en nuevas versiones");
+  assert.equal(p.content.workerNotes, undefined);
+  assert.equal(p.worksite.code.length > 0, true);
+  assert.equal(p.worker.start.length > 0, true);
+  assert.equal(p.worker.end.length > 0, true);
   for (const [key, value] of [
     ["reason", ""],
+    ["reason", "Otro"],
+    ["reason", "X"],
     ["contractConfirmed", "no"],
-    ["contractDate", ""],
-    ["regimeSource", ""],
-    ["intention", "task"],
-    ["intention", "risk"],
-    ["contractReview", "no"],
   ]) {
     const invalid = await save("rechazo_voluntario", {
       ...common,
@@ -285,19 +288,24 @@ try {
   assert.ok(list.records.some((r) => r.id === p.id));
   assert.ok(!JSON.stringify(list).includes(p.signatures.worker.image));
   const pre = await save("rechazo_voluntario", {
-    ...common,
-    started: "no",
-    intention: "no_join",
-    incorporation: today,
+    contractConfirmed: "yes",
+    communication: now,
+    reason: "Incompatibilidad de horarios",
   });
   const prepared = await cmd(pre, "prepare");
-  assert.match(m.declaration(prepared), /sin haber iniciado/);
-  assert.doesNotMatch(m.declaration(prepared), /oferta/);
-  const task = await save("rechazo_voluntario", {
-    ...common,
-    intention: "risk",
+  assert.match(m.declaration(prepared), /periodo de contratación/);
+  assert.match(m.declaration(prepared), /Incompatibilidad de horarios/);
+  assert.doesNotMatch(m.declaration(prepared), /fecha de firma del contrato|régimen aplicable|preaviso/i);
+  const custom = await save("rechazo_voluntario", {
+    contractConfirmed: "yes",
+    communication: now,
+    reason: "Circunstancias personales comunicadas por la persona trabajadora",
   });
-  assert.match(m.declaration(task), /no se manifiesta voluntad de cesar/);
+  const customPrepared = await cmd(custom, "prepare");
+  assert.match(m.declaration(customPrepared), /Circunstancias personales comunicadas/);
+  const legacy = await save("rechazo_voluntario", { ...common, intention: "risk" });
+  assert.equal(legacy.content.intention, undefined, "Los campos antiguos se eliminan, no se reflejan en PDF nuevo");
+  assert.match(m.declaration(legacy), /rechaza|no desea/i);
   await bad({
     action: "save",
     id: randomUUID(),
