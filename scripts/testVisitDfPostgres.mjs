@@ -59,8 +59,17 @@ try{
   const second=(await call({action:'df-submit',token,session,operation:randomUUID(),title:'Observaciones',description:'Segundo punto no aceptado.'},null)).id;
   const rejected=await call({action:'df-review',id:created.id,contributionId:second,accept:false,revision:accepted.record.revision});
   assert.equal(rejected.record.state.content.points.length,2,'rejected item never inserted');
+  const third=(await call({action:'df-submit',token,session,operation:randomUUID(),
+    title:'Propuesta a corregir',description:'Cota sin referencia.'},null)).id;
+  const returned=await call({action:'df-return',id:created.id,contributionId:third,
+    reason:'Añade la referencia de nivel y replanteo.',revision:rejected.record.revision});
+  assert.equal(returned.record.state.content.points.length,2,'returned proposal cannot modify the consolidated draft');
+  const portalAfterReturn=await call({action:'df-portal-get',token,session},null);
+  assert.equal(portalAfterReturn.contributions.find(p=>p.id===third).status,'returned');
+  assert.equal(portalAfterReturn.contributions.find(p=>p.id===third).return_reason,'Añade la referencia de nivel y replanteo.');
+
   const events=await direct("select event from visit_minutes_events where record_id=$1 and event like 'df-%' order by id",[created.id]);
-  assert(events.some(e=>e.event==='df-point-accepted')&&events.some(e=>e.event==='df-point-rejected'));
+  assert(events.some(e=>e.event==='df-point-accepted')&&events.some(e=>e.event==='df-point-rejected')&&events.some(e=>e.event==='df-point-returned'));
   await call({action:'df-revoke',id:created.id,personId:df.id});
   assert.equal((await env.invoke({action:'df-submit',token,session,operation:randomUUID(),description:'Prohibido'},null)).status,403);
   await env.db.exec('reset role');
