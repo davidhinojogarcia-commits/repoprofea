@@ -3,7 +3,7 @@ import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import ModalPortal from './ModalPortal';
 import { Person } from '../types';
-import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone, ScanLine } from 'lucide-react';
+import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone, ScanLine, ChevronDown } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleCalendarModal } from './GoogleCalendarModal';
@@ -36,6 +36,7 @@ interface PersonListProps {
   onPairWorkerCard?: () => void;
   onExportHistoryPDF: (person: Person) => void;
   renderPartsAction?: (person: Person) => React.ReactNode;
+  renderPartsFilter?: React.ReactNode;
   savedObras: string[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -99,6 +100,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   onPairWorkerCard,
   onExportHistoryPDF,
   renderPartsAction,
+  renderPartsFilter,
   savedObras,
   searchTerm,
   setSearchTerm,
@@ -117,6 +119,8 @@ export const PersonList: React.FC<PersonListProps> = ({
   const [trainingFilter, setTrainingFilter] = useState<DirectoryTrainingFilter>('all');
   const [contractYearFilter, setContractYearFilter] = useState('all');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showReports, setShowReports] = useState(false);
+  const [reportType, setReportType] = useState<'encargados' | 'medical' | 'footwear' | 'training'>('encargados');
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [viewLayout, setViewLayout] = useState<'table' | 'compact' | 'cards'>(() => {
     try {
@@ -588,97 +592,71 @@ export const PersonList: React.FC<PersonListProps> = ({
 
   return (
     <div id="directorio-section" className="ui-surface p-4 sm:p-6 lg:p-8 text-slate-800 dark:text-slate-100">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-800 gap-4">
-        <h2 className="text-[var(--ui-text)] text-xl sm:text-2xl font-black tracking-tight flex items-center">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white mr-3"><User className="w-5 h-5" /></span> Directorio ({people.length})
-        </h2>
-        <div className="flex flex-col gap-2 w-full md:w-auto">
-          <div className="directorio-primary-actions flex flex-wrap gap-2 justify-end items-center">
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 onChange={handleFileChange} 
-                 accept=".xlsx, .xls, .json, .pdf" 
-                 className="hidden" 
-               />
-
-
-
-          </div>
-          <div className="text-right text-[11px] font-black uppercase tracking-[0.16em] text-slate-700 dark:text-slate-200">Acciones informativas rápidas</div>
-          <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
-               <div className="flex flex-col gap-2 w-full sm:w-auto">
-                 <div data-encargados-relation-row="1" className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación de trabajadores para encargados:</span>
-                   <button onClick={() => onExportPDF(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-red-500/20' : ''}`}>
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-                   </button>
-                   <button onClick={() => onExport(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-emerald-500/20' : ''}`}>
-                      <Download className="w-3 h-3 mr-1.5" /> Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-slate-950 dark:border-emerald-300 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar el PDF y compartirlo con el recurso preventivo configurado"
-                   >
-                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Reconocimientos Médicos:</span>
-                   <button onClick={() => onExportRRMMPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportRRMMExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('medical' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Resumen Calzado:</span>
-                   <button onClick={() => onExportCalzadoPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportCalzadoExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('footwear' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Formación PRL 20h:</span>
-                   <button onClick={() => onExportPRLPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportPRLExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('training' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-               </div>
-          </div>
+      <div className="mb-4 border-b border-slate-200 pb-4 dark:border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex min-w-0 items-center text-xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
+            <span className="mr-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white"><User className="h-5 w-5" /></span>
+            Directorio <span className="ml-2 text-slate-500 dark:text-slate-400">({people.length})</span>
+          </h2>
+          <button type="button" aria-expanded={showReports} aria-controls="directory-reports-panel"
+            onClick={() => setShowReports(value => !value)}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#00548E] bg-[#00548E] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#003f70] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#00548E] dark:focus-visible:ring-offset-slate-900">
+            <FileText className="h-4 w-4" /> Informes <ChevronDown className={`h-4 w-4 transition-transform ${showReports ? 'rotate-180' : ''}`} />
+          </button>
         </div>
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls, .json, .pdf" className="hidden" />
+        {showReports && (
+          <section id="directory-reports-panel" aria-label="Informes y comunicaciones del Directorio"
+            className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/60 sm:p-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-end">
+              <label className="flex min-w-0 flex-col gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                Seleccionar informe
+                <select aria-label="Seleccionar informe del Directorio" value={reportType} onChange={e => setReportType(e.target.value as typeof reportType)}
+                  className="min-h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-[#00548E] focus:outline-none focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                  <option value="encargados">Relación de trabajadores para encargados</option>
+                  <option value="medical">Reconocimientos médicos</option>
+                  <option value="footwear">Resumen de calzado</option>
+                  <option value="training">Formación PRL 20 horas</option>
+                </select>
+              </label>
+              <div className="min-w-0">
+                <div className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">Exportar o compartir</div>
+                <div data-encargados-relation-row={reportType === 'encargados' ? '1' : undefined} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <button type="button" onClick={() => {
+                    if(reportType === 'encargados') onExportPDF(peopleToExport);
+                    else if(reportType === 'medical') onExportRRMMPDF(peopleToExport);
+                    else if(reportType === 'footwear') onExportCalzadoPDF(peopleToExport);
+                    else onExportPRLPDF(peopleToExport);
+                  }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-800 hover:bg-red-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30">
+                    <FileText className="h-4 w-4" /> PDF
+                  </button>
+                  <button type="button" onClick={() => {
+                    if(reportType === 'encargados') onExport(peopleToExport);
+                    else if(reportType === 'medical') onExportRRMMExcel(peopleToExport);
+                    else if(reportType === 'footwear') onExportCalzadoExcel(peopleToExport);
+                    else onExportPRLExcel(peopleToExport);
+                  }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30">
+                    <Download className="h-4 w-4" /> Excel
+                  </button>
+                  {reportType === 'encargados' ? (
+                    <button type="button" onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
+                      className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800 sm:col-span-1">
+                      <MessageCircle className="h-4 w-4" /> WhatsApp
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => void sendDirectoryCommunication(reportType as 'medical' | 'footwear' | 'training', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                      className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-900 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200 sm:col-span-1">
+                      <Mail className="h-4 w-4" /> Mail
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400" role="status">
+              {isSelectionActive ? `Se aplicará a ${peopleToExport.length} trabajadores seleccionados.` : `Se aplicará a los ${peopleToExport.length} trabajadores del ámbito visible según los filtros.`}
+            </p>
+          </section>
+        )}
       </div>
 
       <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
@@ -739,6 +717,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               <option value="pending">Sin formación / pendiente</option>
             </select>
           </label>
+          {renderPartsFilter && <div className="min-w-0 w-full sm:w-64 xl:w-72">{renderPartsFilter}</div>}
           <button
             onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
             className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer whitespace-nowrap ${
