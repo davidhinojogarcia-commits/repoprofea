@@ -79,3 +79,15 @@
     line-height: 1.2;
   }
 }
+
+/* Only selecting No aptos activates red emphasis; inactive medical filter stays neutral. */
+#directorio-section [data-directory-filters="true"] summary.directory-medical-warning-active,
+.dark #directorio-section [data-directory-filters="true"] summary.directory-medical-warning-active {
+  border-color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+.dark #directorio-section [data-directory-filters="true"] summary.directory-medical-warning-active {
+  background-color: #450a0a !important;
+  color: #fecaca !important;
+}
