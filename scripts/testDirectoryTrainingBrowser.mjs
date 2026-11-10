@@ -60,12 +60,35 @@ try {
   const scope = async expected => {
     await page.waitForFunction(ids => JSON.stringify(window.__profeaDirectoryExportScope?.filteredIds) === JSON.stringify(ids), expected);
   };
-  for (const width of [390, 820, 1440]) {
+  for (const width of [360, 390, 820, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
     const year = page.getByLabel('Año de contratación', { exact: true });
     const training = page.getByLabel('Formación', { exact: true });
+    const reportsButton = page.getByRole('button', { name: 'Informes', exact: true });
+    assert.equal(await reportsButton.getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.getByLabel('Seleccionar informe del Directorio').count(), 0);
+    assert.equal(await page.locator('#directory-parts-filter').count(), 1, 'El filtro de Partes y avisos está en la barra principal');
+    assert.equal(await page.getByText('Filtrar por partes y avisos · uso restringido').count(), 0, 'No debe existir el panel antiguo');
+    await reportsButton.click();
+    assert.equal(await reportsButton.getAttribute('aria-expanded'), 'true');
+    await page.getByLabel('Seleccionar informe del Directorio').selectOption('medical');
+    assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1);
+    await page.getByLabel('Seleccionar informe del Directorio').selectOption('encargados');
+    assert.equal(await page.getByRole('button', { name: 'WhatsApp', exact: true }).count(), 1);
+    for (const name of ['Informes','PDF','Excel','WhatsApp']) {
+      const button = page.getByRole('button', { name, exact: true });
+      const bounds = await button.boundingBox();
+      assert.ok(bounds && bounds.width >= 44 && bounds.height >= 44 && bounds.x >= -1 && bounds.x + bounds.width <= width + 1, name + ' móvil proporcionado: ' + width);
+    }
+    for (const label of ['Año de contratación', 'Formación', 'Partes y avisos']) {
+      const filter = page.getByLabel(label, { exact: true });
+      const box = await filter.boundingBox();
+      assert.ok(box && box.width >= 150 && box.height >= 44 && box.x >= -1 && box.x + box.width <= width + 1, label + ' filtro adaptado: ' + width);
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Sin desbordamiento de informes ni filtros: ' + width);
+    await reportsButton.click();
     await year.selectOption('2026');
     await training.selectOption('trained');
     await scope([1]);
@@ -82,7 +105,9 @@ try {
     await training.selectOption('pending');
     await scope([2, 4, 5]);
     await page.waitForFunction(() => window.__profeaDirectoryExportScope.hasSelection === false);
+    await reportsButton.click();
     await page.locator('[data-encargados-relation-row] button').first().click();
+    await reportsButton.click();
     assert.deepEqual(await page.evaluate(() => window.exports.at(-1)), [2, 4, 5]);
     const search = page.getByPlaceholder('Buscar por nombre, DNI, oferta, obra o categoría...');
     await search.fill('Bruno');await scope([2]);
@@ -120,5 +145,5 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Escanear carnet con este dispositivo', exact: true }).isVisible(), true);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS ' + engine + ': directory year/training filters, legacy and unknown values, combined medical/search filters, selection/export scope, all layouts, scanner placement/callbacks and empty states; 390/820/1440 light/dark. Transport and camera mocked; no physical devices.');
+  console.log('PASS ' + engine + ': directory compact reports, Partes filter position, responsive 360/390/820/1440, year/training filters, legacy and unknown values, combined medical/search filters, selection/export scope, all layouts, scanner placement/callbacks and empty states; 390/820/1440 light/dark. Transport and camera mocked; no physical devices.');
 } finally { await browser?.close();server.closeAllConnections();await new Promise(resolve => server.close(resolve)); }
