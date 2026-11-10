@@ -303,9 +303,9 @@ try {
   });
   const customPrepared = await cmd(custom, "prepare");
   assert.match(m.declaration(customPrepared), /Circunstancias personales comunicadas/);
-  const legacy = await save("rechazo_voluntario", { ...common, intention: "risk" });
-  assert.equal(legacy.content.intention, undefined, "Los campos antiguos se eliminan, no se reflejan en PDF nuevo");
-  assert.match(m.declaration(legacy), /rechaza|no desea/i);
+  const legacyRejection = await save("rechazo_voluntario", { ...common, intention: "risk" });
+  assert.equal(legacyRejection.content.intention, undefined, "Los campos antiguos se eliminan, no se reflejan en PDF nuevo");
+  assert.match(m.declaration(legacyRejection), /rechaza|no desea/i);
   await bad({
     action: "save",
     id: randomUUID(),
