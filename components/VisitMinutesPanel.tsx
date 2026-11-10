@@ -608,7 +608,7 @@ export function VisitMinutesPanel({
         {!record.canWrite && <p className="font-bold">Consulta de obra compartida. Solo el autor puede modificar o distribuir esta acta.</p>}
         <div className="grid min-w-0 grid-cols-2 gap-2">
           <button disabled={busy} className={button+' w-full'} onClick={()=>void run(async()=>downloadVisitFile(await visitRequest({action:'pdf',id:record.id})))}>
-            {record.status==='signed'?'PDF firmado':'Consultar PDF'}
+            {record.status==='signed'?'Descargar PDF firmado':'Consultar PDF de esta versión'}
           </button>
           <button disabled={busy} className={button+' w-full'} onClick={()=>void run(()=>open(record.id))}>Actualizar</button>
           {record.canWrite&&record.state.content.workflow!=='3.1'&&['review','changes','rejected'].includes(record.status)&&
