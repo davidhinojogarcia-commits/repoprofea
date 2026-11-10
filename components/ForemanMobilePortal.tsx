@@ -1219,7 +1219,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <p className="mt-0.5 text-sm text-slate-600">{data.foremanName||'Encargado de obra'}</p>
       </div>
     </header>
-    <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-28 sm:pb-6 space-y-4">
+    <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-6 space-y-4">
       <section className="rounded-3xl border bg-white dark:bg-slate-900 p-4 space-y-3" aria-label="Avisos móviles">
         <h2 className="text-lg font-black">Avisos de mi obra</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">{pushActive?`Avisos activos en este dispositivo para ${data.obra}.`:'Activa las notificaciones para saber cuándo el supervisor envía un documento nuevo a tu obra.'}</p>
