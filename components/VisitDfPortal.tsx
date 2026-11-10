@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { visitRequest } from '../src/services/visitMinutesService';
 import { VisitVoiceDictation } from './VisitVoiceDictation';
 
-type GuestContribution = {id:string;title:string;description:string;status:'pending'|'accepted'|'rejected';created_at:string};
+type GuestContribution = {id:string;title:string;description:string;status:'pending'|'accepted'|'rejected'|'returned';return_reason?:string|null;created_at:string};
 const inputClass='mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00548E]';
 const primary='min-h-12 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50';
 const secondary='min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 font-bold text-[#00548E]';
@@ -83,7 +83,8 @@ export function VisitDfPortal({token}:{token:string}){
         {items.map((point,i)=><article key={point.id} className="space-y-1 rounded-xl border border-slate-200 p-3">
           <p className="font-bold">{i+1}. {point.title||'Punto de visita'}</p>
           <p className="whitespace-pre-wrap break-words text-sm">{point.description}</p>
-          <p className="text-xs text-slate-600">{point.status==='pending'?'Pendiente de revisión':point.status==='accepted'?'Incorporado al acta':'No incorporado'}</p>
+          <p className="text-xs text-slate-600">{point.status==='pending'?'Pendiente de revisión':point.status==='accepted'?'Incorporado al acta':point.status==='returned'?'Devuelto para corrección':'No incorporado'}</p>
+          {point.status==='returned'&&point.return_reason&&<p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Motivo: {point.return_reason}. Puedes enviar un nuevo punto corregido.</p>}
         </article>)}
       </section>}
     </div>
