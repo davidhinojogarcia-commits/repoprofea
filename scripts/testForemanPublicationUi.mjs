@@ -76,6 +76,17 @@ try {
  await action(()=>find('Enviar al portal de encargados').click());
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  assert(find('Actualizar documentos'),'manual refresh in Control inicios');
+ const sectionPicker=document.getElementById('foreman-section-picker');
+ assert(sectionPicker,'mobile portal must expose a compact section selector');
+ assert.equal(sectionPicker.tagName,'SELECT','mobile section picker must be a native accessible select');
+ assert.deepEqual([...sectionPicker.options].map(o=>o.value),['mandatory','prevention','parts','epis','formacion','maquinaria','control','documents','visits','completed'],'all ten portal sections must remain reachable');
+ assert.equal(sectionPicker.value,'mandatory','mobile selector follows current section');
+ await action(()=>{sectionPicker.value='visits';sectionPicker.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ assert(document.querySelector('[data-testid=actual-visit-tab]'),'selecting visits on mobile renders the visit panel');
+ assert.equal(document.getElementById('foreman-section-picker').value,'visits','selector reflects active visit section');
+ await action(()=>{const picker=document.getElementById('foreman-section-picker');picker.value='mandatory';picker.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ assert(!document.querySelector('[data-testid=actual-visit-tab]'),'returning to mandatory from mobile selector unmounts visits');
+ assert(find('Actualizar documentos'),'mandatory documents return after mobile selection');
  await action(()=>find('Actas de visitas').click());assert(document.querySelector('[data-testid=actual-visit-tab]'),'visit tab mounts its panel in the complete portal');assert.equal(document.querySelector('[data-testid=actual-visit-tab]').dataset.token,'test');assert.equal(document.querySelector('[data-testid=actual-visit-tab]').dataset.viewer,'function');assert([...document.querySelectorAll('button')].every(b=>!b.className.includes('[object Object]')),'panels must not be interpolated into button classes');await action(()=>find('Control, inicios y contratos').click());assert(!document.querySelector('[data-testid=actual-visit-tab]'));
 
  const beforeRefresh=portalReads;await action(()=>find('Actualizar documentos').click());
