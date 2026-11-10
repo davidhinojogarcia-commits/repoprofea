@@ -72,6 +72,15 @@ export const MultiSearchableDropdown: React.FC<MultiSearchableDropdownProps> = (
   return (
     <div className={`relative w-full sm:w-72 ${className}`} ref={dropdownRef}>
       <div
+        role="button"
+        tabIndex={0}
+        aria-label={placeholder}
+        aria-expanded={isOpen}
+        onKeyDown={event => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setIsOpen(current => !current); }
+          if (event.key === 'Escape') setIsOpen(false);
+        }}
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full flex items-center justify-between p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-colors cursor-pointer min-h-[46px] ${buttonClassName} ${isOpen ? 'ring-2 ring-[#00548E]/20 dark:ring-blue-500/30 border-[#00548E] dark:border-blue-500' : ''}`}
       >
@@ -89,10 +98,8 @@ export const MultiSearchableDropdown: React.FC<MultiSearchableDropdownProps> = (
                   className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00548E]/10 text-[#00548E] text-[11px] font-bold rounded-md border border-[#00548E]/20 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60"
                 >
                   {val}
-                  <X 
-                    className="w-3 h-3 cursor-pointer hover:opacity-75" 
-                    onClick={(e) => removeValue(e, val)}
-                  />
+                  <button type="button" aria-label={`Quitar filtro ${val}`} className="inline-flex min-h-6 min-w-6 items-center justify-center rounded hover:bg-[#00548E]/10"
+                    onClick={(e) => removeValue(e, val)}><X aria-hidden="true" className="h-3 w-3" /></button>
                 </span>
               ))}
             </div>

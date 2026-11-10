@@ -64,6 +64,7 @@ try {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
+    await page.getByText('Más filtros', { exact: true }).click();
     const year = page.getByLabel('Año de contratación', { exact: true });
     const training = page.getByLabel('Formación', { exact: true });
     const reportsButton = page.getByRole('button', { name: 'Informes', exact: true });
@@ -119,13 +120,16 @@ try {
     await year.selectOption('2024');await scope([6]);
     await year.selectOption('2023');await training.selectOption('pending');await scope([7]);
     await year.selectOption('unknown');await scope([8]);
-    await page.getByRole('button', { name: 'Limpiar filtros de formación', exact: true }).click();
+    await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
     await year.selectOption('2026');await training.selectOption('pending');
-    await page.getByRole('button', { name: 'Aptitud médica', exact: true }).click();
+    await page.locator('summary[aria-label="Aptitud médica"]').click();
     await page.getByText('No aptos', { exact: true }).click();
     await scope([5]);
-    await page.getByRole('button', { name: /No aptos \(/ }).click();
+    await page.getByRole('button', { name: 'Todas las aptitudes', exact: true }).click();
+    await scope([2, 4, 5]);
+    await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
+    await scope([1, 2, 3, 4, 5, 6, 7, 8]);
     for (const theme of ['light', 'dark']) {
       await page.evaluate(theme => document.documentElement.classList.toggle('dark', theme === 'dark'), theme);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, width + ' ' + theme + ' no page overflow');
