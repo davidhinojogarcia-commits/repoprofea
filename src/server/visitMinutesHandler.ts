@@ -488,7 +488,7 @@ export async function visitMinutesHandler(req: any, res: any) {
     }
     const user = await activeUser(req),
       auth = String(req.headers?.authorization || '');
-    if(['df-invite','df-revoke','df-list','df-review'].includes(action))return await handleDfOwner(b,res,dfDependencies,user,auth);
+    if(['df-invite','df-revoke','df-list','df-review','df-return'].includes(action))return await handleDfOwner(b,res,dfDependencies,user,auth);
     if(isOrderAction(action))return await handleVisitOrders(req,b,res,user,auth,{database,digest,validateAttachments});
     if(action==='assist-writing'){
       if(!uuidValid(b.worksiteId))throw fail('Selecciona una obra válida.',400);
