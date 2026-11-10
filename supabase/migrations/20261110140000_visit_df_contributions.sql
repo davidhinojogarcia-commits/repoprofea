@@ -126,4 +126,4 @@ end $$;
 revoke all on function public.visit_df_challenge(uuid,text),public.visit_df_verify(uuid,text,text),
  public.visit_df_submit(uuid,text,uuid,text,text),public.visit_df_review(uuid,uuid,integer,boolean) from public,anon,authenticated;
 grant execute on function public.visit_df_challenge(uuid,text),public.visit_df_verify(uuid,text,text),
- public.visit_df_submit(uuid,text,text,text),public.visit_df_review(uuid,uuid,integer,boolean) to service_role;
+ public.visit_df_submit(uuid,text,uuid,text,text),public.visit_df_review(uuid,uuid,integer,boolean) to service_role;
