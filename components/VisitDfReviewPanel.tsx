@@ -15,7 +15,7 @@ export function VisitDfReviewPanel({record,dirty,onUpdated}:{record:VisitRecord;
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
-  const people=record.state.participants.filter(p=>/arquitect|direcci[oó]n facultativa|director(?:a)? de (?:obra|ejecuci[oó]n)|t[eé]cnic[oa] facultativ/i.test(p.role)&&p.email?.trim());
+  const people=record.state.participants.filter(p=>/arquitect|direcci[oó]n (?:facultativa|de (?:obra|ejecuci[oó]n))|director(?:a)? de (?:obra|ejecuci[oó]n)|t[eé]cnic[oa] facultativ/i.test(p.role)&&p.email?.trim());
   const recipient=people.some(p=>p.id===selected)?selected:people[0]?.id||'';
   const activeInvitation=invitations.find(p=>p.person_id===recipient&&!p.revoked&&Date.parse(p.expires_at)>Date.now());
   const load=async()=>{
