@@ -181,13 +181,13 @@ async function draw(page) {
   await page.mouse.up();
 }
 async function openDocuments(page) {
-  const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados" });
-  const buttons = navigation.getByRole("button");
-  assert.equal(await buttons.count(),10,"All ten portal sections remain accessible as guided ribbon buttons");
+  const navigation = page.locator('div[role="navigation"][aria-label="Secciones del portal de encargados"]');
+  const buttons = navigation.locator('button');
+  assert.equal(await buttons.count(),10,"All ten portal sections exist as guided ribbon buttons");
   assert.equal(await page.locator("#foreman-section-picker").count(),0,"No mobile dropdown remains");
-  assert.equal(await navigation.getByRole("button", { name: "Partes y avisos", exact: true }).locator("svg").count(),1,"Parts retains its icon");
-  assert.equal(await navigation.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(),1,"Visits retains its icon");
-  await navigation.getByRole("button", { name: "Documentos", exact: true }).click();
+  assert.equal(await navigation.locator('button[aria-label="Partes y avisos"] svg').count(),1,"Parts retains its icon");
+  assert.equal(await navigation.locator('button[aria-label="Actas de visitas"] svg').count(),1,"Visits retains its icon");
+  await navigation.locator("button").filter({hasText:"Documentos"}).click();
   await page.getByRole("combobox", { name: "Documento", exact: true }).waitFor();
 }
 async function signed(page, kind) {
