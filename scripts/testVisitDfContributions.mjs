@@ -37,8 +37,10 @@ const database=async(path,body,auth,method)=>{
   }
   if(path==='rpc/visit_df_submit'){
     const invite=invites.find(i=>i.id===body.p_id);assert.equal(invite.session_hash,body.p_session_hash);
+    const existing=contributions.find(x=>x.invitation_id===invite.id&&x.operation_id===body.p_operation);
+    if(existing)return existing.id;
     const id='60000000-0000-4000-8000-'+String(contributions.length+1).padStart(12,'0');
-    contributions.push({id,invitation_id:invite.id,record_id:record.id,version:1,person_id:personId,
+    contributions.push({id,invitation_id:invite.id,operation_id:body.p_operation,record_id:record.id,version:1,person_id:personId,
       title:body.p_title,description:body.p_description,status:'pending'});return id;
   }
   if(path==='rpc/visit_df_review'){
@@ -68,7 +70,9 @@ await handleDfGuest({action:'df-challenge',token},respond(),deps);assert.equal(s
 await assert.rejects(handleDfGuest({action:'df-verify',token,code:'000000'},respond(),deps),/incorrecto/);
 res=respond();await handleDfGuest({action:'df-verify',token,code:lastCode},res,deps);
 const session=res.result.session;assert.equal(session.length,43);
-await handleDfGuest({action:'df-submit',token,session,title:'Cotas',description:'Revisar las cotas antes de hormigonar'},respond(),deps);
+const operation='80000000-0000-4000-8000-000000000001';
+await handleDfGuest({action:'df-submit',token,session,operation,title:'Cotas',description:'Revisar las cotas antes de hormigonar'},respond(),deps);
+await handleDfGuest({action:'df-submit',token,session,operation,title:'Cotas',description:'Revisar las cotas antes de hormigonar'},respond(),deps);
 assert.equal(contributions.length,1);
 const baseline=record.state.content.points[0];
 res=respond();await handleDfOwner({action:'df-list',id:recordId},res,deps,actor,'token');assert.equal(res.result.contributions.length,1);
