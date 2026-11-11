@@ -23,6 +23,7 @@ import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDo
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
 import { InstitutionalDocumentActions } from './InstitutionalDocumentActions';
+import { InstitutionalSelect } from './InstitutionalSelect';
 import ModalPortal from './ModalPortal';
 import MandatoryWorksiteReviewModal from './MandatoryWorksiteReviewModal';
 import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, withdrawMandatoryDocumentV2, getSupervisorMandatorySignedPdfV2, saveMandatoryWorkerSelectionV2, returnMandatoryDocumentV2, reviewSubmittedMandatoryDocumentV2, reopenMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
@@ -965,25 +966,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             <label htmlFor="foreman-documents-fortnight" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">
               Filtrar documentos por quincena
             </label>
-            <select
-              id="foreman-documents-fortnight"
-              value={selectedDocsFortnight}
-              onChange={event => setSelectedDocsFortnight(event.target.value)}
-              className="min-h-[48px] w-full min-w-0 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900 focus:border-[#00548E] focus:outline-none focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            >
-              <option value="">Todas las quincenas</option>
-              {fortnightDocumentGroups.map(group => (
-                <option key={group.key} value={group.key}>
-                  {`${documentFortnightLabel(group.key)} · ${group.total} documentos`}
-                </option>
-              ))}
-            </select>
+            <InstitutionalSelect label="Filtrar documentos por quincena" value={selectedDocsFortnight} onChange={setSelectedDocsFortnight} options={[{value:'',label:'Todas las quincenas'}, ...fortnightDocumentGroups.map(group => ({value:group.key,label:`${documentFortnightLabel(group.key)} · ${group.total} documentos`}))]} />
           </div>
         )}
 
         <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border border-slate-300 pl-9 pr-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"/></div>
-      <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border border-slate-300 px-3 py-2.5 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio, presencia, contratos y prórrogas</option><option value="attendance">Registro diario</option><option value="documents">Documentos normalizados</option><option value="pending">Pendientes de revisar ({pending})</option></select>
+      <InstitutionalSelect label="Filtrar documentos" value={filter} onChange={next => setFilter(next as typeof filter)} className="md:max-w-sm" options={[{value:'all',label:'Todo'},{value:'mandatory',label:'Inicio, presencia, contratos y prórrogas'},{value:'attendance',label:'Registro diario'},{value:'documents',label:'Documentos normalizados'},{value:'pending',label:`Pendientes de revisar (${pending})`}]} />
     </div>
     {bulkDeleteMode&&<div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-800 dark:bg-rose-950/50">
       <div className="flex flex-wrap items-center gap-2">

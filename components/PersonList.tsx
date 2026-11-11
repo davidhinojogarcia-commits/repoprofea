@@ -1,6 +1,7 @@
 import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { PersonList as PersonListView } from './PersonListView';
+import { InstitutionalSelect } from './InstitutionalSelect';
 import { DirectoryStatusFilter } from './DirectoryStatusFilter';
 import type { DirectoryStatusValue } from './DirectoryStatusFilter';
 import { moveWorkersToTrashBulk } from '../src/services/workerImportService';
@@ -140,7 +141,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
     return <button type="button" onClick={() => openParts(person)}
       aria-label={`Consultar partes y avisos de ${person.apellidosNombre}`}
       className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#00548E]/30 bg-blue-50 px-3 py-2 text-xs font-bold text-[#00548E] hover:bg-blue-100 dark:border-blue-700 dark:bg-slate-800 dark:text-blue-200">
-      Partes y avisos {partsLoaded ? <span className="rounded-full bg-[#00548E] px-2 py-0.5 text-white">{num}</span> : <span className="text-[10px] font-normal">Consultar</span>}
+      Partes y avisos {partsLoaded ? <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-[#00548E] px-2 py-0.5 font-extrabold !text-white dark:bg-blue-700 dark:!text-white">{num}</span> : <span className="text-[10px] font-normal">Consultar</span>}
     </button>;
   }, [partsLoaded, relatedRecords, openParts]);
 
@@ -157,15 +158,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
         <div className="flex min-w-0 w-full flex-col justify-center gap-1.5">
           <label htmlFor="directory-parts-filter" className="text-xs font-bold text-slate-700 dark:text-slate-200">Partes y avisos</label>
           <div className="flex min-w-0 w-full items-center gap-2">
-            <select id="directory-parts-filter" aria-label="Partes y avisos" value={partsFilter} disabled={!partsLoaded}
-              onChange={event => setPartsFilter(event.target.value as PartsFilter)}
-              className="min-h-11 min-w-0 w-full flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
-              <option value="all">Todos</option>
-              <option value="with">Con partes o avisos</option>
-              <option value="without">Sin partes ni avisos</option>
-              <option value="pending">Expedientes pendientes</option>
-              <option value="repeated">Avisos reiterados</option>
-            </select>
+            <InstitutionalSelect label="Partes y avisos" value={partsFilter} disabled={!partsLoaded} onChange={next => setPartsFilter(next as PartsFilter)} options={[{value:'all',label:'Todos'},{value:'with',label:'Con partes o avisos'},{value:'without',label:'Sin partes ni avisos'},{value:'pending',label:'Expedientes pendientes'},{value:'repeated',label:'Avisos reiterados'}]} />
             <button type="button" onClick={() => setPartsReload(x => x + 1)} aria-label="Actualizar partes y avisos" title="Actualizar partes y avisos"
               className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold text-[#00548E] hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-slate-800">↻</button>
           </div>

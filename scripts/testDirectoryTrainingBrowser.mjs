@@ -68,16 +68,20 @@ try {
     await page.getByText('Más filtros', { exact: true }).click();
     const year = page.getByLabel('Año de contratación', { exact: true });
     const training = page.getByLabel('Formación', { exact: true });
+    const choose = async (control, label, option) => {
+      await control.click();
+      await page.getByRole('group', { name: label, exact: true }).getByRole('button', { name: option, exact: true }).click();
+    };
     const reportsButton = page.getByRole('button', { name: 'Informes', exact: true });
     assert.equal(await reportsButton.getAttribute('aria-expanded'), 'false');
     assert.equal(await page.getByLabel('Seleccionar informe del Directorio').count(), 0);
-    assert.equal(await page.locator('#directory-parts-filter').count(), 1, 'El filtro de Partes y avisos está en la barra principal');
+    assert.equal(await page.getByRole('button', { name: 'Partes y avisos', exact: true }).count(), 1, 'El filtro de Partes y avisos está en la barra principal');
     assert.equal(await page.getByText('Filtrar por partes y avisos · uso restringido').count(), 0, 'No debe existir el panel antiguo');
     await reportsButton.click();
     assert.equal(await reportsButton.getAttribute('aria-expanded'), 'true');
-    await page.getByLabel('Seleccionar informe del Directorio').selectOption('medical');
+    await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Reconocimientos médicos');
     assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1);
-    await page.getByLabel('Seleccionar informe del Directorio').selectOption('encargados');
+    await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Relación de trabajadores para encargados');
     assert.equal(await page.getByRole('button', { name: 'WhatsApp', exact: true }).count(), 1);
     for (const name of ['Informes','PDF','Excel','WhatsApp']) {
       const button = page.getByRole('button', { name, exact: true });
@@ -91,8 +95,8 @@ try {
     }
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Sin desbordamiento de informes ni filtros: ' + width);
     await reportsButton.click();
-    await year.selectOption('2026');
-    await training.selectOption('trained');
+    await choose(year, 'Año de contratación', '2026');
+    await choose(training, 'Formación', 'Con formación');
     await scope([1]);
     assert.equal(await page.getByText('Ana Formada', { exact: true }).count(), 1);
     for (const layout of ['table', 'compact', 'cards']) {
@@ -104,7 +108,7 @@ try {
     await page.locator('#btn-view-compact').click();
     // Selecting a former result must not leak into exports after a filter change.
     await page.locator('#selectAllVisible').check();
-    await training.selectOption('pending');
+    await choose(training, 'Formación', 'Sin formación / pendiente');
     await scope([2, 4, 5]);
     await page.waitForFunction(() => window.__profeaDirectoryExportScope.hasSelection === false);
     await reportsButton.click();
@@ -116,14 +120,14 @@ try {
     await search.fill('sin coincidencias');await scope([]);
     assert.equal(await page.getByRole('button', { name: 'Escanear carnet con este dispositivo', exact: true }).isVisible(), true);
     await search.fill('');await scope([2, 4, 5]);
-    await year.selectOption('2025');await scope([]);
-    await training.selectOption('trained');await scope([3]);
-    await year.selectOption('2024');await scope([6]);
-    await year.selectOption('2023');await training.selectOption('pending');await scope([7]);
-    await year.selectOption('unknown');await scope([8]);
+    await choose(year, 'Año de contratación', '2025');await scope([]);
+    await choose(training, 'Formación', 'Con formación');await scope([3]);
+    await choose(year, 'Año de contratación', '2024');await scope([6]);
+    await choose(year, 'Año de contratación', '2023');await choose(training, 'Formación', 'Sin formación / pendiente');await scope([7]);
+    await choose(year, 'Año de contratación', 'Sin año registrado');await scope([8]);
     await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
-    await year.selectOption('2026');await training.selectOption('pending');
+    await choose(year, 'Año de contratación', '2026');await choose(training, 'Formación', 'Sin formación / pendiente');
     await page.locator('summary[aria-label="Aptitud médica"]').click();
     await page.getByText('No aptos', { exact: true }).click();
     await scope([5]);
