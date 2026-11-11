@@ -616,10 +616,10 @@ export const PersonList: React.FC<PersonListProps> = ({
           <section id="directory-reports-panel" aria-label="Informes y comunicaciones del Directorio"
             className="mt-3 min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/60 sm:p-4">
             <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2 lg:items-end">
-              <label className="flex min-w-0 flex-col gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                Seleccionar informe
+              <div className="flex min-w-0 flex-col gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                <span>Seleccionar informe</span>
                 <InstitutionalSelect label="Seleccionar informe del Directorio" value={reportType} onChange={next => setReportType(next as typeof reportType)} options={[{value:'encargados',label:'Relación de trabajadores para encargados'},{value:'medical',label:'Reconocimientos médicos'},{value:'footwear',label:'Resumen de calzado'},{value:'training',label:'Formación PRL 20 horas'}]} />
-              </label>
+              </div>
               <div className="min-w-0">
                 <div className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">Exportar o compartir</div>
                 <div data-encargados-relation-row={reportType === 'encargados' ? '1' : undefined} className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
@@ -675,15 +675,15 @@ export const PersonList: React.FC<PersonListProps> = ({
         <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Obra</span><MultiSearchableDropdown options={savedObras} selectedValues={selectedObraFilter} onChange={value => { setSelectedObraFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<MapPin className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
           <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Periodo / quincena</span><MultiSearchableDropdown options={uniqueQuincenas} selectedValues={selectedQuincenaFilter} onChange={value => { setSelectedQuincenaFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<Clock className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Año de contratación<InstitutionalSelect label="Año de contratación" value={contractYearFilter} onChange={next => {setContractYearFilter(next);setSelectedIds([]);}} options={[{value:'all',label:'Todos los años'}, ...contractYears.map(year => ({value:String(year),label:String(year)})), {value:'unknown',label:'Sin año registrado'}]} /></label>
+          <div className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"><span>Año de contratación</span><InstitutionalSelect label="Año de contratación" value={contractYearFilter} onChange={next => {setContractYearFilter(next);setSelectedIds([]);}} options={[{value:'all',label:'Todos los años'}, ...contractYears.map(year => ({value:String(year),label:String(year)})), {value:'unknown',label:'Sin año registrado'}]} /></div>
           {renderMedicalFilter && <div className="min-w-0">{renderMedicalFilter}</div>}
         </div>
         <details className="group mt-3 min-w-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200 [&::-webkit-details-marker]:hidden"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/> Más filtros</summary>
           <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Formación<InstitutionalSelect label="Formación" value={trainingFilter} onChange={next => {setTrainingFilter(next as DirectoryTrainingFilter);setSelectedIds([]);}} options={[{value:'all',label:'Todos los estados'},{value:'trained',label:'Con formación'},{value:'pending',label:'Sin formación / pendiente'}]} /></label>
+            <div className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"><span>Formación</span><InstitutionalSelect label="Formación" value={trainingFilter} onChange={next => {setTrainingFilter(next as DirectoryTrainingFilter);setSelectedIds([]);}} options={[{value:'all',label:'Todos los estados'},{value:'trained',label:'Con formación'},{value:'pending',label:'Sin formación / pendiente'}]} /></div>
             {renderPartsFilter && <div className="min-w-0">{renderPartsFilter}</div>}
-            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Repetidores<InstitutionalSelect label="Repetidores" value={showOnlyRepeaters ? 'only' : 'all'} onChange={next => {setShowOnlyRepeaters(next==='only');setSelectedIds([]);}} options={[{value:'all',label:'Todos'},{value:'only',label:'Solo repetidores'}]} /></label>
+            <div className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"><span>Repetidores</span><InstitutionalSelect label="Repetidores" value={showOnlyRepeaters ? 'only' : 'all'} onChange={next => {setShowOnlyRepeaters(next==='only');setSelectedIds([]);}} options={[{value:'all',label:'Todos'},{value:'only',label:'Solo repetidores'}]} /></div>
           </div>
         </details>
         {(trainingFilter !== 'all' || contractYearFilter !== 'all' || showOnlyRepeaters || extendedFiltersActive) && <p role="status" className="mt-3 text-xs text-slate-600 dark:text-slate-300">Hay filtros activos. Usa «Limpiar filtros» para restablecer el Directorio.</p>}
