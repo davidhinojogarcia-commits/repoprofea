@@ -91,15 +91,15 @@ export function VisitDfReviewPanel({record,dirty,onUpdated,onPendingChange}:{rec
     await navigator.clipboard.writeText(link);
     setMessage('Enlace copiado. Envíalo únicamente a la Dirección Facultativa indicada.');
   });
-  return <details ref={detailsRef} onToggle={event=>{if(event.currentTarget.open)void load().catch((e:any)=>setError(e?.message||'No se pudieron consultar las aportaciones.'));}} aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+  return <details open ref={detailsRef} onToggle={event=>{if(event.currentTarget.open)void load().catch((e:any)=>setError(e?.message||'No se pudieron consultar las aportaciones.'));}} aria-label="Colaboración con Dirección Facultativa" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
     <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm font-black text-[#00548E] dark:text-blue-200">
-      <span>Aportaciones de Dirección Facultativa · Revisar e integrar</span>
+      <span>Invitar a DF a redactar · Revisar aportaciones</span>
       <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-xs dark:bg-slate-900">{items.filter(p=>p.status==='pending').length} pendientes</span>
     </summary>
     <div className="space-y-3 border-t border-slate-200 p-3 dark:border-slate-700">
-    <p className="text-sm text-slate-700 dark:text-slate-200">Las aportaciones recibidas se guardan junto a este borrador. Incorpora o descarta cada propuesta antes de cerrar el acta para firma. Tus puntos originales se conservan y las órdenes siguen su circuito de autorización.</p>
+    <p className="text-sm font-semibold text-[#00548E] dark:text-blue-200">La DF abre su enlace personal sin código de verificación, redacta y envía sus puntos. Sus aportaciones aparecen aquí para que el supervisor las incorpore al acta.</p><p className="text-sm text-slate-700 dark:text-slate-200">Las aportaciones recibidas se guardan junto a este borrador. Incorpora o descarta cada propuesta antes de cerrar el acta para firma. Tus puntos originales se conservan y las órdenes siguen su circuito de autorización.</p>
     {dirty&&<p role="status" className="text-sm font-bold text-amber-800 dark:text-amber-300">Guarda los cambios locales para habilitar la colaboración y evitar sobrescribir datos.</p>}
-    {!people.length?<p className="text-sm">Añade una arquitecta, arquitecto o Dirección Facultativa con correo en Participantes y guarda el borrador.</p>:<>
+    {!people.length?<p className="text-sm">Añade la Dirección Facultativa con correo en «Participantes y destinatarios» y guarda el borrador para habilitar la invitación.</p>:<>
       <label className="block text-xs font-bold">Dirección Facultativa autorizada
         <select className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white" value={recipient} onChange={e=>{setSelected(e.target.value);setLink('');}}>
           {people.map(p=><option key={p.id} value={p.id}>{p.firstName} {p.lastName} · {p.email}</option>)}
