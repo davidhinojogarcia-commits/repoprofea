@@ -96,6 +96,13 @@ try{
  }
  await reopenedContext.close();
 assert.equal(apiLog.filter(x=>x.action==='create').length,1,'autosave creates one acta');
+ const dfSection=page.getByRole('region',{name:'Participación de Dirección Facultativa en la redacción'});
+ assert.equal(await dfSection.count(),1,'DF collaboration stays discoverable in the acta editor');
+ const dfDisclosure=dfSection.getByLabel('Colaboración con Dirección Facultativa');
+ assert.equal(await dfDisclosure.count(),1,'DF invitation and contributions panel is mounted');
+ assert.equal(await dfDisclosure.evaluate(el=>el.open),true,'DF invitation is expanded by default');
+ assert.equal(await dfSection.getByText('Invitar a DF a redactar · Revisar aportaciones').count(),1,'invitation has a visible descriptive heading');
+
  const idle=apiLog.length;await page.waitForTimeout(4100);assert.equal(apiLog.length,idle,'no polling or repeated unchanged autosaves');
  await page.evaluate(()=>{window.delayVisitLocalCompletion=true;});
  await page.getByLabel('Descripción del punto 2',{exact:true}).fill('Copia local terminada después de confirmar el servidor.');
