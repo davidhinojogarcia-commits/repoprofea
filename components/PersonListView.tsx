@@ -14,7 +14,6 @@ import { PersonTable } from './PersonTable';
 import { CompactPersonCard } from './CompactPersonCard';
 import { BulkShareButton } from './BulkShareButton';
 import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
-import { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } from '../src/lib/administrativeRelationExport';
 import { splitRelationWorkersByWork } from '../src/lib/relationExportOrdering';
 import { directoryContractYear, matchesDirectoryTraining, type DirectoryTrainingFilter } from '../src/lib/directoryTrainingFilter';
 
@@ -452,6 +451,8 @@ export const PersonList: React.FC<PersonListProps> = ({
       return;
     }
     try {
+      // Generador pesado: carga diferida para no ralentizar ni bloquear el Directorio.
+      const { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } = await import('../src/lib/administrativeRelationExport');
       for (const group of splitRelationWorkersByWork(peopleToExport)) {
         if (format === 'pdf') {
           const { doc, filename } = prepareAdministrativeRelationPDF(group.workers);
