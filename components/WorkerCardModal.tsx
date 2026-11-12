@@ -109,6 +109,22 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
       setSharing(false);
     }
   };
+  const openDuplexForPrinting=()=>{
+    if(!card)return;
+    // A PDF cannot force printer duplex settings. Open the TWO-page PDF intact
+    // so the user can choose the printer's real two-sided / long-edge option.
+    const url=URL.createObjectURL(card.duplexPdf);
+    const tab=window.open(url,'_blank');
+    if(!tab){
+      URL.revokeObjectURL(url);
+      downloadWorkerCard(card.duplexPdf,card.duplexName);
+      setNotice('El navegador ha descargado el PDF. Ábrelo e imprime TODAS las páginas, activando doble cara y borde largo en la impresora.');
+      return;
+    }
+    setNotice('PDF abierto: imprime TODAS las páginas en A4, selecciona «Doble cara» y «Voltear por borde largo». Si eliges «Una cara», saldrán dos hojas.');
+    // Avoid revoking the Blob URL before the print reader has loaded it.
+    window.setTimeout(()=>URL.revokeObjectURL(url),30*60*1000);
+  };
   const printSelected=async()=>{
     if(bulkBusy)return;
     const unique=new Set(selectedIds);
@@ -163,26 +179,41 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
             <button type="button" onClick={() => downloadWorkerCard(card.image, card.image.name)} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-bold"><Download className="h-4 w-4" />Descargar imagen</button>
           </div>
           <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-            <h3 className="text-sm font-extrabold text-[#00548E] dark:text-blue-300">Imprimir el carnet</h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300">A4 vertical · doble cara · voltear por borde largo · escala 100 % (tamaño real) · desactivar «Ajustar a página». Recorta por las marcas exteriores. Haz primero una prueba de calibración con tu impresora.</p>
+            <h3 className="text-sm font-extrabold text-[#00548E] dark:text-blue-300">Imprimir por delante y por detrás en UNA hoja A4</h3>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">El PDF tiene dos páginas: la 1 es el anverso y la 2 el reverso. Debes imprimirlas en <strong>la misma hoja física</strong>.</p>
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-200">
+              <li>Abre el PDF con el botón siguiente.</li>
+              <li>En la impresora, activa <strong>«Doble cara»</strong> y <strong>«Voltear por borde largo»</strong>.</li>
+              <li>Selecciona <strong>todas las páginas, A4 vertical y escala 100 %</strong> (sin ajustar).</li>
+            </ol>
+            <p className="text-xs text-amber-800 dark:text-amber-200">Si salen dos hojas separadas, la impresora está configurada en «Una cara» o no dispone de impresión dúplex. El PDF no puede cambiar automáticamente ese ajuste de la impresora.</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button type="button" onClick={() => downloadWorkerCard(card.duplexPdf, card.duplexName)}
+              <button type="button" onClick={openDuplexForPrinting}
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70]">
-                <Printer className="h-4 w-4" /> PDF A4 doble cara
+                <Printer className="h-4 w-4" /> Abrir PDF para imprimir a doble cara
+              </button>
+              <button type="button" onClick={() => downloadWorkerCard(card.duplexPdf, card.duplexName)}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#00548E] px-4 py-3 text-sm font-bold text-[#00548E] dark:text-blue-300">
+                <Download className="h-4 w-4" /> Descargar PDF de ambas caras
               </button>
               <button type="button" onClick={() => { const proof=generateWorkerCardCalibration(); downloadWorkerCard(proof.doc.output('blob'),proof.filename); }}
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold dark:border-slate-600">
                 <Download className="h-4 w-4" /> Prueba de calibración
               </button>
-              <button type="button" onClick={() => downloadWorkerCard(card.printPdf, card.printName)}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70]">
-                <Printer className="h-4 w-4" /> PDF tamaño DNI · A4
-              </button>
-              <button type="button" onClick={() => downloadWorkerCard(card.pdf, card.pdfName)}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold dark:border-slate-600">
-                <Download className="h-4 w-4" /> PDF original
-              </button>
             </div>
+            <details className="rounded-lg border border-slate-200 p-2 dark:border-slate-600">
+              <summary className="cursor-pointer text-xs font-bold">Otras opciones (solo una cara)</summary>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => downloadWorkerCard(card.printPdf, card.printName)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold">
+                  <Download className="h-4 w-4" /> PDF tamaño DNI · A4 (solo anverso)
+                </button>
+                <button type="button" onClick={() => downloadWorkerCard(card.pdf, card.pdfName)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold">
+                  <Download className="h-4 w-4" /> PDF original (solo anverso)
+                </button>
+              </div>
+            </details>
           </div>
           <details className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700" open={bulkOpen} onToggle={event=>setBulkOpen(event.currentTarget.open)}>
             <summary className="cursor-pointer text-sm font-extrabold text-[#00548E] dark:text-blue-300">Imprimir varios carnets · selección autorizada</summary>
