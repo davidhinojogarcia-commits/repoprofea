@@ -14,6 +14,8 @@ import { PersonTable } from './PersonTable';
 import { CompactPersonCard } from './CompactPersonCard';
 import { BulkShareButton } from './BulkShareButton';
 import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
+import { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } from '../src/lib/administrativeRelationExport';
+import { splitRelationWorkersByWork } from '../src/lib/relationExportOrdering';
 import { directoryContractYear, matchesDirectoryTraining, type DirectoryTrainingFilter } from '../src/lib/directoryTrainingFilter';
 
 interface PersonListProps {
@@ -128,7 +130,7 @@ export const PersonList: React.FC<PersonListProps> = ({
   const [contractYearFilter, setContractYearFilter] = useState('all');
   const [showImportModal, setShowImportModal] = useState(false);
   const [showReports, setShowReports] = useState(false);
-  const [reportType, setReportType] = useState<'encargados' | 'medical' | 'footwear' | 'training'>('encargados');
+  const [reportType, setReportType] = useState<'encargados' | 'administrative' | 'medical' | 'footwear' | 'training'>('encargados');
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [viewLayout, setViewLayout] = useState<'table' | 'compact' | 'cards'>(() => {
     try {
@@ -444,6 +446,32 @@ export const PersonList: React.FC<PersonListProps> = ({
     [isSelectionActive, people, selectedIdSet, filteredPeople],
   );
 
+  const exportAdministrativeRelation = async (format: 'pdf' | 'excel') => {
+    if (!peopleToExport.length) {
+      onToast?.('No hay trabajadores dentro de los filtros actuales para exportar.', 'error');
+      return;
+    }
+    try {
+      for (const group of splitRelationWorkersByWork(peopleToExport)) {
+        if (format === 'pdf') {
+          const { doc, filename } = prepareAdministrativeRelationPDF(group.workers);
+          const url = URL.createObjectURL(doc.output('blob'));
+          const link = document.createElement('a');
+          link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+        } else {
+          const { buffer, filename } = await prepareAdministrativeRelationExcel(group.workers);
+          const url = URL.createObjectURL(new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+          const link = document.createElement('a');
+          link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+        }
+      }
+    } catch (error: any) {
+      onToast?.(error?.message || 'No se pudo generar la relación administrativa.', 'error');
+    }
+  };
+
   const administrativeExportScopeIds = useMemo(
     () => peopleToExport.map(person => person.id),
     [peopleToExport],
@@ -618,13 +646,14 @@ export const PersonList: React.FC<PersonListProps> = ({
             <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2 lg:items-end">
               <div className="flex min-w-0 flex-col gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
                 <span>Seleccionar informe</span>
-                <InstitutionalSelect label="Seleccionar informe del Directorio" value={reportType} onChange={next => setReportType(next as typeof reportType)} options={[{value:'encargados',label:'Relación de trabajadores para encargados'},{value:'medical',label:'Reconocimientos médicos'},{value:'footwear',label:'Resumen de calzado'},{value:'training',label:'Formación PRL 20 horas'}]} />
+                <InstitutionalSelect label="Seleccionar informe del Directorio" value={reportType} onChange={next => setReportType(next as typeof reportType)} options={[{value:'encargados',label:'Relación de trabajadores para encargados'},{value:'administrative',label:'Relación administrativa de trabajadores'},{value:'medical',label:'Reconocimientos médicos'},{value:'footwear',label:'Resumen de calzado'},{value:'training',label:'Formación PRL 20 horas'}]} />
               </div>
               <div className="min-w-0">
                 <div className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">Exportar o compartir</div>
                 <div data-encargados-relation-row={reportType === 'encargados' ? '1' : undefined} className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
                   <button type="button" onClick={() => {
-                    if(reportType === 'encargados') onExportPDF(peopleToExport);
+                    if(reportType === 'administrative') void exportAdministrativeRelation('pdf');
+                    else if(reportType === 'encargados') onExportPDF(peopleToExport);
                     else if(reportType === 'medical') onExportRRMMPDF(peopleToExport);
                     else if(reportType === 'footwear') onExportCalzadoPDF(peopleToExport);
                     else onExportPRLPDF(peopleToExport);
@@ -632,7 +661,8 @@ export const PersonList: React.FC<PersonListProps> = ({
                     <FileText className="h-4 w-4 shrink-0" /> PDF
                   </button>
                   <button type="button" onClick={() => {
-                    if(reportType === 'encargados') onExport(peopleToExport);
+                    if(reportType === 'administrative') void exportAdministrativeRelation('excel');
+                    else if(reportType === 'encargados') onExport(peopleToExport);
                     else if(reportType === 'medical') onExportRRMMExcel(peopleToExport);
                     else if(reportType === 'footwear') onExportCalzadoExcel(peopleToExport);
                     else onExportPRLExcel(peopleToExport);
@@ -645,7 +675,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                       <MessageCircle className="h-4 w-4 shrink-0" /> WhatsApp
                     </button>
                   ) : (
-                    <button type="button" onClick={() => void sendDirectoryCommunication(reportType as 'medical' | 'footwear' | 'training', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                    <button type="button" onClick={() => void sendDirectoryCommunication(reportType as 'administrative' | 'medical' | 'footwear' | 'training', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
                       className="col-span-2 inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2 py-3 text-sm font-bold text-sky-900 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200 sm:col-span-1">
                       <Mail className="h-4 w-4 shrink-0" /> Mail
                     </button>
