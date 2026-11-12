@@ -104,7 +104,7 @@
   color: #ffffff !important;
   stroke: #ffffff !important;
 }
-#directorio-section [data-parts-count="true"] {
+[data-parts-count="true"] {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
 }
