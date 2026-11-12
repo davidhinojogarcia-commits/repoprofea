@@ -40,6 +40,7 @@ try {
  const originalSrc=await img.getAttribute('src');
  await page.getByRole('button',{name:'Ver cara trasera'}).click();
  assert.notEqual(await img.getAttribute('src'),originalSrc,'back preview is a separate image');
+ await page.waitForFunction(()=>{const i=document.querySelector('img');return Boolean(i?.complete&&i.naturalWidth>=900);},{timeout:10000});
  assert(await img.evaluate(i=>i.complete&&i.naturalWidth>=900),'rendered ID-1 reverse preview');
  await page.getByRole('button',{name:'Ver carnet',exact:true}).click();
  assert.equal(await img.getAttribute('src'),originalSrc,'front preview remains unchanged');
