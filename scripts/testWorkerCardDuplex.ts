@@ -25,7 +25,8 @@ for(const count of [1,2,6,8,9]){
   const {doc}=generateWorkerCardDuplexSheet(cards);
   assert.equal(doc.getNumberOfPages(),Math.ceil(count/8)*2,'Each physical sheet has two pages');
   const bytes=new Uint8Array(doc.output('arraybuffer'));
-  const pdf=await getDocument({data:bytes,useSystemFonts:true,disableFontFace:true}).promise;
+  const loadingTask=getDocument({data:bytes,useSystemFonts:true,disableFontFace:true});
+  const pdf=await loadingTask.promise;
   assert.equal(pdf.numPages,Math.ceil(count/8)*2);
   for(let page=1;page<=pdf.numPages;page++){
     const p=await pdf.getPage(page),viewport=p.getViewport({scale:1});
@@ -36,7 +37,7 @@ for(const count of [1,2,6,8,9]){
       assert.match(strings,/PROFEA/,'Reverse page includes institutional text');
     }
   }
-  await pdf.destroy();
+  await loadingTask.destroy();
 }
 assert.throws(()=>generateWorkerCardDuplexSheet([]),/Selecciona/);
 assert.throws(()=>generateWorkerCardDuplexSheet([{id:1,frontPng:pixel},{id:1,frontPng:pixel}]),/duplicados/);
