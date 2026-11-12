@@ -65,6 +65,24 @@ try {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
+    // Regresión visual: cruces de selección y contador deben contrastar en ambos temas.
+    const period = page.getByText('Periodo / quincena', {exact:true}).locator('..').locator('[role="button"][aria-expanded]');
+    await period.click();
+    await page.getByRole('button', {name:'1ª Enero 2026', exact:true}).click();
+    const removePeriod = page.getByRole('button', {name:'Quitar filtro 1ª Enero 2026',exact:true});
+    await removePeriod.waitFor();
+    await page.getByText('Filtros del directorio', {exact:true}).click(); // Cerrar fuera sin activar accidentalmente la X.
+    for(const theme of ['light','dark']){
+      await page.evaluate(theme => document.documentElement.classList.toggle('dark',theme==='dark'),theme);
+      assert.equal(await removePeriod.locator('svg').evaluate(el=>getComputedStyle(el).stroke),theme==='light'?'rgb(0, 63, 112)':'rgb(255, 255, 255)','Cruz legible '+theme);
+      await page.locator('#btn-view-compact').click();
+      const counter=page.locator('[data-parts-count="true"]').first();
+      await counter.waitFor();
+      assert.equal(await counter.evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)','Contador blanco sobre azul '+theme);
+    }
+    await page.evaluate(()=>document.documentElement.classList.remove('dark'));
+    await removePeriod.click();
+    await scope([1, 2, 3, 4, 5, 6, 7, 8]);
     assert.equal(await page.getByRole('alert').filter({ hasText: 'ALERTA DE PREVENCIÓN DE CONTRATACIÓN' }).count(), 0, 'medical warning hidden until No aptos is selected');
     await page.getByText('Más filtros', { exact: true }).click();
     const year = page.getByLabel('Año de contratación', { exact: true });

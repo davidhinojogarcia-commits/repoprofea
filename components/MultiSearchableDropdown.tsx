@@ -98,8 +98,8 @@ export const MultiSearchableDropdown: React.FC<MultiSearchableDropdownProps> = (
                   className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00548E]/10 text-[#00548E] text-[11px] font-bold rounded-md border border-[#00548E]/20 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60"
                 >
                   {val}
-                  <button type="button" aria-label={`Quitar filtro ${val}`} className="inline-flex min-h-6 min-w-6 items-center justify-center rounded hover:bg-[#00548E]/10"
-                    onClick={(e) => removeValue(e, val)}><X aria-hidden="true" className="h-3 w-3" /></button>
+                  <button type="button" aria-label={`Quitar filtro ${val}`} className="directory-filter-remove inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-blue-200 bg-white text-[#003F70] hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#00548E] dark:border-blue-600 dark:bg-slate-800 dark:text-white dark:hover:bg-blue-900"
+                    onClick={(e) => removeValue(e, val)}><X aria-hidden="true" className="h-4 w-4 stroke-[2.5]" /></button>
                 </span>
               ))}
             </div>
