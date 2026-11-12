@@ -91,3 +91,20 @@
   background-color: #450a0a !important;
   color: #fecaca !important;
 }
+
+/* Contrast of selected period removal icons and parts/alerts counters. */
+#directorio-section .directory-filter-remove,
+#directorio-section .directory-filter-remove svg {
+  color: #003f70 !important;
+  stroke: #003f70 !important;
+  opacity: 1 !important;
+}
+.dark #directorio-section .directory-filter-remove,
+.dark #directorio-section .directory-filter-remove svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+#directorio-section [data-parts-count="true"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
