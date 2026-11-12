@@ -141,7 +141,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
     return <button type="button" onClick={() => openParts(person)}
       aria-label={`Consultar partes y avisos de ${person.apellidosNombre}`}
       className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#00548E]/30 bg-blue-50 px-3 py-2 text-xs font-bold text-[#00548E] hover:bg-blue-100 dark:border-blue-700 dark:bg-slate-800 dark:text-blue-200">
-      Partes y avisos {partsLoaded ? <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-[#00548E] px-2 py-0.5 font-extrabold !text-white dark:bg-blue-700 dark:!text-white">{num}</span> : <span className="text-[10px] font-normal">Consultar</span>}
+      Partes y avisos {partsLoaded ? <span data-parts-count="true" className="inline-flex min-w-7 items-center justify-center rounded-full bg-[#00548E] px-2 py-0.5 font-extrabold text-white dark:bg-blue-700">{num}</span> : <span className="text-[10px] font-normal">Consultar</span>}
     </button>;
   }, [partsLoaded, relatedRecords, openParts]);
 
