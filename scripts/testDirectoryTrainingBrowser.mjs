@@ -26,7 +26,7 @@ const workers=[
  {...base,id:8,apellidosNombre:'Hugo Sin Año',dni:'88888888H',formacion:'Desconocido',periodoInicio:'',quincena:'',fechaRegistro:''},
 ];
 window.exports=[];window.scanOpens=0;window.pairOpens=0;window.gapi={};window.google={accounts:{}};
-function App(){const[people,setPeople]=useState(workers);const[search,setSearch]=useState('');const[obra,setObra]=useState(['Todas']);const[quincena,setQuincena]=useState(['Todas']);window.replacePeople=setPeople;return <PersonList accountId="supervisor-a" people={people} savedObras={['Obra A','Obra B']} searchTerm={search} setSearchTerm={setSearch} selectedObraFilter={obra} setSelectedObraFilter={setObra} selectedQuincenaFilter={quincena} setSelectedQuincenaFilter={setQuincena} onEdit={()=>{}} onDelete={()=>{}} onExport={()=>{}} onExportPDF={p=>window.exports.push(p.map(w=>w.id))} onExportRRMMExcel={()=>{}} onExportRRMMPDF={()=>{}} onExportPRLExcel={()=>{}} onExportPRLPDF={()=>{}} onExportCalzadoExcel={()=>{}} onExportCalzadoPDF={()=>{}} onEmail={()=>{}} onImport={()=>{}} onGenerateIDCard={()=>{}} onExportHistoryPDF={()=>{}}/>}
+function App(){const[people,setPeople]=useState(workers);const[search,setSearch]=useState('');const[obra,setObra]=useState(['Todas']);const[quincena,setQuincena]=useState(['Todas']);window.replacePeople=setPeople;return <PersonList accountId="supervisor-a" people={people} savedObras={['Obra A','Obra B']} searchTerm={search} setSearchTerm={setSearch} selectedObraFilter={obra} setSelectedObraFilter={setObra} selectedQuincenaFilter={quincena} setSelectedQuincenaFilter={setQuincena} onEdit={()=>{}} onDelete={()=>{}} onExport={()=>{}} onExportPDF={p=>window.exports.push(p.map(w=>w.id))} onExportRRMMExcel={()=>{}} onExportRRMMPDF={()=>{}} onExportPRLExcel={()=>{}} onExportPRLPDF={()=>{}} onExportCalzadoExcel={()=>{}} onExportCalzadoPDF={()=>{}} onEmail={()=>{}} onImport={()=>{}} onGenerateIDCard={()=>{}} onExportHistoryPDF={()=>{}} onToast={(message,type)=>{window.lastToast={message,type}}}/>}
 createRoot(document.getElementById('root')).render(<App/>);`;
 const stubs = {
   PartsPanel: 'export default function PartsPanel(){return null}',
@@ -86,10 +86,10 @@ try {
     assert.equal(await page.locator('[data-admin-relation-row="1"]').count(), 0, 'Sin fila dinámica administrativa duplicada');
     const adminPdf = page.waitForEvent('download', {timeout: 20000});
     await page.getByRole('button', { name: 'PDF', exact: true }).click();
-    assert.match((await adminPdf).suggestedFilename(), /\.pdf$/i, 'Exportación administrativa en PDF');
+    assert.match((await adminPdf.catch(async () => { throw new Error('PDF administrativo no descargado: ' + JSON.stringify(await page.evaluate(() => window.lastToast)) + ' / ' + JSON.stringify(errors)) })).suggestedFilename(), /\.pdf$/i, 'Exportación administrativa en PDF');
     const adminExcel = page.waitForEvent('download', {timeout: 20000});
     await page.getByRole('button', { name: 'Excel', exact: true }).click();
-    assert.match((await adminExcel).suggestedFilename(), /\.xlsx$/i, 'Exportación administrativa en Excel');
+    assert.match((await adminExcel.catch(async () => { throw new Error('Excel administrativo no descargado: ' + JSON.stringify(await page.evaluate(() => window.lastToast)) + ' / ' + JSON.stringify(errors)) })).suggestedFilename(), /\.xlsx$/i, 'Exportación administrativa en Excel');
     await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Reconocimientos médicos');
     assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1);
     await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Relación de trabajadores para encargados');
