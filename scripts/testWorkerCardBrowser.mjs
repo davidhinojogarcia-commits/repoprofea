@@ -61,10 +61,15 @@ assert(!text.includes('CONTRATO'));assert(!text.includes('12345678Z'),'No expone
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF tamaño DNI · A4 (solo anverso)'}).click();assert((await dl).suggestedFilename().includes('DNI_A4'));assert((await dl).suggestedFilename().endsWith('.pdf'));
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF de ambas caras'}).click();
  const duplexDownload=await dl;assert(duplexDownload.suggestedFilename().includes('DOBLE_CARA'));
+ await page.evaluate(()=>{
+   const originalOpen=window.open.bind(window);
+   window.open=(url,target)=>{window.lastDuplexPrintOpen={url:String(url),target};return originalOpen(url,target)};
+ });
  const popupPromise=page.waitForEvent('popup');
  await page.getByRole('button',{name:'Abrir PDF para imprimir a doble cara'}).click();
  const openedPdf=await popupPromise;
- assert((await openedPdf.url()).startsWith('blob:'),'duplex print opens a single PDF in a separate preview');
+ const printOpen=await page.evaluate(()=>window.lastDuplexPrintOpen);
+ assert(printOpen?.url.startsWith('blob:')&&printOpen?.target==='_blank','print action opens generated duplex PDF in a separate tab');
  await openedPdf.close();
   const duplexPath=await duplexDownload.path();
  const duplexPdf=await PDFDocument.load(await fs.readFile(duplexPath));
