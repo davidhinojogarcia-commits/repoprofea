@@ -18,6 +18,9 @@ try {
  const page=await browser.newPage({viewport:{width:390,height:844}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(`http://127.0.0.1:${server.address().port}`);
+ await page.waitForFunction(()=>Boolean(document.querySelector('[role="img"],img,[role="alert"]')),{timeout:30000});
+ const startupError=await page.getByRole('alert').allTextContents();
+ assert.equal(startupError.length,0,'Worker card must render without error: '+startupError.join(' | '));
  const img=page.getByRole('img');await img.waitFor();
  assert(await img.evaluate(i=>i.complete&&i.naturalWidth>1000&&Math.abs(i.naturalWidth/i.naturalHeight-95/62)<0.01));
  for(const width of [390,820,1440]){
