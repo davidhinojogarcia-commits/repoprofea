@@ -3,20 +3,25 @@ import { Download, Loader2, Share2, Printer, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import type { Person } from '../types';
 import { downloadWorkerCard, generateWorkerCard, generateDniSizedPrintSheet, shareWorkerCard } from '../src/lib/workerCard';
+import { generateWorkerCardBack, generateWorkerCardDuplexSheet, generateWorkerCardCalibration } from '../src/lib/workerCardDuplex';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import QRCode from 'qrcode';
 import { ensureWorkerQrShare } from '../src/services/workerQrShareService';
 
 export default function WorkerCardModal({ person, onClose }: { person: Person; onClose: () => void }) {
-  const [card, setCard] = useState<{ url: string; image: File; pdf: Blob; pdfName: string; printPdf: Blob; printName: string } | null>(null);
+  const [card, setCard] = useState<{ url: string; backUrl: string; image: File; pdf: Blob; pdfName: string; printPdf: Blob; printName: string; duplexPdf: Blob; duplexName: string; backPdf: Blob } | null>(null);
+  const [viewBack, setViewBack] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [sharing, setSharing] = useState(false);
   useEffect(() => {
     let cancelled = false;
     let url = '';
+    let backUrl = '';
     let task: import('pdfjs-dist').PDFDocumentLoadingTask | undefined;
+    let backTask: import('pdfjs-dist').PDFDocumentLoadingTask | undefined;
     setCard(null);
+    setViewBack(false);
     setError('');
     void (async () => {
       const token = await ensureWorkerQrShare(Number(person.id));
@@ -43,14 +48,34 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
       if (cancelled) return;
       const image = new File([blob], filename.replace(/\.pdf$/, '.png'), { type: 'image/png' });
       url = URL.createObjectURL(image);
-      const { doc: printDoc, filename: printName } = generateDniSizedPrintSheet(canvas.toDataURL('image/png'));
-      setCard({ url, image, pdf: doc.output('blob'), pdfName: filename, printPdf: printDoc.output('blob'), printName });
+      const frontPng=canvas.toDataURL('image/png');
+      const { doc: printDoc, filename: printName } = generateDniSizedPrintSheet(frontPng);
+      const { doc: duplexDoc, filename: duplexName } = generateWorkerCardDuplexSheet([{id:person.id,frontPng}]);
+      const reverseDoc=generateWorkerCardBack();
+      backTask=pdfjs.getDocument({data:new Uint8Array(reverseDoc.output('arraybuffer')),useSystemFonts:true});
+      const reversePdf=await backTask.promise;
+      const reversePage=await reversePdf.getPage(1);
+      const reverseViewport=reversePage.getViewport({scale:4});
+      const reverseCanvas=document.createElement('canvas');
+      reverseCanvas.width=Math.ceil(reverseViewport.width);
+      reverseCanvas.height=Math.ceil(reverseViewport.height);
+      const reverseContext=reverseCanvas.getContext('2d');
+      if(!reverseContext)throw new Error('No se ha podido preparar la cara trasera.');
+      await reversePage.render({canvasContext:reverseContext,canvas:reverseViewport}).promise;
+      const reverseBlob=await new Promise<Blob>((resolve,reject)=>reverseCanvas.toBlob(value=>value?resolve(value):reject(new Error('No se ha podido representar el reverso.')),'image/png'));
+      if(cancelled)return;
+      backUrl=URL.createObjectURL(reverseBlob);
+      setCard({url,backUrl,image,pdf:doc.output('blob'),pdfName:filename,
+        printPdf:printDoc.output('blob'),printName,
+        duplexPdf:duplexDoc.output('blob'),duplexName,backPdf:reverseDoc.output('blob')});
     })().catch(e => { if (!cancelled) setError(e.message || 'No se ha podido preparar el carnet.'); })
-      .finally(() => { void task?.destroy().catch(() => undefined); });
+      .finally(() => { void task?.destroy().catch(() => undefined); void backTask?.destroy().catch(() => undefined); });
     return () => {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
+      if (backUrl) URL.revokeObjectURL(backUrl);
       void task?.destroy().catch(() => undefined);
+      void backTask?.destroy().catch(() => undefined);
     };
   }, [person]);
   useEffect(() => {
@@ -85,15 +110,27 @@ export default function WorkerCardModal({ person, onClose }: { person: Person; o
           <button type="button" onClick={onClose} aria-label="Cerrar carnet" className="min-h-11 min-w-11 rounded-xl border p-3"><X className="h-5 w-5" /></button>
         </header>
         {error ? <p role="alert">No se ha podido crear la tarjeta con su QR. {error}</p> : card ? <>
-          <img src={card.url} alt={`Carnet PROFEA de ${person.apellidosNombre} con código QR para consultar la ficha`} className="block h-auto w-full rounded-xl border" />
+          <div role="group" aria-label="Vista del carnet" className="mb-2 grid grid-cols-2 gap-2">
+            <button type="button" aria-pressed={!viewBack} onClick={()=>setViewBack(false)} className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-bold ${!viewBack?'bg-[#00548E] text-white':'dark:bg-slate-800'}`}>Ver carnet</button>
+            <button type="button" aria-pressed={viewBack} onClick={()=>setViewBack(true)} className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-bold ${viewBack?'bg-[#00548E] text-white':'dark:bg-slate-800'}`}>Ver cara trasera</button>
+          </div>
+          <img src={viewBack?card.backUrl:card.url} alt={viewBack?'Reverso institucional del carnet PROFEA':`Carnet PROFEA de ${person.apellidosNombre} con código QR para consultar la ficha`} className="block h-auto w-full rounded-xl border" />
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" disabled={sharing} onClick={share} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50"><Share2 className="h-4 w-4" />Compartir tarjeta</button>
             <button type="button" onClick={() => downloadWorkerCard(card.image, card.image.name)} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-bold"><Download className="h-4 w-4" />Descargar imagen</button>
           </div>
           <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
             <h3 className="text-sm font-extrabold text-[#00548E] dark:text-blue-300">Imprimir el carnet</h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300">Elige «Tamaño DNI» para obtener una hoja A4 con la tarjeta de 85,60 × 53,98 mm. Imprime al 100 % (tamaño real), sin ajustar la página.</p>
+            <p className="text-xs text-slate-600 dark:text-slate-300">A4 vertical · doble cara · voltear por borde largo · escala 100 % (tamaño real) · desactivar «Ajustar a página». Recorta por las marcas exteriores. Haz primero una prueba de calibración con tu impresora.</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => downloadWorkerCard(card.duplexPdf, card.duplexName)}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70]">
+                <Printer className="h-4 w-4" /> PDF A4 doble cara
+              </button>
+              <button type="button" onClick={() => { const proof=generateWorkerCardCalibration(); downloadWorkerCard(proof.doc.output('blob'),proof.filename); }}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold dark:border-slate-600">
+                <Download className="h-4 w-4" /> Prueba de calibración
+              </button>
               <button type="button" onClick={() => downloadWorkerCard(card.printPdf, card.printName)}
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70]">
                 <Printer className="h-4 w-4" /> PDF tamaño DNI · A4
