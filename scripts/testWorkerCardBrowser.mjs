@@ -26,15 +26,21 @@ try {
  for(const width of [390,820,1440]){
   await page.setViewportSize({width,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  for(const name of ['Compartir tarjeta','Descargar imagen','PDF tamaño DNI · A4','PDF A4 doble cara','Prueba de calibración','Ver cara trasera','PDF original','Cerrar carnet']){
+  for(const name of ['Compartir tarjeta','Descargar imagen','Abrir PDF para imprimir a doble cara','Descargar PDF de ambas caras','Prueba de calibración','Ver cara trasera','Cerrar carnet']){
    const button=page.getByRole('button',{name,exact:true});await button.scrollIntoViewIfNeeded();
    assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44&&r.x>=0&&r.right<=innerWidth}));
   }
  }
  await page.setViewportSize({width:390,height:844});
+ assert(await page.getByText('la misma hoja física',{exact:false}).count()>0,'duplex workflow explicitly describes one physical sheet');
+ assert(await page.getByText('Voltear por borde largo',{exact:false}).count()>0,'duplex workflow explains printer flipping');
+ const singleSided=page.locator('details').filter({hasText:'Otras opciones (solo una cara)'});
+ await singleSided.locator('summary').click();
+ assert.equal(await singleSided.getByRole('button').count(),2,'legacy one-sided exports are in advanced section');
  const originalSrc=await img.getAttribute('src');
  await page.getByRole('button',{name:'Ver cara trasera'}).click();
  assert.notEqual(await img.getAttribute('src'),originalSrc,'back preview is a separate image');
+ await page.waitForFunction(()=>{const i=document.querySelector('img');return Boolean(i?.complete&&i.naturalWidth>=900);},{timeout:10000});
  assert(await img.evaluate(i=>i.complete&&i.naturalWidth>=900),'rendered ID-1 reverse preview');
  await page.getByRole('button',{name:'Ver carnet',exact:true}).click();
  assert.equal(await img.getAttribute('src'),originalSrc,'front preview remains unchanged');
@@ -52,11 +58,21 @@ assert(!text.includes('CONTRATO'));assert(!text.includes('12345678Z'),'No expone
  for(const forbidden of ['PRIVATE_','HISTORIAL','1960','FICHA COMPLETA','worker-qr'])assert(!text.includes(forbidden),forbidden);
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF original'}).click();
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF tamaño DNI · A4'}).click();assert((await dl).suggestedFilename().includes('DNI_A4'));assert((await dl).suggestedFilename().endsWith('.pdf'));
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF A4 doble cara'}).click();
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF original (solo anverso)'}).click();
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF tamaño DNI · A4 (solo anverso)'}).click();assert((await dl).suggestedFilename().includes('DNI_A4'));assert((await dl).suggestedFilename().endsWith('.pdf'));
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar PDF de ambas caras'}).click();
  const duplexDownload=await dl;assert(duplexDownload.suggestedFilename().includes('DOBLE_CARA'));
- const duplexPath=await duplexDownload.path();
+ await page.evaluate(()=>{
+   const originalOpen=window.open.bind(window);
+   window.open=(url,target)=>{window.lastDuplexPrintOpen={url:String(url),target};return originalOpen(url,target)};
+ });
+ const popupPromise=page.waitForEvent('popup');
+ await page.getByRole('button',{name:'Abrir PDF para imprimir a doble cara'}).click();
+ const openedPdf=await popupPromise;
+ const printOpen=await page.evaluate(()=>window.lastDuplexPrintOpen);
+ assert(printOpen?.url.startsWith('blob:')&&printOpen?.target==='_blank','print action opens generated duplex PDF in a separate tab');
+ await openedPdf.close();
+  const duplexPath=await duplexDownload.path();
  const duplexPdf=await PDFDocument.load(await fs.readFile(duplexPath));
  assert.equal(duplexPdf.getPageCount(),2,'single worker has front and back pages');
  for(const p of duplexPdf.getPages()){
