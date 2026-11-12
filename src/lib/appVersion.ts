@@ -1,12 +1,14 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.22.5';
+export const APP_VERSION = '1.22.6';
 export const APP_RELEASE_DATE = '12/11/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Carnet físico: impresión A4 dúplex prioritaria, con apertura del PDF de ambas caras e instrucciones claras para una única hoja.',
+  'Carnet físico: documentos solo anverso separados como opciones avanzadas para evitar confundirlos con el A4 doble cara.',
   'Carnet QR: reverso institucional y vista previa de ambas caras, conservando la imagen frontal para compartir.',
   'Carnet físico: composición A4 para impresión dúplex de hasta ocho tarjetas por hoja, marcas de corte y calibración.',
   'Directorio de trabajadores: impresión por lotes de carnets autorizados sin guardar archivos adicionales en el servidor.',
