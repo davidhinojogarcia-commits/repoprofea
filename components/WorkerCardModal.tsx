@@ -68,7 +68,7 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
       reverseCanvas.height=Math.ceil(reverseViewport.height);
       const reverseContext=reverseCanvas.getContext('2d');
       if(!reverseContext)throw new Error('No se ha podido preparar la cara trasera.');
-      await reversePage.render({canvasContext:reverseContext,canvas:reverseViewport}).promise;
+      await reversePage.render({canvasContext:reverseContext,canvas:reverseCanvas,viewport:reverseViewport}).promise;
       const reverseBlob=await new Promise<Blob>((resolve,reject)=>reverseCanvas.toBlob(value=>value?resolve(value):reject(new Error('No se ha podido representar el reverso.')),'image/png'));
       if(cancelled)return;
       backUrl=URL.createObjectURL(reverseBlob);
