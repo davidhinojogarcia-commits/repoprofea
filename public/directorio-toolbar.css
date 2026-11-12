@@ -104,8 +104,3 @@
   color: #ffffff !important;
   stroke: #ffffff !important;
 }
-:root:not(.dark) #root button [data-parts-count="true"],
-.dark #root button [data-parts-count="true"] {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-}
