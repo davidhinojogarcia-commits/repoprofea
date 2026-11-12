@@ -6,7 +6,8 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 assert.equal(CARD_W,85.6);
 assert.equal(CARD_H,53.98);
 assert.equal(DUPLEX_CAPACITY,8);
-const eq=(a:number,b:number)=>assert(Math.abs(a-b)<0.001,`${a} != ${b}`);
+// PDF page boxes are quantized to hundredths of a point (about 0.0035 mm).
+const eq=(a:number,b:number,tolerance=0.03)=>assert(Math.abs(a-b)<tolerance,`${a} != ${b}`);
 for(let i=0;i<DUPLEX_CAPACITY;i++){
   const front=cardSlot(i),reverse=cardSlot(i,true);
   eq(front.x+reverse.x,A4_W-CARD_W);
