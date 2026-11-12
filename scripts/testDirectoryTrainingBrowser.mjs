@@ -71,7 +71,7 @@ try {
     await page.getByRole('button', {name:'1ª Enero 2026', exact:true}).click();
     const removePeriod = page.getByRole('button', {name:'Quitar filtro 1ª Enero 2026',exact:true});
     await removePeriod.waitFor();
-    await period.click(); // Cerrar lista antes de cambiar la vista; evita solapamiento del menú.
+    await page.getByText('Filtros del directorio', {exact:true}).click(); // Cerrar fuera sin activar accidentalmente la X.
     for(const theme of ['light','dark']){
       await page.evaluate(theme => document.documentElement.classList.toggle('dark',theme==='dark'),theme);
       assert.equal(await removePeriod.locator('svg').evaluate(el=>getComputedStyle(el).stroke),theme==='light'?'rgb(0, 63, 112)':'rgb(255, 255, 255)','Cruz legible '+theme);
