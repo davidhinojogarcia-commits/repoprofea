@@ -79,6 +79,17 @@ try {
     assert.equal(await page.getByText('Filtrar por partes y avisos · uso restringido').count(), 0, 'No debe existir el panel antiguo');
     await reportsButton.click();
     assert.equal(await reportsButton.getAttribute('aria-expanded'), 'true');
+    await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Relación administrativa de trabajadores');
+    assert.equal(await page.getByRole('button', { name: 'PDF', exact: true }).count(), 1, 'Un solo PDF administrativo');
+    assert.equal(await page.getByRole('button', { name: 'Excel', exact: true }).count(), 1, 'Un solo Excel administrativo');
+    assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1, 'Mail administrativo');
+    assert.equal(await page.locator('[data-admin-relation-row="1"]').count(), 0, 'Sin fila dinámica administrativa duplicada');
+    const adminPdf = page.waitForEvent('download', {timeout: 20000});
+    await page.getByRole('button', { name: 'PDF', exact: true }).click();
+    assert.match((await adminPdf).suggestedFilename(), /\.pdf$/i, 'Exportación administrativa en PDF');
+    const adminExcel = page.waitForEvent('download', {timeout: 20000});
+    await page.getByRole('button', { name: 'Excel', exact: true }).click();
+    assert.match((await adminExcel).suggestedFilename(), /\.xlsx$/i, 'Exportación administrativa en Excel');
     await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Reconocimientos médicos');
     assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1);
     await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Relación de trabajadores para encargados');
