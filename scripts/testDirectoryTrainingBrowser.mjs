@@ -34,6 +34,7 @@ const stubs = {
   BulkShareButton: 'export const BulkShareButton=()=>null',
   GoogleCalendarModal: 'export const GoogleCalendarModal=()=>null',
   directoryCommunications: 'export const sendDirectoryCommunication=async()=>{}',
+  administrativeRelationExport: "export const prepareAdministrativeRelationPDF=(workers)=>({doc:{output:()=>new Blob(['%PDF-1.4'],{type:'application/pdf'})},filename:'PROFEA_RELACION_ADMINISTRATIVA_test.pdf'});export const prepareAdministrativeRelationExcel=async(workers)=>({buffer:new Uint8Array([1,2,3]),filename:'PROFEA_RELACION_ADMINISTRATIVA_test.xlsx'});",
   workerImportService: 'export const moveWorkersToTrashBulk=async()=>{}',
   partsService: 'export const partsRequest=async()=>({rows:[],cursor:null})',
   WorkerCardScanner: "export default function Scanner(){window.scanOpens++;return null}",
