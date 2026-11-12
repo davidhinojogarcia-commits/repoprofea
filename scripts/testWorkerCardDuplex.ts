@@ -28,8 +28,8 @@ for(const count of [1,2,6,8,9]){
   assert.equal(pdf.numPages,Math.ceil(count/8)*2);
   for(let page=1;page<=pdf.numPages;page++){
     const p=await pdf.getPage(page),viewport=p.getViewport({scale:1});
-    eq(viewport.width*25.4/72,A4_W);
-    eq(viewport.height*25.4/72,A4_H);
+    assert(Math.abs(viewport.width*25.4/72-A4_W)<0.03,'A4 width within PDF point precision');
+    assert(Math.abs(viewport.height*25.4/72-A4_H)<0.03,'A4 height within PDF point precision');
     if(page%2===0){
       const strings=(await p.getTextContent()).items.map(i=>'str' in i?i.str:'').join(' ');
       assert.match(strings,/PROFEA/,'Reverse page includes institutional text');
