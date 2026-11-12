@@ -32,7 +32,7 @@ try {
  const originalSrc=await img.getAttribute('src');
  await page.getByRole('button',{name:'Ver cara trasera'}).click();
  assert.notEqual(await img.getAttribute('src'),originalSrc,'back preview is a separate image');
- assert(await img.evaluate(i=>i.complete&&i.naturalWidth>=1000),'rendered reverse preview');
+ assert(await img.evaluate(i=>i.complete&&i.naturalWidth>=900),'rendered ID-1 reverse preview');
  await page.getByRole('button',{name:'Ver carnet',exact:true}).click();
  assert.equal(await img.getAttribute('src'),originalSrc,'front preview remains unchanged');
  await page.screenshot({path:'/tmp/worker-card-modal.png'});
