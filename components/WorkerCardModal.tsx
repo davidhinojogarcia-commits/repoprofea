@@ -2,14 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Download, Loader2, Share2, Printer, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import type { Person } from '../types';
-import { downloadWorkerCard, generateWorkerCard, generateDniSizedPrintSheet, shareWorkerCard } from '../src/lib/workerCard';
-import { generateWorkerCardBack, generateWorkerCardDuplexSheet, generateWorkerCardCalibration } from '../src/lib/workerCardDuplex';
+import { downloadWorkerCard, generateWorkerCard, shareWorkerCard } from '../src/lib/workerCard';
+import { generateWorkerCardBack, generateWorkerCardDuplexSheet } from '../src/lib/workerCardDuplex';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import QRCode from 'qrcode';
 import { ensureWorkerQrShare } from '../src/services/workerQrShareService';
 
 export default function WorkerCardModal({ person, people = [person], onClose }: { person: Person; people?: Person[]; onClose: () => void }) {
-  const [card, setCard] = useState<{ url: string; backUrl: string; image: File; pdf: Blob; pdfName: string; printPdf: Blob; printName: string; duplexPdf: Blob; duplexName: string; backPdf: Blob } | null>(null);
+  const [card, setCard] = useState<{ url: string; backUrl: string; image: File; duplexPdf: Blob; duplexName: string; backPdf: Blob } | null>(null);
   const [viewBack, setViewBack] = useState(false);
   const [selectedIds,setSelectedIds]=useState<string[]>([String(person.id)]);
   const [bulkOpen,setBulkOpen]=useState(false);
@@ -56,7 +56,6 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
       const image = new File([blob], filename.replace(/\.pdf$/, '.png'), { type: 'image/png' });
       url = URL.createObjectURL(image);
       const frontPng=canvas.toDataURL('image/png');
-      const { doc: printDoc, filename: printName } = generateDniSizedPrintSheet(frontPng);
       const { doc: duplexDoc, filename: duplexName } = generateWorkerCardDuplexSheet([{id:person.id,frontPng}]);
       const reverseDoc=generateWorkerCardBack();
       backTask=pdfjs.getDocument({data:new Uint8Array(reverseDoc.output('arraybuffer')),useSystemFonts:true});
@@ -72,9 +71,7 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
       const reverseBlob=await new Promise<Blob>((resolve,reject)=>reverseCanvas.toBlob(value=>value?resolve(value):reject(new Error('No se ha podido representar el reverso.')),'image/png'));
       if(cancelled)return;
       backUrl=URL.createObjectURL(reverseBlob);
-      setCard({url,backUrl,image,pdf:doc.output('blob'),pdfName:filename,
-        printPdf:printDoc.output('blob'),printName,
-        duplexPdf:duplexDoc.output('blob'),duplexName,backPdf:reverseDoc.output('blob')});
+      setCard({url,backUrl,image,duplexPdf:duplexDoc.output('blob'),duplexName,backPdf:reverseDoc.output('blob')});
     })().catch(e => { if (!cancelled) setError(e.message || 'No se ha podido preparar el carnet.'); })
       .finally(() => { void task?.destroy().catch(() => undefined); void backTask?.destroy().catch(() => undefined); });
     return () => {
@@ -156,7 +153,11 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
         } finally {await task.destroy().catch(()=>undefined);}
       }
       const output=generateWorkerCardDuplexSheet(cards);
-      downloadWorkerCard(output.doc.output('blob'),output.filename);
+      const blob=output.doc.output('blob');
+      const url=URL.createObjectURL(blob);
+      const tab=window.open(url,'_blank');
+      if(!tab){URL.revokeObjectURL(url);downloadWorkerCard(blob,output.filename);}
+      else window.setTimeout(()=>URL.revokeObjectURL(url),30*60*1000);
       setNotice(`PDF A4 preparado: ${chosen.length} carnets, ${Math.ceil(chosen.length/8)*2} páginas, doble cara por borde largo.`);
     } catch(e:any){setNotice(e?.message||'No se han podido preparar los carnets seleccionados.');}
     finally{setBulkBusy(false);setBulkProgress('');}
@@ -187,37 +188,14 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
               <li>Selecciona <strong>todas las páginas, A4 vertical y escala 100 %</strong> (sin ajustar).</li>
             </ol>
             <p className="text-xs text-amber-800 dark:text-amber-200">Si salen dos hojas separadas, la impresora está configurada en «Una cara» o no dispone de impresión dúplex. El PDF no puede cambiar automáticamente ese ajuste de la impresora.</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button type="button" onClick={openDuplexForPrinting}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70]">
-                <Printer className="h-4 w-4" /> Abrir PDF para imprimir a doble cara
-              </button>
-              <button type="button" onClick={() => downloadWorkerCard(card.duplexPdf, card.duplexName)}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#00548E] px-4 py-3 text-sm font-bold text-[#00548E] dark:text-blue-300">
-                <Download className="h-4 w-4" /> Descargar PDF de ambas caras
-              </button>
-              <button type="button" onClick={() => { const proof=generateWorkerCardCalibration(); downloadWorkerCard(proof.doc.output('blob'),proof.filename); }}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold dark:border-slate-600">
-                <Download className="h-4 w-4" /> Prueba de calibración
-              </button>
-            </div>
-            <details className="rounded-lg border border-slate-200 p-2 dark:border-slate-600">
-              <summary className="cursor-pointer text-xs font-bold">Otras opciones (solo una cara)</summary>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button type="button" onClick={() => downloadWorkerCard(card.printPdf, card.printName)}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold">
-                  <Download className="h-4 w-4" /> PDF tamaño DNI · A4 (solo anverso)
-                </button>
-                <button type="button" onClick={() => downloadWorkerCard(card.pdf, card.pdfName)}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold">
-                  <Download className="h-4 w-4" /> PDF original (solo anverso)
-                </button>
-              </div>
-            </details>
+            <button type="button" disabled={bulkBusy} onClick={() => bulkOpen ? void printSelected() : openDuplexForPrinting()}
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white hover:bg-[#003f70] disabled:opacity-50">
+              <Printer className="h-4 w-4" /> {bulkBusy ? 'Preparando PDF…' : 'Imprimir carnet A4 · Doble cara'}
+            </button>
           </div>
           <details className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700" open={bulkOpen} onToggle={event=>setBulkOpen(event.currentTarget.open)}>
-            <summary className="cursor-pointer text-sm font-extrabold text-[#00548E] dark:text-blue-300">Imprimir varios carnets · selección autorizada</summary>
-            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Selecciona hasta 16 trabajadores. Cada grupo de ocho ocupa dos páginas A4 (anversos y reversos). La selección solo incluye trabajadores visibles para tu cuenta.</p>
+            <summary className="cursor-pointer text-sm font-extrabold text-[#00548E] dark:text-blue-300">Seleccionar varios carnets</summary>
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Selecciona hasta 16 trabajadores y utiliza el único botón «Imprimir carnet A4 · Doble cara» de arriba. Cada grupo de ocho ocupa dos páginas A4. La selección solo incluye trabajadores visibles para tu cuenta.</p>
             <input aria-label="Buscar trabajadores para imprimir carnets" value={bulkSearch} onChange={event=>setBulkSearch(event.target.value)} placeholder="Buscar por nombre" className="mt-2 min-h-11 w-full rounded-xl border px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"/>
             <div role="group" aria-label="Trabajadores autorizados para impresión" className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2 dark:border-slate-700">
               {bulkChoices.map(worker=><label key={worker.id} className="flex min-h-11 items-center gap-3 rounded-lg px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -228,10 +206,6 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
               {!bulkChoices.length&&<p className="text-sm text-slate-500">No hay trabajadores coincidentes.</p>}
             </div>
             <p className="mt-2 text-xs font-semibold">{selectedIds.length} seleccionado(s) · máximo 16</p>
-            <button type="button" disabled={bulkBusy||!selectedIds.length||selectedIds.length>16} onClick={()=>void printSelected()}
-              className="mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00548E] px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
-              <Printer className="h-4 w-4"/>{bulkBusy?'Preparando PDF…':'Imprimir varios carnets · A4 dúplex'}
-            </button>
             {bulkProgress&&<p role="status" className="mt-2 text-sm">{bulkProgress}</p>}
           </details>
           {notice && <p role="status" className="mt-2 text-sm">{notice}</p>}
