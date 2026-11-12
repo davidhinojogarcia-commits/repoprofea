@@ -42,8 +42,8 @@ assert.throws(()=>generateWorkerCardDuplexSheet([{id:1,frontPng:pixel},{id:1,fro
 assert.throws(()=>generateWorkerCardDuplexSheet([{id:1,frontPng:'malformed'}]),/PNG/);
 assert.equal(generateWorkerCardCalibration().doc.getNumberOfPages(),2);
 const back=generateWorkerCardBack();
-eq(back.internal.pageSize.getWidth(),CARD_W);
-eq(back.internal.pageSize.getHeight(),CARD_H);
+assert(Math.abs(back.internal.pageSize.getWidth()-CARD_W)<0.03,'ID-1 back width within PDF point precision');
+assert(Math.abs(back.internal.pageSize.getHeight()-CARD_H)<0.03,'ID-1 back height within PDF point precision');
 const scratch=new jsPDF({orientation:'landscape',unit:'mm',format:[CARD_H,CARD_W]});
 drawWorkerCardBack(scratch,0,0);
 assert(scratch.output('arraybuffer').byteLength>600);
