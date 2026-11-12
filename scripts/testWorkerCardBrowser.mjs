@@ -23,12 +23,18 @@ try {
  for(const width of [390,820,1440]){
   await page.setViewportSize({width,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  for(const name of ['Compartir tarjeta','Descargar imagen','PDF tamaño DNI · A4','PDF original','Cerrar carnet']){
+  for(const name of ['Compartir tarjeta','Descargar imagen','PDF tamaño DNI · A4','PDF A4 doble cara','Prueba de calibración','Ver cara trasera','PDF original','Cerrar carnet']){
    const button=page.getByRole('button',{name,exact:true});await button.scrollIntoViewIfNeeded();
    assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44&&r.x>=0&&r.right<=innerWidth}));
   }
  }
  await page.setViewportSize({width:390,height:844});
+ const originalSrc=await img.getAttribute('src');
+ await page.getByRole('button',{name:'Ver cara trasera'}).click();
+ assert.notEqual(await img.getAttribute('src'),originalSrc,'back preview is a separate image');
+ assert(await img.evaluate(i=>i.complete&&i.naturalWidth>=1000),'rendered reverse preview');
+ await page.getByRole('button',{name:'Ver carnet',exact:true}).click();
+ assert.equal(await img.getAttribute('src'),originalSrc,'front preview remains unchanged');
  await page.screenshot({path:'/tmp/worker-card-modal.png'});
  await img.screenshot({path:'/tmp/worker-card-preview.png'});
  const pdf=await page.evaluate(()=>window.cardPdf());
@@ -45,6 +51,22 @@ assert(!text.includes('CONTRATO'));assert(!text.includes('12345678Z'),'No expone
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF original'}).click();
  dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF tamaño DNI · A4'}).click();assert((await dl).suggestedFilename().includes('DNI_A4'));assert((await dl).suggestedFilename().endsWith('.pdf'));
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF A4 doble cara'}).click();
+ const duplexDownload=await dl;assert(duplexDownload.suggestedFilename().includes('DOBLE_CARA'));
+ const duplexPath=await duplexDownload.path();
+ const duplexPdf=await PDFDocument.load(await fs.readFile(duplexPath));
+ assert.equal(duplexPdf.getPageCount(),2,'single worker has front and back pages');
+ for(const p of duplexPdf.getPages()){
+   assert(Math.abs(p.getWidth()*25.4/72-210)<0.03);
+   assert(Math.abs(p.getHeight()*25.4/72-297)<0.03);
+ }
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'Prueba de calibración'}).click();
+ assert((await dl).suggestedFilename().includes('CALIBRACION'));
+ await page.getByText('Imprimir varios carnets · selección autorizada').click();
+ assert.equal(await page.getByRole('checkbox').count(),1);
+ dl=page.waitForEvent('download');await page.getByRole('button',{name:'Imprimir varios carnets · A4 dúplex'}).click();
+ assert((await dl).suggestedFilename().includes('DOBLE_CARA'));
+
  // Native image sharing must receive the actual PNG, even on desktop.
  await page.evaluate(()=>{
    Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:({files})=>files?.[0]?.type==='image/png'});
