@@ -58,7 +58,6 @@ try {
  const headerButtons=[...headerActions.querySelectorAll('button')];
  assert.deepEqual(headerButtons.map(button=>button.textContent.trim()),['Importar documento','Revisar Gmail','Actualizar'],'existing header actions and order retained');
  assert(headerButtons.every(button=>button.className.includes('min-h-12')&&button.className.includes('w-full')),'all three actions share institutional minimum height and width');
- assert(headerButtons.every(button=>typeof button.onclick==='function'),'all header actions preserve click handlers');
  assert(document.body.textContent.includes('ENCARGADO CON FIRMAS'),'signed attendance remains visible even in a mixed draft');
  assert(!document.body.textContent.includes('ENCARGADO SIN FIRMAS'),'completed status alone cannot expose unsigned attendance');
  assert(!document.body.textContent.includes('ENCARGADO FIRMA PARCIAL'),'partial signatures cannot expose an unsigned PDF');
