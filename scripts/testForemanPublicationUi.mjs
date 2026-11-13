@@ -52,6 +52,13 @@ try {
  const find=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text||b.getAttribute('aria-label')===text);
  const mount=async component=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(component));};
  await mount(React.createElement(ForemanDocumentsDashboard));
+ const headerActions=document.querySelector('[role="group"][aria-label="Acciones de documentación de encargados"]');
+ assert(headerActions,'document header groups the three actions without hiding others');
+ assert(headerActions.className.includes('sm:grid-cols-3')&&headerActions.className.includes('grid-cols-1'),'header actions stack on narrow screens and align across three columns otherwise');
+ const headerButtons=[...headerActions.querySelectorAll('button')];
+ assert.deepEqual(headerButtons.map(button=>button.textContent.trim()),['Importar documento','Revisar Gmail','Actualizar'],'existing header actions and order retained');
+ assert(headerButtons.every(button=>button.className.includes('min-h-12')&&button.className.includes('w-full')),'all three actions share institutional minimum height and width');
+ assert(headerButtons.every(button=>typeof button.onclick==='function'),'all header actions preserve click handlers');
  assert(document.body.textContent.includes('ENCARGADO CON FIRMAS'),'signed attendance remains visible even in a mixed draft');
  assert(!document.body.textContent.includes('ENCARGADO SIN FIRMAS'),'completed status alone cannot expose unsigned attendance');
  assert(!document.body.textContent.includes('ENCARGADO FIRMA PARCIAL'),'partial signatures cannot expose an unsigned PDF');
