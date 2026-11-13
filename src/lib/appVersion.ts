@@ -1,12 +1,13 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.22.9';
+export const APP_VERSION = '1.23.0';
 export const APP_RELEASE_DATE = '12/11/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Documentación de encargados: Importar documento, Revisar Gmail y Actualizar alineados y homogeneizados con diseño institucional responsive.',
   'Directorio: cruces de los filtros visibles en modo diurno y nocturno y contador de Partes y avisos con contraste blanco sobre azul.',
   'Directorio: recuperada la relación administrativa en el selector institucional de informes, con PDF, Excel y Mail según selección y filtros.',
   'Carnet: una única acción A4 doble cara para impresión individual o por selección; se eliminan botones de impresión redundantes.',

@@ -873,9 +873,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   const reviewCount=visibleMandatory.filter(i=>i.status==='completed').length+documents.filter(i=>i.status==='completed').length+attendance.filter(i=>i.status==='completed').length;
   return <div className="foreman-documents-dashboard min-w-0 space-y-5">
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento documental</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Hasta tres comprobaciones automáticas al día entre las 08:00 y las 14:00 (hora de España), solo con esta pantalla visible. Pulsa Actualizar para consultar cambios a cualquier hora.</p></div>
-        <div className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Acciones de documentación de encargados" className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:max-w-[610px] lg:self-end">
           <input ref={restoreOriginalInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={event=>{const file=event.target.files?.[0];if(file)void restoreOriginal(file);}} />
           <input
             ref={mandatoryFileInputRef}
@@ -888,13 +888,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <button
             disabled={importBusy}
             onClick={()=>mandatoryFileInputRef.current?.click()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2.5 text-sm font-black disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+            className="inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-sm font-black text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40"
           >
             {importBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}
             Importar documento
           </button>
-          <button disabled={mailBusy} onClick={()=>void scanAdministrativeMail(false)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-4 py-2.5 text-sm font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>Revisar Gmail</button>
-          <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
+          <button disabled={mailBusy} onClick={()=>void scanAdministrativeMail(false)} className="inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-center text-sm font-black text-blue-800 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-900/40"><MailCheck className="w-4 h-4"/>Revisar Gmail</button>
+          <button onClick={()=>void refresh()} className="inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-black text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"><RefreshCw className="w-4 h-4"/>Actualizar</button>
         </div>
       </div>
       {gmailAuthorizationRequired&&<div role="alert" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"><p className="text-sm font-bold">Gmail necesita tu autorización para revisar los documentos.</p><p className="mt-1 text-xs">Pulsa el botón y acepta los permisos en Google. Después podrás volver a revisar Gmail.</p><button disabled={mailBusy} onClick={()=>void reconnectGmail()} className="mt-3 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-black text-white disabled:opacity-50">Volver a autorizar Gmail</button></div>}
