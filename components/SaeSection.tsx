@@ -1728,12 +1728,12 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
               return (
                 <div
                   key={group.key}
-                  className={`overflow-hidden rounded-xl border ${selectedInside ? "border-[#00548E]/60 dark:border-blue-700" : "border-slate-200 dark:border-slate-800"}`}
+                  className={`overflow-hidden rounded-xl border transition-colors ${selectedInside ? "border-blue-300 dark:border-blue-700" : "border-slate-200 dark:border-slate-700"}`}
                 >
                   <button
                     type="button"
                     onClick={() => toggleMonth(group.key)}
-                    className={`w-full flex items-center justify-between gap-3 px-3.5 py-3 text-left transition-colors ${selectedInside ? "bg-blue-50 dark:bg-blue-950/25" : "bg-slate-50/80 hover:bg-slate-100 dark:bg-slate-900/70 dark:hover:bg-slate-800/80"}`}
+                    className={`flex min-h-12 w-full items-center justify-between gap-3 px-3.5 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#00548E] ${selectedInside ? "bg-blue-50 text-slate-900 dark:bg-blue-950/30 dark:text-slate-100" : "bg-slate-50 text-slate-900 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"}`}
                     aria-expanded={isOpen}
                   >
                     <div className="min-w-0">
@@ -1752,11 +1752,11 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                       {group.needs.map(n => (
                         <div
                           key={n.id}
-                          className={`rounded-lg border p-3 ${selectedNeedId === n.id ? "border-[#00548E] bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                          className={`rounded-lg border p-3 ${selectedNeedId === n.id ? "border-blue-300 bg-blue-50/70 dark:border-blue-700 dark:bg-blue-950/25" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"}`}
                         >
                           <button
                             onClick={() => setSelectedNeedId(n.id)}
-                            className="w-full text-left"
+                            className="w-full rounded-md text-left text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00548E] dark:text-slate-100"
                           >
                             <div className="font-bold text-sm leading-snug">{n.obra}</div>
                             <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
@@ -1764,17 +1764,17 @@ export const SaeSection: React.FC<SaeSectionProps> = ({ people, onToast }) => {
                               {n.categorias.reduce((sum, category) => sum + category.cantidad, 0)} trabajadores
                             </div>
                           </button>
-                          <div className="flex gap-3 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
                             <button
                               onClick={() => startEditNeed(n)}
-                              className="text-xs font-bold text-blue-700 dark:text-blue-400 inline-flex gap-1 items-center"
+                              className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-800 transition-colors hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] dark:border-blue-700 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-blue-950/40"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                               Editar
                             </button>
                             <button
                               onClick={() => void removeNeed(n)}
-                              className="text-xs font-bold text-rose-700 dark:text-rose-400 inline-flex gap-1 items-center"
+                              className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 dark:border-rose-800 dark:bg-slate-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               Eliminar
