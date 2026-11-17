@@ -13,7 +13,7 @@ type Props={
 type PageProps=Props&{meta:MandatoryPdfPageMeta;scale:number;mode:'navigate'|'edit';scroll:React.RefObject<HTMLDivElement|null>};
 const hasBox=(a:MandatoryWorkerAnchor)=>[a.signatureX,a.signatureY,a.signatureWidth,a.signatureHeight].every(v=>v!=null&&Number.isFinite(v));
 // Phone portrait and landscape only. Do not alter mouse/desktop or iPad controls.
-const isPhoneTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia(
+const isPhoneTouchLayout=()=>typeof window!=='undefined'&&typeof window.matchMedia==='function'&&window.matchMedia(
   '(pointer: coarse) and (max-width: 699px), (pointer: coarse) and (max-width: 960px) and (max-height: 550px)'
 ).matches;
 
