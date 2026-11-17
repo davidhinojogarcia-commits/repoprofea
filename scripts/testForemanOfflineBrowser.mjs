@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
 import {build} from 'esbuild';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
 const root=new URL('../',import.meta.url).pathname;
 const bundle=(await build({stdin:{contents:`import {foremanVault} from './src/lib/foremanLocalVault';import * as offline from './src/services/foremanOfflineService';window.api={foremanVault,...offline};`,resolveDir:root,loader:'ts'},bundle:true,format:'iife',write:false,plugins:[{name:'boundary',setup(b){b.onResolve({filter:/\?url$/},()=>({path:'asset',namespace:'asset'}));b.onLoad({filter:/.*/,namespace:'asset'},()=>({contents:"export default '/worker.mjs'"}));b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'rpc',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const getSessionUser=async()=>null;export const supabase={query:async()=>[],rpc:async(...args)=>window.rpc(...args)};'}));}}]})).outputFiles[0].text;
 const server=http.createServer((req,res)=>{res.setHeader('Content-Type',(req.url==='/assets/app.js'||req.url==='/service-worker.js')?'application/javascript':'text/html');res.end(req.url==='/service-worker.js'?fs.readFileSync(new URL('../public/service-worker.js',import.meta.url)):req.url==='/assets/app.js'?bundle:'<!doctype html><script src="/assets/app.js"></script>');});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{
- browser=await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.CHROMIUM_PATH});
+ const engine=process.env.BROWSER_ENGINE==='webkit'?webkit:chromium;
+ browser=await engine.launch(process.env.BROWSER_ENGINE==='webkit'?{headless:true}:{headless:true,args:['--no-sandbox'],executablePath:process.env.CHROMIUM_PATH});
  const context=await browser.newContext();const page=await context.newPage();const url='http://127.0.0.1:'+server.address().port;
  await page.goto(url);
  await page.evaluate(async()=>{await navigator.serviceWorker.register('/service-worker.js');await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller)await new Promise(r=>navigator.serviceWorker.addEventListener('controllerchange',r,{once:true}));});
@@ -39,5 +40,5 @@ try{
  await page.evaluate(async()=>{const vault=await window.api.foremanVault('access-A');await vault.put('lease',Date.now()-1);});
  await assert.rejects(page.evaluate(()=>window.api.queuePortalSignature('access-A',{documentId:'doc-A',workerId:9,signature:'ink'})),/verificar/);
  await page.evaluate(async()=>(await window.api.foremanVault('access-A')).clear());assert.equal(await page.evaluate(async()=>(await window.api.foremanVault('access-A')).get('workspace')),null);
- console.log('PASS Chromium IndexedDB: encrypted persistence, reload, isolation, offline queue, one synchronization, conflict, expiry, unlink cleanup');
+ console.log('PASS '+(process.env.BROWSER_ENGINE==='webkit'?'WebKit':'Chromium')+' IndexedDB: encrypted persistence, reload, isolation, offline queue, one synchronization, conflict, expiry, unlink cleanup');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
