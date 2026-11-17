@@ -62,7 +62,7 @@ begin
    where t.owner_id=v_access.owner_id and lower(t.obra)=lower(v_access.obra)
      and t.id=any(p_worker_ids);
   if v_actual<>v_expected then raise exception 'Hay trabajadores fuera de esta obra'; end if;
-  v_signature_count:=jsonb_object_length(coalesce(v_doc.signatures,'{}'::jsonb));
+  select count(*) into v_signature_count from jsonb_object_keys(coalesce(v_doc.signatures,'{}'::jsonb));
   if v_signature_count>0 and not p_reset_signatures then
     raise exception 'Este documento ya tiene firmas. Confirma su retirada para modificarlo';
   end if;
