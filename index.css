@@ -1361,7 +1361,7 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .mandatory-anchor-editor .mandatory-pdf-phone-corner.ne { right:-4px; top:-4px; }
   .mandatory-anchor-editor .mandatory-pdf-phone-corner.sw { left:-4px; bottom:-4px; }
   .mandatory-anchor-editor .mandatory-editor-footer {
-    display:flex; align-items:center; gap:6px; padding:6px 9px;
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px 9px;
     padding-bottom:max(6px,env(safe-area-inset-bottom));
   }
   .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-footer > div:not([role="alert"]),
