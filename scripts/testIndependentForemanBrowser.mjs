@@ -86,7 +86,7 @@ try{
  await page.evaluate(()=>{document.getElementById('root').style.cssText='position:relative;z-index:22000';});
  await page.evaluate(()=>window.finishFixtures());await openSection('Finalizados');await page.getByRole('button',{name:'Actualizar',exact:true}).click();
  for(const [type,label] of [['epis','Entrega de EPIs'],['formacion','Formación e información'],['maquinaria','Autorización de maquinaria'],['stored-contract','Contrato de trabajo']]){
-  const card=page.locator('section > div').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
+  const card=page.locator('section[aria-label="Documentos firmados"] article').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
   await card.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.getByText(label+' · PDF firmado',{exact:true}).waitFor();await page.locator('canvas').first().waitFor();
   for(const [width,height] of [[390,844],[820,1180],[1440,900]])for(const dark of [false,true]){
    await page.setViewportSize({width,height});await page.evaluate(d=>document.documentElement.classList.toggle('dark',d),dark);
@@ -104,7 +104,7 @@ try{
   assert(shared.pages>0);assert(shared.name.endsWith('.pdf'));
   if(type==='stored-contract')assert.equal(shared.base64,await page.evaluate(()=>window.importedPdf),'imported signed bytes preserved exactly');else assert(shared.images>=2,'native PDF contains separate worker and foreman images');
  }
- const importedCard=page.locator('section > div').filter({has:page.getByText('Contrato de trabajo',{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
+ const importedCard=page.locator('section[aria-label="Documentos firmados"] article').filter({has:page.getByText('Contrato de trabajo',{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
  await page.evaluate(()=>{window.unsignedFallback=true;});await importedCard.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.waitForFunction(()=>window.lastAlert==='No se ha encontrado el PDF firmado de este documento.');assert.equal(await page.getByRole('button',{name:'Cerrar',exact:true}).count(),0,'unsigned original is never presented as signed');
  assert.deepEqual(await page.evaluate(()=>window.pdfCalls),[['stored-contract','signed'],['stored-contract','signed'],['stored-contract','signed']],'only imported documents use stored PDF RPC');
  await page.evaluate(()=>window.showSettings());await page.getByRole('button',{name:'Cargar plantilla guardada',exact:true}).click();await page.getByLabel('Corresponde firma del encargado').waitFor();
