@@ -154,6 +154,20 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     const page=Math.max(1,Math.min(pageCount,value));
     setPreviewPage(page);setPageRequest(p=>({page,sequence:p.sequence+1}));
   };
+  const openMobileSignaturePlacement=()=>{
+    if(!current||saving||removing||loading)return;
+    setForemanSelected(false);
+    setToolsHidden(false);
+    setMobilePanel('pdf');
+    setTouchEditRequest(value=>value+1);
+    setPageRequest(value=>({page:current.page||previewPage,sequence:value.sequence+1,
+      focusSignature:current.signatureX!=null&&current.signatureY!=null}));
+  };
+  const selectAdjacentMobileWorker=(direction:-1|1)=>{
+    setForemanSelected(false);
+    setIndex(value=>Math.max(0,Math.min(draft.length-1,value+direction)));
+    setTouchEditRequest(value=>value+1);
+  };
   const changeAnchorBox=(target:number,box:{signatureX:number;signatureY:number;signatureWidth:number;signatureHeight:number},page:number)=>{
     if(saving||removing||loading)return;
     setDraft(list=>list.map((anchor,i)=>i===target?{...anchor,...box,page,resolved:Number(anchor.workerId)!==0,
@@ -329,6 +343,10 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <div className="text-sm text-slate-600 dark:text-slate-300">{current?.dni||''}</div>
             <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700 dark:text-emerald-300':'text-amber-700 dark:text-amber-300'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
           </div>
+          {current&&<button type="button" className="mandatory-editor-phone-place"
+            disabled={saving||removing||loading} onClick={openMobileSignaturePlacement}>
+            Colocar firma de este trabajador en el PDF
+          </button>}
 
           {documentType!=='control_presencia'&&<label className="mandatory-editor-touch-worker-search mt-4 block text-sm font-black">Buscar trabajador del Directorio
             <input type="search" aria-label="Buscar trabajador por nombre o DNI" placeholder="Escribe nombre, apellidos o DNI…" value={directoryQuery} onChange={e=>setDirectoryQuery(e.target.value)} autoComplete="off" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
@@ -420,6 +438,11 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         </aside>
 
         <div className="mandatory-editor-preview flex min-h-0 flex-col bg-slate-200 dark:bg-slate-950">
+          <nav className="mandatory-editor-phone-selection-bar" aria-label="Cambiar trabajador desde el PDF">
+            <button type="button" aria-label="Seleccionar firma anterior" disabled={saving||removing||index<=0} onClick={()=>selectAdjacentMobileWorker(-1)}>‹</button>
+            <span title={current?.workerName||''}>{draft.length?(index+1)+' de '+draft.length+' · '+(current?.workerName||'Sin identificar'):'Selecciona un trabajador'}</span>
+            <button type="button" aria-label="Seleccionar firma siguiente" disabled={saving||removing||index>=draft.length-1} onClick={()=>selectAdjacentMobileWorker(1)}>›</button>
+          </nav>
           {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} editRequest={touchEditRequest} anchors={foremanPreviewAnchor?[...draft,foremanPreviewAnchor]:draft} activeIndex={foremanSelected&&foremanPreviewAnchor?draft.length:index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={selected=>{if(selected===draft.length)setForemanSelected(true);else{setIndex(selected);setForemanSelected(false);}}} onChange={(target,box,page)=>{if(target===draft.length){setForemanBox({x:box.signatureX,y:box.signatureY,width:box.signatureWidth,height:box.signatureHeight},page);}else changeAnchorBox(target,box,page);}}/>:<div role="alert">{error||'PDF no disponible'}</div>}
         </div>
       </div>
