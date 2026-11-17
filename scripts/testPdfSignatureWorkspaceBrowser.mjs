@@ -67,7 +67,7 @@ try {
  await page.evaluate(()=>{window.failSave=false;});await save();assert.deepEqual(await page.evaluate(()=>window.saved),dragged);
 
  const once=await page.evaluate(()=>{const before=window.saveCalls;const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='Guardar trabajadores y posiciones');b.click();b.click();return {before,after:window.saveCalls};});assert.equal(once.after,once.before+1,'double save invokes the service once');
- await page.setViewportSize({width:820,height:1180});await handle.scrollIntoViewIfNeeded();
+ await page.setViewportSize({width:820,height:1180});await page.getByRole('button',{name:'PDF y posición de firma'}).click();await handle.scrollIntoViewIfNeeded();
  const touchHandle=await handle.boundingBox(),touchSession=await context.newCDPSession(page);
  await touchSession.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:touchHandle.x+touchHandle.width/2,y:touchHandle.y+touchHandle.height/2}]});
  await touchSession.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:touchHandle.x+touchHandle.width/2-20,y:touchHandle.y+touchHandle.height/2-15}]});
@@ -84,6 +84,8 @@ try {
   await page.getByRole('button',{name:'Ocultar herramientas',exact:true}).click();
   assert.equal(await page.locator('.mandatory-continuous-toolbar').count(),0);
   await page.setViewportSize({width:820,height:1180});
+  // Responsive layout intentionally keeps only one pane visible on touch devices.
+  await page.getByRole('button',{name:'PDF y posición de firma'}).click();
   await scroll.evaluate(el=>{el.scrollTop=0;});
   const area=await scroll.boundingBox(),cdp=await context.newCDPSession(page);
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:area.x+area.width*.6,y:area.y+area.height*.7}]});
