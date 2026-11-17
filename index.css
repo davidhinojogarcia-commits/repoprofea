@@ -817,9 +817,9 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .fp-portal-ui .fp-section-items { gap: 8px; align-items: stretch; }
   .fp-portal-ui .fp-section-tab {
     display: inline-flex;
-    flex: 0 0 116px;
-    width: 116px;
-    min-width: 116px;
+    flex: 0 0 116px !important;
+    width: 116px !important;
+    min-width: 116px !important;
     min-height: 72px;
     align-items: center;
     justify-content: center;
@@ -1004,9 +1004,9 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
 }
 @media (max-width: 370px) {
   .fp-portal-ui .fp-section-tab {
-    flex-basis: 108px;
-    width: 108px;
-    min-width: 108px;
+    flex-basis: 108px !important;
+    width: 108px !important;
+    min-width: 108px !important;
   }
   .fp-portal-ui .fp-action-row > button,
   .fp-portal-ui .fp-action-row > label {
