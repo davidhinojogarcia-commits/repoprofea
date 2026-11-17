@@ -222,6 +222,9 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [installedStandalone,setInstalledStandalone]=useState(isStandaloneDisplay());
   const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string;notice?:string}|null>(null);
   const [operationFeedback,setOperationFeedback]=useState('');
+  // Prevent accidental duplicate relations from rapid repeated taps.
+  const preparingOperationalRef=useRef(false);
+  const submittingAdditionalRef=useRef(false);
   const [focusDocumentId,setFocusDocumentId]=useState('');
   const [pushActive,setPushActive]=useState(false);
   const [pushBusy,setPushBusy]=useState(false);
@@ -516,10 +519,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     maquinariaPorTrabajador: machineryByWorker,
   };
   const prepareOperationalDocument=async(type:'epis'|'formacion'|'autorizacion_uso_maquinaria')=>{
+    if(preparingOperationalRef.current)return;
     if(!documentWorkers.length){setError('Selecciona al menos un periodo con trabajadores.');return;}
     if(type==='autorizacion_uso_maquinaria' && documentWorkers.some(worker=>!String(machineryByWorker[String(worker.id)]||'').trim())){
       setError('Indica la maquinaria o equipos autorizados para todos los trabajadores seleccionados.');return;
     }
+    preparingOperationalRef.current=true;
     setSaving(true);
     setOperationFeedback('');
     try{
@@ -556,6 +561,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       setOperationFeedback(message);
 
     }finally{
+      preparingOperationalRef.current=false;
       setSaving(false);
     }
   };
@@ -1698,11 +1704,13 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         </div>}
         <button
           onClick={async()=>{
+            if(submittingAdditionalRef.current)return;
             if(!selectedWorker)return alert('Selecciona un trabajador.');
             const missing=def.fields.filter(f=>f.required&&!String(answers[f.key]||'').trim());
             if(missing.length)return alert('Completa: '+missing.map(f=>f.label).join(', '));
             if(def.signatureWorker&&!docSignatures.worker)return alert('Falta la firma del trabajador.');
             if(!docSignatures.foreman)return alert('Falta la firma del encargado.');
+            submittingAdditionalRef.current=true;
             setSaving(true);
             try{
               if(correctionDocumentId){
@@ -1721,7 +1729,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               await refresh();setTab('completed');
             }catch(e:any){
               setError(e?.message||'No se pudo enviar el documento al supervisor.');
-            }finally{setSaving(false);}
+            }finally{submittingAdditionalRef.current=false;setSaving(false);}
           }}
           disabled={saving}
           className="min-h-[58px] w-full rounded-2xl bg-[#00548E] px-4 py-4 text-base font-black text-white touch-manipulation disabled:opacity-50"
