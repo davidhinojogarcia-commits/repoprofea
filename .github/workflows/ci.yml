@@ -63,6 +63,8 @@ jobs:
         run: npm run test:worker-annual-lookup
       - name: Ensure diagnostics do not expose private payloads
         run: npm run test:operational-logs
+      - name: Foreman edit/delete draft authorization and regression
+        run: node scripts/testForemanDraftEditing.mjs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail
