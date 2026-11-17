@@ -98,7 +98,7 @@ export const SignaturePad: React.FC<{ title: string; onSave: (data: string) => v
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Firma con el dedo dentro del recuadro.</p>
       <canvas ref={ref} aria-label={title} className="mt-4 w-full h-[240px] sm:h-[280px] touch-none rounded-2xl border-2 border-slate-300 bg-white" {...handlers}/>
       {(error||saveError)&&<p role="alert" className="mt-2 text-sm font-bold text-red-700 dark:text-red-300">{error||saveError}</p>}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="fp-signature-actions mt-4 grid grid-cols-3 gap-2">
         <button disabled={busy} onClick={()=>{clear();setSaveError('');}} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50 disabled:opacity-50"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
         <button disabled={busy} onClick={onCancel} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50 disabled:opacity-50">Cancelar</button>
         <button disabled={busy} onClick={()=>void exportSignature()} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white disabled:opacity-50">{busy?'Guardando…':'Guardar'}</button>
@@ -1146,7 +1146,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       {exactOriginalMode&&<div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-3">
         <div className="text-sm font-black text-[#00548E]">PDF original conservado</div>
         <p className="mt-1 text-sm leading-5 text-slate-600">El documento no se reconstruye. Las firmas se añaden como una capa sobre el archivo importado.</p>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="fp-action-row fp-action-row--two mt-3 grid grid-cols-2 gap-2">
           <button type="button" disabled={saving} onClick={()=>void previewMandatoryPdf(doc,'original')} className="min-h-[50px] rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-black text-[#00548E]">Ver documento original</button>
           <button type="button" disabled={saving||signedCount===0} onClick={()=>void previewMandatoryPdf(doc,'signed')} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:bg-slate-300">Previsualizar con firmas</button>
         </div>
@@ -1341,15 +1341,15 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const attendanceTemplate=effectiveForemanTemplate('control_horario',attendanceEvidence?.workDate===date?attendanceEvidence.layout:undefined);
   const attendanceForemanSigned=Boolean(attendanceEvidence?.workDate===date&&attendanceEvidence.signed);
   const completedToday=controlRows.filter(r=>r.entrySignature&&r.exitSignature).length;
-  return <div className="min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
-    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
+  return <div className="fp-portal-ui min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
+    <header className="fp-portal-header sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="max-w-4xl mx-auto">
         <div className="text-[11px] sm:text-xs font-black uppercase tracking-[.14em] text-[#00548E]">PFEA Encargados</div>
         <h1 className="mt-0.5 text-lg sm:text-xl font-black leading-tight break-words">{data.obra}</h1>
         <p className="mt-0.5 text-sm text-slate-600">{data.foremanName||'Encargado de obra'}</p>
       </div>
     </header>
-    <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-6 space-y-4">
+    <main className="fp-portal-main max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-6 space-y-4">
       <section className="rounded-3xl border bg-white dark:bg-slate-900 p-4 space-y-3" aria-label="Avisos móviles">
         <h2 className="text-lg font-black">Avisos de mi obra</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">{pushActive?`Avisos activos en este dispositivo para ${data.obra}.`:'Activa las notificaciones para saber cuándo el supervisor envía un documento nuevo a tu obra.'}</p>
@@ -1387,24 +1387,24 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       </div>}
       <div
         role="navigation" aria-label="Secciones del portal de encargados"
-        className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+        className="fp-section-nav w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
       >
         <div className="mb-2 flex items-center justify-between gap-2 px-1 sm:hidden">
           <span className="text-sm font-black text-[#00548E] dark:text-blue-300">Sección del portal</span>
           <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Desliza para ver más <span aria-hidden="true">→</span></span>
         </div>
-        <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-xl pb-1 touch-pan-x" style={{WebkitOverflowScrolling:'touch'}} tabIndex={0} aria-label="Desliza horizontalmente por los botones de secciones">
-          <div className="flex w-max min-w-full gap-2">
-          <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
-          <button onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
-          <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
-          <button onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
-          <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
-          <button onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
-          <button onClick={()=>setTab('control')} style={{flex:'0 0 auto',minWidth:122,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='control'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogIn className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control horario</span></button>
-          <button onClick={()=>setTab('documents')} style={{flex:'0 0 auto',minWidth:110,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
-          <button type="button" aria-label="Actas de visitas" aria-pressed={tab==='visits'} onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
-          <button onClick={()=>setTab('completed')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
+        <div className="fp-section-track w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-xl pb-1 touch-pan-x" style={{WebkitOverflowScrolling:'touch'}} tabIndex={0} aria-label="Desliza horizontalmente por los botones de secciones">
+          <div className="fp-section-items flex w-max min-w-full gap-2">
+          <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
+          <button onClick={()=>setTab('prevention')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
+          <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
+          <button onClick={()=>setTab('epis')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
+          <button onClick={()=>setTab('formacion')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
+          <button onClick={()=>setTab('maquinaria')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
+          <button onClick={()=>setTab('control')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='control'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogIn className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control horario</span></button>
+          <button onClick={()=>setTab('documents')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
+          <button type="button" aria-label="Actas de visitas" aria-pressed={tab==='visits'} onClick={()=>setTab('visits')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
+          <button onClick={()=>setTab('completed')}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
           </div>
         </div>
       </div>
@@ -1462,8 +1462,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           </div>
         </div>)}
         {attendanceTemplate&&<div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 text-slate-900"><h3 className="font-black">Firma del encargado</h3><p className="mt-1 text-sm">Completa primero las firmas de entrada y salida. Si cambias la jornada, el encargado deberá firmar de nuevo.</p><p className="mt-1 text-sm">{attendanceForemanSigned?'Firma guardada y verificada':attendanceTemplate.required?'Firma obligatoria pendiente':'Firma pendiente'}</p><button type="button" disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>setAttendanceSigning(true)} className="mt-3 min-h-[52px] w-full rounded-xl bg-[#00548E] px-3 py-3 font-black text-white">Firmar como encargado</button></div>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
+        <div className="fp-action-row fp-action-row--stack-mobile grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button disabled={saving||attendanceLocked||!controlRows.length onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
           <button disabled={saving||attendanceLocked||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
         </div>
         {currentAttendance?.status==='draft'&&!currentAttendance.correctionPending&&<button type="button"
@@ -1496,7 +1496,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             <option value="">Todos los periodos · {allAssignedMandatoryDocuments.length} doc.</option>
             {mandatoryPeriodOptions.map(option=><option key={option.key} value={option.key}>{option.label} · {option.count} doc.</option>)}
           </select>
-          <div role="group" aria-label="Acciones guiadas de documentos" className="grid grid-cols-2 gap-2">
+          <div role="group" aria-label="Acciones guiadas de documentos" className="fp-action-row fp-action-row--two grid grid-cols-2 gap-2">
             <button type="button" onClick={()=>selectMandatoryPeriod('')} aria-pressed={!selectedMandatoryPeriodKeys.size}
               className={`min-h-[48px] min-w-0 rounded-xl border px-3 py-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] ${!selectedMandatoryPeriodKeys.size?'border-[#00548E] bg-[#00548E] text-white':'border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'}`}>Todos</button>
             <button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments}
@@ -1683,7 +1683,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               : <input type={field.type||'text'} value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"/>
           }
         </label>)}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="fp-action-row fp-action-row--two grid grid-cols-1 sm:grid-cols-2 gap-3">
           {def.signatureWorker&&<button onClick={()=>setDocSigning('worker')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.worker?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma trabajador {docSignatures.worker?'✓':''}</button>}
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firmar como encargado {docSignatures.foreman?'✓':''}</button>
         </div>
@@ -1692,7 +1692,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
           <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF exactamente como Documentación de obra
         </button>
-        {!correctionDocumentId&&<div className="grid grid-cols-2 gap-2">
+        {!correctionDocumentId&&<div className="fp-action-row fp-action-row--two grid grid-cols-2 gap-2">
           <button type="button" disabled={saving||!selectedWorker} onClick={()=>void saveAdditional()}
             className="min-h-[52px] rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] disabled:opacity-50">
             <Save className="mr-1 inline h-4 w-4"/>Guardar borrador
@@ -1746,8 +1746,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <div className="mt-1 truncate text-sm font-bold text-[#00548E]" title={String(d.details?.sourceFilename||'')}>{String(d.details?.sourceFilename||'Documento firmado')}</div>
           <div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}{d.details?.periodoLabel?' · '+String(d.details.periodoLabel):''}</div>
           <span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button type="button" disabled={saving} onClick={()=>void previewCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-black text-[#00548E] disabled:opacity-50"><FileDown className="mr-2 inline h-4 w-4"/>Ver PDF</button>
+          <div className="fp-action-row fp-action-row--two mt-3 grid grid-cols-2 gap-2">
+            <button type="button" disabled={saving} onClick={()=>void previewCompletedMandatoryPdf(d) className="min-h-[52px] rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-black text-[#00548E] disabled:opacity-50"><FileDown className="mr-2 inline h-4 w-4"/>Ver PDF</button>
             <button type="button" disabled={saving} onClick={()=>void shareCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl bg-[#00548E] px-3 py-3 text-sm font-black text-white disabled:opacity-50"><Share2 className="mr-2 inline h-4 w-4"/>Compartir</button>
           </div>
         </div>)}
@@ -1831,7 +1831,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           </div>}
           {error&&<p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</p>}
         </div>
-        <div className="grid shrink-0 grid-cols-2 gap-2 border-t bg-white p-3" style={{paddingBottom:'max(12px,env(safe-area-inset-bottom))'}}>
+        <div className="fp-action-row fp-action-row--two grid shrink-0 grid-cols-2 gap-2 border-t bg-white p-3" style={{paddingBottom:'max(12px,env(safe-area-inset-bottom))'}}>
           <button type="button" disabled={saving} onClick={()=>setOperationalEdit(null)}
             className="min-h-[52px] rounded-xl border border-slate-300 px-3 text-sm font-black">Cancelar</button>
           <button type="button" disabled={saving||!operationalEdit.workerIds.length||!operationalEdit.workDate}
