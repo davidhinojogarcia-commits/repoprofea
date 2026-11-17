@@ -103,6 +103,8 @@ try {
   assert(await touch.evaluate(()=>matchMedia('(pointer:coarse)').matches),'touch media query is enabled');
   assert(await touch.locator('.mandatory-editor-controls').isVisible(),'phone opens the worker selection panel');
   assert(!await touch.locator('.mandatory-editor-preview').isVisible(),'phone avoids simultaneous cramped panels');
+  // Loading the one-page PDF fixture is async; do not create a worker while the editor is still loading.
+  await touch.locator('.mandatory-pdf-touch-mode').waitFor({state:'attached'});
   await touch.getByPlaceholder('Nombre y apellidos exactamente como aparecen en el PDF').fill('Trabajador prueba tactil');
   await touch.getByRole('button',{name:'Añadir trabajador del PDF'}).click();
   await touch.locator('.mandatory-pdf-touch-mode[aria-pressed="true"]').waitFor();
