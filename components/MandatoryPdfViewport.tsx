@@ -141,6 +141,13 @@ export default function MandatoryPdfViewport(props:Props){
   const [fit,setFit]=useState<'width'|'page'|'custom'>('width'),[zoom,setZoom]=useState(1);
   const [size,setSize]=useState({width:0,height:0}),[page,setPage]=useState(1),[tools,setTools]=useState(()=>typeof window==='undefined'||window.innerHeight>=600);
   const active=anchors[activeIndex];
+  useEffect(()=>{
+    const collapseLandscapeTools=()=>{
+      if(window.matchMedia('(pointer:coarse) and (max-width: 1199px)').matches&&window.innerHeight<600)setTools(false);
+    };
+    window.addEventListener('resize',collapseLandscapeTools);
+    return()=>window.removeEventListener('resize',collapseLandscapeTools);
+  },[]);
   // Las peticiones de edición proceden del flujo táctil al añadir un trabajador.
   useEffect(()=>{if(editRequest && !props.readOnly)setMode('edit');},[editRequest,props.readOnly]);
   const nudgeSignature=async(dx:number,dy:number)=>{
