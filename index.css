@@ -912,6 +912,11 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
     padding: 10px 9px;
     gap: 6px;
   }
+  /* Row actions must override the generic 44px portal button minimum. */
+  .fp-portal-ui .fp-portal-main .fp-action-row > button,
+  .fp-portal-ui .fp-portal-main .fp-action-row > label {
+    min-height: 50px;
+  }
   .fp-portal-ui .fp-action-row > label:has(input[type="file"]) {
     flex-direction: column;
   }
