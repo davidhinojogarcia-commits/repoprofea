@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {transform} from 'esbuild';
 
 const migration=await fs.readFile('supabase/migrations/20261117210100_foreman_draft_edit_delete.sql','utf8');
 const service=await fs.readFile('src/services/foremanPortalService.ts','utf8');
 const portal=await fs.readFile('components/ForemanMobilePortal.tsx','utf8');
 const workforce=await fs.readFile('components/WorkforceDocumentsPanel.tsx','utf8');
 const parts=await fs.readFile('components/PartsPanel.tsx','utf8');
+// Detect JSX syntax regressions early, before costly browser suites.
+await transform(portal,{loader:'tsx',sourcefile:'ForemanMobilePortal.tsx'});
 const operations=[
  'update_foreman_operational_draft','delete_foreman_operational_draft',
  'save_foreman_additional_draft','submit_foreman_additional_draft',
