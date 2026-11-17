@@ -962,7 +962,8 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
     min-width: 0;
   }
   .fp-portal-ui .fp-parts-panel .fp-action-row > :last-child:nth-child(odd):not(:first-child),
-  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
+  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-workforce-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
     grid-column: 1 / -1;
   }
   .fp-portal-ui .fp-workforce-panel .fp-action-button {
@@ -1007,7 +1008,8 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
     width: auto;
   }
   .fp-portal-ui .fp-parts-panel .fp-action-row > :last-child:nth-child(odd):not(:first-child),
-  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
+  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-workforce-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
     grid-column: auto;
   }
 }
