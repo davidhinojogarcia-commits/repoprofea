@@ -1589,7 +1589,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               className="min-h-[44px] rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E]">Nuevo documento</button>}
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona el documento que necesitas preparar o consultar.</p>
-          {operationFeedback&&<p role="status" className="mt-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">{operationFeedback}</p>     
+          {operationFeedback&&<p role="status" className="mt-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">{operationFeedback}</p>}
         </div>
 
         {additionalDrafts.length>0&&<div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 space-y-2">
