@@ -38,7 +38,7 @@ import {
 const input =
   "mt-1 block w-full min-h-[48px] rounded-xl border border-slate-300 bg-white p-3 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100";
 const button =
-  "inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50";
+  "fp-action-button inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50";
 type Draft = {
   id: string;
   workerId: number;
@@ -357,7 +357,7 @@ export default function WorkforceDocumentsPanel({
     );
   return (
     <section
-      className="space-y-4 rounded-2xl border bg-white p-4 sm:p-6 dark:bg-slate-900"
+      className="fp-workforce-panel min-w-0 space-y-4 rounded-2xl border bg-white p-3 sm:p-6 dark:bg-slate-900"
       aria-label={DOCUMENT_KINDS[kind]}
     >
       <h2 className="text-xl font-black">{DOCUMENT_KINDS[kind]}</h2>
@@ -399,12 +399,12 @@ export default function WorkforceDocumentsPanel({
                   }}
                 />
               </label>
-              <div className="max-h-64 overflow-auto">
+              <div className="max-h-64 space-y-2 overflow-auto">
                 {workers.map((w) => (
                   <button
                     key={w.id}
                     disabled={busy}
-                    className={button + " m-1 w-full justify-start text-left"}
+                    className={button + " w-full justify-start !text-left"}
                     onClick={() => {
                       setDraft({
                         id: crypto.randomUUID(),
@@ -653,7 +653,7 @@ export default function WorkforceDocumentsPanel({
                 <p>{RECEIPT_TEXT}</p>
                 <p className="text-xs">{LEGAL_NOTE}</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
                 <button
                   className={button}
                   disabled={busy}
@@ -875,13 +875,15 @@ export default function WorkforceDocumentsPanel({
                   onClick={() =>
                     void run(async () => {
                       const reason = await appPrompt(
-                        "Motivo de anulación (el documento y las firmas se conservan):",
+                        record.status === "draft"
+                          ? "Motivo para descartar el borrador (se conserva el historial):"
+                          : "Motivo de anulación (el documento y las firmas se conservan):",
                       );
                       if (reason) await command("annul", { reason });
                     })
                   }
                 >
-                  Anular con trazabilidad
+                  {record.status === "draft" ? "Eliminar borrador (con trazabilidad)" : "Anular con trazabilidad"}
                 </button>
               )}
               {record.annulment && (

@@ -60,9 +60,9 @@ export default function ForemanVisitMinutes({
     }
   };
   return (
-    <section className="min-w-0 space-y-3 text-slate-900 dark:text-slate-100">
+    <section className="fp-visit-panel min-w-0 space-y-3 text-slate-900 dark:text-slate-100">
       <h2 className="break-words text-lg font-black sm:text-xl">Actas de visitas · {work}</h2>
-      <nav className="grid grid-cols-2 gap-2" aria-label="Actas de visitas">
+      <nav className="fp-visit-tabs fp-action-row fp-action-row--two grid grid-cols-2 gap-2" aria-label="Actas de visitas">
         <button
           className={btn}
           aria-pressed={tab === "signed"}
@@ -110,7 +110,7 @@ export default function ForemanVisitMinutes({
                 <h3 className="min-w-0 flex-1 break-words text-sm font-black">{p.number} · v{p.version}</h3>
                 <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{p.visitDate}</span>
               </div>
-              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="fp-action-row fp-action-row--adaptive grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 {onOpenPdf && (
                   <button
                     className={btn}

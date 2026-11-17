@@ -21,6 +21,7 @@ globalThis.__foremanUi={
  async resolveForemanPortal(){portalReads++;return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
  async getForemanMandatorySignatures(){signatureReads++;return Object.fromEntries(Object.keys(doc.signatures).map(k=>[k,{signature:'data:image/png;base64,AAAA'}]));},
  async getSupervisorMandatorySignatures(){return {};},
+ async getAttendanceForemanEvidence(){return {signed:false,layout:null};},
 };
 globalThis.__foremanApi={
  async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc),...structuredClone(extraDocs)]:table==='foreman_attendance_days'&&includeAttendance?[
@@ -89,6 +90,26 @@ try {
  const touchTrack=navigation.querySelector('[aria-label="Desliza horizontalmente por los botones de secciones"]');
  assert(touchTrack&&touchTrack.className.includes('overflow-x-auto'),'portrait section ribbon has independent horizontal scrolling');
  assert(navigation.textContent.includes('Desliza para ver más'),'portrait mode gives a discoverable swipe hint');
+
+ if(process.env.FOREMAN_LAYOUT_CAPTURE_DIR){
+   const dir=process.env.FOREMAN_LAYOUT_CAPTURE_DIR;
+   await fs.mkdir(dir,{recursive:true});
+   const capture=async(name)=>fs.writeFile(
+     dir+'/'+name+'.html',document.getElementById('root').outerHTML,'utf8');
+   await capture('mandatory');
+   for(const [name,selector] of [
+     ['epis','EPIs'],['formacion','Formación'],['maquinaria','Maquinaria'],
+     ['control','Control horario'],['documents','Documentos'],
+     ['completed','Finalizados'],['visits','Actas de visitas']
+   ]){
+     const tile=[...navigation.querySelectorAll('.fp-section-tab')].find(button=>button.textContent.replace(/\s+/g,' ').trim()===selector);
+     assert(tile,'missing mobile section: '+selector);
+     await action(()=>tile.click());
+     await capture(name);
+   }
+   await action(()=>navigation.querySelector('button[aria-label="Control, inicios y contratos"]').click());
+ }
+
 
  const labels=['Control, inicios y contratos','Prevención','Partes y avisos','EPIs','Formación','Maquinaria','Control horario','Documentos','Actas de visitas','Finalizados'];
  assert.deepEqual([...navigation.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')||button.textContent.replace(/\s+/g,' ').trim()),labels,'all ten sections stay accessible');
