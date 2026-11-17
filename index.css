@@ -923,8 +923,31 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .fp-portal-ui .fp-action-row > button svg,
   .fp-portal-ui .fp-action-button svg { flex-shrink: 0; }
   .fp-portal-ui .fp-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
     background-clip: padding-box;
     padding: 10px 12px;
+    text-align: center;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-button:not(.fp-action-primary),
+  .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    background: #fff;
+    color: #1e293b;
+    border-color: #cbd5e1;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-primary {
+    background: #00548e;
+    color: #fff;
+    border-color: #00548e;
+  }
+  .dark .fp-portal-ui .fp-parts-panel .fp-action-button:not(.fp-action-primary),
+  .dark .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #64748b;
   }
   .fp-portal-ui .fp-panel-heading {
     align-items: stretch;
