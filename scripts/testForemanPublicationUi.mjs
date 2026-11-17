@@ -90,6 +90,26 @@ try {
  assert(touchTrack&&touchTrack.className.includes('overflow-x-auto'),'portrait section ribbon has independent horizontal scrolling');
  assert(navigation.textContent.includes('Desliza para ver más'),'portrait mode gives a discoverable swipe hint');
 
+ if(process.env.FOREMAN_LAYOUT_CAPTURE_DIR){
+   const dir=process.env.FOREMAN_LAYOUT_CAPTURE_DIR;
+   await fs.mkdir(dir,{recursive:true});
+   const capture=async(name)=>fs.writeFile(
+     dir+'/'+name+'.html',document.getElementById('root').outerHTML,'utf8');
+   await capture('mandatory');
+   for(const [name,selector] of [
+     ['epis','EPIs'],['formacion','Formación'],['maquinaria','Maquinaria'],
+     ['control','Control horario'],['documents','Documentos'],
+     ['completed','Finalizados'],['visits','Actas de visitas']
+   ]){
+     const tile=[...navigation.querySelectorAll('.fp-section-tab')].find(button=>button.textContent.replace(/\s+/g,' ').trim()===selector);
+     assert(tile,'missing mobile section: '+selector);
+     await action(()=>tile.click());
+     await capture(name);
+   }
+   await action(()=>navigation.querySelector('button[aria-label="Control, inicios y contratos"]').click());
+ }
+
+
  const labels=['Control, inicios y contratos','Prevención','Partes y avisos','EPIs','Formación','Maquinaria','Control horario','Documentos','Actas de visitas','Finalizados'];
  assert.deepEqual([...navigation.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')||button.textContent.replace(/\s+/g,' ').trim()),labels,'all ten sections stay accessible');
  await action(()=>navigation.querySelector('button[aria-label="Actas de visitas"]').click());
