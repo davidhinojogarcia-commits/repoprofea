@@ -276,11 +276,12 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     setIndex(draft.length);
     setManualName('');
     setError('');
-    if(isTouchLayout()){
-      setToolsHidden(false);
-      setMobilePanel('pdf');
-      setTouchEditRequest(value=>value+1);
-    }
+    // The new row needs a PDF position in every layout. On touch screens this
+    // also opens the PDF pane; in desktop it selects placement without hiding
+    // any controls. Do not rely on pointer detection during this transition.
+    setToolsHidden(false);
+    setMobilePanel('pdf');
+    setTouchEditRequest(value=>value+1);
   };
 
   const removeCurrentWorker=async()=>{
