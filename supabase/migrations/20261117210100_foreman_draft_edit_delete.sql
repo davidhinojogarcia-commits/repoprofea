@@ -40,7 +40,7 @@ begin
    for update;
   if not found then raise exception 'Documento no encontrado en tu obra'; end if;
   if v_doc.document_type not in ('epis','formacion','maquinaria','autorizacion_uso_maquinaria')
-    or v_doc.period_key not like 'encargado:%'
+    or coalesce(v_doc.period_key,'') not like 'encargado:%'
     or v_doc.lifecycle_status is not null
     or v_doc.v2_initialized_at is not null
     or v_doc.source_gmail_message_id is not null
@@ -95,7 +95,7 @@ begin
    where id=p_document_id and owner_id=v_access.owner_id and lower(obra)=lower(v_access.obra) for update;
   if not found then raise exception 'Documento no encontrado en tu obra'; end if;
   if v_doc.document_type not in ('epis','formacion','maquinaria','autorizacion_uso_maquinaria')
-    or v_doc.period_key not like 'encargado:%'
+    or coalesce(v_doc.period_key,'') not like 'encargado:%'
     or v_doc.lifecycle_status is not null or v_doc.v2_initialized_at is not null
     or v_doc.source_gmail_message_id is not null
     or v_doc.status not in ('pending','in_progress')
@@ -177,10 +177,13 @@ begin
   if not found or v_doc.status<>'draft' or coalesce(v_doc.correction_pending,false) then
     raise exception 'El borrador ya no está disponible para enviarlo'; end if;
   if p_answers is null or jsonb_typeof(p_answers)<>'object' or length(p_answers::text)>24000
+    or p_answers is distinct from v_doc.answers
     or p_signatures is null or jsonb_typeof(p_signatures)<>'object'
     or length(coalesce(p_signatures->>'foreman',''))<20
-    or (p_signatures ? 'worker' and length(coalesce(p_signatures->>'worker',''))<20)
-    then raise exception 'Documento o firmas incompletos'; end if;
+    or (v_doc.document_type in ('baja_voluntaria','ausencia_trabajador','permiso_lactancia',
+      'parte_asistencia_fremap','comunicacion_accidente')
+      and length(coalesce(p_signatures->>'worker',''))<20)
+    then raise exception 'El borrador y las firmas no coinciden o están incompletos'; end if;
   update public.foreman_documents set answers=p_answers,signatures=p_signatures,
     completed_by=v_access.foreman_name,status='completed',completed_at=now(),updated_at=now()
     where id=v_doc.id;
