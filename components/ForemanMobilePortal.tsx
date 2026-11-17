@@ -20,8 +20,7 @@ import {
   resolveForemanPortal,
   saveForemanAttendance,
   signForemanAttendance,
-  submitForemanDocument,
-  signMandatoryForemanDocument,
+   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
   correctForemanMandatoryWorkerName,
   getForemanMandatoryPdf,
@@ -573,6 +572,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const saveOperationalEdit=async()=>{
     if(!operationalEdit||saving)return;
     if(!operationalEdit.workerIds.length){setError('Selecciona al menos un trabajador.');return;}
+    if(operationalEdit.type==='autorizacion_uso_maquinaria' && operationalEdit.workerIds.some(id=>
+      !String(operationalEdit.details.maquinariaPorTrabajador?.[String(id)]||'').trim())){
+      setError('Indica la maquinaria autorizada de cada trabajador incluido.');return;
+    }
     const changedSignatures=operationalEdit.signedCount>0;
     if(changedSignatures&&!await appConfirm(
       'Este documento contiene firmas. Para modificar los datos o trabajadores se retirarán TODAS sus firmas y habrá que recogerlas de nuevo. La versión anterior quedará registrada.',
@@ -1732,6 +1735,91 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.attendance.some(day=>day.status==='completed'||day.status==='reviewed')&&!data.documents.some(d=>!d.correctionPending&&d.status!=='draft')&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
       </section>}
     </main>
+    {operationalEdit&&<ModalPortal label="Editar relación preparada"><div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/70 p-0 sm:p-3">
+      <div className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white text-slate-900 shadow-2xl sm:h-auto sm:max-h-[95dvh] sm:rounded-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b bg-[#00548E] px-4 py-3 text-white">
+          <div className="min-w-0"><h2 className="text-lg font-black">Editar {mandatoryLabel(operationalEdit.type)}</h2>
+            <p className="mt-1 text-xs text-blue-100">Solo antes de enviar al supervisor</p></div>
+          <button type="button" onClick={()=>setOperationalEdit(null)} disabled={saving} aria-label="Cerrar editor de relación"
+            className="min-h-[44px] shrink-0 rounded-xl border border-white/70 px-3 py-2 text-sm font-bold">Cerrar</button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" style={{overscrollBehavior:'contain'}}>
+          {operationalEdit.signedCount>0&&<p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+            Hay {operationalEdit.signedCount} firma(s) guardada(s). Para corregir el contenido, tendrás que confirmar su retirada y recogerlas de nuevo.
+          </p>}
+          <label className="block text-sm font-bold">Fecha del documento
+            <input type="date" value={operationalEdit.workDate} onChange={e=>setOperationalEdit(d=>d?{...d,workDate:e.target.value}:d)}
+              className="mt-2 min-h-[50px] w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900"/>
+          </label>
+          <label className="block text-sm font-bold">Buscar trabajador por nombre o DNI
+            <input type="search" value={operationalWorkerSearch} onChange={e=>setOperationalWorkerSearch(e.target.value)}
+              placeholder="Buscar en la obra…" className="mt-2 min-h-[50px] w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900"/>
+          </label>
+          <div className="rounded-2xl border border-slate-200 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2 text-sm font-black">
+              <span>Trabajadores incluidos</span><span>{operationalEdit.workerIds.length} seleccionados</span>
+            </div>
+            <div className="max-h-[32dvh] space-y-1 overflow-y-auto">
+              {data.workers.filter(w=>[w.apellidosNombre,w.dni].some(v=>String(v||'').toLocaleLowerCase('es').includes(operationalWorkerSearch.trim().toLocaleLowerCase('es'))))
+                .map(w=><label key={w.id} className="flex min-h-[54px] cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <input type="checkbox" checked={operationalEdit.workerIds.includes(Number(w.id))}
+                    onChange={e=>setOperationalEdit(d=>{
+                      if(!d)return d;
+                      const ids=new Set(d.workerIds);
+                      if(e.target.checked)ids.add(Number(w.id));else ids.delete(Number(w.id));
+                      return {...d,workerIds:[...ids]};
+                    })} className="h-6 w-6 shrink-0 accent-[#00548E]"/>
+                  <span className="min-w-0"><span className="block break-words text-sm font-bold">{w.apellidosNombre}</span>
+                    <span className="text-xs text-slate-600">{w.dni} · {w.categoria}</span></span>
+                </label>)}
+            </div>
+          </div>
+          {operationalEdit.type==='epis'&&<div className="space-y-2">
+            <h3 className="text-sm font-black">EPIs entregados</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',
+                guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key}
+                  className="flex min-h-[50px] items-center gap-2 rounded-xl border p-3 text-sm font-bold">
+                  <input type="checkbox" checked={operationalEdit.details.epis?.[key]!==false}
+                    onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,epis:{...d.details.epis,[key]:e.target.checked}}}:d)}
+                    className="h-5 w-5 accent-[#00548E]"/>{label}</label>)}
+            </div></div>}
+          {operationalEdit.type==='formacion'&&<div className="space-y-3">
+            <label className="block text-sm font-bold">Acción formativa
+              <textarea rows={3} value={operationalEdit.details.accionFormativa||''}
+                onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,accionFormativa:e.target.value}}:d)}
+                className="mt-2 w-full rounded-xl border p-3 text-base"/>
+            </label>
+            <label className="block text-sm font-bold">Duración
+              <input value={operationalEdit.details.duracionFormacion||''}
+                onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,duracionFormacion:e.target.value}}:d)}
+                className="mt-2 min-h-[50px] w-full rounded-xl border px-3 text-base"/>
+            </label></div>}
+          {['maquinaria','autorizacion_uso_maquinaria'].includes(operationalEdit.type)&&<div className="space-y-2">
+            <h3 className="text-sm font-black">Maquinaria autorizada por trabajador</h3>
+            {operationalEdit.workerIds.map(id=>{
+              const w=data.workers.find(person=>Number(person.id)===id);
+              return <label key={id} className="block rounded-xl border border-slate-200 p-3 text-sm font-bold">
+                {w?.apellidosNombre||'Trabajador '+id}
+                <input value={operationalEdit.details.maquinariaPorTrabajador?.[String(id)]||''}
+                  onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,
+                    maquinariaPorTrabajador:{...d.details.maquinariaPorTrabajador,[String(id)]:e.target.value}}}:d)}
+                  placeholder="Maquinaria o equipos" className="mt-2 min-h-[50px] w-full rounded-xl border px-3 text-base"/>
+              </label>;
+            })}
+          </div>}
+          {error&&<p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</p>}
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 border-t bg-white p-3" style={{paddingBottom:'max(12px,env(safe-area-inset-bottom))'}}>
+          <button type="button" disabled={saving} onClick={()=>setOperationalEdit(null)}
+            className="min-h-[52px] rounded-xl border border-slate-300 px-3 text-sm font-black">Cancelar</button>
+          <button type="button" disabled={saving||!operationalEdit.workerIds.length||!operationalEdit.workDate}
+            onClick={()=>void saveOperationalEdit()}
+            className="min-h-[52px] rounded-xl bg-[#00548E] px-3 text-sm font-black text-white disabled:opacity-50">
+            {saving?'Guardando…':'Guardar cambios'}</button>
+        </div>
+      </div>
+    </div></ModalPortal>}
     {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>} 
     {attendanceSigning&&<SignaturePad title="Firma del encargado · Control horario" onCancel={()=>setAttendanceSigning(false)} onSave={async image=>{
       setSaving(true);
