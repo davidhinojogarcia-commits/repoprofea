@@ -21,7 +21,7 @@ assert.match(migration,/foreman_portal_draft_audit_owner_select/);
 assert.match(migration,/owner_id=\(select auth\.uid\(\)\)/);
 assert.match(migration,/token_hash=encode\(digest\(trim\(coalesce\(p_token,''\)\),'sha256'\),'hex'\)/);
 assert.match(migration,/lower\(obra\)=lower\(v_access\.obra\)/);
-assert.match(migration,/v_doc\.period_key not like 'encargado:%'/);
+assert.match(migration,/coalesce\(v_doc\.period_key,''\) not like 'encargado:%'/);
 assert.match(migration,/v_doc\.source_gmail_message_id is not null/);
 assert.match(migration,/v_doc\.status not in \('pending','in_progress'\)/);
 assert.match(migration,/v_doc\.status<>'draft'/);
