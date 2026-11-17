@@ -105,7 +105,7 @@ jobs:
         run: npm run test:employment-documents
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
-      - name: Inspector access: RLS, verified identities, expiration and revocation (PGlite)
+      - name: "Inspector access: RLS, verified identities, expiration and revocation (PGlite)"
         run: npm run test:inspection-access
       - name: Install browser runtimes
         timeout-minutes: 8
