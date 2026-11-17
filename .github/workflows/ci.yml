@@ -103,6 +103,8 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Touch worker recovery and PDF placement smoke (Chromium)
+        run: node scripts/testSignatureEditorLayeringBrowser.mjs
       - name: Worker card duplex geometry and browser regression
         run: npm run test:worker-card
       - name: Worker card QR scan authorization
