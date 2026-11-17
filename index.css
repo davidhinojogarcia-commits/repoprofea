@@ -783,7 +783,7 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
 .mandatory-pdf-touch-mode,
 .mandatory-pdf-touch-nudge { display:none !important; }
 .mandatory-editor-touch-worker-search { display:none; }
-@media (pointer:coarse) and (max-width:1440px) {
+@media (pointer:coarse) and (max-width:1366px) {
   .mandatory-anchor-editor { padding:env(safe-area-inset-top) 0 0; }
   .mandatory-anchor-editor .mandatory-editor-shell { border-radius:0; }
   .mandatory-anchor-editor .mandatory-editor-header {
@@ -888,7 +888,7 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .mandatory-workers-footer button { min-height:48px; min-width:0; padding:8px; touch-action:manipulation; }
 }
 
-@media (pointer:coarse) and (max-width:1440px) and (max-height:600px) {
+@media (pointer:coarse) and (max-width:1366px) and (max-height:600px) {
   .mandatory-anchor-editor .mandatory-editor-header { padding:5px 10px; }
   .mandatory-anchor-editor .mandatory-editor-header h2 { font-size:14px; }
   .mandatory-anchor-editor .mandatory-editor-mobile-tabs { padding:4px 8px; }
