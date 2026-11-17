@@ -1450,6 +1450,17 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <button disabled={saving||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
           <button disabled={saving||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
         </div>
+        {currentAttendance?.status==='draft'&&!currentAttendance.correctionPending&&<button type="button"
+          disabled={saving} onClick={async()=>{
+            if(!await appConfirm('¿Eliminar el borrador de control horario de esta fecha? Si contiene firmas, quedarán conservadas en el registro de auditoría y tendrán que recogerse nuevamente.',
+              {title:'Eliminar borrador de control horario',confirmLabel:'Eliminar borrador'}))return;
+            setSaving(true);setError('');
+            try{await deleteForemanAttendanceDraft(token,date);await refresh();setOperationFeedback('Borrador de control horario eliminado.');}
+            catch(e:any){setError(e?.message||'No se pudo eliminar el borrador.');}
+            finally{setSaving(false);}
+          }} className="min-h-[50px] w-full rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 disabled:opacity-50">
+            <Trash2 className="mr-2 inline h-4 w-4"/>Eliminar borrador de control horario
+          </button>}
       </section>}
 
       {tab==='mandatory'&&<section className="space-y-3">
@@ -1572,6 +1583,22 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona el documento que necesitas preparar o consultar.</p>
         </div>
 
+        {additionalDrafts.length>0&&<div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+          <h3 className="font-black text-[#00548E]">Borradores pendientes de enviar ({additionalDrafts.length})</h3>
+          {additionalDrafts.map(doc=><div key={doc.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <button type="button" onClick={()=>openAdditionalDraft(doc)} className="min-h-[48px] min-w-0 rounded-lg px-2 text-left text-sm font-bold text-slate-900">
+              <span className="block break-words">{ADDITIONAL_WORKSITE_DOCUMENTS[doc.documentType as AdditionalWorksiteDocumentType]?.short||doc.documentType}</span>
+              <span className="block text-xs font-normal text-slate-600">{doc.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(doc.workDate).slice(0,10)}</span>
+            </button>
+            <button type="button" disabled={saving} onClick={async()=>{
+              if(!await appConfirm('¿Eliminar este borrador antes de enviarlo?',{title:'Eliminar borrador',confirmLabel:'Eliminar borrador'}))return;
+              setSaving(true);setError('');
+              try{await deleteForemanAdditionalDraft(token,doc.id);if(additionalDraftId===doc.id)resetAdditionalEditor();await refresh();}
+              catch(e:any){setError(e?.message||'No se pudo eliminar el borrador.');}
+              finally{setSaving(false);}
+            }} className="min-h-[48px] rounded-lg border border-rose-200 bg-rose-50 px-3 text-sm font-black text-rose-700">Eliminar</button>
+          </div>)}
+        </div>}
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
           <div>
             <div className="text-base font-black text-amber-900">Correcciones solicitadas por el supervisor</div>
@@ -1582,6 +1609,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             type="button"
             onClick={()=>{
               setCorrectionDocumentId(String(d.id));
+              setAdditionalDraftId('');
               setDocumentView('other');
               setDocType(d.documentType as AdditionalWorksiteDocumentType);
               setWorkerId(Number(d.workerId||'')||'');
@@ -1606,7 +1634,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             }else{
               setDocumentView('other');
               setDocType(value as AdditionalWorksiteDocumentType);
-              setAnswers({});setDocSignatures({});setCorrectionDocumentId('');
+              setAnswers({});setDocSignatures({});setCorrectionDocumentId('');setAdditionalDraftId('');
             }
           }} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             {Object.entries(ADDITIONAL_WORKSITE_DOCUMENTS).map(([key,d])=><option key={key} value={key}>{d.short}</option>)}
@@ -1619,7 +1647,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <label className="block text-sm font-black">Trabajador
           <select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             <option value="">Seleccionar trabajador…</option>
-            {documentWorkers.map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
+            {(correctionDocumentId||additionalDraftId?data.workers:documentWorkers).map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
           </select>
         </label>
         <label className="block text-sm font-black">Fecha
@@ -1638,9 +1666,20 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firmar como encargado {docSignatures.foreman?'✓':''}</button>
         </div>
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
+        {additionalDraftId&&<div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-3 text-sm font-black text-blue-900">Editando borrador guardado. Si cambias los datos, vuelve a recoger las firmas antes de enviar.</div>}
         <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
           <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF exactamente como Documentación de obra
         </button>
+        {!correctionDocumentId&&<div className="grid grid-cols-2 gap-2">
+          <button type="button" disabled={saving||!selectedWorker} onClick={()=>void saveAdditional()}
+            className="min-h-[52px] rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] disabled:opacity-50">
+            <Save className="mr-1 inline h-4 w-4"/>Guardar borrador
+          </button>
+          <button type="button" disabled={saving} onClick={()=>void deleteAdditional()}
+            className="min-h-[52px] rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-700 disabled:opacity-50">
+            <Trash2 className="mr-1 inline h-4 w-4"/>{additionalDraftId?'Eliminar borrador':'Descartar'}
+          </button>
+        </div>}
         <button
           onClick={async()=>{
             if(!selectedWorker)return alert('Selecciona un trabajador.');
@@ -1653,9 +1692,15 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               if(correctionDocumentId){
                 await resubmitForemanDocument({token,documentId:correctionDocumentId,answers,signatures:docSignatures});
               }else{
-                await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
+                // Registrar el documento de forma estable y completar el mismo borrador.
+                const savedId=await saveForemanAdditionalDraft({
+                  token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),
+                  answers,documentId:additionalDraftId||null,
+                });
+                setAdditionalDraftId(savedId);
+                await submitForemanAdditionalDraft({token,documentId:savedId,answers,signatures:docSignatures});
               }
-              setAnswers({});setDocSignatures({});setWorkerId('');setCorrectionDocumentId('');
+              resetAdditionalEditor();
               setError('');
               await refresh();setTab('completed');
             }catch(e:any){
