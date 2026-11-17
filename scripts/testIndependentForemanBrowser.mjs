@@ -65,15 +65,19 @@ try{
   assert(await page.evaluate(()=>window.testApi.checkWorkers()),'worker signatures untouched');
  }
  const fidelity=await page.evaluate(()=>window.checkOriginalFidelity());assert.equal(fidelity.ok,true,JSON.stringify(fidelity));
- await page.reload();await openSection('EPIs');await page.getByRole('button').filter({hasText:'epis.pdf'}).click();
+ await page.reload();
+  await page.getByText('Trabajo recuperado',{exact:false}).first().waitFor({timeout:15000});
+  await openSection('EPIs');
+  const reSignButton=page.getByRole('button',{name:'Volver a firmar como encargado',exact:true});
+  if(!(await reSignButton.isVisible()))await page.getByRole('button').filter({hasText:'epis.pdf'}).click();
   await page.waitForTimeout(250);
-  console.log('RELOAD SIGNATURE DIAGNOSTIC',JSON.stringify(await page.evaluate(()=>({
+  console.log('RELOAD SIGNATURE DIAGNOSTIC',JSON.stringify({state:await page.evaluate(()=>({
     selectedTab:document.querySelector('.fp-section-tab[aria-pressed="true"]')?.textContent||null,
     signButtons:[...document.querySelectorAll('button')].filter(b=>/firmar como encargado|Firma del encargado/i.test(b.textContent||'')).map(b=>({text:b.textContent,disabled:b.disabled,visible:b.getBoundingClientRect().height>0})).slice(0,15),
     alerts:[...document.querySelectorAll('[role="alert"]')].map(x=>x.textContent).slice(0,6),
     hasEpi:document.body.textContent.includes('epis.pdf'),
     vaultStatus:[...document.querySelectorAll('[role="status"]')].map(x=>x.textContent).filter(x=>/Trabajo|dispositivo|conexión/.test(x)).slice(0,6)
-  })),errors.slice(-5)));
+  })),errors:errors.slice(-5)}));
   await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor({timeout:7000});
  await page.getByRole('combobox',{name:'Añadir quincena o contrato',exact:true}).selectOption('PERIODO DE PRUEBA');
  await page.getByRole('button',{name:/Preparar relación para firmas/}).click();await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();assert(await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'new document auto-expands with foreman panel');
