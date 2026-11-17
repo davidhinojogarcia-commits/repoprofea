@@ -1464,6 +1464,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           }} className="min-h-[50px] w-full rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 disabled:opacity-50">
             <Trash2 className="mr-2 inline h-4 w-4"/>Eliminar borrador de control horario
           </button>}
+        </div>
       </section>}
 
       {tab==='mandatory'&&<section className="space-y-3">
