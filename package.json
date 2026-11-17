@@ -72,7 +72,8 @@
     "test:registration-qr": "node scripts/testRegistrationQrBrowser.mjs",
     "test:workforce-documents": "node scripts/testWorkforceDocuments.mjs",
     "test:workforce-documents-browser": "node scripts/testWorkforceDocumentsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkforceDocumentsBrowser.mjs",
-    "test:worker-card-print": "node --import tsx scripts/testWorkerCardDniPrint.mjs"
+    "test:worker-card-print": "node --import tsx scripts/testWorkerCardDniPrint.mjs",
+    "test:idle-gmail-consumption": "node scripts/testIdleMandatoryGmailScan.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
