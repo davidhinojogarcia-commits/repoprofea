@@ -143,7 +143,7 @@ export default function MandatoryPdfViewport(props:Props){
   const active=anchors[activeIndex];
   useEffect(()=>{
     const collapseLandscapeTools=()=>{
-      if(window.matchMedia('(pointer:coarse) and (max-width: 1199px)').matches&&window.innerHeight<600)setTools(false);
+      if(window.matchMedia('(pointer:coarse) and (max-width: 1440px)').matches&&window.innerHeight<600)setTools(false);
     };
     window.addEventListener('resize',collapseLandscapeTools);
     return()=>window.removeEventListener('resize',collapseLandscapeTools);
