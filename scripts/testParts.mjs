@@ -1062,6 +1062,28 @@ try {
   console.log(
     "PASS Partes Directory trash: active worker removal/restoration preserves signed history/PDF; new declarations and fact edits require a current authorised worker.",
   );
+  // An encargado may discard only an unsent draft of their own worksite.
+  let discardRecord = await create(7000, "service", {}, 100);
+  assert.equal(discardRecord.status, "draft");
+  const otherWorkDiscard = await invoke({
+    action: "discard", token: wrongWorkToken, id: discardRecord.id,
+    expected: discardRecord.revision, operationId: randomUUID(),
+    command: { reason: "Intento de borrar un borrador ajeno." },
+  });
+  assert.notEqual(otherWorkDiscard.status, 200, "other foreman worksite must not discard the draft");
+  discardRecord = await command(discardRecord, "discard", {
+    reason: "Descartado por el encargado antes de enviarlo al supervisor.",
+  });
+  assert.equal(discardRecord.status, "annulled", "discard leaves a traceable tombstone");
+  const discardedHistory = await call({ action: "detail", id: discardRecord.id });
+  assert(discardedHistory.history.some(event => event.action === "discard"), "audit keeps the discard action");
+  assert.notEqual((await invoke({
+    action: "discard", token, id: discardRecord.id,
+    expected: discardRecord.revision, operationId: randomUUID(),
+    command: { reason: "No se permite descartar dos veces." },
+  })).status, 200, "already discarded records cannot be discarded again");
+  console.log("PASS Partes: authorized draft-only discard with audit; cross-worksite and repeated discard blocked.");
+
   const secured = (
     await db.query(
       "select relname,relrowsecurity from pg_class where relnamespace='public'::regnamespace and relname like 'parts_%' and relkind='r'",
