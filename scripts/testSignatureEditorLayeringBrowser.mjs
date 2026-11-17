@@ -107,6 +107,7 @@ try {
   await touch.getByRole('button',{name:'Añadir trabajador del PDF'}).click();
   await touch.locator('.mandatory-pdf-touch-mode[aria-pressed="true"]').waitFor();
   assert(await touch.locator('.mandatory-editor-preview').isVisible(),'adding a worker opens PDF placement in edit mode');
+  await touch.waitForFunction(()=>document.querySelector('.mandatory-pdf-page canvas')?.getBoundingClientRect().width>150);
   await touch.locator('.mandatory-pdf-page canvas').tap({position:{x:70,y:70}});
   await touch.locator('[data-signature-index="1"]').waitFor();
   const before=await touch.locator('[data-signature-index="1"]').evaluate(el=>Number.parseFloat(el.style.left));
