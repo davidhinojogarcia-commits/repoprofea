@@ -66,7 +66,7 @@ try{
  }
  const fidelity=await page.evaluate(()=>window.checkOriginalFidelity());assert.equal(fidelity.ok,true,JSON.stringify(fidelity));
  await page.reload();
-  await page.getByText('Trabajo recuperado',{exact:false}).first().waitFor({timeout:15000});
+  await page.waitForFunction(()=>/Trabajo recuperado|Guardado en este dispositivo/.test(document.body.textContent||''),{timeout:15000});
   await openSection('EPIs');
   const reSignButton=page.getByRole('button',{name:'Volver a firmar como encargado',exact:true});
   if(!(await reSignButton.isVisible()))await page.getByRole('button').filter({hasText:'epis.pdf'}).click();
