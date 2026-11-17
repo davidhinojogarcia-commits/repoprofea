@@ -782,6 +782,7 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
 /* TOUCH-ONLY FOREMAN DOCUMENT EDITORS — keep the desktop layout unchanged. */
 .mandatory-pdf-touch-mode,
 .mandatory-pdf-touch-nudge { display:none !important; }
+.mandatory-editor-touch-worker-search { display:none; }
 @media (pointer:coarse) and (max-width:1199px) {
   .mandatory-anchor-editor { padding:env(safe-area-inset-top) 0 0; }
   .mandatory-anchor-editor .mandatory-editor-shell { border-radius:0; }
@@ -817,6 +818,7 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
     min-height:48px; font-size:13px; touch-action:manipulation;
   }
   .mandatory-anchor-editor .mandatory-editor-controls { padding:12px; }
+  .mandatory-anchor-editor .mandatory-editor-touch-worker-search { display:block; }
   .mandatory-anchor-editor .mandatory-editor-controls button,
   .mandatory-anchor-editor .mandatory-editor-controls select,
   .mandatory-anchor-editor .mandatory-editor-controls input { min-height:48px; }
