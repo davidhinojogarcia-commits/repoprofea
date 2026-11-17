@@ -119,7 +119,7 @@ try {
           for (const row of metrics.rows) {
             for (const action of row.children) {
               assert(action.height >= 46 && action.width >= 44,
-                engine + " " + configuration.name + ": insufficient touch target for " + row.className);
+                engine + " " + configuration.name + " " + section + ": insufficient touch target for " + row.className + " " + JSON.stringify(action));
               assert(action.right <= configuration.width + 5,
                 engine + ": action crosses viewport in " + row.className);
             }
