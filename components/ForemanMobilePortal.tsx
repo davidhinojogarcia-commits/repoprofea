@@ -32,6 +32,12 @@ import {
   signImportedDocumentAsForeman,
   getImportedForemanSignature,
   createForemanOperationalDocument,
+  updateForemanOperationalDraft,
+  deleteForemanOperationalDraft,
+  saveForemanAdditionalDraft,
+  submitForemanAdditionalDraft,
+  deleteForemanAdditionalDraft,
+  deleteForemanAttendanceDraft,
   resubmitForemanDocument,
   type ForemanAttendanceRow,
   type ForemanMandatoryDocument,
@@ -204,6 +210,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
   const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
+  const [additionalDraftId,setAdditionalDraftId]=useState('');
+  const [operationalEdit,setOperationalEdit]=useState<{
+    id:string;type:string;workDate:string;workerIds:number[];details:Record<string,any>;
+    signedCount:number;
+  }|null>(null);
+  const [operationalWorkerSearch,setOperationalWorkerSearch]=useState('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;documentWorkerId?:string;name:string}|null>(null);
   const [mandatoryWorkerChoice,setMandatoryWorkerChoice]=useState<Record<string,string>>({});
   const [installPromptAvailable,setInstallPromptAvailable]=useState(Boolean(window.__profeaInstallPrompt));
@@ -483,10 +495,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   },[data?.workers,selectedPeriodKeys]);
   const selectedWorkerIds=useMemo(()=>new Set(documentWorkers.map(worker=>Number(worker.id))),[documentWorkers]);
   useEffect(()=>{
-    if(workerId!=='' && !documentWorkers.some(worker=>Number(worker.id)===Number(workerId))){
+    if(!correctionDocumentId&&!additionalDraftId&&workerId!=='' && !documentWorkers.some(worker=>Number(worker.id)===Number(workerId))){
       setWorkerId('');
     }
-  },[documentWorkers,workerId]);
+  },[documentWorkers,workerId,correctionDocumentId,additionalDraftId]);
   const controlRows=useMemo(()=>rows.filter(row=>selectedWorkerIds.has(Number(row.workerId))),[rows,selectedWorkerIds]);
   const periodLabel = selectedPeriodKeys.size
     ? [...selectedPeriodKeys].map(key=>key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2))).join(' + ')
@@ -547,6 +559,54 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     }finally{
       setSaving(false);
     }
+  };
+  const editOperationalDocument=(doc:ForemanMandatoryDocument)=>{
+    setOperationalWorkerSearch('');
+    setOperationalEdit({
+      id:doc.id,type:doc.documentType,workDate:String(doc.workDate||'').slice(0,10),
+      workerIds:(doc.workers||[]).map(worker=>Number(worker.id)).filter(Number.isFinite),
+      details:{...(doc.details||{}),epis:{...(doc.details?.epis||{})},
+        maquinariaPorTrabajador:{...(doc.details?.maquinariaPorTrabajador||{})}},
+      signedCount:Object.keys(doc.signatures||{}).length,
+    });
+  };
+  const saveOperationalEdit=async()=>{
+    if(!operationalEdit||saving)return;
+    if(!operationalEdit.workerIds.length){setError('Selecciona al menos un trabajador.');return;}
+    const changedSignatures=operationalEdit.signedCount>0;
+    if(changedSignatures&&!await appConfirm(
+      'Este documento contiene firmas. Para modificar los datos o trabajadores se retirarán TODAS sus firmas y habrá que recogerlas de nuevo. La versión anterior quedará registrada.',
+      {title:'Modificar documento firmado',confirmLabel:'Retirar firmas y guardar'}
+    ))return;
+    setSaving(true);setError('');
+    try{
+      await updateForemanOperationalDraft({
+        token,documentId:operationalEdit.id,workDate:operationalEdit.workDate,
+        workerIds:operationalEdit.workerIds,details:operationalEdit.details,
+        resetSignatures:changedSignatures,
+      });
+      setOperationalEdit(null);
+      await refresh();
+      setOperationFeedback(changedSignatures
+        ? 'Documento corregido. Las firmas anteriores se han retirado: recoge las nuevas antes de enviar.'
+        : 'Cambios del documento guardados.');
+    }catch(e:any){setError(e?.message||'No se pudo editar el documento.');}
+    finally{setSaving(false);}
+  };
+  const deleteOperational=async(doc:ForemanMandatoryDocument)=>{
+    if(saving)return;
+    const count=Object.keys(doc.signatures||{}).length;
+    if(!await appConfirm(
+      `¿Eliminar esta relación preparada? ${count? `Contiene ${count} firma(s), que dejarán de estar activas. `:''}El documento todavía no enviado desaparecerá del portal y quedará constancia de la eliminación.`,
+      {title:'Eliminar documento en preparación',confirmLabel:'Eliminar documento'}
+    ))return;
+    setSaving(true);setError('');
+    try{
+      await deleteForemanOperationalDraft(token,doc.id);
+      setOperationalEdit(null);await refresh();
+      setOperationFeedback('Documento eliminado antes de enviarlo al supervisor.');
+    }catch(e:any){setError(e?.message||'No se pudo eliminar el documento.');}
+    finally{setSaving(false);}
   };
   const operationalDocumentsFor=(type:'epis'|'formacion'|'maquinaria')=>{
     const accepted=type==='maquinaria'?['maquinaria','autorizacion_uso_maquinaria']:[type];
@@ -1048,6 +1108,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     const foremanSigned=Boolean(foremanEvidence[doc.id]?.signed);
     const canFinalize=requiredSignatureTotal>0&&pendingRequired===0&&(!foremanRequired||foremanSigned);
     const expanded=expandedMandatoryDocuments.has(doc.id);
+    const canManageOperational=!isImportedMandatory &&
+      String(doc.periodKey||'').startsWith('encargado:') &&
+      !doc.lifecycleStatus && !doc.correctionPending &&
+      (doc.status==='pending'||doc.status==='in_progress');
 
     return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
       <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="flex min-h-[62px] w-full min-w-0 items-start justify-between gap-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] sm:p-4">
@@ -1063,6 +1127,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0}</span>
       </button>
       {expanded&&<div className="border-t p-4">
+      {canManageOperational&&<div className="mb-3 grid grid-cols-2 gap-2" role="group" aria-label="Editar o eliminar documento antes de enviar">
+        <button type="button" disabled={saving} onClick={()=>editOperationalDocument(doc)}
+          className="min-h-[50px] rounded-xl border border-[#00548E] bg-white px-3 py-2.5 text-sm font-black text-[#00548E] disabled:opacity-50">Editar documento</button>
+        <button type="button" disabled={saving} onClick={()=>void deleteOperational(doc)}
+          className="min-h-[50px] rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm font-black text-rose-800 disabled:opacity-50">Eliminar documento</button>
+      </div>}
 
       {exactOriginalMode&&<div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-3">
         <div className="text-sm font-black text-[#00548E]">PDF original conservado</div>
@@ -1219,6 +1289,42 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
   const currentAttendance=data?.attendance.find(day=>String(day.workDate).slice(0,10)===date);
   const attendanceLocked=Boolean(currentAttendance&&['completed','reviewed'].includes(currentAttendance.status)&&!currentAttendance.correctionPending);
+  const additionalDrafts=(data?.documents||[]).filter(doc=>doc.status==='draft'&&!doc.correctionPending);
+  const openAdditionalDraft=(doc:typeof additionalDrafts[number])=>{
+    setAdditionalDraftId(doc.id);setCorrectionDocumentId('');setDocumentView('other');
+    setDocType(doc.documentType as AdditionalWorksiteDocumentType);
+    setWorkerId(Number(doc.workerId||'')||'');
+    setDate(String(doc.workDate).slice(0,10));
+    setAnswers({...doc.answers});setDocSignatures({});
+    setTab('documents');
+  };
+  const resetAdditionalEditor=()=>{
+    setAdditionalDraftId('');setCorrectionDocumentId('');setAnswers({});
+    setDocSignatures({});setWorkerId('');
+  };
+  const saveAdditional=async()=>{
+    if(!selectedWorker){setError('Selecciona un trabajador.');return;}
+    setSaving(true);setError('');
+    try{
+      const id=await saveForemanAdditionalDraft({token,documentType:docType,workDate:date,
+        workerId:Number(selectedWorker.id),answers,documentId:additionalDraftId||null});
+      setAdditionalDraftId(id);setDocSignatures({});
+      await refresh();setOperationFeedback('Borrador guardado. Puedes volver a abrirlo, editarlo o eliminarlo antes de enviarlo.');
+    }catch(e:any){setError(e?.message||'No se pudo guardar el borrador.');}
+    finally{setSaving(false);}
+  };
+  const deleteAdditional=async()=>{
+    if(!additionalDraftId){resetAdditionalEditor();setOperationFeedback('Datos sin guardar descartados.');return;}
+    if(!await appConfirm('Se eliminará este borrador sin enviar al supervisor.',{
+      title:'Eliminar borrador',confirmLabel:'Eliminar borrador'}))return;
+    setSaving(true);setError('');
+    try{
+      await deleteForemanAdditionalDraft(token,additionalDraftId);
+      resetAdditionalEditor();await refresh();
+      setOperationFeedback('Borrador eliminado.');
+    }catch(e:any){setError(e?.message||'No se pudo eliminar el borrador.');}
+    finally{setSaving(false);}
+  };
   const attendanceTemplate=effectiveForemanTemplate('control_horario',attendanceEvidence?.workDate===date?attendanceEvidence.layout:undefined);
   const attendanceForemanSigned=Boolean(attendanceEvidence?.workDate===date&&attendanceEvidence.signed);
   const completedToday=controlRows.filter(r=>r.entrySignature&&r.exitSignature).length;
