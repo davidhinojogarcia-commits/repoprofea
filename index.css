@@ -779,6 +779,306 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
 }
 
 
+/* Portal de Encargados · sistema institucional de acciones táctiles.
+   Solo afecta al portal; directorio y escritorio de supervisión permanecen intactos.
+   Se activa en pantallas reducidas o tabletas con puntero táctil. */
+.fp-portal-ui {
+  --fp-institutional: #00548e;
+  --fp-ink: #102a43;
+  --fp-line: #cbd5e1;
+}
+.fp-portal-ui button:focus-visible,
+.fp-signature-actions button:focus-visible {
+  outline: 3px solid #1680bd;
+  outline-offset: 3px;
+}
+.fp-portal-ui button:disabled,
+.fp-signature-actions button:disabled {
+  cursor: not-allowed;
+}
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1440px) {
+  .fp-portal-ui {
+    overflow-x: clip;
+  }
+  .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab) {
+    border-radius: 12px;
+    touch-action: manipulation;
+    transition: background-color .14s ease, border-color .14s ease;
+  }
+  /* Respect explicit 48/52/58px min-heights on signing and submission actions. */
+  .fp-portal-ui .fp-portal-main button:not([class*="min-h-"]):not(.fp-document-toggle):not(.fp-section-tab) {
+    min-height: 44px;
+  }
+  .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab):disabled {
+    opacity: .58;
+  }
+  .fp-portal-ui .fp-portal-main {
+    min-width: 0;
+    padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
+  }
+  .fp-portal-ui .fp-section-nav {
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, .06);
+  }
+  .fp-portal-ui .fp-section-track {
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    scrollbar-color: #a9bdd2 transparent;
+  }
+  .fp-portal-ui .fp-section-items { gap: 8px; align-items: stretch; }
+  .fp-portal-ui .fp-section-tab {
+    display: inline-flex;
+    flex: 0 0 116px !important;
+    width: 116px !important;
+    min-width: 116px !important;
+    min-height: 72px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 7px;
+    text-align: center;
+    line-height: 1.2;
+    white-space: normal;
+    border: 1px solid #d5e0eb;
+    border-radius: 12px;
+    background: #f7f9fc;
+    color: #16334e;
+    scroll-snap-align: start;
+    box-shadow: none;
+    transition: background-color .14s ease, border-color .14s ease, box-shadow .14s ease;
+  }
+  .fp-portal-ui .fp-section-tab svg {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-bottom: 0;
+  }
+  .fp-portal-ui .fp-section-tab > span {
+    min-height: 27px;
+    display: block;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: normal;
+  }
+  .fp-portal-ui .fp-section-tab[aria-pressed="true"] {
+    background: var(--fp-institutional);
+    border-color: var(--fp-institutional);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0, 84, 142, .2);
+  }
+  .fp-portal-ui .fp-section-tab[aria-label="Partes y avisos"]:not([aria-pressed="true"]) {
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #9f1239;
+  }
+  .fp-portal-ui .fp-section-tab[aria-label="Partes y avisos"][aria-pressed="true"] {
+    background: #b91c1c;
+    border-color: #b91c1c;
+    color: #fff;
+  }
+  .fp-portal-ui .fp-action-row {
+    display: grid;
+    gap: 8px;
+    align-items: stretch;
+    min-width: 0;
+  }
+  .fp-portal-ui .fp-action-row--two,
+  .fp-portal-ui .fp-action-row--adaptive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fp-portal-ui .fp-action-row--stack-mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fp-portal-ui .fp-action-row > button,
+  .fp-portal-ui .fp-action-row > label,
+  .fp-portal-ui .fp-action-button {
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: 50px;
+    margin: 0;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .fp-portal-ui .fp-action-row > button,
+  .fp-portal-ui .fp-action-row > label {
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px 9px;
+    gap: 6px;
+  }
+  /* Row actions must override the generic 44px portal button minimum. */
+  .fp-portal-ui .fp-portal-main .fp-action-row > button,
+  .fp-portal-ui .fp-portal-main .fp-action-row > label {
+    min-height: 50px !important;
+  }
+  .fp-portal-ui .fp-action-row > label:has(input[type="file"]) {
+    flex-direction: column;
+  }
+  .fp-portal-ui .fp-action-row > label input[type="file"] {
+    width: 100%;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .fp-portal-ui .fp-action-row > button svg,
+  .fp-portal-ui .fp-action-button svg { flex-shrink: 0; }
+  .fp-portal-ui .fp-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    background-clip: padding-box;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-button:not(.fp-action-primary),
+  .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    background: #fff;
+    color: #1e293b;
+    border-color: #cbd5e1;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-primary {
+    background: #00548e;
+    color: #fff;
+    border-color: #00548e;
+  }
+  .dark .fp-portal-ui .fp-parts-panel .fp-action-button:not(.fp-action-primary),
+  .dark .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #64748b;
+  }
+  .fp-portal-ui .fp-panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .fp-portal-ui .fp-panel-heading > div {
+    width: 100%;
+  }
+  .fp-portal-ui .fp-push-actions {
+    padding: 8px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+  .fp-portal-ui .fp-visit-tabs > button {
+    min-height: 52px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #fff;
+    color: #16334e;
+  }
+  .fp-portal-ui .fp-visit-tabs > button[aria-pressed="true"] {
+    border-color: var(--fp-institutional);
+    background: var(--fp-institutional);
+    color: #fff;
+  }
+  .fp-portal-ui .fp-prevention-panel button,
+  .fp-portal-ui .fp-visit-panel button {
+    min-height: 48px;
+    overflow-wrap: anywhere;
+  }
+  .fp-portal-ui .fp-parts-panel,
+  .fp-portal-ui .fp-visit-panel,
+  .fp-portal-ui .fp-prevention-panel {
+    min-width: 0;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-row > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-workforce-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
+    grid-column: 1 / -1;
+  }
+  .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    width: 100%;
+    min-height: 50px;
+  }
+  .fp-portal-ui .fp-document-card {
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+  }
+  .fp-portal-ui .fp-document-card .fp-document-toggle {
+    min-height: 64px;
+  }
+  .fp-signature-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+  }
+  .fp-signature-actions > button {
+    min-width: 0;
+    min-height: 52px;
+    padding: 10px 6px;
+    font-size: 14px;
+    line-height: 1.2;
+    border-radius: 12px;
+    text-align: center;
+  }
+}
+@media (min-width: 700px) and (max-width: 900px), (pointer: coarse) and (min-width: 700px) and (max-width: 1440px) {
+  .fp-portal-ui .fp-action-row--adaptive {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .fp-portal-ui .fp-action-row--stack-mobile {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fp-portal-ui .fp-panel-heading {
+    flex-direction: row;
+    align-items: center;
+  }
+  .fp-portal-ui .fp-panel-heading > div {
+    width: auto;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-row > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-workforce-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
+    grid-column: auto;
+  }
+}
+@media (max-width: 370px) {
+  .fp-portal-ui .fp-section-tab {
+    flex-basis: 108px !important;
+    width: 108px !important;
+    min-width: 108px !important;
+  }
+  .fp-portal-ui .fp-action-row > button,
+  .fp-portal-ui .fp-action-row > label {
+    padding-inline: 7px;
+    font-size: 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-portal-ui .fp-section-tab { transition: none; }
+}
+.dark .fp-portal-ui .fp-section-nav,
+.dark .fp-portal-ui .fp-push-actions {
+  border-color: #475569;
+  background: #0f172a;
+}
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1440px) {
+  .dark .fp-portal-ui .fp-section-tab:not([aria-pressed="true"]),
+  .dark .fp-portal-ui .fp-visit-tabs > button:not([aria-pressed="true"]) {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #475569;
+  }
+  .dark .fp-portal-ui .fp-section-tab[aria-label="Partes y avisos"]:not([aria-pressed="true"]) {
+    background: #450a0a;
+    color: #fecaca;
+    border-color: #991b1b;
+  }
+}
+
+
 /* TOUCH-ONLY FOREMAN DOCUMENT EDITORS — keep the desktop layout unchanged. */
 .mandatory-pdf-touch-mode,
 .mandatory-pdf-touch-nudge { display:none !important; }

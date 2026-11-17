@@ -61,8 +61,16 @@ jobs:
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
       - name: Worker annual lookup projection and pagination
         run: npm run test:worker-annual-lookup
+      - name: Verify idle Gmail scans avoid unnecessary REST reads
+        run: npm run test:idle-gmail-consumption
+      - name: Verify low-consumption cache and offline persistence regressions
+        run: |
+          npm run test:low-consumption
+          npm run test:consumption-cache
       - name: Ensure diagnostics do not expose private payloads
         run: npm run test:operational-logs
+      - name: Foreman edit/delete draft authorization and regression
+        run: node scripts/testForemanDraftEditing.mjs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail
@@ -105,6 +113,11 @@ jobs:
           npx playwright install --with-deps chromium webkit
       - name: Touch worker recovery and PDF placement smoke (Chromium)
         run: node scripts/testSignatureEditorLayeringBrowser.mjs
+      - name: Portal Encargados mobile/tablet alignment (Chromium + WebKit)
+        timeout-minutes: 8
+        run: |
+          node scripts/testForemanPortalResponsiveBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testForemanPortalResponsiveBrowser.mjs
       - name: Worker card duplex geometry and browser regression
         run: npm run test:worker-card
       - name: Worker card QR scan authorization

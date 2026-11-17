@@ -62,6 +62,7 @@ export const PART_ACTION_LABELS: Record<string, string> = {
   elevate: "Propuesta de elevación",
   remit: "Constancia de remisión",
   annul: "Anulación trazable",
+  discard: "Borrador descartado por el encargado",
   compare: "Revisión de comparabilidad",
   block: "Bloqueo por conservación",
   "resolve-dispute": "Revisión de disconformidad",
@@ -190,6 +191,7 @@ export type PartCommand = {
     | "elevate"
     | "remit"
     | "annul"
+    | "discard"
     | "compare"
     | "block"
     | "resolve-dispute";
@@ -625,6 +627,12 @@ export function applyPartCommand(
       state("communicated", "unproven_delivery", "elevated");
       decision();
       p.status = "closed";
+      break;
+    case "discard":
+      foreman();
+      state("draft");
+      decision();
+      p.status = "annulled";
       break;
     case "annul":
       supervisor();

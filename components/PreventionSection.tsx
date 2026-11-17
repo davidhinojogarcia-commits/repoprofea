@@ -6,8 +6,8 @@ import { appConfirm } from '../src/lib/appDialog';
 import { createPreventionCommunicationActPdf, shareOrDownloadPreventionAct } from '../src/services/preventionActPdf';
 
 const inputClass = 'min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition focus:border-[#00548E] focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
-const buttonClass = 'min-h-12 rounded-xl border border-slate-300 bg-white px-4 py-3 font-bold text-slate-900 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
-const primaryClass = 'min-h-12 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99]';
+const buttonClass = 'fp-action-button min-h-12 rounded-xl border border-slate-300 bg-white px-4 py-3 font-bold text-slate-900 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
+const primaryClass = 'fp-action-button min-h-12 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99]';
 const freshDraft = (obra: string, kind: PreventionDraft['kind']): PreventionDraft => ({ obra, kind, work_date: preventionToday(), category: 'Otros', severity: 'medium', title: kind === 'precheck' ? 'Comprobación antes de empezar' : '', task: '', description: '', measures: '', responsible: '', deadline: '', checks: {}, photo: null });
 
 async function readPhoto(file: File): Promise<string> {
@@ -256,7 +256,7 @@ export function PreventionSection({ savedObras, token, foremanName, supervisorNa
     }
   }
 
-  return <section className="space-y-4 sm:space-y-5 text-slate-900 dark:text-slate-100 pb-4" aria-labelledby="prevention-title">
+  return <section className="fp-prevention-panel min-w-0 space-y-4 sm:space-y-5 text-slate-900 dark:text-slate-100 pb-4" aria-labelledby="prevention-title">
     <header className="ui-surface rounded-2xl p-4 sm:p-6">
       <h1 id="prevention-title" className="flex items-center gap-2 text-xl sm:text-2xl font-black"><ShieldCheck className="h-6 w-6 shrink-0" aria-hidden="true" />Incidencias y alertas</h1>
       <p className="mt-2 text-sm sm:text-base">Registra situaciones peligrosas, revisa la tarea y deja constancia de las medidas.</p>

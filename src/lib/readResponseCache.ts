@@ -11,9 +11,13 @@ export class ReadResponseCache {
     this.bytes = 0;
   }
 
-  async read<T>(key: string, load: () => Promise<T>, ttl = 15_000): Promise<T> {
+  async read<T>(key: string, load: () => Promise<T>, ttl = 15_000, onCacheHit?: () => void): Promise<T> {
     const entry = this.entries.get(key);
-    if (ttl > 0 && entry && entry.until > this.now()) return structuredClone(entry.value);
+    if (ttl > 0 && entry && entry.until > this.now()) {
+      const value = structuredClone(entry.value);
+      onCacheHit?.();
+      return value;
+    }
     if (entry) { this.entries.delete(key); this.bytes -= entry.bytes; }
     const generation = this.generation;
     const value = await load();
