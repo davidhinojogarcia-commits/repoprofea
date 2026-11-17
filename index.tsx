@@ -112,7 +112,9 @@ const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimien
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 const cardPairToken = new URLSearchParams(window.location.hash.slice(1)).get('card-pair')?.trim() || '';
 const WorkerCardPairMobile = React.lazy(() => import('./components/WorkerCardPairMobile'));
+const InspectionAccessPortal = React.lazy(() => import('./components/InspectionAccessPortal'));
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
+const inspectionAccessId = initialSearchParams.get('inspection-access')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
 const FOREMAN_DEVICE_TOKEN_KEY = 'pfea_foreman_device_token_v1';
 const FOREMAN_DEVICE_COOKIE_KEY = 'pfea_foreman_device_token_v1';
@@ -192,6 +194,8 @@ ReactDOM.createRoot(rootElement).render(
         <AuthGate><React.Suspense fallback={<RouteLoadingFallback />}><WorkerCardPairMobile token={cardPairToken} /></React.Suspense></AuthGate>
       ) : workerQrToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><WorkerQrPortal token={workerQrToken} /></React.Suspense>
+      ) : inspectionAccessId ? (
+        <React.Suspense fallback={<RouteLoadingFallback />}><InspectionAccessPortal id={inspectionAccessId} /></React.Suspense>
       ) : remoteScannerToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><RemoteScannerPortal token={remoteScannerToken} /></React.Suspense>
       ) : (
