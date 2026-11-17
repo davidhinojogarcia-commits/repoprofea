@@ -395,7 +395,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <label className="block text-xs font-black uppercase tracking-wide text-[#00548E] dark:text-blue-200">Trabajador omitido por el reconocimiento
               <input value={manualName} onChange={event=>setManualName(event.target.value)} placeholder="Nombre y apellidos exactamente como aparecen en el PDF" className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
             </label>
-            <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador del PDF</button>
+            <button type="button" onClick={addManualWorker} disabled={saving||removing||loading} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador del PDF</button>
             <div className="mt-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">Se añadirá solo a este documento. {employment?'Después toca debajo de su nombre, en la zona de firma del PDF.':'Después toca en el PDF, a la derecha de su nombre, para fijar la firma.'}</div>
           </div>
           <button
