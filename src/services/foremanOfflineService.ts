@@ -109,7 +109,11 @@ export async function synchronizePortalSignatures(token: string, manual = false)
 export async function prepareOfflineAttendance(token:string,workDate:string){
   const snapshot=await supabase.rpc('get_foreman_offline_attendance',{p_token:token,p_work_date:workDate},{fresh:true});
   if(!snapshot?.version)throw new Error('No se pudo preparar la jornada.');
-  await (await foremanVault(token)).put('attendance:'+workDate,snapshot);
+  // Preparing a day is an online token-validated operation: grant the same
+  // 24-hour offline lease as an explicitly downloaded document.
+  const vault = await foremanVault(token);
+  await vault.put('attendance:'+workDate,snapshot);
+  await vault.authorize();
   changes();
 }
 export async function queueOfflineAttendance(token:string,workDate:string,rows:import('./foremanPortalService').ForemanAttendanceRow[],kind:'entry'|'exit'|'foreman',signature:string,workerId?:number){
