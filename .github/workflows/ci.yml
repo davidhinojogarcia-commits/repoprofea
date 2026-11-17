@@ -71,6 +71,8 @@ jobs:
         run: npm run test:operational-logs
       - name: Foreman edit/delete draft authorization and regression
         run: node scripts/testForemanDraftEditing.mjs
+      - name: Foreman individual worker signature revocation and security (PostgreSQL)
+        run: node scripts/testForemanWorkerSignatureRevocation.mjs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail
