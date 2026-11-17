@@ -6,6 +6,7 @@ type Props={
   pdf:any; pages:MandatoryPdfPageMeta[]; anchors:MandatoryWorkerAnchor[]; activeIndex:number;
   disabled:boolean; pageRequest:{page:number;sequence:number;focusSignature?:boolean};
   readOnly?:boolean;
+  editRequest?:number;
   onPageChange:(page:number)=>void; onSelect:(index:number)=>void;
   onChange:(index:number,box:PdfBox,page:number)=>void;
 };
@@ -134,12 +135,27 @@ const PdfPage:React.FC<PageProps>=({pdf,meta,scale,anchors,activeIndex,mode,disa
 }
 
 export default function MandatoryPdfViewport(props:Props){
-  const {pdf,pages,anchors,activeIndex,onPageChange,pageRequest}=props;
+  const {pdf,pages,anchors,activeIndex,onPageChange,pageRequest,editRequest}=props;
   const scroll=useRef<HTMLDivElement>(null);
   const [mode,setMode]=useState<'navigate'|'edit'>('navigate');
   const [fit,setFit]=useState<'width'|'page'|'custom'>('width'),[zoom,setZoom]=useState(1);
   const [size,setSize]=useState({width:0,height:0}),[page,setPage]=useState(1),[tools,setTools]=useState(()=>typeof window==='undefined'||window.innerHeight>=600);
   const active=anchors[activeIndex];
+  // Las peticiones de edición proceden del flujo táctil al añadir un trabajador.
+  useEffect(()=>{if(editRequest && !props.readOnly)setMode('edit');},[editRequest,props.readOnly]);
+  const nudgeSignature=async(dx:number,dy:number)=>{
+    if(!active||!hasBox(active)||props.disabled||!pdf)return;
+    const pdfPage=await pdf.getPage(active.page);
+    const viewport=pdfPage.getViewport({scale:1});
+    const origin=viewportToPdf(viewport,0,0),next=viewportToPdf(viewport,dx,dy);
+    const view=viewport.viewBox||[0,0,pdfPage.view[2],pdfPage.view[3]];
+    props.onChange(activeIndex,clampPdfBox({
+      signatureX:Number(active.signatureX)+next[0]-origin[0],
+      signatureY:Number(active.signatureY)+next[1]-origin[1],
+      signatureWidth:Number(active.signatureWidth),
+      signatureHeight:Number(active.signatureHeight),
+    },{x:view[0],y:view[1],width:view[2]-view[0],height:view[3]-view[1]}),active.page);
+  };
   useEffect(()=>{
     const s=scroll.current;if(!s)return;
     const measure=()=>{const style=window.getComputedStyle(s);setSize({width:Math.max(1,s.clientWidth-parseFloat(style.paddingLeft||'0')-parseFloat(style.paddingRight||'0')),height:Math.max(1,s.clientHeight-parseFloat(style.paddingTop||'0')-parseFloat(style.paddingBottom||'0'))});};
@@ -217,7 +233,10 @@ export default function MandatoryPdfViewport(props:Props){
   },[]);
 
   return <div className="mandatory-continuous-viewport">
-    <div className="mandatory-pdf-tool-toggle"><button type="button" onClick={()=>setTools(v=>!v)}>{tools?'Ocultar herramientas':'Mostrar herramientas'}</button></div>
+    <div className="mandatory-pdf-tool-toggle">
+      <button type="button" onClick={()=>setTools(v=>!v)}>{tools?'Ocultar herramientas':'Mostrar herramientas'}</button>
+      {!props.readOnly&&<button type="button" className="mandatory-pdf-touch-mode" aria-pressed={mode==='edit'} onClick={()=>setMode(v=>v==='edit'?'navigate':'edit')}>{mode==='edit'?'✓ Colocar o mover firma':'Colocar o mover firma'}</button>}
+    </div>
     {tools&&<div className="mandatory-editor-toolbar mandatory-continuous-toolbar">
       <div className="mandatory-editor-pages">
         <button type="button" onClick={()=>goPage(page-1)} disabled={page<=1}>← Página anterior</button>
@@ -236,6 +255,16 @@ export default function MandatoryPdfViewport(props:Props){
         <button type="button" aria-pressed={mode==='edit'} onClick={()=>setMode('edit')}>Mover firma</button>
       </div>}
       <p className="mandatory-pdf-mode-hint">{props.readOnly?'Desliza para recorrer el documento. Puedes ampliar y ajustar las páginas.':mode==='navigate'?'Desliza o arrastra para recorrer todas las páginas. Las firmas permanecen fijas.':'Arrastra el cuadro para moverlo, sus esquinas para dimensionarlo o toca el PDF para colocarlo.'}</p>
+    </div>}
+    {!props.readOnly&&mode==='edit'&&<div className="mandatory-pdf-touch-nudge" aria-label="Ajuste fino táctil de la firma">
+      {active&&hasBox(active)
+        ? <><span>Ajuste fino · {active.workerName}</span>
+            <button type="button" disabled={props.disabled} aria-label="Mover firma a la izquierda" onClick={()=>void nudgeSignature(-2,0)}>←</button>
+            <button type="button" disabled={props.disabled} aria-label="Mover firma hacia arriba" onClick={()=>void nudgeSignature(0,-2)}>↑</button>
+            <button type="button" disabled={props.disabled} aria-label="Mover firma hacia abajo" onClick={()=>void nudgeSignature(0,2)}>↓</button>
+            <button type="button" disabled={props.disabled} aria-label="Mover firma a la derecha" onClick={()=>void nudgeSignature(2,0)}>→</button>
+          </>
+        : <span>Toca el PDF para colocar la firma del trabajador seleccionado.</span>}
     </div>}
     <div ref={scroll} className="mandatory-editor-pdf-scroll mandatory-continuous-scroll" tabIndex={0} aria-label="Documento PDF con desplazamiento continuo">
       <div className="mandatory-pdf-stack">{pages.map(meta=><PdfPage key={meta.page} {...props} meta={meta} scale={scale} mode={mode} scroll={scroll}/>)}</div>
