@@ -45,6 +45,10 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [mobilePanel,setMobilePanel]=useState<'controls'|'pdf'>('controls');
   const [touchEditRequest,setTouchEditRequest]=useState(0);
   const isTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia('(pointer: coarse) and (max-width: 1440px)').matches;
+  const filteredAvailableWorkers=useMemo(()=>{
+    const query=directoryQuery.trim().toLocaleLowerCase('es');
+    return !query||!isTouchLayout()?availableWorkers:availableWorkers.filter(worker=>[worker.apellidos_nombre,worker.dni].some(value=>String(value||'').toLocaleLowerCase('es').includes(query)));
+  },[availableWorkers,directoryQuery]);
   const employment=['contrato','prorroga'].includes(String(documentType));
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
@@ -336,7 +340,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
               className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
             >
               <option value="">Seleccionar trabajador…</option>
-              {availableWorkers.filter(worker=>!isTouchLayout()||!directoryQuery.trim()||[worker.apellidos_nombre,worker.dni].some(value=>String(value||'').toLocaleLowerCase('es').includes(directoryQuery.trim().toLocaleLowerCase('es')))).map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
+              {filteredAvailableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
             </select>
           </label>}
           {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
