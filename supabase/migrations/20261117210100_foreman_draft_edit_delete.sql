@@ -52,7 +52,7 @@ begin
     raise exception 'Fecha o información del documento no válida';
   end if;
   v_expected:=coalesce(array_length(p_worker_ids,1),0);
-  if v_expected<1 or v_expected>300 or v_expected<>(select count(distinct id) from unnest(p_worker_ids) id)
+  if v_expected<1 or v_expected>300 or v_expected<>(select count(distinct worker_id) from unnest(p_worker_ids) as ids(worker_id))
     then raise exception 'Selecciona trabajadores válidos y sin duplicados'; end if;
   select count(*),coalesce(jsonb_agg(jsonb_build_object(
     'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,'obra',t.obra,
