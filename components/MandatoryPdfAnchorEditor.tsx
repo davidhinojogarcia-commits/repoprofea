@@ -44,7 +44,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const saveInFlight=useRef(false);
   const [mobilePanel,setMobilePanel]=useState<'controls'|'pdf'>('controls');
   const [touchEditRequest,setTouchEditRequest]=useState(0);
-  const isTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia('(pointer: coarse) and (max-width: 1440px)').matches;
+  const isTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia('(pointer: coarse) and (max-width: 1366px)').matches;
   const filteredAvailableWorkers=useMemo(()=>{
     const query=directoryQuery.trim().toLocaleLowerCase('es');
     return !query||!isTouchLayout()?availableWorkers:availableWorkers.filter(worker=>[worker.apellidos_nombre,worker.dni].some(value=>String(value||'').toLocaleLowerCase('es').includes(query)));
