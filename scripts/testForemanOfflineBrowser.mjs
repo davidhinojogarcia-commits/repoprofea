@@ -40,5 +40,21 @@ try{
  await page.evaluate(async()=>{const vault=await window.api.foremanVault('access-A');await vault.put('lease',Date.now()-1);});
  await assert.rejects(page.evaluate(()=>window.api.queuePortalSignature('access-A',{documentId:'doc-A',workerId:9,signature:'ink'})),/verificar/);
  await page.evaluate(async()=>(await window.api.foremanVault('access-A')).clear());assert.equal(await page.evaluate(async()=>(await window.api.foremanVault('access-A')).get('workspace')),null);
- console.log('PASS '+(process.env.BROWSER_ENGINE==='webkit'?'WebKit':'Chromium')+' IndexedDB: encrypted persistence, reload, isolation, offline queue, one synchronization, conflict, expiry, unlink cleanup');
+
+ // An attendance-only foreman must be able to sign offline after preparing the day
+ // online, even when no mandatory document has ever been downloaded.
+ const offlineDay=[{workerId:7,name:'Persona de prueba',entryTime:'08:00',exitTime:'17:00'}];
+ await page.evaluate(async rows=>{
+   window.rpc=async name=>{
+     if(name!=='get_foreman_offline_attendance')throw Error('Unexpected RPC: '+name);
+     return {id:'attendance-day',version:'attendance-version-1',workDate:'2026-10-20',rows,status:'draft'};
+   };
+   await window.api.prepareOfflineAttendance('attendance-only','2026-10-20');
+ },offlineDay);
+ assert.equal(await page.evaluate(async()=>(await window.api.foremanVault('attendance-only')).authorized()),true,'preparing a day must grant a local offline lease');
+ await context.setOffline(true);
+ await page.evaluate(async rows=>window.api.queueOfflineAttendance('attendance-only','2026-10-20',rows,'entry','data:image/png;base64,'+'A'.repeat(120),7),offlineDay);
+ assert.equal(await page.evaluate(async()=>(await window.api.pendingPortalSignatures('attendance-only')).length),1,'attendance-only offline signature is queued');
+ await context.setOffline(false);
+ console.log('PASS '+(process.env.BROWSER_ENGINE==='webkit'?'WebKit':'Chromium')+' IndexedDB: encrypted persistence, reload, isolation, offline queue, one synchronization, conflict, expiry, unlink cleanup, attendance-only offline lease');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
