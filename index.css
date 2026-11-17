@@ -845,9 +845,8 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   }
   .fp-portal-ui .fp-section-tab > span {
     min-height: 27px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
+    text-align: center;
     white-space: normal;
     overflow-wrap: normal;
   }
