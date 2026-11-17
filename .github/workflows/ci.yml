@@ -160,6 +160,7 @@ jobs:
           npm run test:employment-browser
           npm run test:independent-foreman-browser
           npm run test:foreman-offline
+          BROWSER_ENGINE=webkit node scripts/testForemanOfflineBrowser.mjs
           node scripts/testAppDialogBrowser.mjs
           BROWSER_ENGINE=webkit node scripts/testAppDialogBrowser.mjs
           npm run test:pdf-signature-workspace
