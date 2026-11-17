@@ -1122,8 +1122,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       !doc.lifecycleStatus && !doc.correctionPending &&
       (doc.status==='pending'||doc.status==='in_progress');
 
-    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
-      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="flex min-h-[62px] w-full min-w-0 items-start justify-between gap-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] sm:p-4">
+    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`fp-document-card scroll-mt-24 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
+      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="fp-document-toggle flex min-h-[62px] w-full min-w-0 items-start justify-between gap-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] sm:p-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="mt-0.5 shrink-0 text-[#00548E]">{expanded?<ChevronDown className="h-5 w-5"/>:<ChevronRight className="h-5 w-5"/>}</span>
           <div className="min-w-0">
