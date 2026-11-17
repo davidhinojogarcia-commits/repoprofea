@@ -1075,7 +1075,7 @@ try {
     reason: "Descartado por el encargado antes de enviarlo al supervisor.",
   });
   assert.equal(discardRecord.status, "annulled", "discard leaves a traceable tombstone");
-  const discardedHistory = await call({ action: "detail", id: discardRecord.id });
+  const discardedHistory = await call({ action: "detail", token, id: discardRecord.id });
   assert(discardedHistory.history.some(event => event.action === "discard"), "audit keeps the discard action");
   assert.notEqual((await invoke({
     action: "discard", token, id: discardRecord.id,
