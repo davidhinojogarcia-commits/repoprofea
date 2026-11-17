@@ -33,8 +33,8 @@ import { appConfirm } from "../src/lib/appDialog";
 const input =
   "mt-1 block w-full min-h-[48px] rounded-xl border border-slate-300 bg-white p-3 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100";
 const button =
-  "min-h-[48px] rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50";
-const primary = button + " bg-[#00548E] text-white";
+  "fp-action-button inline-flex min-h-[48px] min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-bold text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
+const primary = button + " !border-[#00548E] !bg-[#00548E] !text-white";
 const empty = (): PartContent => ({
   reason: "mobile",
   occurredAt: new Date().toISOString(),
@@ -559,11 +559,11 @@ export default function PartsPanel({
   return (
     <section
       aria-label="Partes y avisos"
-      className="space-y-4 rounded-2xl bg-white p-4 text-slate-900 dark:bg-slate-900 dark:text-slate-100"
+      className="fp-parts-panel min-w-0 space-y-4 rounded-2xl bg-white p-3 text-slate-900 dark:bg-slate-900 dark:text-slate-100 sm:p-4"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="fp-panel-heading flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-black">Partes y avisos</h2>
-        <div className="flex flex-wrap gap-2">
+        <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
           {!isForeman && (
             <button
               className={button}
@@ -599,6 +599,7 @@ export default function PartsPanel({
           </button>
         </div>
       </div>
+      <div className="fp-action-row fp-action-row--two fp-push-actions">
       <button
         className={button}
         disabled={busy || !online}
@@ -627,6 +628,7 @@ export default function PartsPanel({
       >
         Desactivar avisos móviles del módulo
       </button>
+      </div>
       <p className="text-sm">
         Avisos de servicio y hechos para revisión. Ningún registro constituye
         una sanción automática.
@@ -719,7 +721,7 @@ export default function PartsPanel({
         </button>
       )}
       {isForeman && !draft && (
-        <div className="flex flex-wrap gap-2">
+        <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
           {(["service", "incident"] as const).map((kind) => (
             <button
               disabled={busy || !context}
@@ -932,7 +934,7 @@ export default function PartsPanel({
               ? "Pendiente de sincronización del borrador · no enviado ni firmado"
               : localStatus}
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
             <button
               className={primary}
               disabled={busy || !online || !context || !draft.workerId}
@@ -1099,7 +1101,7 @@ export default function PartsPanel({
           >
             Comprobar / reintentar aviso móvil
           </button>
-          <div className="flex flex-wrap gap-2">
+          <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
             {(["view", "download", "share"] as const).map((action, i) => (
               <button
                 disabled={
@@ -1138,7 +1140,7 @@ export default function PartsPanel({
             </button>
           ))}
           {isForeman && ["draft", "returned"].includes(selected.status) && (
-            <div className="flex flex-wrap gap-2">
+            <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
               <button
                 className={button}
                 disabled={busy}
@@ -1205,7 +1207,7 @@ export default function PartsPanel({
                   onChange={(e) => setReason(e.target.value)}
                 />
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="fp-action-row fp-action-row--adaptive flex flex-wrap gap-2">
                 {selected.status === "submitted" && (
                   <button
                     className={button}
