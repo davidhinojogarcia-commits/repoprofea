@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { appConfirm } from '../src/lib/appDialog';
 import { 
@@ -130,7 +131,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
       hydratedCitasRef.current = true;
       queueMicrotask(() => { suppressCitaPersistenceRef.current = false; });
     }, { includeShared: true }, error => {
-      console.error('Error leyendo citas de Supabase:', error);
+      reportOperationalError('Error leyendo citas de Supabase:', error);
       onToast('No se pudieron cargar las citas desde Supabase.', 'error');
     });
     return () => unsubscribe();
@@ -147,7 +148,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
           ...withIds.map(item => createDocument('citas', item.id!, item as any)),
           ...removed.map(item => deleteDocument('citas', item.id!)),
         ]).catch(error => {
-          console.error('Error guardando citas en Supabase:', error);
+          reportOperationalError('Error guardando citas en Supabase:', error);
           onToast('No se pudieron guardar las citas en Supabase.', 'error');
         });
       }
@@ -307,7 +308,7 @@ export const GestionCitas: React.FC<GestionCitasProps> = ({
         throw new Error("No se pudo procesar la orden de planificación.");
       }
     } catch (error: any) {
-      console.error("AI Order Error:", error);
+      reportOperationalError("AI Order Error:", error);
       onToast(error.message || "Error al comunicarse con el servicio de planificación.", "error");
     } finally {
       setIsAiGenerating(false);

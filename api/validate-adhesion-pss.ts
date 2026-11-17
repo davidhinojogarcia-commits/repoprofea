@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 const norm=(v:unknown)=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9ñ]+/g,' ').replace(/\s+/g,' ').trim();
@@ -30,5 +31,5 @@ export default async function handler(req:IncomingMessage,res:ServerResponse){
   if(!subcontractSigned)issues.push('No se puede verificar la firma de la subcontrata.');
   if(!contractorSigned)issues.push('No se puede verificar la firma de Diputación Provincial de Cádiz como contrata.');
   return send(res,200,{found:true,documento:{docId:'adhesion_pss',estado:issues.length?'incompleto':'entregado',observaciones:issues.length?`INCIDENCIAS: ${issues.join(' ')}`:'Acta de Adhesión validada: empresa subcontratista correcta, Diputación Provincial de Cádiz como contrata y firmas de ambas partes verificadas.',archivoOrigen:String(target.name||''),confianza:issues.length?'alta':'alta',esLegible:true,solicitarReintento:false,validacionPss:{companyOk,subcontractRole,contractorOk,contractorRole,filled,subcontractSigned,contractorSigned,issues}}});
- }catch(e:any){console.error('[adhesion-pss]',e);return send(res,500,{error:e?.message||'No se pudo validar el Acta de Adhesión.'});}
+ }catch(e:any){reportOperationalError('[adhesion-pss]', e);return send(res,500,{error:e?.message||'No se pudo validar el Acta de Adhesión.'});}
 }

@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React from 'react';
 import QRCode from 'qrcode';
 import { Smartphone, QrCode, Wifi, CheckCircle2, RefreshCw } from 'lucide-react';
@@ -37,7 +38,7 @@ export const RemoteScannerPairing: React.FC<RemoteScannerPairingProps> = ({ onCa
       });
       return unsubscribe;
     } catch (error: any) {
-      console.error('Remote scanner pairing error:', error);
+      reportOperationalError('Remote scanner pairing error:', error);
       setStatus('error');
       onToastRef.current(error?.message || 'No se ha podido preparar el escáner móvil.', 'error');
       return undefined;

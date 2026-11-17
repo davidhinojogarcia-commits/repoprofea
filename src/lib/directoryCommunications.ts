@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import type { Person } from '../../types';
 import {
   preparePDFData,
@@ -303,7 +304,7 @@ export const sendDirectoryCommunication = async (
         return 'sent';
       }
     } catch (error: any) {
-      console.warn('[directory-communications] No se pudo usar el envío Gmail directo:', error);
+      reportOperationalError('[directory-communications] No se pudo usar el envío Gmail directo:', error, 'warn');
       if (error?.code !== 'GMAIL_NOT_CONNECTED') {
         await appAlert(error?.message || 'No se pudo enviar mediante Gmail. Se usará el método alternativo.', {
           kind: 'warning',
@@ -318,7 +319,7 @@ export const sendDirectoryCommunication = async (
         return 'shared';
       } catch (error: any) {
         if (error?.name === 'AbortError') return 'cancelled';
-        console.warn('[directory-communications] Compartir nativo múltiple falló:', error);
+        reportOperationalError('[directory-communications] Compartir nativo múltiple falló:', error, 'warn');
       }
     }
 
@@ -350,7 +351,7 @@ export const sendDirectoryCommunication = async (
         return 'shared';
       } catch (error: any) {
         if (error?.name === 'AbortError') return 'cancelled';
-        console.warn('[directory-communications] Compartir nativo falló:', error);
+        reportOperationalError('[directory-communications] Compartir nativo falló:', error, 'warn');
       }
     }
 
@@ -392,7 +393,7 @@ export const sendDirectoryCommunication = async (
       return 'sent';
     }
   } catch (error: any) {
-    console.warn('[directory-communications] No se pudo usar el envío Gmail directo:', error);
+    reportOperationalError('[directory-communications] No se pudo usar el envío Gmail directo:', error, 'warn');
     if (error?.code !== 'GMAIL_NOT_CONNECTED') {
       await appAlert(error?.message || 'No se pudo enviar mediante Gmail. Se usará el método alternativo.', {
         kind: 'warning',
@@ -411,7 +412,7 @@ export const sendDirectoryCommunication = async (
       return 'shared';
     } catch (error: any) {
       if (error?.name === 'AbortError') return 'cancelled';
-      console.warn('[directory-communications] Compartir nativo falló:', error);
+      reportOperationalError('[directory-communications] Compartir nativo falló:', error, 'warn');
     }
   }
 

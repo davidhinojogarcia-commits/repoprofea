@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import { jsPDF } from 'jspdf';
 import type { Person } from '../../types';
 import { loadAppBusinessSettings } from '../services/appSettingsService';
@@ -116,7 +117,7 @@ const resolveWork = async (person: Person) => {
       telefonoEncargado: safe(configuredEntry?.recursoPreventivoTelefono),
     };
   } catch (error) {
-    console.warn('[worker-hiring-info] No se pudieron resolver los datos de la obra:', error);
+    reportOperationalError('[worker-hiring-info] No se pudieron resolver los datos de la obra:', error, 'warn');
     return { municipio: '', encargado: '', telefonoEncargado: '' };
   }
 };
@@ -377,7 +378,7 @@ export const shareWorkerHiringInformationPdf = async (
     }
   } catch (error: any) {
     if (error?.name === 'AbortError') return 'cancelled';
-    console.warn('[worker-hiring-info] No se pudo compartir el PDF de forma nativa:', error);
+    reportOperationalError('[worker-hiring-info] No se pudo compartir el PDF de forma nativa:', error, 'warn');
   }
 
   download(file);

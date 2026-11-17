@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,6 +17,8 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
+      - name: Serverless TypeScript scope and incremental compiler regression
+        run: npm run typecheck:serverless
       - name: Validate Supabase-only runtime
         run: |
           test ! -f src/lib/firebase.ts
@@ -33,10 +35,14 @@ jobs:
             echo 'Business data must not use localStorage.'
             exit 1
           fi
+      - name: Validate voluntary rejection and worksite exits
+        run: npm run test:workforce-documents
       - name: Validate prevention persistence and permissions
         run: npm run test:prevention
       - name: Validate Tutor PROFEA local agent policy
         run: npm run test:tutor-agent
+      - name: Integrated calendar civil-date regression
+        run: npm run test:calendar-dates
       - name: Validate auth session architecture
         run: |
           grep -q '"@supabase/supabase-js"' package.json
@@ -53,6 +59,18 @@ jobs:
           grep -q 'persistSession: true' src/lib/supabase.ts
           grep -q 'IDLE_TIMEOUT_MS = 30 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
+      - name: Worker annual lookup projection and pagination
+        run: npm run test:worker-annual-lookup
+      - name: Verify idle Gmail scans avoid unnecessary REST reads
+        run: npm run test:idle-gmail-consumption
+      - name: Verify low-consumption cache and offline persistence regressions
+        run: |
+          npm run test:low-consumption
+          npm run test:consumption-cache
+      - name: Ensure diagnostics do not expose private payloads
+        run: npm run test:operational-logs
+      - name: Foreman edit/delete draft authorization and regression
+        run: node scripts/testForemanDraftEditing.mjs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail
@@ -87,9 +105,56 @@ jobs:
         run: npm run test:employment-documents
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
+      - name: Install browser runtimes
+        timeout-minutes: 8
+        run: |
+          # The Azure Ubuntu mirror stalled package downloads on hosted runners.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chromium webkit
+      - name: Touch worker recovery and PDF placement smoke (Chromium)
+        run: node scripts/testSignatureEditorLayeringBrowser.mjs
+      - name: Portal Encargados mobile/tablet alignment (Chromium + WebKit)
+        timeout-minutes: 8
+        run: |
+          node scripts/testForemanPortalResponsiveBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testForemanPortalResponsiveBrowser.mjs
+      - name: Worker card duplex geometry and browser regression
+        run: npm run test:worker-card
+      - name: Worker card QR scan authorization
+        run: npm run test:worker-card-scan
+      - name: Institutional documentary actions mobile and desktop (Chromium + WebKit)
+        run: node scripts/testInstitutionalDocumentActionsBrowser.mjs
+      - name: Directory training filters and QR actions (Chromium + WebKit)
+        run: npm run test:directory-training
+      - name: Voluntary rejection and worksite exits in both portals (Chromium + WebKit)
+        run: npm run test:workforce-documents-browser
+      - name: Partes y avisos transactions, permissions, PDFs and browser workflows
+        run: |
+          npm run test:parts
+          PARTS_EVIDENCE_DIR=artifacts/parts npm run test:parts-browser
+      - name: Upload synthetic Partes browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partes-browser-evidence
+          path: artifacts/parts
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Auth recovery, isolation and browser races
+        run: |
+          node scripts/testAuthRecovery.mjs
+          node scripts/testAuthRecoveryBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testAuthRecoveryBrowser.mjs
+          node scripts/testClientSecretIsolation.mjs
+      - name: SAE fortnight and monthly matching (PostgreSQL + Chromium + WebKit)
+        run: npm run test:sae-fortnights
+      - name: SAE hiring coverage by period and report
+        run: |
+          node --import tsx scripts/testSaeHiringSummary.ts
+          node scripts/testSaeHiringSummaryBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testSaeHiringSummaryBrowser.mjs
       - name: Employment PDF and responsive browser regression
         run: |
-          npx playwright install --with-deps chromium webkit
           npm run test:employment-browser
           npm run test:independent-foreman-browser
           npm run test:foreman-offline
@@ -137,6 +202,12 @@ jobs:
         run: npm run test:visit-minutes-browser
       - name: Visit writing mobile browser workflow
         run: npm run test:visit-writing-browser
+      - name: DF collaboration permissions and contribution regression
+        run: node --import tsx scripts/testVisitDfContributions.mjs
+      - name: DF migration security and append-only invariants
+        run: node scripts/testVisitDfSql.mjs
+      - name: DF collaboration end-to-end with isolated PostgreSQL
+        run: node scripts/testVisitDfPostgres.mjs
       - name: Signed attendance PDFs
         run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
@@ -155,6 +226,8 @@ jobs:
         run: npm run test:modal-layering
       - name: Global confirmation browser regression (Chromium + WebKit)
         run: npm run test:app-dialog-browser
+      - name: Notification dialog reachable exits
+        run: node scripts/testNotificationCloseBrowser.mjs
       - name: Light/dark contrast regression
         run: npm run test:theme-contrast
       - name: Global modal stack audit
@@ -173,6 +246,16 @@ jobs:
         run: npm run test:inventory-usage
       - name: Inventory usage browser regression
         run: npm run test:inventory-usage-browser
+      - name: Public worker QR privacy regression
+        run: npm run test:worker-qr-public
+      - name: Rehire prevention review
+        run: npm run test:rehire-prevention
+      - name: Registration QR autofill and confirmation
+        run: |
+          npm run test:registration-qr
+          BROWSER_ENGINE=webkit npm run test:registration-qr
+      - name: Worker card pairing isolation
+        run: npm run test:worker-card-pairing
       - name: TypeScript validation
         run: |
           set -o pipefail
@@ -217,6 +300,7 @@ jobs:
             exit 1
           fi
           echo "Production and foreman portal smoke tests passed."
+
 
 
 

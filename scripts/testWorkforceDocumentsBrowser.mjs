@@ -1,0 +1,560 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import http from "node:http";
+import { build } from "esbuild";
+import { chromium, webkit } from "playwright";
+import { partsTestHarness, token, id } from "./partsTestHarness.mjs";
+const engine = process.env.BROWSER_ENGINE === "webkit" ? "webkit" : "chromium";
+const env = await partsTestHarness({
+    workforce: true,
+    now: "2026-10-28T12:00:00Z",
+  }),
+  root = new URL("../", import.meta.url).pathname;
+const source = await fs.readFile(
+  root + "src/services/foremanPortalService.ts",
+  "utf8",
+);
+const names = [...source.matchAll(/export (?:async )?function (\w+)/g)].map(
+  (m) => m[1],
+);
+const dbsource = await fs.readFile(
+  root + "src/services/databaseService.ts",
+  "utf8",
+);
+const dbnames = [...dbsource.matchAll(/export (?:async )?function (\w+)/g)].map(
+  (m) => m[1],
+);
+const work = {
+  id: id(20),
+  nombre: "Obra A",
+  codigo: "11002GR",
+  municipio: "Municipio de prueba",
+  empresa: "Entidad sintética",
+  cif: "X0000000T",
+  recurso_preventivo: "Encargado de prueba",
+};
+const worker = {
+  id: 100,
+  apellidosNombre: "Persona Homónima",
+  obra: "Obra A",
+  dni: "00000000T",
+  categoria: "Peón",
+  quincena: "1ª Octubre 2026",
+  periodoInicio: "2026-10-01",
+  periodoFin: "2026-10-31",
+};
+const releaseVersion = JSON.parse(await fs.readFile(root + 'package.json', 'utf8')).version;
+const tailwind = process.env.SIGNATURE_TAILWIND_SCRIPT ? await fs.readFile(process.env.SIGNATURE_TAILWIND_SCRIPT, 'utf8') : await (
+  await fetch("https://cdn.tailwindcss.com", {
+    signal: AbortSignal.timeout(30000),
+  })
+).text();
+const css = await fs.readFile(root + "index.css", "utf8");
+const js = (
+  await build({
+    stdin: {
+      resolveDir: root,
+      loader: "tsx",
+      contents: `import React from'react';import{createRoot}from'react-dom/client';import{ForemanMobilePortal}from'./components/ForemanMobilePortal';import{WorksiteDocumentationPortal}from'./components/WorksiteDocumentationPortal';import{Sidebar}from'./components/Sidebar';import{AppDialogHost}from'./components/AppDialogHost';const params=new URLSearchParams(location.search);const s=params.has('supervisor');const app=createRoot(document.getElementById('root'));window.__openDocumentation=(view,worksite,request)=>app.render(<><AppDialogHost/><div className="p-4 min-w-0"><WorksiteDocumentationPortal accountId="${id(1)}" partsUnread={3} initialDocumentView={view} initialWorksite={worksite} initialNavigationKey={request}/></div></>);app.render(<><AppDialogHost/>{params.has('sidebar')?<Sidebar activeView="documentacion_obra" setActiveView={view=>window.__sidebarView=view} isCollapsed={false} setIsCollapsed={()=>{}} isMobileOpen={true} setIsMobileOpen={()=>{}} onOpenScanner={()=>{}} guidedMode={params.has('guided')} partsUnread={3}/>:s?<div className="p-4 min-w-0"><WorksiteDocumentationPortal accountId="${id(1)}" partsUnread={3}/></div>:<ForemanMobilePortal token="${token}"/>}</>);`,
+    },
+    bundle: true,
+    write: false,
+    format: "iife",
+    define: { "process.env.NODE_ENV": '"production"' },
+    plugins: [
+      {
+        name: "controlled-auth-and-legacy-context",
+        setup(b) {
+          // These destination panels have their own full browser suites. Here we
+          // validate their navigation boundary, account and selected worksite.
+          b.onResolve({ filter: /\/(PartsPanel|VisitMinutesPanel)$/ }, a=>({path:a.path,namespace:"navigation-panel"}));
+          b.onLoad({ filter: /.*/, namespace:"navigation-panel" }, a=>({
+            resolveDir:root,
+            contents:a.path.endsWith('PartsPanel')
+              ? `import React from 'react';export default function Panel({accountId}){return <section aria-label="Panel de partes integrado" data-account={accountId}>Partes integrados</section>;}`
+              : `import React from 'react';export function VisitMinutesPanel({initialWorksite}){return <section aria-label="Panel de actas integrado" data-worksite={initialWorksite}>Actas integradas</section>;}`,
+            loader:"tsx",
+          }));
+          b.onResolve({ filter: /\?url$|\.css$/ }, (a) => ({
+            path: a.path,
+            namespace: "asset",
+          }));
+          b.onLoad({ filter: /.*/, namespace: "asset" }, () => ({
+            contents: "export default '';",
+          }));
+          b.onResolve({ filter: /\/foremanPortalService$/ }, (a) => ({
+            path: a.path,
+            namespace: "foreman",
+          }));
+          b.onLoad({ filter: /.*/, namespace: "foreman" }, () => ({
+            contents: names
+              .map(
+                (n) =>
+                  `export const ${n}=async()=>(${n === "resolveForemanPortal" ? JSON.stringify({ valid: true, obra: "Obra A", foremanName: "Encargado de prueba", workers: [worker], attendance: [], documents: [], mandatoryDocuments: [], worksite: { codigo: "11002GR", nombre: "Obra A", municipio: "Municipio de prueba", empresa: "Entidad sintética", cif: "X0000000T" } }) : "([])"});`,
+              )
+              .join("\n"),
+          }));
+          b.onResolve({ filter: /\/databaseService$/ }, (a) => ({
+            path: a.path,
+            namespace: "database",
+          }));
+          b.onLoad({ filter: /.*/, namespace: "database" }, () => ({
+            contents:
+              dbnames
+                .map(
+                  (n) =>
+                    `export const ${n}=${n === "subscribeToDocuments" ? "()=>()=>{}" : n === "getDocuments" ? "async()=>" + JSON.stringify([worker]) : "async()=>[]"};`,
+                )
+                .join("\n") + "export const getSharedDocuments=getDocuments;",
+          }));
+          b.onResolve({ filter: /AuthGate$/ }, (a) => ({
+            path: a.path,
+            namespace: "auth",
+          }));
+          b.onLoad({ filter: /.*/, namespace: "auth" }, () => ({
+            resolveDir: root,
+            contents:
+              "import React from'react';export const AuthShellContext=React.createContext(null);export const useAuthShell=()=>({user:{id:'supervisor',email:'test@example.test',user_metadata:{}},role:'user',signOut:async()=>{},signingOut:false});",
+          }));
+          b.onResolve({ filter: /\/supabase$/ }, (a) => ({
+            path: a.path,
+            namespace: "supabase",
+          }));
+          b.onLoad({ filter: /.*/, namespace: "supabase" }, () => ({
+            contents: `export const normalizeSupabaseUser=v=>v;export const getSessionUser=async()=>({id:'${id(1)}',email:'test@example.test'});export const supabase={query:async(table)=>table==='obras'?${JSON.stringify([work])}:table==='profiles'?[{id:'${id(1)}',nombre:'Supervisor',apellidos:'Prueba'}]:[],rpc:async()=>({}),auth:{getSession:async()=>({data:{session:{access_token:'user-1',user:{id:'${id(1)}'}}}})}};`,
+          }));
+        },
+      },
+    ],
+  })
+).outputFiles[0].text;
+let lostSave = false,
+  requests = [];
+const server = http.createServer(async (req, res) => {
+  try {
+    if (req.url === "/api/workforce-documents") {
+      let data = "";
+      for await (const c of req) data += c;
+      const body = JSON.parse(data);
+      requests.push(body.action);
+      const user =
+        Number(req.headers.authorization?.match(/user-(\d+)/)?.[1]) || null;
+      const r = await env.invoke(body, user);
+      if (lostSave && body.action === "save") {
+        req.socket.destroy();
+        return;
+      }
+      for (const [k, v] of Object.entries(r.headers)) res.setHeader(k, v);
+      res.writeHead(r.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(r.data));
+      return;
+    }
+    if (req.url === "/app.js") {
+      res.setHeader("Content-Type", "text/javascript");
+      res.end(js);
+      return;
+    }
+    if (req.url === "/tailwind.js") {
+      res.setHeader("Content-Type", "text/javascript");
+      res.end(tailwind);
+      return;
+    }
+    res.setHeader("Content-Type", "text/html");
+    res.end(
+      `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><style>${css}</style><div id="root"></div><script src="/app.js"></script>`,
+    );
+  } catch (e) {
+    console.error("Fixture failure:", e.message);
+    res.writeHead(500);
+    res.end("Fixture failure");
+  }
+});
+let browser, lastPage;
+async function draw(page) {
+  const canvas = page.locator("canvas").last();
+  await canvas.scrollIntoViewIfNeeded();
+  const b = await canvas.boundingBox();
+  await page.mouse.move(b.x + 25, b.y + 50);
+  await page.mouse.down();
+  for (let i = 1; i < 15; i++)
+    await page.mouse.move(b.x + 25 + i * 10, b.y + 50 + (i % 2 ? 15 : -15));
+  await page.mouse.up();
+}
+async function openDocuments(page) {
+  assert.equal(await page.locator("#foreman-section-picker").count(),0,"No mobile section dropdown remains");
+  const navigation=page.getByRole("navigation",{name:"Secciones del portal de encargados",exact:true});
+  await navigation.waitFor();
+  const labels=["Prevención","Partes y avisos","EPIs","Formación","Maquinaria","Control horario","Documentos","Actas de visitas","Finalizados"];
+  assert.equal(await navigation.getByRole("button").count(),10,"All ten section buttons exist in portrait and landscape");
+  for(const label of labels)assert.equal(await navigation.getByRole("button",{name:label,exact:true}).count(),1,"Ribbon includes section "+label);
+  const documentsButton=navigation.getByRole("button",{name:"Documentos",exact:true});
+  await documentsButton.click();
+  await page.getByRole("combobox", { name: "Documento", exact: true }).waitFor();
+}
+async function signed(page, kind) {
+  await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption(kind);
+  const panel = page.getByRole("region", {
+    name: kind === "salida_obra" ? "Salida de obra" : "Rechazo voluntario",
+  });
+  await panel
+    .getByRole("button", { name: /Persona Homónima · Peón/ })
+    .first()
+    .click();
+  if (kind === "salida_obra") {
+    await panel.getByLabel("Referencia del contrato firmado / contratación")
+      .fill("Contrato sintético BROWSER-100");
+  } else {
+    assert.equal(await panel.getByText("11002GR", { exact: true }).count() >= 1, true, "El código de obra se muestra automáticamente");
+    assert.equal(await panel.getByText("2026-10-01 a 2026-10-31", { exact: true }).count(), 1, "Periodo previsto automático");
+    assert.equal(await panel.getByLabel("Referencia del contrato firmado / contratación").count(), 0);
+    assert.equal(await panel.getByLabel("Fecha de firma del contrato").count(), 0);
+    assert.equal(await panel.getByLabel("Convenio o régimen laboral realmente aplicable").count(), 0);
+    assert.equal(await panel.getByLabel("Observaciones del encargado y hechos comprobados").count(), 0);
+  }
+  await panel
+    .getByLabel("¿Existe contratación formalizada?")
+    .selectOption("yes");
+  if (kind === "salida_obra") {
+    await panel
+      .getByLabel("Fecha y hora de salida (Europe/Madrid)", { exact: true })
+      .fill("2026-10-28T01:00");
+    await panel
+      .getByLabel("Alcance de la hora de salida")
+      .selectOption("actual");
+    await panel
+      .getByLabel("Motivo general obligatorio")
+      .selectOption("Consulta médica");
+  } else {
+    await panel.getByLabel("Motivo", { exact: true }).selectOption("Aceptación de otro empleo");
+    assert.equal(await panel.getByLabel("Especificar motivo").count(), 0);
+    await panel.getByLabel("Motivo", { exact: true }).selectOption("other");
+    await panel.getByLabel("Especificar motivo").fill("No puede incorporarse por circunstancias personales.");
+    assert.equal(await panel.getByLabel("Especificar motivo").inputValue(), "No puede incorporarse por circunstancias personales.");
+
+  }
+  await panel
+    .getByRole("button", { name: "Guardar borrador en servidor", exact: true })
+    .click();
+  await panel
+    .getByRole("button", {
+      name: "Validar y preparar para lectura y firma",
+      exact: true,
+    })
+    .waitFor();
+  await panel
+    .getByRole("button", {
+      name: "Validar y preparar para lectura y firma",
+      exact: true,
+    })
+    .click();
+  await panel
+    .getByRole("button", {
+      name: "Firma voluntaria del trabajador",
+      exact: true,
+    })
+    .click();
+  assert.equal(
+    await panel
+      .getByRole("button", { name: "Confirmar y guardar firma", exact: true })
+      .isEnabled(),
+    false,
+  );
+  await panel
+    .getByLabel(
+      "He podido leer esta versión y firmo voluntariamente su contenido concreto.",
+    )
+    .check();
+  await draw(page);
+  await panel
+    .getByRole("button", { name: "Confirmar y guardar firma", exact: true })
+    .click();
+  await panel
+    .getByRole("button", {
+      name: "Confirmación y firma del encargado",
+      exact: true,
+    })
+    .click();
+  await panel
+    .getByLabel(
+      /Confirmo expresamente la recepción y lectura de esta comunicación/,
+    )
+    .check();
+  await draw(page);
+  await panel
+    .getByRole("button", { name: "Confirmar y guardar firma", exact: true })
+    .click();
+  await panel.getByRole("heading", { name: /Finalizado/ }).waitFor();
+  await panel
+    .getByRole("button", { name: "Previsualizar PDF", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Previsualización del documento" })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Cerrar previsualización", exact: true })
+    .click();
+  // Native share cancellation is a real browser exception; it must not report a send.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: () => true,
+    });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async () => {
+        throw new DOMException("cancelled", "AbortError");
+      },
+    });
+  });
+  await panel
+    .getByRole("button", { name: "Entrega manual", exact: true })
+    .click();
+  await page.waitForTimeout(100);
+  assert.equal(await panel.getByRole("alert").count(), 0);
+  assert.ok(!(await panel.innerText()).includes("enviado"));
+  return panel;
+}
+try {
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const base = "http://127.0.0.1:" + server.address().port;
+  browser = await (engine === "webkit" ? webkit : chromium).launch({
+    headless: true,
+    ...(engine === "chromium" ? { args: ["--no-sandbox"] } : {}),
+  });
+  for (const width of process.env.WORKFORCE_BROWSER_RECOVERY_ONLY
+    ? []
+    : [390, 820, 1440]) {
+    const context = await browser.newContext({
+        viewport: { width, height: 1000 },
+      }),
+      page = await context.newPage();
+    lastPage = page;
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.stack||e.message));
+    page.setDefaultTimeout(20000);
+    await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
+    await page.goto(base);
+    await openDocuments(page);
+    const documents = page.getByRole("combobox", { name: "Documento", exact: true });
+    assert.equal(await documents.locator('option[value="rechazo_voluntario"]').count(), 1);
+    assert.equal(await documents.locator('option[value="salida_obra"]').count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0);
+    await documents.selectOption("rechazo_voluntario");
+    await page.getByRole("region", { name: "Rechazo voluntario", exact: true }).waitFor();
+    await documents.selectOption("ausencia_trabajador");
+    await page.getByLabel("Inicio de la ausencia", { exact: true }).waitFor();
+    const periods = page.getByRole("group", { name: "Periodos de trabajo", exact: true });
+    assert.ok((await periods.boundingBox()).height < 420, "Compact period selector fits on mobile");
+    await periods.getByRole("combobox", { name: "Añadir mes completo", exact: true }).selectOption("2026-10");
+    await periods.getByRole("combobox", { name: "Añadir quincena o contrato", exact: true }).selectOption("1ª Octubre 2026");
+    await periods.getByRole("status").getByText("2 periodo(s) · 1 trabajador(es)", { exact: true }).waitFor();
+    assert.equal(await periods.locator("details[open]").count(), 0, "Lists remain collapsed");
+    await periods.getByText("Ver o quitar periodos (2)", { exact: true }).click();
+    await periods.getByRole("button", { name: "Quitar Octubre 2026", exact: true }).click();
+    await periods.getByRole("status").getByText("1 periodo(s) · 1 trabajador(es)", { exact: true }).waitFor();
+    await periods.getByRole("button", { name: "Limpiar selección", exact: true }).click();
+    await periods.getByRole("status").getByText("Selecciona un periodo para ver los trabajadores", { exact: true }).waitFor();
+    const panel = await signed(page, "salida_obra");
+    await panel
+      .getByLabel("Regreso efectivo comprobado")
+      .fill("2026-10-28T02:00");
+    await panel
+      .getByLabel(
+        "Confirmo que he comprobado estas horas efectivas. No son estimaciones.",
+      )
+      .check();
+    await panel
+      .getByRole("button", {
+        name: "Registrar regreso sin alterar el PDF firmado",
+        exact: true,
+      })
+      .click();
+    await panel
+      .getByRole("button", {
+        name: "Consultar diligencia de regreso",
+        exact: true,
+      })
+      .waitFor();
+    await page.waitForLoadState("networkidle");
+    await page.reload();
+    await openDocuments(page);
+    await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption("salida_obra");
+    await page
+      .getByRole("button", { name: /Persona Homónima · Regreso registrado/ })
+      .first()
+      .click();
+    await page
+      .getByRole("button", {
+        name: "Consultar diligencia de regreso",
+        exact: true,
+      })
+      .waitFor();
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      "No horizontal overflow",
+    );
+    await fs.mkdir(root + "tmp/workforce", { recursive: true });
+    await page.screenshot({
+      path: root + `tmp/workforce/${engine}-${width}.png`,
+      fullPage: true,
+    });
+    await page.waitForLoadState("networkidle");
+    await page.goto(base + "/?supervisor=1");
+    const navigation=page.getByRole("navigation", {name:"Documentos de obra",exact:true});
+    await navigation.waitFor();
+    assert.equal(await page.getByRole("button",{name:"Abrir actas de visitas",exact:true}).count(),0);
+    assert.equal(await page.getByRole("button",{name:"Actas de visitas",exact:true}).count(),1,"No duplicate acta entry");
+    assert.equal(await page.getByRole("button",{name:"Partes y avisos",exact:true}).count(),1,"No duplicate parts entry");
+    const otherSection=navigation.getByText("Otros documentos",{exact:true});
+    assert.equal(await otherSection.count(),1,"One visible Other documents section");
+    assert.ok(await otherSection.evaluate(heading=>{
+      const buttons=Array.from(heading.closest('[aria-label="Documentos de obra"]').querySelectorAll('button'));
+      return ['Rechazo voluntario','Salida de obra'].every(label=>{
+        const button=buttons.find(el=>el.getAttribute('aria-label')===label);
+        return heading&&button&&!!(heading.compareDocumentPosition(button)&Node.DOCUMENT_POSITION_FOLLOWING);
+      });
+    }),"Rejection and exit belong after the Other documents section on every device");
+    const actas=navigation.getByRole("button",{name:"Actas de visitas",exact:true});
+    await actas.click();
+    const integratedVisit=page.getByRole("region",{name:"Panel de actas integrado",exact:true});
+    await integratedVisit.waitFor();
+    assert.equal(await integratedVisit.getAttribute("data-worksite"),id(20),"Visit receives the authorised worksite UUID");
+    const parts=navigation.getByRole("button",{name:"Partes y avisos",exact:true});
+    const actaBox=await actas.boundingBox();
+    const partsBox=await parts.boundingBox();
+    if(width<768)assert.ok(Math.abs(actaBox.y-partsBox.y)<2,"Mobile keeps the horizontal ribbon");
+    else assert.ok(partsBox.y>actaBox.y,"Tablet and desktop keep the vertical document library");
+    assert.equal(await navigation.evaluate(element=>!!element.closest('aside')),width>=768,"Correct navigation layout for the device");
+    await parts.click();
+    const integratedParts=page.getByRole("region",{name:"Panel de partes integrado",exact:true});
+    await integratedParts.waitFor();
+    assert.equal(await integratedParts.getAttribute("data-account"),id(1),"Parts receives authenticated account scope");
+    assert.equal(await navigation.getByLabel("3 avisos pendientes").textContent(),"3");
+    const color=await parts.evaluate(element=>getComputedStyle(element).backgroundColor);
+    const channels=color.match(/\d+/g).map(Number);
+    assert.ok(channels[0]>channels[1]&&channels[0]>channels[2],"Selected parts tab has a red background");
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Navigation has no page overflow");
+    await page.screenshot({path:root+`tmp/workforce/supervisor-navigation-${engine}-${width}.png`,fullPage:true});
+    await page.evaluate(worksite=>window.__openDocumentation("actas_visitas",worksite,1),id(20));
+    await page.getByRole("region",{name:"Panel de actas integrado",exact:true}).waitFor();
+    await page.getByRole("navigation",{name:"Documentos de obra",exact:true}).getByRole("button",{name:"Partes y avisos",exact:true}).click();
+    await page.getByRole("region",{name:"Panel de partes integrado",exact:true}).waitFor();
+    await page.evaluate(worksite=>window.__openDocumentation("actas_visitas",worksite,2),id(20));
+    await page.getByRole("region",{name:"Panel de actas integrado",exact:true}).waitFor();
+    await page
+      .getByRole("button", { name: "Rechazo voluntario", exact: true })
+      .first()
+      .waitFor();
+    await page
+      .getByRole("button", { name: "Salida de obra", exact: true })
+      .first()
+      .click();
+    await page
+      .getByRole("button", { name: /Persona Homónima · Regreso registrado/ })
+      .first()
+      .click();
+    await page
+      .getByRole("button", {
+        name: "Consultar diligencia de regreso",
+        exact: true,
+      })
+      .waitFor();
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      JSON.stringify(
+        await page.evaluate(() =>
+          Array.from(document.querySelectorAll("*"))
+            .filter((e) => e.getBoundingClientRect().right > innerWidth + 1)
+            .slice(0, 15)
+            .map((e) => ({
+              tag: e.tagName,
+              cls: e.className,
+              w: e.getBoundingClientRect().width,
+              right: e.getBoundingClientRect().right,
+              text: e.textContent.slice(0, 100),
+            })),
+        ),
+      ),
+    );
+    await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
+    await page.goto(base);
+    await openDocuments(page);
+    await signed(page, "rechazo_voluntario");
+    await page.waitForLoadState("networkidle");
+    for(const guided of [false,true]){
+      await page.goto(base+"/?sidebar=1"+(guided?"&guided=1":""));
+      await page.locator('[data-profea-view="documentacion_obra"]').waitFor();
+      assert.equal(await page.locator('[data-profea-view="actas_visitas"], [data-profea-view="partes_avisos"]').count(),0,"Both sidebar modes omit actas/parts");
+      const version = page.locator('[data-app-version]');
+      assert.equal(await version.getAttribute('data-app-version'), releaseVersion, 'Visible version matches the release package');
+      assert.equal(await version.isVisible(), true, 'Release version is visible in the open menu');
+      assert.ok(await version.evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=12), 'Version remains readable');
+      await page.locator('[data-profea-view="documentacion_obra"]').click();
+      assert.equal(await page.evaluate(()=>window.__sidebarView),"documentacion_obra");
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  console.log(engine + ": responsive flows complete");
+  // Real HTTP response loss with an unsigned draft, followed by reload + idempotent replay.
+  const context = await browser.newContext(),
+    page = await context.newPage();
+  lastPage = page;
+  await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
+  await page.goto(base);
+  await openDocuments(page);
+  await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption("salida_obra");
+  await page
+    .getByRole("button", { name: /Persona Homónima · Peón/ })
+    .first()
+    .click();
+  await page
+    .getByLabel("Referencia del contrato firmado / contratación")
+    .fill("Borrador recuperable");
+  lostSave = true;
+  await page
+    .getByRole("button", { name: "Guardar borrador en servidor", exact: true })
+    .click();
+  await page.getByRole("alert").waitFor();
+  lostSave = false;
+  await page.reload();
+  await openDocuments(page);
+  await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption("salida_obra");
+  await page
+    .getByRole("button", { name: "Reintentar el mismo guardado", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Reintentar el mismo guardado", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: "Validar y preparar para lectura y firma",
+      exact: true,
+    })
+    .waitFor();
+  await context.close();
+  console.log(
+    `${engine}: both complete portals, two document flows, signatures, persistent reload, same supervisor record, return addendum, PDF preview, cancelled share, lost HTTP ACK recovery; mobile/tablet/desktop PASS.`,
+  );
+} catch (error) {
+  if (lastPage && !lastPage.isClosed()) {
+    await lastPage
+      .screenshot({
+        path: root + "tmp/workforce/browser-failure.png",
+        fullPage: true,
+      })
+      .catch(() => {});
+    console.error((await lastPage.locator("body").innerText()).slice(-3000));
+  }
+  throw error;
+} finally {
+  await browser?.close();
+  server.closeAllConnections();
+  await new Promise((r) => server.close(r));
+  await env.close();
+}

@@ -1326,3 +1326,11 @@ body {
     top: -5rem;
   }
 }
+
+/* Excepción explícita a la normalización global de texto en botones de fondo claro.
+   El contador de expedientes debe conservar blanco sobre azul institucional. */
+:root:not(.dark) #root button span[data-parts-count="true"],
+.dark #root button span[data-parts-count="true"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}

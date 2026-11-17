@@ -34,18 +34,22 @@ window.testApi.checkWorkers=()=>JSON.stringify(docs.map(d=>d.signatures))===wind
 const app=createRoot(document.getElementById('root'));
 window.showWorkspaceStack=()=>app.render(<><div style={{position:'fixed',inset:0,background:'#fff'}}>Fondo</div>{['Primera ventana','Segunda ventana'].map(label=><ModalPortal key={label} label={label}><div style={{position:'absolute',inset:0,background:'#fff',display:'grid',placeItems:'center'}}><button>{label}</button></div></ModalPortal>)}</>);
 window.showSettings=()=>app.render(<><div style={{position:'fixed',inset:0,background:'#fff'}}>Tarjetas de documentos del supervisor</div><ForemanModelSettings modelKey="epis:fixture" onClose={()=>{}} onSave={async l=>{window.savedLayout=l;}}/></>);app.render(<ForemanMobilePortal token="synthetic-test-only"/>);`;
-const server=await createServer({configFile:false,root,cacheDir:path.join(out,'cache'),plugins:[react(),{name:'foreman-browser-fixture',enforce:'pre',resolveId(id){if(id==='virtual:foreman-harness')return '\0foreman-harness';if(id.endsWith('foremanPortalService'))return '\0portal-mock';if(id.endsWith('/lib/supabase'))return '\0supabase-mock';if(id.endsWith('/lib/appDialog'))return '\0dialog-mock';if(id.endsWith('/PreventionSection'))return '\0prevention-mock';},async load(id){if(id==='\0foreman-harness')return (await transformWithEsbuild(harness,'harness.tsx',{loader:'tsx'})).code;if(id==='\0portal-mock')return mock;if(id==='\0supabase-mock')return 'export const supabase={query:async()=>[]};export const getSessionUser=async()=>null;';if(id==='\0dialog-mock')return 'export const appAlert=async message=>{window.lastAlert=message;};export const appConfirm=async()=>true;export const appPrompt=async()=>null;';if(id==='\0prevention-mock')return 'export const PreventionSection=()=>null;';},configureServer(s){s.middlewares.use('/tailwind.js',(_,res)=>{res.setHeader('Content-Type','application/javascript');res.end(tailwind);});s.middlewares.use('/foreman-test',async(_,res)=>{res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml('/foreman-test','<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><script>tailwind.config={darkMode:"class"}</script></head><body><div id="root"></div><script type="module" src="/@id/virtual:foreman-harness"></script></body></html>'));});}}],server:{host:'127.0.0.1',port:0}});
+const server=await createServer({configFile:false,root,cacheDir:path.join(out,'cache'),plugins:[react(),{name:'foreman-browser-fixture',enforce:'pre',resolveId(id){if(id==='virtual:foreman-harness')return '\0foreman-harness';if(id.endsWith('foremanPortalService'))return '\0portal-mock';if(id.endsWith('/lib/supabase'))return '\0supabase-mock';if(id.endsWith('/lib/appDialog'))return '\0dialog-mock';if(id.endsWith('/PreventionSection'))return '\0prevention-mock';},async load(id){if(id==='\0foreman-harness')return (await transformWithEsbuild(harness,'harness.tsx',{loader:'tsx'})).code;if(id==='\0portal-mock')return mock;if(id==='\0supabase-mock')return 'export const supabase={query:async()=>[]};export const getSessionUser=async()=>null;';if(id==='\0dialog-mock')return 'export const appAlert=async message=>{window.lastAlert=message;};export const appConfirm=async()=>true;export const appPrompt=async()=>null;';if(id==='\0prevention-mock')return 'export const PreventionSection=()=>null;';},configureServer(s){s.middlewares.use('/tailwind.js',(_,res)=>{res.setHeader('Content-Type','application/javascript');res.end(tailwind);});s.middlewares.use('/foreman-test',async(_,res)=>{res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml('/foreman-test','<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><script>tailwind.config={darkMode:"class"}</script></head><body><div id="root"></div><script type="module" src="/@id/virtual:foreman-harness"></script></body></html>'));});}}],optimizeDeps:{include:['jspdf','jspdf-autotable','exceljs','qrcode']},server:{host:'127.0.0.1',port:0}});
 let browser;
 try{
  await server.listen();browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const url='http://127.0.0.1:'+server.httpServer.address().port+'/foreman-test';await page.goto(url);await page.getByRole('button',{name:'Actualizar documentos',exact:true}).waitFor();
+ const openSection=async label=>{
+  const navigation=page.getByRole('navigation',{name:'Secciones del portal de encargados'});
+  await navigation.getByRole('button',{name:label,exact:true}).click();
+ };
  for(const type of ['inicio','control_presencia','contrato','prorroga']){
   await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
   assert.equal(await page.getByRole('button',{name:'Firmar como encargado',exact:true}).count(),0,type+' has no independent signing');
  }
  for(const [tab,type] of [['EPIs','epis'],['Formación','formacion'],['Maquinaria','maquinaria']]){
-  await page.getByRole('button',{name:tab,exact:true}).click();await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
+  await openSection(tab);await page.getByRole('button').filter({hasText:type+'.pdf'}).click();
   const sign=page.getByRole('button',{name:'Firmar como encargado',exact:true});await sign.waitFor();assert(await page.getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'missing foreman signature blocks each native document without setup');
   for(const [width,height] of [[390,844],[820,1180],[1440,900]])for(const dark of [false,true]){
    await page.setViewportSize({width,height});await page.evaluate(d=>document.documentElement.classList.toggle('dark',d),dark);await sign.scrollIntoViewIfNeeded();
@@ -61,15 +65,15 @@ try{
   assert(await page.evaluate(()=>window.testApi.checkWorkers()),'worker signatures untouched');
  }
  const fidelity=await page.evaluate(()=>window.checkOriginalFidelity());assert.equal(fidelity.ok,true,JSON.stringify(fidelity));
- await page.reload();await page.getByRole('button',{name:'EPIs',exact:true}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor(); // Expanded document is now restored from IndexedDB.
- await page.getByRole('button',{name:'PERIODO DE PRUEBA',exact:true}).click();
+ await page.reload();await openSection('EPIs');await page.getByRole('button').filter({hasText:'epis.pdf'}).click();await page.getByRole('button',{name:'Volver a firmar como encargado',exact:true}).waitFor();
+ await page.getByRole('combobox',{name:'Añadir quincena o contrato',exact:true}).selectOption('PERIODO DE PRUEBA');
  await page.getByRole('button',{name:/Preparar relación para firmas/}).click();await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();assert(await page.locator('#foreman-signing-new-epis').getByRole('button',{name:'Finalizar y enviar al supervisor',exact:true}).isDisabled(),'new document auto-expands with foreman panel');
- await page.getByRole('button',{name:'Control horario',exact:true}).click();await page.getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();
+ await openSection('Control horario');await page.getByRole('button',{name:'Firmar como encargado',exact:true}).waitFor();
  await page.getByRole('button',{name:'Firmar como encargado',exact:true}).click();const attendanceCanvas=page.locator('canvas').last();const ab=await attendanceCanvas.boundingBox();await page.mouse.move(ab.x+20,ab.y+25);await page.mouse.down();await page.mouse.move(ab.x+120,ab.y+70,{steps:10});await page.mouse.up();await page.getByRole('button',{name:'Guardar',exact:true}).click();await page.getByText('Firma guardada y verificada',{exact:true}).waitFor();
  await page.evaluate(()=>{document.getElementById('root').style.cssText='position:relative;z-index:22000';});
- await page.evaluate(()=>window.finishFixtures());await page.getByRole('button',{name:'Finalizados',exact:true}).click();await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+ await page.evaluate(()=>window.finishFixtures());await openSection('Finalizados');await page.getByRole('button',{name:'Actualizar',exact:true}).click();
  for(const [type,label] of [['epis','Entrega de EPIs'],['formacion','Formación e información'],['maquinaria','Autorización de maquinaria'],['stored-contract','Contrato de trabajo']]){
-  const card=page.locator('article').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
+  const card=page.locator('section > div').filter({has:page.getByText(label,{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
   await card.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.getByText(label+' · PDF firmado',{exact:true}).waitFor();await page.locator('canvas').first().waitFor();
   for(const [width,height] of [[390,844],[820,1180],[1440,900]])for(const dark of [false,true]){
    await page.setViewportSize({width,height});await page.evaluate(d=>document.documentElement.classList.toggle('dark',d),dark);
@@ -87,7 +91,7 @@ try{
   assert(shared.pages>0);assert(shared.name.endsWith('.pdf'));
   if(type==='stored-contract')assert.equal(shared.base64,await page.evaluate(()=>window.importedPdf),'imported signed bytes preserved exactly');else assert(shared.images>=2,'native PDF contains separate worker and foreman images');
  }
- const importedCard=page.locator('article').filter({has:page.getByText('Contrato de trabajo',{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
+ const importedCard=page.locator('section > div').filter({has:page.getByText('Contrato de trabajo',{exact:true})}).filter({has:page.getByRole('button',{name:'Ver PDF',exact:true})});
  await page.evaluate(()=>{window.unsignedFallback=true;});await importedCard.getByRole('button',{name:'Ver PDF',exact:true}).click();await page.waitForFunction(()=>window.lastAlert==='No se ha encontrado el PDF firmado de este documento.');assert.equal(await page.getByRole('button',{name:'Cerrar',exact:true}).count(),0,'unsigned original is never presented as signed');
  assert.deepEqual(await page.evaluate(()=>window.pdfCalls),[['stored-contract','signed'],['stored-contract','signed'],['stored-contract','signed']],'only imported documents use stored PDF RPC');
  await page.evaluate(()=>window.showSettings());await page.getByRole('button',{name:'Cargar plantilla guardada',exact:true}).click();await page.getByLabel('Corresponde firma del encargado').waitFor();
@@ -104,4 +108,3 @@ try{
  assert(await page.getByRole('button',{name:'Segunda ventana',exact:true}).evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'last workspace modal is above earlier modal and background');
  assert.deepEqual(errors,[]);console.log('PASS: real Chromium portal navigation, 4 exclusions despite stale metadata, 3 operational types, blue canvas capture, separate read-after-write evidence, reload, attendance capture, original PDF raster fidelity, completed native PDF viewing/sharing with both signatures and exact stored contract PDF, model reuse/save and mobile/tablet/desktop light/dark signing controls.');console.log('Screenshots:',out);
 }finally{await browser?.close();await server.close();}
-

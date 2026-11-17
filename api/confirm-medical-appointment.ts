@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import { createHash } from 'node:crypto';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://oanurwzoymkmwmxoyzqi.supabase.co';
@@ -64,7 +65,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({ ok: true, status });
   } catch (error) {
-    console.error('[medical-confirmation-api]', error);
+    reportOperationalError('[medical-confirmation-api]', error);
     return fail(res, 500, 'No se pudo registrar la respuesta.');
   }
 }

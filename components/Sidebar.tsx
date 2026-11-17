@@ -3,7 +3,7 @@ import { LayoutDashboard, UserPlus, Users, Menu, ChevronLeft, Settings, Trash2, 
 import { useAuthShell } from './AuthGate';
 import { APP_BUILD, APP_VERSION } from '../src/lib/appVersion';
 
-export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'prevencion' | 'documentacion_obra' | 'documentacion_encargados' | 'inventario' | 'administracion' | 'actas_visitas';
+export type ViewMode = 'dashboard' | 'calendario' | 'registro' | 'sae' | 'directorio' | 'estadisticas' | 'configuracion' | 'papelera' | 'citas' | 'subcontratas' | 'prevencion' | 'documentacion_obra' | 'documentacion_encargados' | 'inventario' | 'administracion' | 'actas_visitas' | 'partes_avisos';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -22,6 +22,7 @@ interface SidebarProps {
   uniqueQuincenas: string[];
   onOpenScanner: () => void;
   guidedMode?: boolean;
+  partsUnread?:number;
 }
 
 type SidebarMenuItem = {
@@ -40,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setIsMobileOpen,
   onOpenScanner,
   guidedMode = false,
+  partsUnread=0,
 }) => {
   const { user, role, signOut, signingOut } = useAuthShell();
   const metadata = (user.user_metadata || {}) as Record<string, any>;
@@ -68,7 +70,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'prevencion', label: 'Incidencias y alertas', icon: ShieldCheck },
         { id: 'citas', label: 'Reconocimientos Médicos', icon: Calendar },
         { id: 'documentacion_obra', label: 'Documentación de obra', icon: Files },
-        { id: 'actas_visitas', label: 'Actas de visitas', icon: ClipboardCheck },
         { id: 'documentacion_encargados', label: 'Documentación de encargados', icon: ClipboardCheck },
         {
           id: 'subcontratas',
@@ -104,7 +105,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'citas', label: '4. Reconocimientos', subtitle: 'Citas y aptitud médica', icon: Calendar },
         { id: 'documentacion_obra', label: '5. Documentación', subtitle: 'Documentos de la obra', icon: Files },
         { id: 'documentacion_encargados', label: 'Documentación de encargados', subtitle: 'Firmas y partes recibidos', icon: ClipboardCheck },
-        { id: 'actas_visitas', label: 'Actas de visitas', subtitle: 'Acuerdos, conformidades y firmas', icon: ClipboardCheck },
         { id: 'subcontratas', label: '6. CAE', subtitle: 'Coordinación de empresas', icon: HardHat },
         { id: 'prevencion', label: 'Incidencias y alertas', subtitle: 'Comprobaciones y seguimiento por obra', icon: ShieldCheck },
         { id: 'inventario', label: '7. Maquinaria', subtitle: 'Equipos y herramientas', icon: Wrench },
@@ -194,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`} />
                       <span className={`min-w-0 flex-1 flex flex-col items-start text-left transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100 w-auto'}`}>
                         <span className={`profea-sidebar-label w-full font-semibold text-sm leading-[1.15] whitespace-normal break-words ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-brand-primary dark:group-hover:text-blue-400'}`}>
-                          {item.label}
+                          {item.label}{item.id==='documentacion_obra'&&Number(partsUnread)>0&&<span className="ml-1 rounded-full bg-red-600 px-2 py-1 text-xs font-black text-white">{Number(partsUnread)>99?'99+':partsUnread}</span>}
                         </span>
                         {item.subtitle && (
                           <span className={`profea-sidebar-subtitle mt-0.5 text-[10px] leading-[1.2] font-medium max-w-[13rem] ${isActive ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
@@ -205,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                       {isCollapsed && !isMobileOpen && (
                         <div className="absolute left-full ml-4 px-2 py-1 bg-slate-800 text-white text-xs font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                          {item.label}
+                          {item.label}{item.id==='documentacion_obra'&&Number(partsUnread)>0&&<span className="ml-1 rounded-full bg-red-600 px-2 py-1 text-xs font-black text-white">{Number(partsUnread)>99?'99+':partsUnread}</span>}
                         </div>
                       )}
                     </button>
@@ -268,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        <div className={`px-4 pb-2 text-[9px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`} title={`Build ${APP_BUILD}`}>
+        <div data-app-version={APP_VERSION} className={`px-4 pb-2 text-xs font-bold tracking-wide text-slate-600 dark:text-slate-300 ${isCollapsed && !isMobileOpen ? 'lg:hidden' : ''}`} title={`Build ${APP_BUILD}`}>
           GestionProfea · v{APP_VERSION}
         </div>
 

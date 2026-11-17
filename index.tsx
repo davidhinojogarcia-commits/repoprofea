@@ -75,6 +75,7 @@ const WorkerQrPortal = React.lazy(() => import('./components/WorkerQrPortal').th
 const RemoteScannerPortal = React.lazy(() => import('./components/RemoteScannerPortal').then(module => ({ default: module.RemoteScannerPortal })));
 const ForemanMobilePortal = React.lazy(() => import('./components/ForemanMobilePortal').then(module => ({ default: module.ForemanMobilePortal })));
 const VisitMinutesPortal = React.lazy(() => import('./components/VisitMinutesPortal').then(module => ({ default: module.VisitMinutesPortal })));
+const VisitDfPortal = React.lazy(() => import('./components/VisitDfPortal').then(module => ({ default: module.VisitDfPortal })));
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 const normalizeLegacyLoginRoute = () => {
@@ -106,8 +107,11 @@ if ('serviceWorker' in navigator) {
 }
 const initialSearchParams = new URLSearchParams(window.location.search);
 const visitToken = new URLSearchParams(window.location.hash.slice(1)).get('visit') || '';
+const visitDfToken = new URLSearchParams(window.location.hash.slice(1)).get('visit-df') || '';
 const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
+const cardPairToken = new URLSearchParams(window.location.hash.slice(1)).get('card-pair')?.trim() || '';
+const WorkerCardPairMobile = React.lazy(() => import('./components/WorkerCardPairMobile'));
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
 const FOREMAN_DEVICE_TOKEN_KEY = 'pfea_foreman_device_token_v1';
@@ -174,7 +178,9 @@ ReactDOM.createRoot(rootElement).render(
     <RootErrorBoundary>
       <>
         <AppDialogHost />
-        {visitToken ? (
+        {visitDfToken ? (
+          <React.Suspense fallback={<RouteLoadingFallback />}><VisitDfPortal token={visitDfToken}/></React.Suspense>
+        ) : visitToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><VisitMinutesPortal token={visitToken}/></React.Suspense>
       ) : isMedicalConfirmation ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><MedicalAppointmentConfirmationPortal /></React.Suspense>
@@ -182,6 +188,8 @@ ReactDOM.createRoot(rootElement).render(
         <React.Suspense fallback={<RouteLoadingFallback />}><ForemanMobilePortal token={foremanToken} /></React.Suspense>
       ) : isForemanAppRoute ? (
         <ForemanUnlinkedScreen />
+      ) : cardPairToken ? (
+        <AuthGate><React.Suspense fallback={<RouteLoadingFallback />}><WorkerCardPairMobile token={cardPairToken} /></React.Suspense></AuthGate>
       ) : workerQrToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><WorkerQrPortal token={workerQrToken} /></React.Suspense>
       ) : remoteScannerToken ? (

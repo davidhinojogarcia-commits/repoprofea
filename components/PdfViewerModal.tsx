@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
 import { 
@@ -80,7 +81,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
         setNumPages(doc.numPages);
         setLoading(false);
       } catch (err) {
-        console.warn('PDF.js rendering fallback triggered:', err);
+        reportOperationalError('PDF.js rendering fallback triggered:', err, 'warn');
         if (isMounted) {
           setError('No se pudo usar la vista interactiva. Cargando visor predeterminado...');
           setUseFallbackIframe(true);
@@ -131,7 +132,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
       await page.render(renderContext).promise;
       setLoading(false);
     } catch (err) {
-      console.error('Error rendering page:', err);
+      reportOperationalError('Error rendering page:', err);
       setLoading(false);
     }
   }, [pdfDoc, currentPage, scale, rotation, useFallbackIframe]);

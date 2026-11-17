@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../lib/operationalLog';
 import { supabase } from '../lib/supabase';
 import { getDocuments } from './databaseService';
 import { loadAppBusinessSettings } from './appSettingsService';
@@ -7,7 +8,7 @@ const safeRawTable = async (table: string) => {
   try {
     return await supabase.query(table, { query: 'select=*&limit=10000', fresh: true }) || [];
   } catch (error) {
-    console.warn(`No se pudo incluir la tabla ${table} en la copia`, error);
+    reportOperationalError("src/services/backupExportService.ts:10", error, 'warn');
     return [];
   }
 };

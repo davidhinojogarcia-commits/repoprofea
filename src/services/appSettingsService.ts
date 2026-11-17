@@ -122,6 +122,12 @@ export const DEFAULT_SUPERVISOR_SETTINGS: SupervisorSettings = {
 
 let supervisorCache: SupervisorSettings = { ...DEFAULT_SUPERVISOR_SETTINGS };
 let technicianCache: TechnicianSettings = { ...DEFAULT_TECHNICIAN_SETTINGS };
+let cacheGeneration = 0;
+export function resetCachedBusinessSettings() {
+  cacheGeneration++;
+  supervisorCache = { ...DEFAULT_SUPERVISOR_SETTINGS };
+  technicianCache = { ...DEFAULT_TECHNICIAN_SETTINGS };
+}
 
 export const getCachedSupervisorSettings = (): SupervisorSettings => ({ ...supervisorCache });
 export const getCachedTechnicianSettings = (): TechnicianSettings => ({ ...technicianCache });
@@ -264,6 +270,7 @@ async function requireUser() {
 }
 
 export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
+  const generation = cacheGeneration;
   const user = await requireUser();
   const rows = await supabase.query('user_settings', {
     query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
@@ -271,11 +278,14 @@ export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
   const remote = rows?.[0]?.settings?.app;
   if (remote && typeof remote === 'object') {
     const normalized = normalize(remote);
-    supervisorCache = normalized.supervisor;
-    technicianCache = normalized.technician;
+    if (generation === cacheGeneration) {
+      supervisorCache = normalized.supervisor;
+      technicianCache = normalized.technician;
+    }
     return normalized;
   }
   const defaults = normalize(DEFAULTS);
+  if (generation !== cacheGeneration) return defaults;
   supervisorCache = defaults.supervisor;
   technicianCache = defaults.technician;
   if (typeof navigator === 'undefined' || navigator.onLine) {
@@ -285,6 +295,7 @@ export async function loadAppBusinessSettings(): Promise<AppBusinessSettings> {
 }
 
 export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings>): Promise<void> {
+  const generation = cacheGeneration;
   const user = await requireUser();
   const rows = await supabase.query('user_settings', {
     query: `user_id=eq.${encodeURIComponent(user.id)}&select=settings&limit=1`,
@@ -321,11 +332,14 @@ export async function saveAppBusinessSettings(patch: Partial<AppBusinessSettings
     activeTrainingProviderId: patch.activeTrainingProviderId ?? existingRaw?.activeTrainingProviderId,
   });
 
+  if (generation !== cacheGeneration) throw new Error('La cuenta ha cambiado. Vuelve a abrir la configuración antes de guardar.');
   await supabase.rpc('patch_user_settings', {
     p_patch: { app: next },
   });
-  supervisorCache = next.supervisor;
-  technicianCache = next.technician;
+  if (generation === cacheGeneration) {
+    supervisorCache = next.supervisor;
+    technicianCache = next.technician;
+  }
 }
 
 export function clearLegacyBusinessSettings(): void {}

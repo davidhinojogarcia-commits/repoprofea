@@ -775,3 +775,50 @@ export async function revokeInventoryParkMember(parkId: string, userId: string) 
 }
 
 export { parkBaseLocation };
+
+
+/**
+ * Lectura paginada del parque para exportaciones institucionales.
+ * No aplicar los filtros de la pantalla ni el límite operativo de 2.000 registros.
+ * La consulta sigue sometida a las políticas RLS de Supabase.
+ */
+export async function listInventoryExportSnapshot(parkId: string) {
+  if (!parkId) throw new Error('Selecciona un parque antes de exportar.');
+  const exportedAt = new Date().toISOString();
+  const readAll = async (table: string, order: string) => {
+    const result: any[] = [];
+    const size = 500;
+    for (let offset = 0; offset <= 100000; offset += size) {
+      const page = await supabase.query(table, {
+        query: `select=*&park_id=eq.${encodeURIComponent(parkId)}&order=${order}&limit=${size}&offset=${offset}`,
+      });
+      if (!Array.isArray(page)) throw new Error(`Respuesta de datos incompleta: ${table}.`);
+      result.push(...page);
+      if (page.length < size) return result;
+    }
+    throw new Error(`La exportación de ${table} supera el límite seguro. No se generará un informe incompleto.`);
+  };
+  const [itemRows, movementRows, maintenanceRows, documentRows, shares] = await Promise.all([
+    readAll('inventory_items', 'created_at.asc,id.asc'),
+    readAll('inventory_movements', 'created_at.asc,id.asc'),
+    readAll('inventory_maintenance', 'created_at.asc,id.asc'),
+    readAll('inventory_documents', 'created_at.asc,id.asc'),
+    listInventoryParkShares(parkId),
+  ]);
+  const supervisors = await supabase.rpc('get_inventory_supervisors', { p_park_id: parkId });
+  const byItem = new Map<string, { supervisor_id: string; supervisor_name: string }>(
+    (supervisors || []).map((row: any) => [row.item_id, row]),
+  );
+  return {
+    exportedAt,
+    items: itemRows.map((row: any) => ({
+      ...mapItem(row),
+      supervisorResponsableId: byItem.get(row.id)?.supervisor_id || null,
+      supervisorResponsableNombre: byItem.get(row.id)?.supervisor_name || null,
+    })),
+    movements: movementRows.filter((row: any) => !row.created_at || row.created_at <= exportedAt).map(mapMovement),
+    maintenance: maintenanceRows.filter((row: any) => !row.created_at || row.created_at <= exportedAt).map(mapMaintenance),
+    documents: documentRows.filter((row: any) => !row.created_at || row.created_at <= exportedAt).map(mapDocument),
+    shares,
+  };
+}

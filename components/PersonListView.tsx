@@ -1,9 +1,11 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import ModalPortal from './ModalPortal';
 import { Person } from '../types';
-import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone } from 'lucide-react';
+import { Trash2, User, Calendar, MapPin, Download, Clock, Search, FileText, Pencil, Mail, MessageCircle, Upload, History, Cloud, Loader2, AlertTriangle, Table as TableIcon, LayoutGrid, Smartphone, ScanLine, ChevronDown } from 'lucide-react';
 import { MultiSearchableDropdown } from './MultiSearchableDropdown';
+import { InstitutionalSelect } from './InstitutionalSelect';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleCalendarModal } from './GoogleCalendarModal';
 import { CalendarEventInput } from '../src/lib/googleCalendar';
@@ -12,6 +14,8 @@ import { PersonTable } from './PersonTable';
 import { CompactPersonCard } from './CompactPersonCard';
 import { BulkShareButton } from './BulkShareButton';
 import { sendDirectoryCommunication } from '../src/lib/directoryCommunications';
+import { splitRelationWorkersByWork } from '../src/lib/relationExportOrdering';
+import { directoryContractYear, matchesDirectoryTraining, type DirectoryTrainingFilter } from '../src/lib/directoryTrainingFilter';
 
 interface PersonListProps {
   people: Person[];
@@ -30,7 +34,15 @@ interface PersonListProps {
   onEmail: (dataToExport: Person[]) => void;
   onImport: (file: File) => void;
   onGenerateIDCard: (person: Person) => void;
+  onScanWorkerCard?: () => void;
+  onPairWorkerCard?: () => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
+  renderPartsFilter?: React.ReactNode;
+  renderMedicalFilter?: React.ReactNode;
+  showMedicalWarning?: boolean;
+  onClearExtendedFilters?: () => void;
+  extendedFiltersActive?: boolean;
   savedObras: string[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -90,7 +102,15 @@ export const PersonList: React.FC<PersonListProps> = ({
   onEmail,
   onImport,
   onGenerateIDCard,
+  onScanWorkerCard,
+  onPairWorkerCard,
   onExportHistoryPDF,
+  renderPartsAction,
+  renderPartsFilter,
+  renderMedicalFilter,
+  showMedicalWarning = false,
+  onClearExtendedFilters,
+  extendedFiltersActive,
   savedObras,
   searchTerm,
   setSearchTerm,
@@ -105,8 +125,11 @@ export const PersonList: React.FC<PersonListProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showOnlyRepeaters, setShowOnlyRepeaters] = useState(false);
-  const [showOnlyNoAptos, setShowOnlyNoAptos] = useState(false);
+  const [trainingFilter, setTrainingFilter] = useState<DirectoryTrainingFilter>('all');
+  const [contractYearFilter, setContractYearFilter] = useState('all');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showReports, setShowReports] = useState(false);
+  const [reportType, setReportType] = useState<'encargados' | 'administrative' | 'medical' | 'footwear' | 'training'>('encargados');
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [viewLayout, setViewLayout] = useState<'table' | 'compact' | 'cards'>(() => {
     try {
@@ -126,7 +149,7 @@ export const PersonList: React.FC<PersonListProps> = ({
     try {
       localStorage.setItem('profea_personlist_view', layout);
     } catch (e) {
-      console.error(e);
+      reportOperationalError("components/PersonListView.tsx:129", e);
     }
   };
 
@@ -269,7 +292,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         }
       });
     } catch (err) {
-      console.error('Error loading Google Picker:', err);
+      reportOperationalError('Error loading Google Picker:', err);
       setIsDriveLoading(false);
       alert('Error al abrir el selector de Google Drive.');
     }
@@ -304,7 +327,7 @@ export const PersonList: React.FC<PersonListProps> = ({
       const file = new File([blob], finalName, { type: finalMime });
       onImport(file);
     } catch (err: any) {
-      console.error(err);
+      reportOperationalError("components/PersonListView.tsx:307", err);
       alert('Error al descargar archivo de Google Drive: ' + (err.message || err));
     } finally {
       setIsDriveLoading(false);
@@ -347,6 +370,10 @@ export const PersonList: React.FC<PersonListProps> = ({
   };
 
   const uniqueQuincenas = useMemo(() => Array.from(new Set((people || []).map(p => p.quincena))).sort(), [people]);
+  const contractYears = useMemo(() => Array.from(new Set([
+    String(new Date().getFullYear()),
+    ...people.map(directoryContractYear).filter((year): year is string => year !== null),
+  ])).sort((a, b) => Number(b) - Number(a)), [people]);
 
   const sameDniWorkersMap = useMemo(() => {
     const map = new Map<string, Person[]>();
@@ -407,17 +434,44 @@ export const PersonList: React.FC<PersonListProps> = ({
       const cleanDni = person.dni ? person.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
       const isRepeaterWorker = cleanDni ? repeaterDniSet.has(cleanDni) : false;
       const matchesRepeater = !showOnlyRepeaters || isRepeaterWorker;
-      const matchesNoApto = !showOnlyNoAptos || person.reconocimientoEstado === 'No Apto';
       
-      return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesNoApto;
+      return matchesSearch && matchesObra && matchesQuincena && matchesRepeater && matchesDirectoryTraining(person, trainingFilter, contractYearFilter);
     });
-  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, showOnlyNoAptos]);
+  }, [people, deferredSearchTerm, selectedObraSet, selectedQuincenaSet, showOnlyRepeaters, repeaterDniSet, trainingFilter, contractYearFilter]);
 
   const isSelectionActive = selectedIds.length > 0;
   const peopleToExport = useMemo(
     () => isSelectionActive ? people.filter(p => selectedIdSet.has(p.id)) : filteredPeople,
     [isSelectionActive, people, selectedIdSet, filteredPeople],
   );
+
+  const exportAdministrativeRelation = async (format: 'pdf' | 'excel') => {
+    if (!peopleToExport.length) {
+      onToast?.('No hay trabajadores dentro de los filtros actuales para exportar.', 'error');
+      return;
+    }
+    try {
+      // Generador pesado: carga diferida para no ralentizar ni bloquear el Directorio.
+      const { prepareAdministrativeRelationExcel, prepareAdministrativeRelationPDF } = await import('../src/lib/administrativeRelationExport');
+      for (const group of splitRelationWorkersByWork(peopleToExport)) {
+        if (format === 'pdf') {
+          const { doc, filename } = prepareAdministrativeRelationPDF(group.workers);
+          const url = URL.createObjectURL(doc.output('blob'));
+          const link = document.createElement('a');
+          link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+        } else {
+          const { buffer, filename } = await prepareAdministrativeRelationExcel(group.workers);
+          const url = URL.createObjectURL(new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+          const link = document.createElement('a');
+          link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+        }
+      }
+    } catch (error: any) {
+      onToast?.(error?.message || 'No se pudo generar la relación administrativa.', 'error');
+    }
+  };
 
   const administrativeExportScopeIds = useMemo(
     () => peopleToExport.map(person => person.id),
@@ -463,6 +517,13 @@ export const PersonList: React.FC<PersonListProps> = ({
     }
   };
   
+  const scanActions = (onScanWorkerCard || onPairWorkerCard) && (
+    <div role="group" aria-label="Lectura de carnet" className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+      {onScanWorkerCard && <button type="button" onClick={onScanWorkerCard} className="inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-xl bg-[#00548E] px-3 py-3 text-center text-sm font-bold text-white"><ScanLine className="h-5 w-5 shrink-0" />Escanear carnet con este dispositivo</button>}
+      {onPairWorkerCard && <button type="button" onClick={onPairWorkerCard} className="min-h-12 min-w-0 w-full rounded-xl border border-slate-300 px-3 py-3 text-center text-sm font-bold dark:border-slate-600">Vincular cámara del móvil</button>}
+    </div>
+  );
+
   if (people.length === 0) {
     return (
       <div className="ui-surface p-8 h-full flex flex-col items-center justify-center text-center text-slate-800 dark:text-slate-100">
@@ -480,6 +541,7 @@ export const PersonList: React.FC<PersonListProps> = ({
         <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-md">
           Complete el formulario para agregar registros o utilice la importación para cargar un archivo con listado de trabajadores.
         </p>
+        <div className="mt-4">{scanActions}</div>
 
         <AnimatePresence>
           {showImportModal && (
@@ -565,173 +627,100 @@ export const PersonList: React.FC<PersonListProps> = ({
   }
 
   return (
-    <div id="directorio-section" className="ui-surface p-4 sm:p-6 lg:p-8 text-slate-800 dark:text-slate-100">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-800 gap-4">
-        <h2 className="text-[var(--ui-text)] text-xl sm:text-2xl font-black tracking-tight flex items-center">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white mr-3"><User className="w-5 h-5" /></span> Directorio ({people.length})
-        </h2>
-        <div className="flex flex-col gap-2 w-full md:w-auto">
-          <div className="directorio-primary-actions flex flex-wrap gap-2 justify-end items-center">
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 onChange={handleFileChange} 
-                 accept=".xlsx, .xls, .json, .pdf" 
-                 className="hidden" 
-               />
-
-
-
-          </div>
-          <div className="text-right text-[11px] font-black uppercase tracking-[0.16em] text-slate-700 dark:text-slate-200">Acciones informativas rápidas</div>
-          <div className="directorio-export-groups flex flex-wrap gap-2 justify-end">
-               <div className="flex flex-col gap-2 w-full sm:w-auto">
-                 <div data-encargados-relation-row="1" className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Relación de trabajadores para encargados:</span>
-                   <button onClick={() => onExportPDF(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-red-500/20' : ''}`}>
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-                   </button>
-                   <button onClick={() => onExport(peopleToExport)} className={`w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border ${isSelectionActive ? 'ring-2 ring-emerald-500/20' : ''}`}>
-                      <Download className="w-3 h-3 mr-1.5" /> Excel{isSelectionActive ? ` (${peopleToExport.length})` : ''}
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-slate-950 dark:border-emerald-300 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar el PDF y compartirlo con el recurso preventivo configurado"
-                   >
-                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Reconocimientos Médicos:</span>
-                   <button onClick={() => onExportRRMMPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportRRMMExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('medical' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Resumen Calzado:</span>
-                   <button onClick={() => onExportCalzadoPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportCalzadoExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('footwear' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-                 <div className="directorio-export-row flex items-center justify-end gap-2">
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center mr-2">Formación PRL 20h:</span>
-                   <button onClick={() => onExportPRLPDF(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <FileText className="w-3 h-3 mr-1.5" /> PDF
-                   </button>
-                   <button onClick={() => onExportPRLExcel(peopleToExport)} className="w-[112px] flex-none flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/80 px-4 py-1.5 rounded-lg transition-colors text-[11px] font-bold shadow-sm uppercase border">
-                      <Download className="w-3 h-3 mr-1.5" /> Excel
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => void sendDirectoryCommunication('training' as any, peopleToExport, people).catch((error) => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
-                     className="w-[112px] flex-none flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:text-white dark:border-sky-500 px-3 py-1.5 rounded-lg transition-colors text-[11px] font-black shadow-sm uppercase"
-                     title="Generar PDF y preparar el envío al contacto configurado"
-                   >
-                     <Mail className="w-3.5 h-3.5" /> Mail
-                   </button>
-                 </div>
-               </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-6 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-xl flex flex-col xl:flex-row items-stretch overflow-visible z-20 relative focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:focus-within:ring-blue-500/30 focus-within:border-[#00548E] dark:focus-within:border-blue-500 transition-all">
-        <div className="relative flex-1 flex items-center min-h-[52px]">
-          <div className="pl-4 pr-2 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-slate-400 dark:text-slate-500" />
-          </div>
-          <input
-            type="text"
-            placeholder="Buscar por nombre, DNI, oferta, obra o categoría..."
-            className="w-full py-3 pr-4 bg-transparent border-none focus:outline-none focus:ring-0 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="hidden xl:block w-px bg-slate-200 dark:bg-slate-700 my-2"></div>
-        <div className="block xl:hidden h-px bg-slate-200 dark:bg-slate-700 mx-4"></div>
-
-        <div className="flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap items-stretch p-1.5 gap-1.5 xl:w-auto min-w-0">
-          <MultiSearchableDropdown
-            options={savedObras}
-            selectedValues={selectedObraFilter}
-            onChange={setSelectedObraFilter}
-            placeholder="Obra: Todas"
-            allLabel="Todas las obras"
-            icon={<MapPin className="w-4 h-4" />}
-            className="!w-full sm:!w-48 xl:!w-60"
-            buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
-          />
-          <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
-          <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-          <MultiSearchableDropdown
-            options={uniqueQuincenas}
-            selectedValues={selectedQuincenaFilter}
-            onChange={setSelectedQuincenaFilter}
-            placeholder="Quincena: Todas"
-            allLabel="Todas las quincenas"
-            icon={<Clock className="w-4 h-4" />}
-            className="!w-full sm:!w-48 xl:!w-60"
-            buttonClassName="!bg-transparent !border-none hover:!bg-slate-100 dark:hover:!bg-slate-700/60 !shadow-none !h-full"
-          />
-          <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-1"></div>
-          <div className="block sm:hidden h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-          <button
-            onClick={() => setShowOnlyRepeaters(!showOnlyRepeaters)}
-            className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer whitespace-nowrap ${
-              showOnlyRepeaters 
-                ? 'bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-300 dark:border-purple-800 shadow-sm ring-2 ring-purple-500/20' 
-                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700'
-            }`}
-          >
-            <History className={`w-3.5 h-3.5 ${showOnlyRepeaters ? 'text-purple-600 dark:text-purple-400 animate-pulse' : 'text-slate-500 dark:text-slate-400'}`} />
-            <span>Repetidores</span>
+    <div id="directorio-section" className="ui-surface min-w-0 p-3 sm:p-5 lg:p-7 text-slate-800 dark:text-slate-100">
+      <div className="mb-4 min-w-0 border-b border-slate-200 pb-4 dark:border-slate-800">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-4">
+          <h2 className="flex min-w-0 items-center gap-2 text-lg font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ui-gradient-brand)] text-white"><User className="h-5 w-5" /></span>
+            <span className="min-w-0 truncate">Directorio <span className="text-slate-500 dark:text-slate-400">({people.length})</span></span>
+          </h2>
+          <button type="button" aria-expanded={showReports} aria-controls="directory-reports-panel"
+            onClick={() => setShowReports(value => !value)}
+            className="inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#003f70] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00548E] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 sm:gap-2 sm:px-4">
+            <FileText className="h-4 w-4 shrink-0" /><span>Informes</span><ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${showReports ? 'rotate-180' : ''}`}/>
           </button>
-
-          {noAptosCount > 0 && (
-            <button
-              onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                showOnlyNoAptos 
-                  ? 'bg-red-600 text-white border-red-700 shadow-sm ring-2 ring-red-500/20' 
-                  : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 dark:border-red-800/80'
-              }`}
-              title="Filtrar trabajadores con reconocimiento No Apto"
-            >
-              <AlertTriangle className={`w-3.5 h-3.5 ${showOnlyNoAptos ? 'text-white' : 'text-red-600 dark:text-red-400 animate-pulse'}`} />
-              <span>No Aptos ({noAptosCount})</span>
-            </button>
-          )}
         </div>
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls, .json, .pdf" className="hidden" />
+        {showReports && (
+          <section id="directory-reports-panel" aria-label="Informes y comunicaciones del Directorio"
+            className="mt-3 min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/60 sm:p-4">
+            <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2 lg:items-end">
+              <div className="flex min-w-0 flex-col gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                <span>Seleccionar informe</span>
+                <InstitutionalSelect label="Seleccionar informe del Directorio" value={reportType} onChange={next => setReportType(next as typeof reportType)} options={[{value:'encargados',label:'Relación de trabajadores para encargados'},{value:'administrative',label:'Relación administrativa de trabajadores'},{value:'medical',label:'Reconocimientos médicos'},{value:'footwear',label:'Resumen de calzado'},{value:'training',label:'Formación PRL 20 horas'}]} />
+              </div>
+              <div className="min-w-0">
+                <div className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">Exportar o compartir</div>
+                <div data-encargados-relation-row={reportType === 'encargados' ? '1' : undefined} className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+                  <button type="button" onClick={() => {
+                    if(reportType === 'administrative') void exportAdministrativeRelation('pdf');
+                    else if(reportType === 'encargados') onExportPDF(peopleToExport);
+                    else if(reportType === 'medical') onExportRRMMPDF(peopleToExport);
+                    else if(reportType === 'footwear') onExportCalzadoPDF(peopleToExport);
+                    else onExportPRLPDF(peopleToExport);
+                  }} className="inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-white px-2 py-3 text-sm font-bold text-red-800 hover:bg-red-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30">
+                    <FileText className="h-4 w-4 shrink-0" /> PDF
+                  </button>
+                  <button type="button" onClick={() => {
+                    if(reportType === 'administrative') void exportAdministrativeRelation('excel');
+                    else if(reportType === 'encargados') onExport(peopleToExport);
+                    else if(reportType === 'medical') onExportRRMMExcel(peopleToExport);
+                    else if(reportType === 'footwear') onExportCalzadoExcel(peopleToExport);
+                    else onExportPRLExcel(peopleToExport);
+                  }} className="inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-2 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30">
+                    <Download className="h-4 w-4 shrink-0" /> Excel
+                  </button>
+                  {reportType === 'encargados' ? (
+                    <button type="button" onClick={() => void sendDirectoryCommunication('encargados', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el envío por WhatsApp.', 'error'))}
+                      className="col-span-2 inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-2 py-3 text-sm font-bold text-white hover:bg-emerald-800 sm:col-span-1">
+                      <MessageCircle className="h-4 w-4 shrink-0" /> WhatsApp
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => void sendDirectoryCommunication(reportType as 'administrative' | 'medical' | 'footwear' | 'training', peopleToExport, people).catch(error => onToast?.(error?.message || 'No se pudo preparar el correo.', 'error'))}
+                      className="col-span-2 inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2 py-3 text-sm font-bold text-sky-900 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200 sm:col-span-1">
+                      <Mail className="h-4 w-4 shrink-0" /> Mail
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400" role="status">
+              {isSelectionActive ? `Se aplicará a ${peopleToExport.length} trabajadores seleccionados.` : `Se aplicará a los ${peopleToExport.length} trabajadores del ámbito visible según los filtros.`}
+            </p>
+          </section>
+        )}
       </div>
 
-      {noAptosCount > 0 && (
-        <div className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
+      <div className="mb-4 flex min-h-[52px] min-w-0 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 focus-within:border-[#00548E] focus-within:ring-2 focus-within:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-900">
+        <Search aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
+        <input type="search" aria-label="Buscar trabajadores" placeholder="Buscar por nombre, DNI, oferta, obra o categoría..."
+          value={searchTerm} onChange={event => setSearchTerm(event.target.value)}
+          className="min-h-11 w-full min-w-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500 dark:text-slate-100 dark:placeholder:text-slate-400" />
+      </div>
+
+      <section aria-labelledby="directory-filters-title" data-directory-filters="true" className="relative z-20 mb-5 min-w-0 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 id="directory-filters-title" className="text-sm font-extrabold">Filtros del directorio</h3>
+          <button type="button" onClick={() => {setSearchTerm('');setSelectedObraFilter(['Todas']);setSelectedQuincenaFilter(['Todas']);setTrainingFilter('all');setContractYearFilter('all');setShowOnlyRepeaters(false);setSelectedIds([]);onClearExtendedFilters?.();}} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200">Limpiar filtros</button>
+        </div>
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Obra</span><MultiSearchableDropdown options={savedObras} selectedValues={selectedObraFilter} onChange={value => { setSelectedObraFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<MapPin className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
+          <div className="min-w-0"><span className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200">Periodo / quincena</span><MultiSearchableDropdown options={uniqueQuincenas} selectedValues={selectedQuincenaFilter} onChange={value => { setSelectedQuincenaFilter(value); setSelectedIds([]); }} placeholder="Todas" allLabel="Todas" icon={<Clock className="w-4 h-4" />} className="!w-full !min-w-0" buttonClassName="!min-h-11 !rounded-xl !border-slate-300 !bg-white !shadow-none dark:!border-slate-600 dark:!bg-slate-900"/></div>
+          <div className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"><span>Año de contratación</span><InstitutionalSelect label="Año de contratación" value={contractYearFilter} onChange={next => {setContractYearFilter(next);setSelectedIds([]);}} options={[{value:'all',label:'Todos los años'}, ...contractYears.map(year => ({value:String(year),label:String(year)})), {value:'unknown',label:'Sin año registrado'}]} /></div>
+          {renderMedicalFilter && <div className="min-w-0">{renderMedicalFilter}</div>}
+        </div>
+        <details className="group mt-3 min-w-0">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-[#00548E] focus-visible:ring-2 focus-visible:ring-[#00548E] dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200 [&::-webkit-details-marker]:hidden"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/> Más filtros</summary>
+          <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"><span>Formación</span><InstitutionalSelect label="Formación" value={trainingFilter} onChange={next => {setTrainingFilter(next as DirectoryTrainingFilter);setSelectedIds([]);}} options={[{value:'all',label:'Todos los estados'},{value:'trained',label:'Con formación'},{value:'pending',label:'Sin formación / pendiente'}]} /></div>
+            {renderPartsFilter && <div className="min-w-0">{renderPartsFilter}</div>}
+            <div className="flex min-w-0 flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"><span>Repetidores</span><InstitutionalSelect label="Repetidores" value={showOnlyRepeaters ? 'only' : 'all'} onChange={next => {setShowOnlyRepeaters(next==='only');setSelectedIds([]);}} options={[{value:'all',label:'Todos'},{value:'only',label:'Solo repetidores'}]} /></div>
+          </div>
+        </details>
+        {(trainingFilter !== 'all' || contractYearFilter !== 'all' || showOnlyRepeaters || extendedFiltersActive) && <p role="status" className="mt-3 text-xs text-slate-600 dark:text-slate-300">Hay filtros activos. Usa «Limpiar filtros» para restablecer el Directorio.</p>}
+      </section>
+      {showMedicalWarning && noAptosCount > 0 && (
+        <div role="alert" className="mb-5 p-3.5 bg-red-50/90 dark:bg-red-950/40 border-2 border-red-400 dark:border-red-800/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-900 dark:text-red-200 shadow-sm">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 animate-bounce" />
             <div>
@@ -739,28 +728,19 @@ export const PersonList: React.FC<PersonListProps> = ({
                 Alerta de Prevención de Contratación:
               </span>
               <span>
-                Hay <strong>{noAptosCount} trabajador(es) con Reconocimiento Médico "No Apto"</strong> {noAptoDocIncompleteCount > 0 && `(${noAptoDocIncompleteCount} con Documentación bloqueada en 'No')`}. Sus fichas cuentan con indicador de advertencia persistente y resaltado en rojo para evitar contrataciones erróneas.
+                ⚠️ ⛔️ Hay <strong>{noAptosCount} trabajador(es) con Reconocimiento Médico "No Apto"</strong> {noAptoDocIncompleteCount > 0 && `(${noAptoDocIncompleteCount} con Documentación bloqueada en 'No')`}. Sus fichas cuentan con indicador de advertencia persistente y resaltado en rojo para evitar contrataciones erróneas.
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowOnlyNoAptos(!showOnlyNoAptos)}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all border cursor-pointer ${
-              showOnlyNoAptos
-                ? 'bg-red-600 text-white border-red-700 shadow-sm'
-                : 'bg-white hover:bg-red-100 text-red-700 border-red-300 dark:bg-slate-900 dark:hover:bg-red-950/80'
-            }`}
-          >
-            {showOnlyNoAptos ? 'Mostrar todos' : `Filtrar No Aptos (${noAptosCount})`}
-          </button>
+
         </div>
       )}
 
+      {filteredPeople.length === 0 && <div className="mb-4">{scanActions}</div>}
       {filteredPeople.length === 0 ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400 bg-slate-100/30 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
            <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-           <p className="text-sm font-medium">No se encontraron resultados para "{searchTerm}"</p>
+           <p className="text-sm font-medium">No se encontraron trabajadores con los filtros seleccionados{searchTerm ? ` para "${searchTerm}"` : ''}.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -787,12 +767,12 @@ export const PersonList: React.FC<PersonListProps> = ({
                 </label>
               </div>
 
-              <div className="profea-directory-view-switcher grid grid-cols-[0.78fr_1.42fr_1fr] sm:flex items-center gap-1 w-full sm:w-auto bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+              <div className="profea-directory-view-switcher grid min-w-0 w-full grid-cols-3 items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-2xs dark:border-slate-700 dark:bg-slate-900 sm:w-auto sm:flex">
                 <button
                   type="button"
                   id="btn-view-table"
                   onClick={() => handleSetViewLayout('table')}
-                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 min-h-11 py-2 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     viewLayout === 'table'
                       ? 'bg-[#00548E] dark:bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -806,7 +786,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   type="button"
                   id="btn-view-compact"
                   onClick={() => handleSetViewLayout('compact')}
-                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 min-h-11 py-2 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     viewLayout === 'compact'
                       ? 'bg-[#00548E] dark:bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -820,7 +800,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   type="button"
                   id="btn-view-cards"
                   onClick={() => handleSetViewLayout('cards')}
-                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`min-w-0 w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 min-h-11 py-2 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     viewLayout === 'cards'
                       ? 'bg-[#00548E] dark:bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -850,11 +830,11 @@ export const PersonList: React.FC<PersonListProps> = ({
                   </span>
                 )}
                 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid w-full grid-cols-2 items-stretch gap-2 sm:flex sm:w-auto sm:flex-wrap">
                   {onEditMultiple && (
                     <button 
                       onClick={handleBulkEdit}
-                      className="flex items-center justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-[#00548E] dark:text-blue-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-blue-200 dark:border-blue-800/80 cursor-pointer"
+                      className="flex min-h-11 min-w-0 items-center justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-[#00548E] dark:text-blue-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-blue-200 dark:border-blue-800/80 cursor-pointer"
                       title="Editar trabajadores seleccionados"
                     >
                       <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar Masivo
@@ -863,7 +843,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   <BulkShareButton resourceType="trabajadores" resourceIds={selectedIds} />
                   <button 
                     onClick={handleOpenCalendarForSelected}
-                    className="flex items-center justify-center bg-[#00548E]/10 hover:bg-[#00548E]/20 text-[#00548E] dark:text-blue-300 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-[#00548E]/20 dark:border-blue-800/80 cursor-pointer"
+                    className="flex min-h-11 min-w-0 items-center justify-center bg-[#00548E]/10 hover:bg-[#00548E]/20 text-[#00548E] dark:text-blue-300 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-[#00548E]/20 dark:border-blue-800/80 cursor-pointer"
                     title="Añadir a Google Calendar los seleccionados"
                   >
                     <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#00548E] dark:text-blue-400" /> Google Calendar
@@ -871,7 +851,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                   {onDeleteMultiple && (
                     <button 
                       onClick={handleBulkDelete}
-                      className="flex items-center justify-center bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-red-200 dark:border-red-900/60 cursor-pointer"
+                      className="flex min-h-11 min-w-0 items-center justify-center bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-300 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold shadow-sm border border-red-200 dark:border-red-900/60 cursor-pointer"
                       title="Eliminar trabajadores seleccionados"
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Eliminar Masivo
@@ -889,6 +869,7 @@ export const PersonList: React.FC<PersonListProps> = ({
             )}
           </div>
 
+          {scanActions}
           {viewLayout === 'table' ? (
             <PersonTable
               people={filteredPeople}
@@ -901,6 +882,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               onEdit={onEdit}
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
+              renderPartsAction={renderPartsAction}
               onOpenCalendar={handleOpenCalendarForWorker}
               sameDniWorkersMap={sameDniWorkersMap}
             />
@@ -921,6 +903,7 @@ export const PersonList: React.FC<PersonListProps> = ({
                     onEdit={onEdit}
                     onGenerateIDCard={onGenerateIDCard}
                     onExportHistoryPDF={onExportHistoryPDF}
+                    renderPartsAction={renderPartsAction}
                     onOpenCalendar={handleOpenCalendarForWorker}
                     sameDniWorkers={sameDniWorkers}
                   />
@@ -936,6 +919,7 @@ export const PersonList: React.FC<PersonListProps> = ({
               onEdit={onEdit}
               onGenerateIDCard={onGenerateIDCard}
               onExportHistoryPDF={onExportHistoryPDF}
+              renderPartsAction={renderPartsAction}
               onOpenCalendar={handleOpenCalendarForWorker}
               sameDniWorkersMap={sameDniWorkersMap}
             />

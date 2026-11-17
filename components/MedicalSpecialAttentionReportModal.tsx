@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useMemo, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { FileText, Download, X } from 'lucide-react';
@@ -75,7 +76,7 @@ export const MedicalSpecialAttentionReportModal: React.FC<Props> = ({ isOpen, pe
       }, columns);
       downloadPDF(doc, filename);
     } catch (err) {
-      console.error('Error rendering special attention PDF:', err);
+      reportOperationalError('Error rendering special attention PDF:', err);
       alert('Ocurrió un error al compilar el informe. Por favor, inténtelo de nuevo.');
     } finally {
       setIsExporting(false);

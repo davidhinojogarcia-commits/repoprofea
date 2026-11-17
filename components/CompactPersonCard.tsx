@@ -26,6 +26,7 @@ interface CompactPersonCardProps {
   onEdit: (person: Person) => void;
   onGenerateIDCard: (person: Person) => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   onOpenCalendar: (person: Person) => void;
   isSyncActive?: boolean;
   onToggleSync?: (id: number) => void;
@@ -92,6 +93,7 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
   onEdit,
   onGenerateIDCard,
   onExportHistoryPDF,
+  renderPartsAction,
   onOpenCalendar,
   sameDniWorkers = []
 }) => {
@@ -337,6 +339,8 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
         </div>
       )}
 
+      {renderPartsAction && <div className="mt-3">{renderPartsAction(person)}</div>}
+
       <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800">
         <button type="button" onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1.5 -ml-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer touch-manipulation">
           {isExpanded ? <><ChevronUp className="w-3.5 h-3.5" /><span>Menos</span></> : <><ChevronDown className="w-3.5 h-3.5" /><span>Más datos</span></>}
@@ -346,7 +350,7 @@ export const CompactPersonCard: React.FC<CompactPersonCardProps> = React.memo(({
           <ShareRecordButton resourceType="trabajadores" resourceId={person.id} ownerId={person.ownerId} compact />
           <button type="button" onClick={() => onEdit(person)} className="p-2 rounded-xl text-[#00548E] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer touch-manipulation" title={`Editar datos de ${person.apellidosNombre}`} aria-label={`Editar ${person.apellidosNombre}`}><Pencil className="w-4 h-4" /></button>
           <button type="button" onClick={handleSafeOpenCalendar} className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-[#00548E] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer touch-manipulation" title="Añadir citas y periodo a Google Calendar" aria-label={`Añadir citas de ${person.apellidosNombre} a Google Calendar`}><Calendar className="w-4 h-4" /></button>
-          <button type="button" onClick={handleSafeGenerateIDCard} className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer touch-manipulation" title="Generar e imprimir carné identificativo de obra" aria-label={`Generar carné de ${person.apellidosNombre}`}><IdCard className="w-4 h-4" /></button>
+          <button type="button" onClick={handleSafeGenerateIDCard} className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer touch-manipulation" title="Ver y compartir carnet del trabajador" aria-label={`Ver y compartir carnet de ${person.apellidosNombre}`}><IdCard className="w-4 h-4" /></button>
           <button type="button" onClick={() => onExportHistoryPDF(person)} className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer touch-manipulation" title="Descargar historial de contratación PROFEA en PDF" aria-label={`Descargar historial de ${person.apellidosNombre}`}><History className="w-4 h-4" /></button>
           <button type="button" onClick={() => onDelete(person.id)} className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer touch-manipulation" title={`Eliminar registro de ${person.apellidosNombre}`} aria-label={`Eliminar registro de ${person.apellidosNombre}`}><Trash2 className="w-4 h-4" /></button>
         </div>

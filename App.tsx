@@ -1,8 +1,10 @@
+import { reportOperationalError } from './src/lib/operationalLog';
 
 import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth } from './src/lib/supabaseData';
 import { getSessionUser, supabase } from './src/lib/supabase';
 import { Header } from './components/Header';
+import {usePartsNotifications} from './src/hooks/usePartsNotifications';
 import { useAuthShell } from './components/AuthGate';
 import { GuidedHome } from './components/GuidedHome';
 import { PrintHeader } from './components/PrintHeader';
@@ -41,7 +43,6 @@ const PreventionSection = lazy(() => import('./components/PreventionSection').th
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const WorksiteDocumentationPortal = lazy(() => import('./components/WorksiteDocumentationPortal').then(module => ({ default: module.WorksiteDocumentationPortal })));
 const ForemanDocumentsDashboard = lazy(() => import('./components/ForemanDocumentsDashboard').then(module => ({ default: module.ForemanDocumentsDashboard })));
-const VisitMinutesPanel = lazy(() => import('./components/VisitMinutesPanel').then(module => ({ default: module.VisitMinutesPanel })));
 const Stats = lazy(() => import('./components/Stats').then(module => ({ default: module.Stats })));
 const RegistrationForm = lazy(() => import('./components/RegistrationForm').then(module => ({ default: module.RegistrationForm })));
 const PersonList = lazy(() => import('./components/PersonList').then(module => ({ default: module.PersonList })));
@@ -49,6 +50,7 @@ const EditPersonModal = lazy(() => import('./components/EditPersonModal').then(m
 const BulkEditModal = lazy(() => import('./components/BulkEditModal').then(module => ({ default: module.BulkEditModal })));
 const PeriodicReportModal = lazy(() => import('./components/PeriodicReportModal').then(module => ({ default: module.PeriodicReportModal })));
 const CameraScannerModal = lazy(() => import('./components/CameraScannerModal').then(module => ({ default: module.CameraScannerModal })));
+const WorkerCardModal = lazy(() => import('./components/WorkerCardModal'));
 const PdfViewerModal = lazy(() => import('./components/PdfViewerModal').then(module => ({ default: module.PdfViewerModal })));
 const PushNotificationManagerModal = lazy(() => import('./components/PushNotificationManagerModal').then(module => ({ default: module.PushNotificationManagerModal })));
 
@@ -116,6 +118,7 @@ type InterfaceMode = 'guided' | 'full';
 
 const GUIDED_VIEW_CONTEXT: Partial<Record<ViewMode, { step: string; title: string; help: string }>> = {
   sae: { step: 'Paso 1 de 6', title: 'Selección SAE', help: 'Selecciona trabajadores y prepara la contratación.' },
+  partes_avisos: {step:'Seguimiento de obra',title:'Partes y avisos',help:'Revisa hechos y comunicaciones sin sanciones automáticas.'},
   directorio: { step: 'Paso 2 de 6', title: 'Trabajadores', help: 'Revisa datos, documentación e historial.' },
   citas: { step: 'Paso 3 de 6', title: 'Reconocimientos médicos', help: 'Comprueba citas y aptitud médica.' },
   documentacion_obra: { step: 'Paso 4 de 6', title: 'Documentación de obra', help: 'Completa y revisa los documentos de la obra.' },
@@ -155,10 +158,10 @@ function App() {
     return 'light';
   });
 
-  const [activeView, setActiveView] = useState<ViewMode>('dashboard');
-  const [visitWorksite, setVisitWorksite] = useState('');
+  const [activeView, setActiveView] = useState<ViewMode>(()=>new URLSearchParams(window.location.search).has('parts')?'documentacion_obra':'dashboard');
+  const [documentationEntry,setDocumentationEntry]=useState<{view:'actas_visitas'|'partes_avisos';worksite?:string;request:number}|undefined>(()=>new URLSearchParams(window.location.search).has('parts')?{view:'partes_avisos',request:0}:undefined);
   useEffect(() => {
-    const openVisit = (event: Event) => {setVisitWorksite(String((event as CustomEvent).detail?.worksite || ''));setActiveView('actas_visitas');};
+    const openVisit = (event: Event) => {const worksite=String((event as CustomEvent).detail?.worksite || '');setDocumentationEntry(previous=>({view:'actas_visitas',worksite,request:(previous?.request||0)+1}));setActiveView('documentacion_obra');};
     window.addEventListener('profea:open-visit-minutes',openVisit);
     return () => window.removeEventListener('profea:open-visit-minutes',openVisit);
   }, []);
@@ -197,6 +200,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const partsUnread=usePartsNotifications(authenticatedUser.id,message=>setToast({message,type:'success'}));
   const [interfaceMode, setInterfaceMode] = useState<InterfaceMode>('full');
   const [isInterfaceModeSaving, setIsInterfaceModeSaving] = useState(false);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 3500); return () => window.clearTimeout(timer); }, [toast]);
@@ -226,7 +230,7 @@ function App() {
         setInterfaceMode(resolvedMode);
         localStorage.setItem(`profea_interface_mode:${user.id}`, resolvedMode);
       } catch (error) {
-        console.warn('No se pudo recuperar la preferencia de interfaz:', error);
+        reportOperationalError('No se pudo recuperar la preferencia de interfaz:', error, 'warn');
       }
     };
 
@@ -243,7 +247,7 @@ function App() {
     setInterfaceMode(nextMode);
     if (
       nextMode === 'guided' &&
-      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'actas_visitas', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
+      !['dashboard', 'registro', 'directorio', 'citas', 'documentacion_obra', 'documentacion_encargados', 'actas_visitas', 'partes_avisos', 'subcontratas', 'prevencion', 'inventario', 'sae'].includes(activeView)
     ) {
       setActiveView('dashboard');
       window.dispatchEvent(new CustomEvent('profea:navigate', { detail: { view: 'dashboard' } }));
@@ -265,7 +269,7 @@ function App() {
         type: 'success',
       });
     } catch (error) {
-      console.error('No se pudo guardar la preferencia de interfaz:', error);
+      reportOperationalError('No se pudo guardar la preferencia de interfaz:', error);
       setInterfaceMode(previousMode);
       const user = await getSessionUser().catch(() => null);
       if (user) localStorage.setItem(`profea_interface_mode:${user.id}`, previousMode);
@@ -361,7 +365,7 @@ function App() {
   useEffect(() => {
     if (people && people.length > 0) {
       void checkAndTriggerUpcomingAlerts(people).catch(error => {
-        console.warn('No se pudieron actualizar las alertas locales:', error);
+        reportOperationalError('No se pudieron actualizar las alertas locales:', error, 'warn');
       });
     }
   }, [people]);
@@ -454,7 +458,7 @@ function App() {
         });
       }
     } catch (err: any) {
-      console.error('Error auto-saving to Google Drive:', err);
+      reportOperationalError('Error auto-saving to Google Drive:', err);
       setToast({ 
         message: 'Error al subir copia a Google Drive: ' + (err.message || err), 
         type: 'error' 
@@ -482,7 +486,7 @@ function App() {
           setViewingWorkerPdf(pdfUrl);
           setViewingWorkerName(worker.apellidosNombre);
         } catch (error) {
-          console.error('Error generating QR target PDF:', error);
+          reportOperationalError('Error generating QR target PDF:', error);
           setToast({ message: 'Error al generar la credencial en PDF', type: 'error' });
         }
       }, 1000);
@@ -505,7 +509,7 @@ function App() {
         sincronizadoEnNube: true,
       })));
     }, { includeShared: true }, error => {
-      console.error('Error leyendo trabajadores de Supabase:', error);
+      reportOperationalError('Error leyendo trabajadores de Supabase:', error);
       setToast({ message: 'Error al leer los trabajadores desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
@@ -529,7 +533,7 @@ function App() {
     const unsubscribe = subscribeToDocuments<DeletedPerson>('trash', items => {
       setDeletedPeople(items);
     }, { includeShared: true }, error => {
-      console.error('Error leyendo la papelera de Supabase:', error);
+      reportOperationalError('Error leyendo la papelera de Supabase:', error);
       setToast({ message: 'Error al leer la papelera desde Supabase.', type: 'error' });
     });
     return () => unsubscribe();
@@ -559,6 +563,7 @@ function App() {
   const visiblePeople = people;
   const visibleDeletedPeople = deletedPeople;
 
+  const [cardPerson, setCardPerson] = useState<Person | null>(null);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
 
   useEffect(() => {
@@ -609,7 +614,7 @@ function App() {
       businessSettingsHydratedRef.current = true;
       clearLegacyBusinessSettings();
     }).catch(error => {
-      console.error('Error cargando configuración empresarial desde Supabase:', error);
+      reportOperationalError('Error cargando configuración empresarial desde Supabase:', error);
       setToast({ message: 'No se pudo cargar la configuración desde Supabase.', type: 'error' });
     });
     return () => { cancelled = true; };
@@ -642,7 +647,7 @@ function App() {
         savedObras, savedLugares, savedSitios, savedTelefonos, savedCategorias,
         workStartHour, workEndHour,
       }).catch(error => {
-        console.error('Error guardando configuración empresarial en Supabase:', error);
+        reportOperationalError('Error guardando configuración empresarial en Supabase:', error);
         setToast({ message: 'No se pudo guardar la configuración en Supabase.', type: 'error' });
       });
     }, 250);
@@ -658,7 +663,7 @@ function App() {
       .map(item => item.person.id);
     if (!expiredIds.length) return;
     void Promise.all(expiredIds.map(id => deleteDocument('trash', id))).catch(error => {
-      console.error('Error purgando papelera caducada en Supabase:', error);
+      reportOperationalError('Error purgando papelera caducada en Supabase:', error);
     });
   }, [deletedPeople]);
 
@@ -760,7 +765,7 @@ function App() {
         });
       }
     } catch (err: any) {
-      console.error('Error durante la copia de seguridad a Google Drive:', err);
+      reportOperationalError('Error durante la copia de seguridad a Google Drive:', err);
       const nowIso = new Date().toISOString();
       const newHistoryItem = {
         id: `drive_bak_err_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -940,7 +945,7 @@ function App() {
     try {
       await createDocument('trabajadores', newPerson.id, newPerson as any);
     } catch (error) {
-      console.error('Error guardando trabajador en Supabase:', error);
+      reportOperationalError('Error guardando trabajador en Supabase:', error);
       setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
       return;
     }
@@ -987,7 +992,7 @@ function App() {
       // 2) el CONTROL DE PRESENCIA con todos los trabajadores activos de la obra.
       await prepareMandatoryForemanDocuments(formattedWorkers);
     } catch (error) {
-      console.error('Error persistiendo trabajadores importados o preparando documentación obligatoria:', error);
+      reportOperationalError('Error persistiendo trabajadores importados o preparando documentación obligatoria:', error);
       setToast({ message: 'La importación no se ha guardado completamente. No se han aplicado cambios.', type: 'error' });
       return;
     }
@@ -1040,7 +1045,7 @@ function App() {
       await deleteDocument('trabajadores', id);
       setToast({ message: 'Registro enviado a la Papelera correctamente', type: 'success' });
     } catch (error) {
-      console.error('Error enviando trabajador a papelera en Supabase:', error);
+      reportOperationalError('Error enviando trabajador a papelera en Supabase:', error);
       setToast({ message: 'No se pudo enviar el registro a la Papelera.', type: 'error' });
     }
   };
@@ -1057,7 +1062,7 @@ function App() {
       }
       setToast({ message: `${peopleToDelete.length} registros enviados a la Papelera correctamente`, type: 'success' });
     } catch (error) {
-      console.error('Error en baja múltiple de Supabase:', error);
+      reportOperationalError('Error en baja múltiple de Supabase:', error);
       setToast({ message: 'No se pudieron enviar todos los registros a la Papelera.', type: 'error' });
     }
   };
@@ -1070,7 +1075,7 @@ function App() {
       await deleteDocument('trash', id);
       setToast({ message: `Registro de ${foundDeleted.person.apellidosNombre} restaurado correctamente`, type: 'success' });
     } catch (error) {
-      console.error('Error restaurando trabajador desde Supabase:', error);
+      reportOperationalError('Error restaurando trabajador desde Supabase:', error);
       setToast({ message: 'No se pudo restaurar el registro.', type: 'error' });
     }
   };
@@ -1083,7 +1088,7 @@ function App() {
       await deleteDocument('trash', id);
       setToast({ message: 'Registro eliminado definitivamente', type: 'success' });
     } catch (error) {
-      console.error('Error eliminando definitivamente en Supabase:', error);
+      reportOperationalError('Error eliminando definitivamente en Supabase:', error);
       setToast({ message: 'No se pudo eliminar definitivamente el registro.', type: 'error' });
     }
   };
@@ -1095,7 +1100,7 @@ function App() {
       for (const item of deletedPeople) await deleteDocument('trash', item.person.id);
       setToast({ message: 'Papelera vaciada correctamente', type: 'success' });
     } catch (error) {
-      console.error('Error vaciando la papelera en Supabase:', error);
+      reportOperationalError('Error vaciando la papelera en Supabase:', error);
       setToast({ message: 'No se pudo vaciar completamente la Papelera.', type: 'error' });
     }
   };
@@ -1154,7 +1159,7 @@ function App() {
         type: 'success'
       });
     } catch (error) {
-      console.error('Error actualizando trabajador en Supabase:', error);
+      reportOperationalError('Error actualizando trabajador en Supabase:', error);
       const detail = error instanceof Error && error.message
         ? ` ${error.message}`
         : '';
@@ -1177,7 +1182,7 @@ function App() {
       setBulkEditingPeople(null);
       setToast({ message: `${updated.length} registros actualizados correctamente`, type: 'success' });
     } catch (error) {
-      console.error('Error en edición masiva en Supabase:', error);
+      reportOperationalError('Error en edición masiva en Supabase:', error);
       setToast({ message: 'No se pudieron actualizar todos los registros.', type: 'error' });
     }
   };
@@ -1467,7 +1472,7 @@ function App() {
       const blob = doc.output('blob');
       uploadToGoogleDrive(blob, filename);
     } catch (err) {
-      console.error('Error generating summary PDF:', err);
+      reportOperationalError('Error generating summary PDF:', err);
       alert('Ocurrió un error al generar el PDF del resumen de obra.');
     }
   };
@@ -1547,23 +1552,13 @@ function App() {
       const blob = doc.output('blob');
       uploadToGoogleDrive(blob, filename);
     } catch (err) {
-      console.error('Error generating stats summary PDF:', err);
+      reportOperationalError('Error generating stats summary PDF:', err);
       alert('Ocurrió un error al generar el PDF del resumen de estadísticas.');
     }
   };
 
-  const handleGenerateIDCard = async (person: Person) => {
-    try {
-      const { generateWorkerIDCardPDF, downloadPDF } = await loadExportUtils();
-      const { doc, filename } = await generateWorkerIDCardPDF(person, people);
-      downloadPDF(doc, filename);
-      const blob = doc.output('blob');
-      uploadToGoogleDrive(blob, filename);
-      return filename;
-    } catch (error) {
-      console.error('Error al generar carné:', error);
-      alert('Error al generar la credencial en PDF');
-    }
+  const handleGenerateIDCard = (person: Person) => {
+    setCardPerson(person);
   };
 
   const handleGenerateWorkerHistoryPDF = async (person: Person) => {
@@ -1575,7 +1570,7 @@ function App() {
       uploadToGoogleDrive(blob, filename);
       return filename;
     } catch (error) {
-      console.error('Error al generar historial de contratos:', error);
+      reportOperationalError('Error al generar historial de contratos:', error);
       alert('Error al generar el historial de contratación en PDF');
     }
   };
@@ -1668,7 +1663,7 @@ function App() {
             }
           }
         } catch (apiErr) {
-          console.warn('API parse-pdf failed, falling back to client-side extraction:', apiErr);
+          reportOperationalError('API parse-pdf failed, falling back to client-side extraction:', apiErr, 'warn');
         }
 
         if (extracted.length > 0) {
@@ -1746,7 +1741,7 @@ function App() {
               });
             });
           } catch (pdfJsErr) {
-            console.error('Client-side PDF text extraction error:', pdfJsErr);
+            reportOperationalError('Client-side PDF text extraction error:', pdfJsErr);
           }
         }
       } else {
@@ -1935,7 +1930,7 @@ function App() {
             }
           }
         } catch (excelErr) {
-          console.warn('Excel parsing failed, trying text/CSV/JSON fallback:', excelErr);
+          reportOperationalError('Excel parsing failed, trying text/CSV/JSON fallback:', excelErr, 'warn');
         }
 
         if (!parsedWithExcel) {
@@ -2058,7 +2053,7 @@ function App() {
               }
             }
           } catch (textErr) {
-            console.error('Fallback text parsing failed:', textErr);
+            reportOperationalError('Fallback text parsing failed:', textErr);
           }
         }
       }
@@ -2069,7 +2064,7 @@ function App() {
         setToast({ message: 'No se encontraron datos válidos para importar. Asegúrese de usar el formato Excel, CSV, JSON o PDF.', type: 'error' });
       }
     } catch (error: any) {
-      console.error('Error al importar archivo:', error);
+      reportOperationalError('Error al importar archivo:', error);
       const friendlyMsg = error?.message && error.message !== 'Load failed'
         ? error.message
         : 'No se pudo leer el archivo. Compruebe que no está dañado o pruebe con otro formato (Excel, CSV, JSON o PDF).';
@@ -2150,8 +2145,8 @@ function App() {
       </div>
 
       <Sidebar 
-        activeView={activeView} 
-        setActiveView={setActiveView} 
+        activeView={activeView==='actas_visitas'||activeView==='partes_avisos'?'documentacion_obra':activeView}
+        setActiveView={view=>{setDocumentationEntry(undefined);setActiveView(view);}}
         isCollapsed={isSidebarCollapsed} 
         setIsCollapsed={setIsSidebarCollapsed}
         isMobileOpen={isMobileMenuOpen}
@@ -2166,6 +2161,7 @@ function App() {
         uniqueQuincenas={uniqueQuincenas}
         onOpenScanner={() => setIsScannerOpen(true)}
         guidedMode={interfaceMode === 'guided'}
+        partsUnread={partsUnread}
       />
       <div
         aria-hidden="true"
@@ -2289,11 +2285,12 @@ function App() {
             </div>
           )}
 
+          {activeView === 'partes_avisos' && <Suspense fallback={<ViewLoadingFallback/>}><WorksiteDocumentationPortal initialDocumentView="partes_avisos" accountId={authenticatedUser.id} partsUnread={partsUnread}/></Suspense>}
           {activeView === 'directorio' && (
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/80 overflow-hidden">
                 <Suspense fallback={<ViewLoadingFallback />}>
-                <PersonList 
+                <PersonList accountId={authenticatedUser.id}
                   people={visiblePeople} 
                   onDelete={handleDelete} 
                   onEdit={handleEdit} 
@@ -2351,7 +2348,7 @@ function App() {
 
           {activeView === 'documentacion_obra' && (
             <Suspense fallback={<ViewLoadingFallback />}>
-              <WorksiteDocumentationPortal />
+              <WorksiteDocumentationPortal accountId={authenticatedUser.id} partsUnread={partsUnread} initialDocumentView={documentationEntry?.view} initialWorksite={documentationEntry?.worksite} initialNavigationKey={documentationEntry?.request}/>
             </Suspense>
           )}
 
@@ -2362,7 +2359,7 @@ function App() {
           )}
 
           {activeView === 'actas_visitas' && (
-            <Suspense fallback={<ViewLoadingFallback />}><VisitMinutesPanel initialWorksite={visitWorksite}/></Suspense>
+            <Suspense fallback={<ViewLoadingFallback />}><WorksiteDocumentationPortal initialDocumentView="actas_visitas" initialWorksite={documentationEntry?.worksite} accountId={authenticatedUser.id} partsUnread={partsUnread}/></Suspense>
           )}
 
           {activeView === 'inventario' && (
@@ -2468,7 +2465,7 @@ function App() {
                   })).then(() => {
                     setPeople(updatedPeople.map(p => ({ ...p, sincronizadoEnNube: true })));
                   }).catch(error => {
-                    console.error('Error guardando reconocimientos en Supabase:', error);
+                    reportOperationalError('Error guardando reconocimientos en Supabase:', error);
                     setToast({ message: 'No se han podido guardar los cambios médicos en la base de datos.', type: 'error' });
                   });
                 }}
@@ -2514,6 +2511,7 @@ function App() {
             </Suspense>
           )}
 
+          {cardPerson && <Suspense fallback={<ViewLoadingFallback />}><WorkerCardModal key={cardPerson.id} person={cardPerson} people={visiblePeople} onClose={() => setCardPerson(null)} /></Suspense>}
           {editingPerson && (
             <Suspense fallback={null}><EditPersonModal 
               key={editingPerson.id}

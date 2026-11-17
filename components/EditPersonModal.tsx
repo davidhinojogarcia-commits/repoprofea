@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useState, useEffect, useMemo } from 'react';
 import ModalPortal from './ModalPortal';
 import { Save, X, User, Briefcase, MapPin, AlertCircle, FileText, Upload, Award, HardHat, CheckCircle2, UserCheck, Pencil, Activity, ShieldAlert, MessageCircle, Share2, Download } from 'lucide-react';
@@ -201,7 +202,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
         const records = await listAnnualHiringPeriods();
         if (active) setAnnualHiringPeriods(records);
       } catch (error) {
-        console.error('No se pudieron cargar los periodos anuales en Directorio:', error);
+        reportOperationalError('No se pudieron cargar los periodos anuales en Directorio:', error);
       }
     };
 
@@ -430,7 +431,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     try {
       await onSave(finalData);
     } catch (error) {
-      console.error('No se pudo completar la edición del trabajador:', error);
+      reportOperationalError('No se pudo completar la edición del trabajador:', error);
     } finally {
       setIsSaving(false);
     }

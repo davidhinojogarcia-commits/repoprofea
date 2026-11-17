@@ -152,7 +152,7 @@ body.profea-modal-open aside.app-navigation-panel {
   /* Push-notification manager: unlike edit forms, this modal contains its own header,
      long scrollable body and footer. Keep the application header visible, but make the
      notification window itself a proper bounded mobile panel with a reachable footer. */
-  #root .profea-notifications-overlay {
+  :is(#root, .profea-modal-overlay) .profea-notifications-overlay {
     top: max(0.75rem, env(safe-area-inset-top)) !important;
     bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
     left: 0.75rem !important;
@@ -213,59 +213,59 @@ body.profea-modal-open aside.app-navigation-panel {
 
 /* Notification manager uses explicit surfaces because the runtime Tailwind CDN can
    omit opacity-modifier dark classes during the first paint on mobile browsers. */
-#root .profea-notifications-header {
+:is(#root, .profea-modal-overlay) .profea-notifications-header {
   color: #fff !important;
   background-color: #00548e !important;
   background-image: linear-gradient(125deg, #071827 0%, #00548e 52%, #003f6b 100%) !important;
 }
 
-#root .profea-notifications-header svg {
+:is(#root, .profea-modal-overlay) .profea-notifications-header svg {
   visibility: visible !important;
   opacity: 1 !important;
 }
 
-#root .profea-notifications-body { background: #f7fafc !important; }
-#root .profea-notifications-permission,
-#root .profea-notifications-preferences { background: #fff !important; }
-#root .profea-notifications-diagnostics { background: #f1f5f9 !important; }
-#root .profea-notifications-option { background: #f8fafc !important; }
+:is(#root, .profea-modal-overlay) .profea-notifications-body { background: #f7fafc !important; }
+:is(#root, .profea-modal-overlay) .profea-notifications-permission,
+:is(#root, .profea-modal-overlay) .profea-notifications-preferences { background: #fff !important; }
+:is(#root, .profea-modal-overlay) .profea-notifications-diagnostics { background: #f1f5f9 !important; }
+:is(#root, .profea-modal-overlay) .profea-notifications-option { background: #f8fafc !important; }
 
-.dark #root .profea-notifications-dialog {
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-dialog {
   color: #e5edf5 !important;
   background: #0f172a !important;
   border-color: #334155 !important;
 }
 
-.dark #root .profea-notifications-body { background: #07101f !important; }
-.dark #root .profea-notifications-permission,
-.dark #root .profea-notifications-preferences { background: #111c2f !important; border-color: #334155 !important; }
-.dark #root .profea-notifications-diagnostics { background: #172337 !important; border-color: #3b4b61 !important; }
-.dark #root .profea-notifications-option { background: #1b293d !important; border-color: #43536a !important; }
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-body { background: #07101f !important; }
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-permission,
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-preferences { background: #111c2f !important; border-color: #334155 !important; }
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-diagnostics { background: #172337 !important; border-color: #3b4b61 !important; }
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-option { background: #1b293d !important; border-color: #43536a !important; }
 
-.dark #root .profea-notifications-permission .text-slate-800,
-.dark #root .profea-notifications-preferences .text-slate-800,
-.dark #root .profea-notifications-option .text-slate-800 { color: #f8fafc !important; }
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-permission .text-slate-800,
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-preferences .text-slate-800,
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-option .text-slate-800 { color: #f8fafc !important; }
 
-.dark #root .profea-notifications-body .text-slate-500,
-.dark #root .profea-notifications-body .text-slate-600,
-.dark #root .profea-notifications-body .text-slate-700 { color: #b8c7d9 !important; }
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-body .text-slate-500,
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-body .text-slate-600,
+.dark :is(#root, .profea-modal-overlay) .profea-notifications-body .text-slate-700 { color: #b8c7d9 !important; }
 
 @media (max-width: 639px) {
-  #root .profea-notifications-overlay {
+  :is(#root, .profea-modal-overlay) .profea-notifications-overlay {
     left: 0.5rem !important;
     right: 0.5rem !important;
     top: max(0.5rem, env(safe-area-inset-top)) !important;
     bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
   }
 
-  #root .profea-notifications-dialog { border-radius: 1rem !important; }
-  #root .profea-notifications-header { padding: 0.75rem !important; }
-  #root .profea-notifications-header > div:first-child { min-width: 0; }
-  #root .profea-notifications-header h3 { font-size: 0.9rem !important; }
-  #root .profea-notifications-body { padding: 0.75rem !important; }
-  #root .profea-notifications-permission,
-  #root .profea-notifications-preferences { padding: 0.875rem !important; }
-  #root .profea-notifications-body { padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-dialog { border-radius: 1rem !important; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-header { padding: 0.75rem !important; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-header > div:first-child { min-width: 0; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-header h3 { font-size: 0.9rem !important; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-body { padding: 0.75rem !important; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-permission,
+  :is(#root, .profea-modal-overlay) .profea-notifications-preferences { padding: 0.875rem !important; }
+  :is(#root, .profea-modal-overlay) .profea-notifications-body { padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important; }
 }
 
 /* Notification modal close controls need explicit contrast in both themes. */
@@ -394,3 +394,35 @@ body.profea-modal-open aside.app-navigation-panel {
 .foreman-pdf-viewer-tools { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; background: #fff; color: #0f172a; border-top: 1px solid #cbd5e1; }
 .foreman-pdf-viewer-tools button { min-width: 44px; min-height: 44px; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 10px; font-weight: 700; }
 .foreman-pdf-viewer-tools button:disabled { opacity: .45; }
+
+
+/* Portaled alerts must keep both exits outside the scrollable content. */
+.profea-modal-overlay .profea-notifications-overlay {
+  position: absolute !important; inset: 0 !important;
+  overflow: hidden !important; padding: 8px !important;
+  display: flex; align-items: center; justify-content: center;
+}
+.profea-modal-overlay .profea-notifications-dialog {
+  display: flex; flex-direction: column; width: 100%; max-width: 64rem;
+  height: min(52rem, 100%); max-height: 100% !important;
+  min-height: 0; margin: 0 !important; overflow: hidden;
+}
+.profea-modal-overlay .profea-notifications-header {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 12px 16px;
+}
+.profea-notifications-header > div { min-width: 0; }
+.profea-notifications-header button {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-shrink: 0; min-width: 88px; min-height: 44px; padding: 8px;
+  background: #fff !important; color: #0f172a !important; border: 1px solid #cbd5e1;
+}
+.profea-modal-overlay .profea-notifications-body {
+  flex: 1 1 0%; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+}
+.profea-notifications-footer { flex: 0 0 auto; padding: 8px 16px; background: #f8fafc; border-top: 1px solid #cbd5e1; }
+.profea-notifications-footer button { min-height: 44px; width: 100%; padding: 8px; color: #fff; background: #00548e; border-radius: 8px; }
+@media (max-height: 500px), (max-width: 639px) {
+  .profea-notifications-header p { display: none; }
+  .profea-notifications-header h3 { font-size: 14px; }
+}

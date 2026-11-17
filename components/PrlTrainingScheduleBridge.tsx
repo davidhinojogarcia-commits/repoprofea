@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect } from 'react';
 import { getDocuments, updateDocument } from '../src/services/databaseService';
 import type { Person } from '../types';
@@ -74,7 +75,7 @@ export const PrlTrainingScheduleBridge: React.FC = () => {
           window.dispatchEvent(new CustomEvent('profea:prl-training-schedule-saved', { detail: { workerId: exact.id } }));
           return;
         } catch (error) {
-          if (attempt === 11) console.error('[prl-training-schedule] No se pudo guardar la convocatoria PRL:', error);
+          if (attempt === 11) reportOperationalError('[prl-training-schedule] No se pudo guardar la convocatoria PRL:', error);
         }
       }
     };

@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import {
   GOOGLE_CLIENT_ID,
   apiError,
@@ -64,6 +65,8 @@ function buildMime(input: {
 export default async function handler(req: any, res: any) {
   // Share the existing function budget; visit routes perform their own auth,
   // including the participant email-code flow before a session exists.
+  if (String(req.query?.action || '') === 'workforce-documents') { const {workforceDocumentsHandler}=await import('../src/server/workforceDocumentsHandler.js'); return workforceDocumentsHandler(req,res); }
+  if (String(req.query?.action || '') === 'parts') { const {partsHandler}=await import('../src/server/partsHandler.js'); return partsHandler(req,res); }
   if (String(req.query?.action || '') === 'visit-minutes') {
     const { visitMinutesHandler } = await import('../src/server/visitMinutesHandler.js');
     return visitMinutesHandler(req, res);
@@ -163,7 +166,7 @@ export default async function handler(req: any, res: any) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           });
         } catch (error) {
-          console.warn('[gmail-disconnect]', {code:'GMAIL_REVOKE_UNCONFIRMED'});
+          reportOperationalError('[gmail-disconnect]', {code:'GMAIL_REVOKE_UNCONFIRMED'}, 'warn');
         }
       }
       await deleteConnection(user.id);

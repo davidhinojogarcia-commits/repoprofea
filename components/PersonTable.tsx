@@ -26,6 +26,7 @@ interface PersonTableProps {
   onEdit: (person: Person) => void;
   onGenerateIDCard: (person: Person) => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   onOpenCalendar: (person: Person) => void;
   sameDniWorkersMap: Map<string, Person[]>;
 }
@@ -47,6 +48,7 @@ export const PersonTable: React.FC<PersonTableProps> = ({
   onEdit,
   onGenerateIDCard,
   onExportHistoryPDF,
+  renderPartsAction,
   onOpenCalendar,
   sameDniWorkersMap
 }) => {
@@ -140,6 +142,7 @@ export const PersonTable: React.FC<PersonTableProps> = ({
 
                   <td className="p-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
+                      {renderPartsAction?.(person)}
                       <ShareRecordButton resourceType="trabajadores" resourceId={person.id} ownerId={person.ownerId} compact />
                       <button type="button" onClick={() => onGenerateIDCard(person)} className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-[#00548E] dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="Ficha completa del trabajador (Carné)"><IdCard className="w-4 h-4" /></button>
                       <button type="button" onClick={() => onExportHistoryPDF(person)} className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-[#00548E] dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="Informe histórico de contrataciones"><History className="w-4 h-4" /></button>

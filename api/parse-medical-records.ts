@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import { analyzeMedicalDocumentText } from '../src/lib/medicalDocumentAnalyzer';
 
 const normalize = (value: unknown) => String(value || '')
@@ -87,7 +88,7 @@ export default async function handler(req: any, res: any) {
       unreadable,
     });
   } catch (error: any) {
-    console.error('[medical-engine-v2]', error);
+    reportOperationalError('[medical-engine-v2]', error);
     return res.status(500).json({
       error: error?.message || 'No se pudieron analizar los reconocimientos médicos.',
     });

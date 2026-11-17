@@ -27,6 +27,7 @@ interface PersonCardProps {
   onEdit: (person: Person) => void;
   onGenerateIDCard: (person: Person) => void;
   onExportHistoryPDF: (person: Person) => void;
+  renderPartsAction?: (person: Person) => React.ReactNode;
   onOpenCalendar: (person: Person) => void;
   isSyncActive?: boolean;
   onToggleSync?: (id: number) => void;
@@ -47,6 +48,7 @@ export const PersonCard: React.FC<PersonCardProps> = React.memo(({
   onEdit,
   onGenerateIDCard,
   onExportHistoryPDF,
+  renderPartsAction,
   onOpenCalendar,
   isSyncActive = false,
   onToggleSync,
@@ -626,6 +628,7 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                   </ul>
                 </div>
               )}
+              {renderPartsAction && <div className="mt-3">{renderPartsAction(person)}</div>}
             </div>
 
             {/* Action Buttons */}
@@ -646,12 +649,12 @@ Estado: ${person.documentacionCompleta === 'Sí' ? 'Completa' : 'Pendiente'}${pe
                     ? 'bg-red-50/60 dark:bg-red-950/30 text-red-700 dark:text-red-400 hover:bg-red-600 hover:text-white border-red-300 dark:border-red-800'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white border-slate-200 dark:border-slate-700'
                 }`}
-                aria-label="Generar Tarjeta"
+                aria-label="Ver y compartir carnet"
               >
                 <IdCard className="profea-worker-card-action-icon w-4 h-4 mx-auto" />
                 <span className="profea-worker-card-action-label hidden">Carné</span>
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xs z-10">
-                  {isNoAptoDocIncomplete ? 'Generar Carné (¡Riesgo No Apto!)' : 'Generar Carné PDF'}
+                  {isNoAptoDocIncomplete ? 'Generar Carné (¡Riesgo No Apto!)' : 'Ver y compartir carnet'}
                 </span>
               </button>
               <button

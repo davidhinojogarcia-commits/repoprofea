@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import {
   SubcontrataDocItem,
   Subcontratista,
@@ -271,10 +272,7 @@ export const saveStoredChecklistTemplate = (
   void saveSubcontratasPreferences({
     checklistTemplate: checklistTemplateCache,
   }).catch((error) =>
-    console.warn(
-      "Error guardando plantilla de subcontratas en Supabase:",
-      error,
-    ),
+    reportOperationalError("Error guardando plantilla de subcontratas en Supabase:", error, 'warn'),
   );
 };
 
@@ -288,10 +286,7 @@ export const resetStoredChecklistTemplate = (): SubcontrataDocItem[] => {
   void saveSubcontratasPreferences({
     checklistTemplate: checklistTemplateCache,
   }).catch((error) =>
-    console.warn(
-      "Error restableciendo plantilla de subcontratas en Supabase:",
-      error,
-    ),
+    reportOperationalError("Error restableciendo plantilla de subcontratas en Supabase:", error, 'warn'),
   );
   return checklistTemplateCache.map((item) => ({ ...item }));
 };
@@ -374,10 +369,7 @@ export const saveStoredReporteTecnicoConfig = (
   void saveSubcontratasPreferences({
     reporteTecnicoConfig: reporteTecnicoConfigCache,
   }).catch((error) =>
-    console.warn(
-      "Error guardando configuración de informe en Supabase:",
-      error,
-    ),
+    reportOperationalError("Error guardando configuración de informe en Supabase:", error, 'warn'),
   );
   if (typeof window !== "undefined") {
     window.dispatchEvent(
@@ -420,7 +412,7 @@ export const saveStoredObraRecursoPreventivo = (
   void saveSubcontratasPreferences({
     obrasRecursosPreventivos: obrasRecursosPreventivosCache,
   }).catch((error) =>
-    console.warn("Error guardando recurso preventivo en Supabase:", error),
+    reportOperationalError("Error guardando recurso preventivo en Supabase:", error, 'warn'),
   );
   if (typeof window !== "undefined")
     window.dispatchEvent(
@@ -440,7 +432,7 @@ export const deleteStoredObraRecursoPreventivo = (obra: string): void => {
   obrasRecursosPreventivosCache = next;
   void saveSubcontratasPreferences({ obrasRecursosPreventivos: next }).catch(
     (error) =>
-      console.warn("Error eliminando recurso preventivo en Supabase:", error),
+      reportOperationalError("Error eliminando recurso preventivo en Supabase:", error, 'warn'),
   );
   if (typeof window !== "undefined")
     window.dispatchEvent(
@@ -459,7 +451,7 @@ export const replaceStoredObrasRecursosPreventivos = (
   void saveSubcontratasPreferences({
     obrasRecursosPreventivos: obrasRecursosPreventivosCache,
   }).catch((error) =>
-    console.warn("Error reemplazando recursos preventivos en Supabase:", error),
+    reportOperationalError("Error reemplazando recursos preventivos en Supabase:", error, 'warn'),
   );
   if (typeof window !== "undefined")
     window.dispatchEvent(
@@ -482,7 +474,7 @@ export const updateStoredObraNameInRecursos = (
   obrasRecursosPreventivosCache = next;
   void saveSubcontratasPreferences({ obrasRecursosPreventivos: next }).catch(
     (error) =>
-      console.warn("Error renombrando recurso preventivo en Supabase:", error),
+      reportOperationalError("Error renombrando recurso preventivo en Supabase:", error, 'warn'),
   );
   if (typeof window !== "undefined")
     window.dispatchEvent(

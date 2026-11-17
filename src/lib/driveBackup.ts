@@ -1,3 +1,4 @@
+import { reportOperationalError } from './operationalLog';
 import { compressToGzip, isCompressionSupported } from './compression';
 import { Person, DeletedPerson } from '../../types';
 
@@ -86,7 +87,7 @@ export function loadDriveBackupConfig(): DriveAutoBackupConfig {
       history: sanitizeHistory(parsed.history)
     };
   } catch (e) {
-    console.warn('Error al cargar configuración de copias de Drive:', e);
+    reportOperationalError('Error al cargar configuración de copias de Drive:', e, 'warn');
     return { ...DEFAULT_DRIVE_BACKUP_CONFIG };
   }
 }
@@ -102,7 +103,7 @@ export function saveDriveBackupConfig(config: DriveAutoBackupConfig): void {
     };
     localStorage.setItem(STORAGE_KEY_DRIVE_BACKUP_CONFIG, JSON.stringify(sanitized));
   } catch (e) {
-    console.warn('Error al guardar configuración de copias de Drive:', e);
+    reportOperationalError('Error al guardar configuración de copias de Drive:', e, 'warn');
   }
 }
 

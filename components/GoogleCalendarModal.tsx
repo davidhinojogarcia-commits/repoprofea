@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { Calendar, Check, CheckCircle2, ExternalLink, Loader2, LogOut, Mail, X } from 'lucide-react';
@@ -82,7 +83,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
       setConnection(connected);
       onToast(`Google Calendar conectado con ${connected.email || 'la cuenta seleccionada'}`, 'success');
     } catch (error: any) {
-      console.error(error);
+      reportOperationalError("components/GoogleCalendarModal.tsx:85", error);
       onToast(error?.message || 'No se pudo conectar Google Calendar.', 'error');
     } finally {
       setIsConnecting(false);
@@ -150,7 +151,7 @@ export const GoogleCalendarModal: React.FC<GoogleCalendarModalProps> = ({
         'success',
       );
     } catch (err: any) {
-      console.error('Error adding to Google Calendar:', err);
+      reportOperationalError('Error adding to Google Calendar:', err);
       setConnection(getGoogleCalendarConnection());
       onToast(err.message || 'Error al conectar con Google Calendar.', 'error');
     } finally {

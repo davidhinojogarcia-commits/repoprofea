@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import ForemanDocumentChanges from './ForemanDocumentChanges';
 import ForemanModelSettings from './ForemanModelSettings';
 import { allowsForemanSignature } from '../src/lib/foremanSignaturePolicy';
@@ -22,6 +23,8 @@ import { deleteForemanMandatoryDocument, deleteForemanMandatoryDocuments, getSup
 import type { ForemanAttendanceDay, ForemanCompletedDocument, ForemanMandatoryDocument } from '../src/services/foremanPortalService';
 import { buildSignedMandatoryPdf, fileToBase64, pdfBlobFromBase64, pdfBlobFromBytes, type MandatoryWorkerAnchor } from '../src/lib/mandatoryPdfOverlay';
 import MandatoryPdfAnchorEditor from './MandatoryPdfAnchorEditor';
+import { InstitutionalDocumentActions } from './InstitutionalDocumentActions';
+import { InstitutionalSelect } from './InstitutionalSelect';
 import ModalPortal from './ModalPortal';
 import MandatoryWorksiteReviewModal from './MandatoryWorksiteReviewModal';
 import { assignMandatoryDocumentV2, confirmMandatoryWorksiteV2, withdrawMandatoryDocumentV2, getSupervisorMandatorySignedPdfV2, saveMandatoryWorkerSelectionV2, returnMandatoryDocumentV2, reviewSubmittedMandatoryDocumentV2, reopenMandatoryDocumentV2 } from '../src/services/mandatoryTraceabilityServiceV2';
@@ -668,7 +671,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setGenericEditDraft({});
       await refresh(true);
     } catch (error:any) {
-      console.error('No se pudo editar el documento del encargado:', error);
+      reportOperationalError('No se pudo editar el documento del encargado:', error);
       setMailMessage(error?.message || 'No se pudo guardar la edición.');
     } finally {
       setEditBusy(false);
@@ -701,7 +704,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       setMailMessage('Documento eliminado correctamente. La eliminación ha quedado guardada.');
       await refresh(true);
     } catch (error:any) {
-      console.error('No se pudo eliminar el documento del encargado:', error);
+      reportOperationalError('No se pudo eliminar el documento del encargado:', error);
       setMailMessage(error?.message || 'No se pudo eliminar el documento.');
     } finally {
       setEditBusy(false);
@@ -872,9 +875,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
   return <div className="foreman-documents-dashboard min-w-0 space-y-5">
     <ForemanDocumentChanges documents={mandatory} onResolved={()=>void refresh()}/>
     <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-[#00548E] dark:text-blue-300">Seguimiento documental</div><h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">Documentación de encargados</h1><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documentos y registros diarios cumplimentados desde el móvil del encargado. Hasta tres comprobaciones automáticas al día entre las 08:00 y las 14:00 (hora de España), solo con esta pantalla visible. Pulsa Actualizar para consultar cambios a cualquier hora.</p></div>
-        <div className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Acciones de documentación de encargados" className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:max-w-[610px] lg:self-end">
           <input ref={restoreOriginalInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={event=>{const file=event.target.files?.[0];if(file)void restoreOriginal(file);}} />
           <input
             ref={mandatoryFileInputRef}
@@ -887,13 +890,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <button
             disabled={importBusy}
             onClick={()=>mandatoryFileInputRef.current?.click()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2.5 text-sm font-black disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+            className="inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-sm font-black text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40"
           >
             {importBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}
             Importar documento
           </button>
-          <button disabled={mailBusy} onClick={()=>void scanAdministrativeMail(false)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-4 py-2.5 text-sm font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>Revisar Gmail</button>
-          <button onClick={()=>void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black"><RefreshCw className="w-4 h-4"/>Actualizar</button>
+          <button disabled={mailBusy} onClick={()=>void scanAdministrativeMail(false)} className="inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-center text-sm font-black text-blue-800 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-900/40"><MailCheck className="w-4 h-4"/>Revisar Gmail</button>
+          <button onClick={()=>void refresh()} className="inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-black text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"><RefreshCw className="w-4 h-4"/>Actualizar</button>
         </div>
       </div>
       {gmailAuthorizationRequired&&<div role="alert" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"><p className="text-sm font-bold">Gmail necesita tu autorización para revisar los documentos.</p><p className="mt-1 text-xs">Pulsa el botón y acepta los permisos en Google. Después podrás volver a revisar Gmail.</p><button disabled={mailBusy} onClick={()=>void reconnectGmail()} className="mt-3 rounded-xl bg-[#00548E] px-4 py-2 text-sm font-black text-white disabled:opacity-50">Volver a autorizar Gmail</button></div>}
@@ -960,13 +963,18 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           </div>
         </div>
 
-        {!!fortnightDocumentGroups.length&&<div aria-label="Filtrar por quincena" className="flex flex-wrap gap-2 rounded-2xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-          {[{key:'' as const,label:'Todas las quincenas'},...fortnightDocumentGroups.map(group=>({key:group.key,label:`${documentFortnightLabel(group.key)} · ${group.total}`}))].map(option=><button key={option.key||'all'} type="button" aria-pressed={selectedDocsFortnight===option.key} onClick={()=>setSelectedDocsFortnight(option.key)} className={`min-h-[44px] rounded-xl border px-3 py-2 text-xs font-black ${selectedDocsFortnight===option.key?'border-[#00548E] bg-[#00548E] text-white':'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}>{option.label}</button>)}
-        </div>}
+        {!!fortnightDocumentGroups.length && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+            <label htmlFor="foreman-documents-fortnight" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">
+              Filtrar documentos por quincena
+            </label>
+            <InstitutionalSelect label="Filtrar documentos por quincena" value={selectedDocsFortnight} onChange={setSelectedDocsFortnight} options={[{value:'',label:'Todas las quincenas'}, ...fortnightDocumentGroups.map(group => ({value:group.key,label:`${documentFortnightLabel(group.key)} · ${group.total} documentos`}))]} />
+          </div>
+        )}
 
         <div className="rounded-2xl bg-white dark:bg-slate-900 border p-3 flex flex-col md:flex-row gap-2">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por obra, trabajador, documento o fecha…" className="w-full rounded-xl border border-slate-300 pl-9 pr-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"/></div>
-      <select value={filter} onChange={e=>setFilter(e.target.value as any)} className="rounded-xl border border-slate-300 px-3 py-2.5 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 font-bold text-sm"><option value="all">Todo</option><option value="mandatory">Inicio, presencia, contratos y prórrogas</option><option value="attendance">Registro diario</option><option value="documents">Documentos normalizados</option><option value="pending">Pendientes de revisar ({pending})</option></select>
+      <InstitutionalSelect label="Filtrar documentos" value={filter} onChange={next => setFilter(next as typeof filter)} className="md:max-w-sm" options={[{value:'all',label:'Todo'},{value:'mandatory',label:'Inicio, presencia, contratos y prórrogas'},{value:'attendance',label:'Registro diario'},{value:'documents',label:'Documentos normalizados'},{value:'pending',label:`Pendientes de revisar (${pending})`}]} />
     </div>
     {bulkDeleteMode&&<div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-800 dark:bg-rose-950/50">
       <div className="flex flex-wrap items-center gap-2">
@@ -990,8 +998,29 @@ export const ForemanDocumentsDashboard: React.FC = () => {
           <div className="mt-1 font-semibold">{importedWorkersMissingFromDirectory(card.item as DbMandatory).map((worker:any)=>String(worker.apellidosNombre||'Trabajador')).join(' · ')}</div>
           <div className="mt-1 text-[11px]">El documento no se bloquea: podrán firmar porque aparecen en el PDF importado.</div>
         </div>}{card.item.correction_pending&&<p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-50">Corrección solicitada: {card.item.correction_reason||'Revisar documento'}</p>}</div>
-        <div className="foreman-document-actions flex w-full min-w-0 flex-wrap content-start items-start gap-2 2xl:w-auto 2xl:max-w-[55%]">
-          <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
+        <InstitutionalDocumentActions
+          hasPrimary={Boolean(
+            (card.kind==='mandatory' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && ['ANALYZED','NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','PDF_VALIDATION_ERROR','SUBMITTED','RECEIVED'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))) ||
+            (card.kind==='mandatory' && String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW') ||
+            (card.kind==='mandatory' && card.status==='completed') ||
+            card.status==='completed' ||
+            card.kind==='attendance' ||
+            (card.kind==='mandatory' && allowsForemanSignature(card.item.document_type) && card.item.details?.originalPdfMode!=='overlay')
+          )}
+          primary={<>
+            {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['ANALYZED','NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','PDF_VALIDATION_ERROR'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))&&<button disabled={editBusy} onClick={()=>void sendMandatoryToPortal(card.item as DbMandatory)} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:opacity-50"><Send className="w-4 h-4"/>Enviar al portal de encargados</button>}
+            {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW'&&<button onClick={()=>void openPendingWorksiteReview(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-black text-white"><Building2 className="w-4 h-4"/>Asignar obra</button>}
+            {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&card.status==='completed'&&['SUBMITTED','RECEIVED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void markMandatoryV2Reviewed(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}
+            {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && (
+            <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
+          )}
+            {(card.kind==='attendance'||(card.kind==='mandatory'&&allowsForemanSignature(card.item.document_type)&&card.item.details?.originalPdfMode!=='overlay'))&&<button type="button" onClick={()=>setSignatureSettings(card)} className="min-h-[48px] rounded-xl border px-3 py-2 text-xs font-black">Firma encargado</button>}
+            {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))) && (
+            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
+          )}
+          </>}
+          secondary={<>
+            <button onClick={()=>void openPdf(card)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><Download className="w-4 h-4"/>{card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&(card.status==='completed'||card.status==='reviewed')?'PDF firmado':'PDF'}</button>
           {card.kind==='mandatory'&&card.item.details?.originalPdfMode==='overlay'&&<>
             <button onClick={()=>{if(card.item.details?.originalPdfPurged){restoreOriginalTargetRef.current=card.id;restoreOriginalInputRef.current?.click();}else void downloadStoredMandatoryPdf(card.item as DbMandatory,'original');}} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"><FileSignature className="w-4 h-4"/>{card.item.details?.originalPdfPurged?'Reimportar original':'Original'}</button>
             {['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&
@@ -1002,25 +1031,18 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                 <Pencil className="w-4 h-4"/>Ajustar firmas
               </button>}
           </>}
-          {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['ANALYZED','NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','PDF_VALIDATION_ERROR'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))&&<button disabled={editBusy} onClick={()=>void sendMandatoryToPortal(card.item as DbMandatory)} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:opacity-50"><Send className="w-4 h-4"/>Enviar al portal de encargados</button>}
           {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(String(card.item.lifecycle_status||card.item.details?.lifecycleStatus||''))&&<button disabled={editBusy} onClick={()=>void withdrawMandatoryFromPortal(card.item as DbMandatory)} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-black text-amber-900 disabled:opacity-50"><RotateCcw className="w-4 h-4"/>Retirar del portal para corregir</button>}
-          {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='NEEDS_WORKSITE_REVIEW'&&<button onClick={()=>void openPendingWorksiteReview(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-black text-white"><Building2 className="w-4 h-4"/>Asignar obra</button>}
           {card.kind==='mandatory'&&String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||'')==='PDF_VALIDATION_ERROR'&&<button onClick={()=>void reopenMandatoryV2ForRepair(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs font-black text-rose-800"><RotateCcw className="w-4 h-4"/>Reabrir para reparar</button>}
-          {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&card.status==='completed'&&['SUBMITTED','RECEIVED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void markMandatoryV2Reviewed(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>}
           {card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))&&['SUBMITTED','RECEIVED','REVIEWED'].includes(String(card.item.details?.lifecycleStatus||card.item.lifecycle_status||''))&&<button onClick={()=>void returnMandatoryV2ForCorrection(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-900"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>}
           <button onClick={()=>editAnyDocument(card)} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2.5 text-xs font-black dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Pencil className="w-4 h-4"/>{card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))?'Trabajadores':'Editar'}</button>
           <button onClick={()=>void deleteGenericItem(card)} disabled={editBusy} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2.5 text-xs font-black disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><Trash2 className="w-4 h-4"/>Eliminar</button>
-          {card.kind==='mandatory' && card.status==='completed' && ['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')) && (
-            <button disabled={mailBusy} onClick={()=>void sendCompletedMandatory(card.item as DbMandatory)} className="inline-flex items-center gap-2 rounded-xl bg-[#00548E] text-white px-3 py-2.5 text-xs font-black disabled:opacity-50"><MailCheck className="w-4 h-4"/>{card.item.source_gmail_message_id?'Enviar firmado por Gmail':'Enviar firmado a administrativa'}</button>
-          )}
-            {(card.kind==='attendance'||(card.kind==='mandatory'&&allowsForemanSignature(card.item.document_type)&&card.item.details?.originalPdfMode!=='overlay'))&&<button type="button" onClick={()=>setSignatureSettings(card)} className="min-h-[48px] rounded-xl border px-3 py-2 text-xs font-black">Configurar firma del encargado</button>}
-          {card.status==='completed' && !(card.kind==='mandatory' && card.item.source_gmail_message_id) && !(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||''))) && (
-            <button onClick={()=>void markReviewed(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-black"><CheckCircle2 className="w-4 h-4"/>Marcar revisado</button>
-          )}
+
+
           {(card.status==='completed'||card.status==='reviewed')&&!(card.kind==='mandatory'&&['inicio','control_presencia','contrato','prorroga'].includes(String(card.item.document_type||'')))&&(
             <button onClick={()=>void returnForCorrection(card.kind==='attendance'?'attendance':card.kind==='mandatory'?'mandatory':'document',card.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-xs font-black"><RotateCcw className="w-4 h-4"/>Devolver para corregir</button>
           )}
-        </div>
+          </>}
+        />
       </div>
     </article>)}</section>)}</div>}
       </div>
@@ -1137,13 +1159,13 @@ export const ForemanDocumentsDashboard: React.FC = () => {
       </div>
     </div></ModalPortal>}
 
-    {editingMandatory&&<ModalPortal label="Editar documento obligatorio"><div className="fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+    {editingMandatory&&<ModalPortal label="Editar documento obligatorio"><div className="mandatory-workers-overlay fixed inset-0 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+      <div className="mandatory-workers-dialog w-full max-w-2xl max-h-[92dvh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-[#00548E] to-[#003f6b] px-5 py-4 text-white">
           <div><div className="text-[10px] font-black uppercase tracking-[.16em] text-blue-100">GestionProfea</div><h3 className="text-lg font-black">Editar {mandatoryDocumentLabel(editingMandatory.document_type)}</h3><p className="text-xs text-blue-100">{editingMandatory.obra}</p></div>
           <button type="button" onClick={()=>setEditingMandatory(null)} className="grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-900" aria-label="Cerrar"><X className="w-5 h-5"/></button>
         </div>
-        <div className="max-h-[calc(92dvh-9rem)] overflow-y-auto p-5">
+        <div className="mandatory-workers-content max-h-[calc(92dvh-9rem)] overflow-y-auto p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-xs font-black text-slate-700 dark:text-slate-200">Fecha
               <input type="date" value={editWorkDate} onChange={e=>setEditWorkDate(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 bg-white dark:bg-slate-950"/>
@@ -1161,6 +1183,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                   value={editSearch}
                   onChange={e=>setEditSearch(e.target.value)}
                   placeholder="Buscar por nombre, apellidos, DNI o categoría…"
+                  aria-label="Buscar trabajadores del documento"
                   className="min-h-[46px] w-full rounded-xl border bg-white pl-10 pr-3 text-sm dark:bg-slate-950"
                 />
               </div>
@@ -1171,10 +1194,10 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                   ['unselected','No seleccionados'],
                   ['document','Del PDF'],
                   ['unmatched','Sin coincidencia'],
-                ] as const).map(([value,label])=><button key={value} type="button" onClick={()=>setEditWorkerFilter(value)} className={`rounded-full border px-3 py-1.5 text-xs font-black ${editWorkerFilter===value?'border-[#00548E] bg-blue-50 text-[#00548E]':'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{label}</button>)}
+                ] as const).map(([value,label])=><button key={value} type="button" aria-pressed={editWorkerFilter===value} onClick={()=>setEditWorkerFilter(value)} className={`mandatory-worker-filter rounded-full border px-3 py-1.5 text-xs font-black ${editWorkerFilter===value?'border-[#00548E] bg-blue-50 text-[#00548E]':'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{label}</button>)}
               </div>
             </div>
-            <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border divide-y dark:divide-slate-700">
+            <div className="mandatory-workers-list mt-3 max-h-72 overflow-y-auto rounded-2xl border divide-y dark:divide-slate-700">
               {editBusy&&!editWorkers.length?<div className="p-6 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin"/>Cargando trabajadores…</div>:editWorkers
                 .filter((worker:any)=>{
                   const id=String(worker.id);
@@ -1193,9 +1216,9 @@ export const ForemanDocumentsDashboard: React.FC = () => {
                   ].some(value=>String(value||'').toLocaleLowerCase('es').includes(term)))return false;
                   return true;
                 })
-                .map((worker:any)=><div key={worker.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
+                .map((worker:any)=><div key={worker.id} className="mandatory-worker-option flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                  <input type="checkbox" checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 shrink-0 rounded border-slate-300"/>
+                  <input type="checkbox" aria-label={`Incluir a ${worker.apellidosNombre||'trabajador'}`} checked={editWorkerIds.has(String(worker.id))} onChange={e=>setEditWorkerIds(previous=>{const next=new Set(previous);if(e.target.checked)next.add(String(worker.id));else next.delete(String(worker.id));return next;})} className="h-5 w-5 shrink-0 rounded border-slate-300"/>
                   <span className="min-w-0 flex-1"><span className="block break-words text-sm font-bold">{worker.apellidosNombre||'Trabajador'}</span><span className="block text-xs text-slate-500">{worker.dni||'Sin DNI'}{worker.categoria?' · '+worker.categoria:''}</span>{(worker.legacyWorkerId==null||Number(worker.legacyWorkerId)<0)&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">Leído del PDF · identidad documental · firma permitida</span>}</span>
                 </label>
                 {editingMandatory.signatures?.[String(worker.id)]&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Firmado</span>}
@@ -1204,7 +1227,7 @@ export const ForemanDocumentsDashboard: React.FC = () => {
             <p className="mt-2 text-[11px] text-slate-500">Si eliminas un trabajador del documento, su firma dejará de formar parte de este documento. Las firmas de los trabajadores que permanezcan seleccionados se conservarán.</p>
           </div>
         </div>
-        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 shadow-[0_-10px_25px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
+        <div className="mandatory-workers-footer sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-slate-50 p-4 shadow-[0_-10px_25px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-between dark:border-slate-700 dark:bg-slate-950">
           <button type="button" disabled={editBusy} onClick={()=>void removeMandatoryDocument(editingMandatory)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-black text-rose-700 dark:bg-slate-900"><Trash2 className="w-4 h-4"/>Eliminar documento</button>
           <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={()=>setEditingMandatory(null)} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-black">Cancelar</button><button type="button" disabled={editBusy} onClick={()=>void saveMandatoryEditor()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00548E] px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{editBusy?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>}Guardar cambios</button></div>
         </div>
@@ -1212,6 +1235,5 @@ export const ForemanDocumentsDashboard: React.FC = () => {
     </div></ModalPortal>}
   </div>;
 };
-
 
 

@@ -8,10 +8,7 @@ const authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
   auth.currentUser = session?.user ? normalizeSupabaseUser(session.user) : null;
 });
 
-void supabase.auth.getUser().then(({ data }) => {
-  auth.currentUser = data.user ? normalizeSupabaseUser(data.user) : null;
-}).catch(() => {
-  auth.currentUser = null;
-});
+// INITIAL_SESSION initializes this state. An additional getUser request can
+// resolve after SIGNED_OUT/account switch and resurrect the previous identity.
 
 export const disposeSupabaseDataAuth = () => authSubscription.data.subscription.unsubscribe();

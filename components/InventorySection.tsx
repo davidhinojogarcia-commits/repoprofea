@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { InventoryInvitationLink } from './InventoryInvitationLink';
@@ -54,6 +55,7 @@ import {
   deleteInventoryMovement,
   ensureInventoryReady,
   listInventoryDocuments,
+  listInventoryExportSnapshot,
   listInventoryItems,
   listInventoryMaintenance,
   listInventoryMovements,
@@ -147,6 +149,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   const [coordinatorEmail, setCoordinatorEmail] = useState('');
   const [parkSaving, setParkSaving] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [fullExportBusy, setFullExportBusy] = useState<'excel' | 'pdf' | null>(null);
   const [excelImportBusy, setExcelImportBusy] = useState(false);
   const [excelImportNotice, setExcelImportNotice] = useState('');
   const excelImportRef = useRef<HTMLInputElement>(null);
@@ -247,6 +250,31 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
     }
   };
 
+  const exportCompletePark = async (format: 'excel' | 'pdf') => {
+    if (!park || fullExportBusy) return;
+    if (!navigator.onLine) {
+      alert('Para exportar el parque completo es necesario disponer de conexión y sincronizar antes los cambios pendientes.');
+      return;
+    }
+    setFullExportBusy(format);
+    try {
+      const exportedPark = park;
+      const snapshot = await listInventoryExportSnapshot(exportedPark.id);
+      if (format === 'excel') {
+        const { exportInventoryParkExcel } = await import('../src/lib/inventoryExcelExport');
+        await exportInventoryParkExcel(exportedPark, snapshot);
+      } else {
+        const { exportInventoryParkFullPdf } = await import('../src/lib/inventoryFullPdf');
+        await exportInventoryParkFullPdf(exportedPark, snapshot);
+      }
+    } catch (e: any) {
+      reportOperationalError('inventory.complete-export', e);
+      alert(e?.message || 'No se pudo exportar el parque. No se generó un archivo parcial.');
+    } finally {
+      setFullExportBusy(null);
+    }
+  };
+
   const importInventoryExcel = async (file: File) => {
     if (!park) return;
     setExcelImportBusy(true);
@@ -272,7 +300,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
         (result.failed ? ' · ' + result.failed + ' con error' : '') + '.'
       );
     } catch (error: any) {
-      console.error('[inventory-excel-import]', error);
+      reportOperationalError('[inventory-excel-import]', error);
       setExcelImportNotice(error?.message || 'No se pudo importar el inventario desde Excel.');
     } finally {
       setExcelImportBusy(false);
@@ -445,7 +473,9 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
 
     <div className="grid grid-cols-2 sm:flex gap-2">
       <button onClick={() => setEditingItem({ codigo: '', categoria: '', nombre: '', cantidad: 1, tipoGestion: 'individual', estado: 'Disponible', ubicacionActual: baseLocation, detalles: {}, observaciones: '', activo: true })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary text-white px-4 py-3 text-sm font-bold"><Plus className="w-4 h-4" />Nuevo equipo</button>
-      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white px-4 py-3 text-sm font-bold disabled:opacity-50" title="Incluye todas las herramientas y maquinaria dispuestas fuera del parque, asignadas a obra y con incidencias, con resumen final por obra"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
+      <button onClick={() => void exportCompletePark('excel')} disabled={Boolean(fullExportBusy)} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50" title="Exportar el inventario, supervisores y todos los registros históricos disponibles en un libro Excel institucional"><Download className="w-4 h-4" />{fullExportBusy==='excel'?'Generando Excel…':'Exportar Excel completo'}</button>
+      <button onClick={() => void exportCompletePark('pdf')} disabled={Boolean(fullExportBusy)} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white disabled:opacity-50" title="Informe institucional del parque completo, responsables, historial y documentación"><FileDown className="w-4 h-4" />{fullExportBusy==='pdf'?'Generando PDF…':'Exportar PDF completo'}</button>
+      <button onClick={() => void exportPdf()} disabled={pdfBusy} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" title="Informe operativo de equipos desplazados, asignados y con incidencias"><FileDown className="w-4 h-4" />{pdfBusy ? 'Generando…' : 'Informe de situación'}</button>
     </div>
 
     <details className="ui-surface p-4 group">
@@ -604,7 +634,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({ savedObras }
   </div>;
 };
 
-const SummaryView = ({ items, movements, documents, shares, onOpenItem }: { items: InventoryItem[]; movements: InventoryMovement[]; documents: InventoryDocument[]; shares: InventoryParkShare[]; onOpenItem: (id: string) => void }) => <div className="grid lg:grid-cols-2 gap-4"><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Equipos en curso / incidencia</h3><div className="space-y-2">{items.filter(i => i.estado !== 'Disponible').slice(0, 12).map(i => { const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId, shares) : undefined; return <button key={i.id} onClick={() => onOpenItem(i.id)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3" style={color ? { borderLeftWidth: 4, borderLeftColor: color } : undefined}><div className="flex justify-between gap-2"><div className="min-w-0"><div className="font-bold text-sm">{equipmentLabel(i)}</div><InventoryUsageBadge item={i} shares={shares} /></div><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="text-xs text-slate-500 mt-1 truncate">{i.ubicacionActual}</div></button>; })}{!items.some(i => i.estado !== 'Disponible') && <div className="text-sm text-slate-500">No hay equipos actualmente en curso.</div>}</div></div><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Actividad reciente</h3><div className="space-y-2">{movements.slice(0, 10).map(m => { const item = items.find(i => i.id === m.itemId); return <button key={m.id} onClick={() => onOpenItem(m.itemId)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3"><div className="font-bold text-sm">{item?.nombre || 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.destino} · {new Date(m.createdAt).toLocaleString('es-ES')}</div>{m.fotoUrls?.[0] && <img src={m.fotoUrls[0]} className="mt-2 w-full h-28 object-cover rounded-xl" alt="Estado del equipo" />}</button>; })}</div><div className="mt-4 text-xs text-slate-500">{documents.length} documentos archivados.</div></div></div>;
+const SummaryView = ({ items, movements, documents, shares, onOpenItem }: { items: InventoryItem[]; movements: InventoryMovement[]; documents: InventoryDocument[]; shares: InventoryParkShare[]; onOpenItem: (id: string) => void }) => <div className="grid lg:grid-cols-2 gap-4"><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Equipos en curso / incidencia</h3><div className="space-y-2">{items.filter(i => i.estado !== 'Disponible').slice(0, 12).map(i => { const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId, shares) : undefined; return <button key={i.id} onClick={() => onOpenItem(i.id)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3" style={color ? { borderLeftWidth: 4, borderLeftColor: color } : undefined}><div className="flex flex-col items-start justify-between gap-2 sm:flex-row"><div className="min-w-0 flex-1"><div className="break-words font-bold text-sm">{equipmentLabel(i)}</div><InventoryUsageBadge item={i} shares={shares} /></div><span className={`inline-flex h-auto max-w-full shrink-0 self-start items-center justify-center rounded-full border px-3 py-1 text-center text-xs font-bold leading-snug whitespace-normal sm:max-w-[45%] ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="text-xs text-slate-500 mt-1 truncate">{i.ubicacionActual}</div></button>; })}{!items.some(i => i.estado !== 'Disponible') && <div className="text-sm text-slate-500">No hay equipos actualmente en curso.</div>}</div></div><div className="ui-surface p-4 sm:p-5"><h3 className="font-black mb-3">Actividad reciente</h3><div className="space-y-2">{movements.slice(0, 10).map(m => { const item = items.find(i => i.id === m.itemId); return <button key={m.id} onClick={() => onOpenItem(m.itemId)} className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 p-3"><div className="font-bold text-sm">{item?.nombre || 'Equipo'} · {m.tipo}</div><div className="text-xs text-slate-500 mt-1">{m.destino} · {new Date(m.createdAt).toLocaleString('es-ES')}</div>{m.fotoUrls?.[0] && <img src={m.fotoUrls[0]} className="mt-2 w-full h-28 object-cover rounded-xl" alt="Estado del equipo" />}</button>; })}</div><div className="mt-4 text-xs text-slate-500">{documents.length} documentos archivados.</div></div></div>;
 
 const InventoryView = ({ items, documents, shares, categories, search, category, status, supervisorId, setSupervisorId, setSearch, setCategory, setStatus, onMove, onMaintenance, onDocument, onEdit, onQr, onTrace, onDelete }: { items: InventoryItem[]; documents: InventoryDocument[]; shares: InventoryParkShare[]; categories: string[]; search: string; category: string; status: string; supervisorId: string; setSupervisorId: (v: string) => void; setSearch: (v: string) => void; setCategory: (v: string) => void; setStatus: (v: string) => void; onMove: (i: InventoryItem) => void; onMaintenance: (i: InventoryItem) => void; onDocument: (i: InventoryItem) => void; onEdit: (i: InventoryItem) => void; onQr: (i: InventoryItem) => void; onTrace: (i: InventoryItem) => void; onDelete: (i: InventoryItem) => void }) => <div className="space-y-3"><div className="ui-surface p-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-2"><input aria-label="Buscar equipo o responsable" className={inputClass} value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, código o persona…" /><select className={inputClass} value={category} onChange={e => setCategory(e.target.value)}><option value="">Todas las categorías</option>{categories.map(c => <option key={c}>{c}</option>)}</select><select className={inputClass} value={status} onChange={e => setStatus(e.target.value)}><option value="">Todos los estados</option><option value="__IN_USE__">En uso (todos)</option>{STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}</select><select aria-label="Filtrar por responsable" className={inputClass} value={supervisorId} onChange={e => setSupervisorId(e.target.value)}><option value="">Todos los responsables</option>{inventorySupervisors(shares).map(share => <option key={share.userId} value={share.userId}>{share.displayName}</option>)}<option value="__UNASSIGNED__">En uso · responsable pendiente</option></select></div>{!items.length && <div role="status" className="ui-surface p-4 text-sm">No hay equipos que coincidan con los filtros.</div>}<div className="md:hidden space-y-3">{items.map(i => { const docs = documents.filter(d => d.itemId === i.id); const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId, shares) : undefined; return <div key={i.id} className="ui-surface p-4" style={color && inventoryIsInUse(i.estado) ? { borderLeftWidth: 4, borderLeftColor: color } : undefined}><div className="flex justify-between gap-3"><div className="min-w-0"><div className="font-black">{i.codigo} · {i.nombre}</div><div className="text-xs text-slate-500 mt-1">{[i.marca, i.modelo, i.matricula || i.numeroSerie].filter(Boolean).join(' · ') || i.categoria}</div><div className="text-xs text-slate-400 mt-1 truncate">{i.ubicacionActual}</div><InventoryUsageBadge item={i} shares={shares} /></div><span className={`h-fit shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></div><div className="grid grid-cols-4 gap-2 mt-4"><QuickAction label="Mover" icon={<Truck />} onClick={() => onMove(i)} /><QuickAction label="Foto" icon={<Camera />} onClick={() => onMove(i)} /><QuickAction label={`Docs ${docs.length}`} icon={<FolderOpen />} onClick={() => onDocument(i)} /><QuickAction label="Trazar" icon={<MapPinned />} onClick={() => onTrace(i)} /></div><div className="flex gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800"><Action title="Mantenimiento" onClick={() => onMaintenance(i)} icon={<Stethoscope />} /><Action title="Editar" onClick={() => onEdit(i)} icon={<Edit3 />} /><Action title="QR" onClick={() => void onQr(i)} icon={<QrCode />} /><Action title="Dar de baja" danger onClick={() => onDelete(i)} icon={<Trash2 />} /></div></div>; })}</div><div className="hidden md:block ui-surface overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">Equipo</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Ubicación</th><th className="p-3 text-left">Responsable</th><th className="p-3 text-left">Docs</th><th className="p-3 text-right">Acciones</th></tr></thead><tbody>{items.map(i => { const responsible = itemSupervisor(i, shares); const color = responsible ? supervisorColor(responsible.userId, shares) : undefined; return <tr key={i.id} className="border-t border-slate-100 dark:border-slate-800"><td className="p-3" style={color && inventoryIsInUse(i.estado) ? { borderLeft: `4px solid ${color}` } : undefined}><b>{i.codigo} · {i.nombre}</b><div className="text-xs text-slate-500">{[i.marca, i.modelo, i.matricula || i.numeroSerie].filter(Boolean).join(' · ') || i.categoria}</div></td><td className="p-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(i.estado)}`}>{i.estado}</span></td><td className="p-3 text-xs">{i.ubicacionActual}</td><td className="p-3 text-xs"><InventoryUsageBadge item={i} shares={shares} /></td><td className="p-3">{documents.filter(d => d.itemId === i.id).length}</td><td className="p-3"><div className="flex justify-end gap-1"><Action title="Mover" onClick={() => onMove(i)} icon={<Truck />} /><Action title="Mantenimiento" onClick={() => onMaintenance(i)} icon={<Stethoscope />} /><Action title="Documentos" onClick={() => onDocument(i)} icon={<FolderOpen />} /><Action title="Editar" onClick={() => onEdit(i)} icon={<Edit3 />} /><Action title="QR" onClick={() => void onQr(i)} icon={<QrCode />} /><Action title="Trazabilidad" onClick={() => onTrace(i)} icon={<MapPinned />} /><Action title="Baja" danger onClick={() => onDelete(i)} icon={<Trash2 />} /></div></td></tr>; })}</tbody></table></div></div>;
 

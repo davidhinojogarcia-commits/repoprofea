@@ -3,6 +3,7 @@ import { SIGNATURE_INK } from '../src/lib/signatureInk';
 export function VisitSignaturePad({
   name,
   allowAgreement = true,
+  fixedPurpose,
   busy,
   onConfirm,
   onCancel
@@ -10,6 +11,7 @@ export function VisitSignaturePad({
   key?: string;
   name: string;
   allowAgreement?: boolean;
+  fixedPurpose?: string;
   busy: boolean;
   onConfirm: (image: string, intent?: 'agreement'|'reservations'|'knowledge', note?: string) => void;
   onCancel: () => void;
@@ -95,7 +97,7 @@ export function VisitSignaturePad({
     onConfirm(out.toDataURL('image/png'),intent,note);
   };
   return <div className="rounded-2xl border border-blue-300 bg-white p-4 text-slate-900 space-y-3">
-    <h3 className="font-black">Firma de {name}</h3><p className="text-sm">Comprueba tu identidad y el contenido del acta antes de firmar. Puedes borrar y repetir antes de confirmar.</p>
+    <h3 className="font-black">Firma de {name}</h3><p className="text-sm">Comprueba tu identidad y el contenido del documento antes de firmar. Puedes borrar y repetir antes de confirmar.</p>
     <canvas ref={canvas} width={1200} height={400} aria-label={`Zona de firma de ${name}`} className="visit-signature-surface w-full rounded-xl border border-slate-400 bg-white" style={{
       height: 190,
       touchAction: 'none'
@@ -133,7 +135,9 @@ export function VisitSignaturePad({
     }} />
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} />Soy {name}; he leído esta versión y confirmo que el trazo es mi firma.</label>
     {error && <p role="alert" className="text-red-700">{error}</p>}
+    {fixedPurpose ? <p className="text-sm font-bold">{fixedPurpose}</p> : <>
     <label className="block font-bold">Alcance de la firma<select aria-label="Alcance de la firma" className="block w-full rounded-xl border p-3" value={intent} onChange={e=>setIntent(e.target.value as typeof intent)}>{allowAgreement&&<option value="agreement">Conformidad con el contenido del acta</option>}<option value="reservations">Firma con reservas</option><option value="knowledge">Simple conocimiento</option></select></label><label className="block">Reservas o aclaraciones<textarea className="block w-full rounded-xl border p-3" value={note} maxLength={5000} onChange={e=>setNote(e.target.value)}/></label><p className="text-sm">Esta firma no verifica la ejecución de las órdenes.</p>
+    </>}
     <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={clear} className="rounded-xl border px-4 py-3 font-bold">Borrar / repetir</button><button type="button" disabled={busy || !hasInk || !ack} onClick={confirm} className="rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar firma</button><button type="button" disabled={busy} onClick={onCancel} className="rounded-xl border px-4 py-3">Cancelar</button></div>
   </div>;
 }

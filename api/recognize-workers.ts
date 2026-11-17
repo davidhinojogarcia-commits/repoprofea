@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleGenAI } from '@google/genai';
 
@@ -139,7 +140,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     return sendJson(res, 200, { success: true, workers: unique });
   } catch (error: any) {
-    console.error('[recognize-workers]', error instanceof Error ? error.message : error);
+    reportOperationalError('[recognize-workers]', error);
     const message = String(error?.message || 'No se pudo completar el reconocimiento automático.');
     const clientError = /máximo|recib|formato|petición/i.test(message);
     return sendJson(res, clientError ? 400 : 500, { error: message });

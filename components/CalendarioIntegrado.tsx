@@ -24,6 +24,12 @@ interface CalendarioIntegradoProps {
 type ViewModeCalendar = 'month' | 'week' | 'agenda';
 type FilterEventType = 'ALL' | 'CITAS' | 'CONTRATOS';
 
+// Calendar dates represent civil days, not UTC instants. Avoid toISOString() here:
+// on devices outside UTC it can move events to the previous or next day.
+export function toLocalCalendarDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 // Date normalization helper to convert any string format (YYYY-MM-DD, DD/MM/YYYY) to YYYY-MM-DD
 export function toIsoDate(dateStr?: string): string | null {
   if (!dateStr) return null;
@@ -296,13 +302,13 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
 
     const days: { date: Date; iso: string; isCurrentMonth: boolean; isToday: boolean }[] = [];
 
-    const todayIso = new Date().toISOString().split('T')[0];
+    const todayIso = toLocalCalendarDate(new Date());
 
     // Previous month padding days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevMonthLastDay - i);
-      const iso = d.toISOString().split('T')[0];
+      const iso = toLocalCalendarDate(d);
       days.push({
         date: d,
         iso,
@@ -314,7 +320,7 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
     // Current month days
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const d = new Date(year, month, day);
-      const iso = d.toISOString().split('T')[0];
+      const iso = toLocalCalendarDate(d);
       days.push({
         date: d,
         iso,
@@ -327,7 +333,7 @@ export const CalendarioIntegrado: React.FC<CalendarioIntegradoProps> = ({
     const remaining = (7 - (days.length % 7)) % 7;
     for (let day = 1; day <= remaining; day++) {
       const d = new Date(year, month + 1, day);
-      const iso = d.toISOString().split('T')[0];
+      const iso = toLocalCalendarDate(d);
       days.push({
         date: d,
         iso,

@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -200,14 +201,14 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
           confirmacionCitaDocumentoNombre: file.name,
         } as any);
       } catch (error) {
-        console.warn("[medical-pdf-ready] No se pudo registrar la preparación del PDF", error);
+        reportOperationalError("[medical-pdf-ready] No se pudo registrar la preparación del PDF", error, 'warn');
       }
       onToast(
         `PDF de citación listo para compartir con ${person.apellidosNombre}.`,
         "success",
       );
     } catch (error: any) {
-      console.error("[medical-pdf-ready]", error);
+      reportOperationalError("[medical-pdf-ready]", error);
       setPendingPdfError(
         error?.message || "No se pudo generar el PDF de la citación.",
       );
@@ -349,7 +350,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         "success",
       );
     } catch (error: any) {
-      console.error("[medical-whatsapp-share]", error);
+      reportOperationalError("[medical-whatsapp-share]", error);
       onToast(
         error?.message ||
           "No se pudo preparar el mensaje de WhatsApp y la confirmación.",
@@ -379,7 +380,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
           confirmacionCitaDocumentoCompartidoFecha: now,
           confirmacionCitaDocumentoNombre: file.name,
         } as any).catch((error) => {
-          console.warn("[medical-pdf-share] No se pudo registrar la acción de compartir", error);
+          reportOperationalError("[medical-pdf-share] No se pudo registrar la acción de compartir", error, 'warn');
         });
 
         onToast(
@@ -396,7 +397,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         );
       }
     } catch (error: any) {
-      console.error("[medical-pdf-share]", error);
+      reportOperationalError("[medical-pdf-share]", error);
       onToast(error?.message || "No se pudo compartir el PDF.", "error");
     }
   };
@@ -413,7 +414,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         confirmacionCitaDocumentoCompartidoManual: true,
       } as any);
     } catch (error) {
-      console.warn("[medical-pdf-share-manual] No se pudo registrar la acción de compartir", error);
+      reportOperationalError("[medical-pdf-share-manual] No se pudo registrar la acción de compartir", error, 'warn');
     }
     onToast(
       "Citación marcada como compartida. Volviendo a SAE para seleccionar el siguiente candidato.",
@@ -444,7 +445,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
             : "puesta como pendiente";
       onToast(`Cita de ${person.apellidosNombre} ${label}.`, "success");
     } catch (error) {
-      console.error("[medical-confirmation] update", error);
+      reportOperationalError("[medical-confirmation] update", error);
       onToast(
         "No se pudo guardar el estado de confirmación de la cita.",
         "error",
@@ -471,7 +472,7 @@ export const ReconocimientosMedicosSection: React.FC<Props> = ({
         replacements.set(updated.id, updated);
       } catch (error) {
         failed += 1;
-        console.error("[medical-v2] persist", error);
+        reportOperationalError("[medical-v2] persist", error);
       }
     }
     if (replacements.size)

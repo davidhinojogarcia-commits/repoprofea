@@ -1,3 +1,4 @@
+import { reportOperationalError } from '../src/lib/operationalLog.js';
 import { GoogleGenAI } from '@google/genai';
 
 type Appointment = {
@@ -278,12 +279,12 @@ REGLAS OBLIGATORIAS:
       raw = await callGateway(prompt, schema);
       provider = 'vercel-ai-gateway';
     } catch (gatewayError) {
-      console.warn('[medical-appointments] AI Gateway no disponible:', gatewayError);
+      reportOperationalError('[medical-appointments] AI Gateway no disponible:', gatewayError, 'warn');
       try {
         raw = await callGemini(prompt, schema);
         provider = 'gemini';
       } catch (geminiError) {
-        console.warn('[medical-appointments] Gemini no disponible, usando respaldo determinista:', geminiError);
+        reportOperationalError('[medical-appointments] Gemini no disponible, usando respaldo determinista:', geminiError, 'warn');
         raw = deterministicFallback(instructions, sites, startHour, endHour);
       }
     }
@@ -300,7 +301,7 @@ REGLAS OBLIGATORIAS:
       interpretedCount: schedule.length,
     });
   } catch (error: any) {
-    console.error('[medical-appointments]', error);
+    reportOperationalError('[medical-appointments]', error);
     return res.status(500).json({ error: error?.message || 'No se pudieron generar las citas automáticas.' });
   }
 }
