@@ -107,7 +107,20 @@ try {
   await touch.locator('.mandatory-pdf-touch-mode').waitFor({state:'attached'});
   await touch.getByPlaceholder('Nombre y apellidos exactamente como aparecen en el PDF').fill('Trabajador prueba tactil');
   await touch.getByRole('button',{name:'Añadir trabajador del PDF'}).click();
-  await touch.locator('.mandatory-pdf-touch-mode[aria-pressed="true"]').waitFor();
+  const touchState=await touch.evaluate(()=>({
+    panel:document.querySelector('.mandatory-anchor-editor')?.getAttribute('data-mobile-panel'),
+    preview:getComputedStyle(document.querySelector('.mandatory-editor-preview')).display,
+    touchModeButtons:[...document.querySelectorAll('.mandatory-pdf-touch-mode')].map(b=>({pressed:b.getAttribute('aria-pressed'),display:getComputedStyle(b).display,visible:b.getBoundingClientRect().width>0})),
+    hasAddedWorker:document.body.textContent.includes('Trabajador prueba tactil'),
+    pointerCoarse:matchMedia('(pointer:coarse)').matches,
+    viewport:innerWidth,
+    loading:document.body.textContent.includes('Abriendo PDF original'),
+    error:document.querySelector('.mandatory-editor-footer [role="alert"]')?.textContent||null
+  }));
+  console.log('Touch placement diagnostic',JSON.stringify(touchState));
+  assert.equal(touchState.panel,'pdf','adding an omitted worker must switch to PDF panel automatically');
+  assert.equal(touchState.hasAddedWorker,true,'new worker must appear in editor');
+  await touch.locator('.mandatory-pdf-touch-mode[aria-pressed="true"]').waitFor({timeout:5000});
   assert(await touch.locator('.mandatory-editor-preview').isVisible(),'adding a worker opens PDF placement in edit mode');
   await touch.waitForFunction(()=>document.querySelector('.mandatory-pdf-page canvas')?.getBoundingClientRect().width>150);
   await touch.locator('.mandatory-pdf-page canvas').tap({position:{x:70,y:70}});
