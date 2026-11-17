@@ -38,6 +38,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [foremanTemplate,setForemanTemplate]=useState<ForemanSignatureTemplate|null>(null);
   const [foremanSelected,setForemanSelected]=useState(false);
   const [manualName,setManualName]=useState('');
+  const [directoryQuery,setDirectoryQuery]=useState('');
   const [toolsHidden,setToolsHidden]=useState(false);
   const [pageRequest,setPageRequest]=useState<{page:number;sequence:number;focusSignature?:boolean}>({page:1,sequence:0});
   const saveInFlight=useRef(false);
@@ -219,6 +220,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       return;
     }
     setError('');
+    setDirectoryQuery('');
     setDraft(list=>list.map((anchor,i)=>i===index?{
       ...anchor,
       workerName:String(worker.apellidos_nombre||''),
@@ -323,6 +325,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700 dark:text-emerald-300':'text-amber-700 dark:text-amber-300'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
           </div>
 
+          {documentType!=='control_presencia'&&<label className="mandatory-editor-touch-worker-search mt-4 block text-sm font-black">Buscar trabajador del Directorio
+            <input type="search" aria-label="Buscar trabajador por nombre o DNI" placeholder="Escribe nombre, apellidos o DNI…" value={directoryQuery} onChange={e=>setDirectoryQuery(e.target.value)} autoComplete="off" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
+          </label>}
           {documentType!=='control_presencia'&&<label className="mt-4 block text-sm font-black">Trabajador asociado a esta línea
             <select
               value={String(availableWorkers.find(worker=>String(worker.apellidos_nombre).trim().toLocaleLowerCase('es')===String(current?.workerName).trim().toLocaleLowerCase('es'))?.id||'')}
@@ -331,7 +336,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
               className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
             >
               <option value="">Seleccionar trabajador…</option>
-              {availableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
+              {availableWorkers.filter(worker=>!isTouchLayout()||!directoryQuery.trim()||[worker.apellidos_nombre,worker.dni].some(value=>String(value||'').toLocaleLowerCase('es').includes(directoryQuery.trim().toLocaleLowerCase('es')))).map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
             </select>
           </label>}
           {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
