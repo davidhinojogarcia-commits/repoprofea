@@ -875,13 +875,15 @@ export default function WorkforceDocumentsPanel({
                   onClick={() =>
                     void run(async () => {
                       const reason = await appPrompt(
-                        "Motivo de anulación (el documento y las firmas se conservan):",
+                        record.status === "draft"
+                          ? "Motivo para descartar el borrador (se conserva el historial):"
+                          : "Motivo de anulación (el documento y las firmas se conservan):",
                       );
                       if (reason) await command("annul", { reason });
                     })
                   }
                 >
-                  Anular con trazabilidad
+                  {record.status === "draft" ? "Eliminar borrador (con trazabilidad)" : "Anular con trazabilidad"}
                 </button>
               )}
               {record.annulment && (
