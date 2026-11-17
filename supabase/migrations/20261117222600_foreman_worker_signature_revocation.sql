@@ -5,7 +5,7 @@
 create or replace function public.revoke_foreman_operational_worker_signature(
   p_token text,p_document_id uuid,p_worker_id bigint
 ) returns jsonb language plpgsql security definer
-set search_path=public,extensions as $$
+set search_path='' as $
 declare
   v_access public.foreman_portal_access%rowtype;
   v_doc public.foreman_mandatory_documents%rowtype;
@@ -66,7 +66,7 @@ grant execute on function public.revoke_foreman_operational_worker_signature(tex
 create or replace function public.revoke_foreman_attendance_worker_signature(
   p_token text,p_work_date date,p_worker_id bigint,p_kind text
 ) returns jsonb language plpgsql security definer
-set search_path=public,extensions as $$
+set search_path='' as $
 declare
   v_access public.foreman_portal_access%rowtype;
   v_day public.foreman_attendance_days%rowtype;
