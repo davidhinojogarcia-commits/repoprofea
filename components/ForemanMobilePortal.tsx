@@ -1487,7 +1487,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.entryTime || data.defaultWorkStartHour || '08:00'}
-                disabled={attendanceLocked}
+                disabled={saving||attendanceLocked||Boolean(row.entrySignature)}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item));
@@ -1497,6 +1497,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <button disabled={saving||attendanceLocked||Boolean(row.entrySignature)} onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
                 <LogIn className="w-4 h-4 inline mr-1"/>{row.entrySignature?'Entrada firmada ✓':'Firmar entrada'}
               </button>
+              {row.entrySignature&&!attendanceLocked&&<p className="mt-2 text-xs font-semibold text-slate-600">Para modificar la hora o corregir la firma, revócala primero.</p>}
               {row.entrySignature&&!attendanceLocked&&<button type="button" disabled={saving} onClick={()=>void revokeAttendanceWorkerSignature(row.workerId,'entry',row.name)} className="mt-2 min-h-[48px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar y repetir firma de entrada</button>}
             </div>
             <div className={`rounded-xl border p-2.5 ${row.exitSignature?'border-blue-300 bg-blue-50':'bg-white'}`}>
@@ -1504,7 +1505,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.exitTime || data.defaultWorkEndHour || '15:00'}
-                disabled={attendanceLocked}
+                disabled={saving||attendanceLocked||Boolean(row.exitSignature)}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item));
@@ -1514,6 +1515,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <button disabled={saving||attendanceLocked||Boolean(row.exitSignature)} onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
                 <LogOut className="w-4 h-4 inline mr-1"/>{row.exitSignature?'Salida firmada ✓':'Firmar salida'}
               </button>
+              {row.exitSignature&&!attendanceLocked&&<p className="mt-2 text-xs font-semibold text-slate-600">Para modificar la hora o corregir la firma, revócala primero.</p>}
               {row.exitSignature&&!attendanceLocked&&<button type="button" disabled={saving} onClick={()=>void revokeAttendanceWorkerSignature(row.workerId,'exit',row.name)} className="mt-2 min-h-[48px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar y repetir firma de salida</button>}
             </div>
           </div>
