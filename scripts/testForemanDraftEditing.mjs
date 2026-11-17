@@ -7,6 +7,7 @@ const service=await fs.readFile('src/services/foremanPortalService.ts','utf8');
 const portal=await fs.readFile('components/ForemanMobilePortal.tsx','utf8');
 const workforce=await fs.readFile('components/WorkforceDocumentsPanel.tsx','utf8');
 const parts=await fs.readFile('components/PartsPanel.tsx','utf8');
+const partsDomain=await fs.readFile('src/lib/parts/domain.ts','utf8');
 // Detect JSX syntax regressions early, before costly browser suites.
 await transform(portal,{loader:'tsx',sourcefile:'ForemanMobilePortal.tsx'});
 const operations=[
@@ -39,4 +40,9 @@ assert.match(portal,/Eliminar borrador de control horario/);
 assert.match(portal,/submitForemanAdditionalDraft/);
 assert.match(workforce,/Anular con trazabilidad/);
 assert.match(parts,/Anular con motivo/);
+assert.match(parts,/Eliminar borrador/);
+assert.match(partsDomain,/case "discard":\s*foreman\(\);\s*state\("draft"\);\s*decision\(\);/);
+assert.match(workforce,/Eliminar borrador \(con trazabilidad\)/);
+assert.match(portal,/preparingOperationalRef\.current/);
+assert.match(portal,/submittingAdditionalRef\.current/);
 console.log('PASS: six guarded RPCs; token, owner, worksite, document lifecycle, auditing, signed-data invalidation and foreman edit/delete controls.');
