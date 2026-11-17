@@ -42,6 +42,8 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [pageRequest,setPageRequest]=useState<{page:number;sequence:number;focusSignature?:boolean}>({page:1,sequence:0});
   const saveInFlight=useRef(false);
   const [mobilePanel,setMobilePanel]=useState<'controls'|'pdf'>('controls');
+  const [touchEditRequest,setTouchEditRequest]=useState(0);
+  const isTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia('(pointer: coarse) and (max-width: 1199px)').matches;
   const employment=['contrato','prorroga'].includes(String(documentType));
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
@@ -268,6 +270,11 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     setIndex(draft.length);
     setManualName('');
     setError('');
+    if(isTouchLayout()){
+      setToolsHidden(false);
+      setMobilePanel('pdf');
+      setTouchEditRequest(value=>value+1);
+    }
   };
 
   const removeCurrentWorker=async()=>{
@@ -305,7 +312,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 
       <nav className="mandatory-editor-mobile-tabs" aria-label="Panel de ajuste de firmas">
         <button type="button" aria-pressed={mobilePanel==='controls'} onClick={()=>{setToolsHidden(false);setMobilePanel('controls');}}>Trabajador y ajustes</button>
-        <button type="button" aria-pressed={mobilePanel==='pdf'} onClick={()=>setMobilePanel('pdf')}>PDF y posición de firma</button>
+        <button type="button" aria-pressed={mobilePanel==='pdf'} onClick={()=>{setMobilePanel('pdf');setTouchEditRequest(value=>value+1);}}>PDF y posición de firma</button>
       </nav>
       <div className="mandatory-editor-main">
         <aside className="mandatory-editor-controls border-b p-4">
@@ -403,7 +410,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         </aside>
 
         <div className="mandatory-editor-preview flex min-h-0 flex-col bg-slate-200 dark:bg-slate-950">
-          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} anchors={foremanPreviewAnchor?[...draft,foremanPreviewAnchor]:draft} activeIndex={foremanSelected&&foremanPreviewAnchor?draft.length:index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={selected=>{if(selected===draft.length)setForemanSelected(true);else{setIndex(selected);setForemanSelected(false);}}} onChange={(target,box,page)=>{if(target===draft.length){setForemanBox({x:box.signatureX,y:box.signatureY,width:box.signatureWidth,height:box.signatureHeight},page);}else changeAnchorBox(target,box,page);}}/>:<div role="alert">{error||'PDF no disponible'}</div>}
+          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} editRequest={touchEditRequest} anchors={foremanPreviewAnchor?[...draft,foremanPreviewAnchor]:draft} activeIndex={foremanSelected&&foremanPreviewAnchor?draft.length:index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={selected=>{if(selected===draft.length)setForemanSelected(true);else{setIndex(selected);setForemanSelected(false);}}} onChange={(target,box,page)=>{if(target===draft.length){setForemanBox({x:box.signatureX,y:box.signatureY,width:box.signatureWidth,height:box.signatureHeight},page);}else changeAnchorBox(target,box,page);}}/>:<div role="alert">{error||'PDF no disponible'}</div>}
         </div>
       </div>
 
