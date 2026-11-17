@@ -1961,7 +1961,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     }}/>}
     {signing&&<SignaturePad draft={{vault:vaultRef.current,key:'attendance:'+date+':'+signing.workerId+':'+signing.kind}} title={`Firma de ${signing.kind==='entry'?'entrada':'salida'}`} onSave={img=>applySignature(img)} onCancel={()=>setSigning(null)}/>}
     {docSigning&&<SignaturePad draft={{vault:vaultRef.current,key:'additional:'+docType+':'+workerId+':'+date+':'+docSigning}} title={docSigning==='worker'?'Firma del trabajador':'Firma del encargado'} onSave={img=>{setDocSignatures(s=>({...s,[docSigning]:img}));setDocSigning(null);}} onCancel={()=>setDocSigning(null)}/>}
-    {foremanDocumentSigning&&<SignaturePad draft={{vault:vaultRef.current,key:'foreman:'+foremanDocumentSigning}} title="Firma del encargado (todas las páginas)"} onSave={async img=>{
+    {foremanDocumentSigning&&<SignaturePad draft={{vault:vaultRef.current,key:'foreman:'+foremanDocumentSigning}} title="Firma del encargado (todas las páginas)" onSave={async img=>{
       const documentId=foremanDocumentSigning;
       setSaving(true);
       try{
