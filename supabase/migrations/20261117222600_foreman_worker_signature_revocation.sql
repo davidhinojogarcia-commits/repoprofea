@@ -22,7 +22,6 @@ begin
      and lower(obra)=lower(v_access.obra) for update;
   if not found then raise exception 'Documento fuera de tu obra o inexistente'; end if;
   if v_doc.document_type not in ('epis','formacion','maquinaria','autorizacion_uso_maquinaria')
-     or coalesce(v_doc.period_key,'') not like 'encargado:%'
      or v_doc.lifecycle_status is not null
      or v_doc.v2_initialized_at is not null
      or v_doc.source_gmail_message_id is not null
