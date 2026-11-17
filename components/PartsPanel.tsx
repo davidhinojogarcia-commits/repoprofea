@@ -1155,6 +1155,17 @@ export default function PartsPanel({
               >
                 Corregir borrador
               </button>
+              {selected.status === "draft" && (
+                <button type="button" className={button} disabled={busy || !online}
+                  onClick={()=>void (async()=>{
+                    if(await appConfirm(
+                      "¿Descartar este borrador? No se enviará al supervisor y conservará un registro de la anulación.",
+                      {title:"Eliminar borrador",confirmLabel:"Descartar borrador"}
+                    ))await run("discard",{reason:"Borrador descartado por el encargado antes de enviarlo al supervisor."});
+                  })()}>
+                  Eliminar borrador
+                </button>
+              )}
               <label className={button}>
                 Adjuntar documento pertinente
                 <input
