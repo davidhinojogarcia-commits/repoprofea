@@ -1063,7 +1063,7 @@ try {
     "PASS Partes Directory trash: active worker removal/restoration preserves signed history/PDF; new declarations and fact edits require a current authorised worker.",
   );
   // An encargado may discard only an unsent draft of their own worksite.
-  let discardRecord = await create(7000, "service", {}, 100);
+  let discardRecord = draftA;
   assert.equal(discardRecord.status, "draft");
   const otherWorkDiscard = await invoke({
     action: "discard", token: wrongWorkToken, id: discardRecord.id,
