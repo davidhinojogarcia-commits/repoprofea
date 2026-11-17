@@ -1413,6 +1413,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             <div className="font-black text-amber-900">Corrección solicitada por el supervisor</div>
             <p className="mt-1 text-sm text-amber-800">{data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionReason||'Revisa esta jornada antes de volver a finalizarla.'}</p>
           </div>}
+        {attendanceLocked&&<p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">Jornada enviada: no se puede modificar desde el portal. Solicita su devolución al supervisor para corregirla.</p>}
         {controlRows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
           <div><div className="font-black">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -1421,13 +1422,14 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.entryTime || data.defaultWorkStartHour || '08:00'}
+                disabled={attendanceLocked}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item));
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
-              <button onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
+              <button disabled={attendanceLocked} onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
                 <LogIn className="w-4 h-4 inline mr-1"/>{row.entrySignature?'Entrada firmada':'Firmar entrada'}
               </button>
             </div>
@@ -1436,13 +1438,14 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.exitTime || data.defaultWorkEndHour || '15:00'}
+                disabled={attendanceLocked}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item));
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
-              <button onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
+              <button disabled={attendanceLocked} onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
                 <LogOut className="w-4 h-4 inline mr-1"/>{row.exitSignature?'Salida firmada':'Firmar salida'}
               </button>
             </div>
@@ -1450,8 +1453,8 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         </div>)}
         {attendanceTemplate&&<div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 text-slate-900"><h3 className="font-black">Firma del encargado</h3><p className="mt-1 text-sm">Completa primero las firmas de entrada y salida. Si cambias la jornada, el encargado deberá firmar de nuevo.</p><p className="mt-1 text-sm">{attendanceForemanSigned?'Firma guardada y verificada':attendanceTemplate.required?'Firma obligatoria pendiente':'Firma pendiente'}</p><button type="button" disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>setAttendanceSigning(true)} className="mt-3 min-h-[52px] w-full rounded-xl bg-[#00548E] px-3 py-3 font-black text-white">Firmar como encargado</button></div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button disabled={saving||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
-          <button disabled={saving||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
+          <button disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
+          <button disabled={saving||attendanceLocked||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
         </div>
         {currentAttendance?.status==='draft'&&!currentAttendance.correctionPending&&<button type="button"
           disabled={saving} onClick={async()=>{
