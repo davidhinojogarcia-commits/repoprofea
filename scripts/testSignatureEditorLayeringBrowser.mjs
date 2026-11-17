@@ -96,6 +96,14 @@ try {
   const touch=await browser.newPage({hasTouch:true,isMobile:true,viewport:{width:390,height:844}});
   touch.on('pageerror',e=>errors.push(e.message));
   await touch.setContent('<html><head><script>'+tailwind+'</script><script>tailwind.config={darkMode:"class"}</script><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="mount"></div></body></html>');
+  // about:blank in Playwright is not always a secure context, whereas the
+  // installed PWA runs on HTTPS and exposes crypto.randomUUID().
+  // Preserve a deterministic UUID generator for this synthetic browser fixture.
+  await touch.evaluate(()=>{
+    if(typeof crypto.randomUUID!=='function')Object.defineProperty(crypto,'randomUUID',{
+      configurable:true,value:()=> '10000000-0000-4000-8000-000000000777'
+    });
+  });
   for(const content of styles)await touch.addStyleTag({content});
   await touch.addScriptTag({content:bundle.outputFiles[0].text});
   await touch.evaluate(()=>window.openTouchEditor());
@@ -108,6 +116,7 @@ try {
   await touch.getByPlaceholder('Nombre y apellidos exactamente como aparecen en el PDF').fill('Trabajador prueba tactil');
   await touch.getByRole('button',{name:'Añadir trabajador del PDF'}).click();
   await touch.waitForTimeout(250);
+  await touch.evaluate(e=>{window.__touchErrors=e;},errors);
   const touchState=await touch.evaluate(()=>({
     panel:document.querySelector('.mandatory-anchor-editor')?.getAttribute('data-mobile-panel'),
     preview:getComputedStyle(document.querySelector('.mandatory-editor-preview')).display,
@@ -117,6 +126,7 @@ try {
     viewport:innerWidth,
     loading:document.body.textContent.includes('Abriendo PDF original'),
     error:document.querySelector('.mandatory-editor-footer [role="alert"]')?.textContent||null,
+    pageErrors:window.__touchErrors||[],
     errors:[...document.querySelectorAll('.mandatory-editor-controls .text-rose-800, .mandatory-editor-controls [role="alert"]')].map(e=>e.textContent),
     workerInput:document.querySelector('input[placeholder="Nombre y apellidos exactamente como aparecen en el PDF"]')?.value,
     addDisabled:[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Añadir trabajador del PDF'))?.disabled,
