@@ -105,6 +105,11 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Portal Encargados mobile/tablet alignment (Chromium + WebKit)
+        timeout-minutes: 8
+        run: |
+          node scripts/testForemanPortalResponsiveBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testForemanPortalResponsiveBrowser.mjs
       - name: Worker card duplex geometry and browser regression
         run: npm run test:worker-card
       - name: Worker card QR scan authorization
