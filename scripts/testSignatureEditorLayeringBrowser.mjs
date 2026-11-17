@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {build} from 'esbuild';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
 
 // Real editor, portal and application CSS. Only PDF transport/rendering and the
 // database are stubbed: this test targets layout/hit-testing, not PDF fidelity.
@@ -42,7 +42,8 @@ try {
     }
   }]});
   const styles=await Promise.all(['index.css','notification-modal-layout.css'].map(p=>fs.readFile(path.join(root,p),'utf8')));
-  browser=await chromium.launch({executablePath:process.env.SIGNATURE_BROWSER_EXECUTABLE,headless:true,args:['--no-sandbox']});
+  const useWebKit=process.env.BROWSER_ENGINE==='webkit';
+  browser=await (useWebKit?webkit:chromium).launch(useWebKit?{headless:true}:{executablePath:process.env.SIGNATURE_BROWSER_EXECUTABLE,headless:true,args:['--no-sandbox']});
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.setContent('<html><head><script>'+tailwind+'</script><script>tailwind.config={darkMode:"class"}</script><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"><aside class="app-navigation-panel fixed top-0 left-0 h-screen lg:w-20" style="width:80px;background:#eee"><button>Menú</button></aside><button id="launch">Abrir editor</button></div><div id="mount"></div></body></html>');
@@ -204,7 +205,7 @@ try {
   assert.equal((await touch.evaluate(()=>window.saved))[1].workerName,'Trabajador prueba tactil');
   await touch.close();
   assert.deepEqual(errors,[]);
-  console.log('PASS: unchanged desktop controls/26px handles; phone PDF fills the editor, separate pan/place modes, 8px visible vertices, compact resize hit target, zoom overlay, worker stepper, tablet/landscape navigation and 2pt precision nudging.');
+  console.log('PASS '+(process.env.BROWSER_ENGINE==='webkit'?'WebKit':'Chromium')+': unchanged desktop controls/26px handles; phone PDF fills the editor, separate pan/place modes, 8px visible vertices, compact resize hit target, zoom overlay, worker stepper, tablet/landscape navigation and 2pt precision nudging.');
 } finally {
   await browser?.close();
   await fs.rm(out,{recursive:true,force:true});
