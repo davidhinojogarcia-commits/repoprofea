@@ -1301,6 +1301,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     setAnswers({...doc.answers});setDocSignatures({});
     setTab('documents');
   };
+  const patchAdditionalAnswer=(key:string,value:string)=>{
+    setAnswers(current=>({...current,[key]:value}));
+    setDocSignatures({}); // A changed signed statement must be signed again.
+  };
   const resetAdditionalEditor=()=>{
     setAdditionalDraftId('');setCorrectionDocumentId('');setAnswers({});
     setDocSignatures({});setWorkerId('');
@@ -1657,20 +1661,20 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         {documentView!=='other'&&<WorkforceDocumentsPanel key={documentView} kind={documentView} token={token}/>}
         {documentView==='other'&&<>
         <label className="block text-sm font-black">Trabajador
-          <select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+          <select value={workerId} onChange={e=>{setWorkerId(e.target.value?Number(e.target.value):'');setDocSignatures({});}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             <option value="">Seleccionar trabajador…</option>
             {(correctionDocumentId||additionalDraftId?data.workers:documentWorkers).map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
           </select>
         </label>
         <label className="block text-sm font-black">Fecha
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          <input type="date" value={date} onChange={e=>{setDate(e.target.value);setDocSignatures({});}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
         </label>
         {def.fields.map(field=><label key={field.key} className="block text-sm font-black">{field.label}
           {field.type==='textarea'
-            ? <textarea rows={4} value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-2 w-full rounded-xl border px-3 py-3 text-base font-normal"/>
+            ? <textarea rows={4} value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-3 text-base font-normal"/>
             : field.type==='select'
-              ? <select value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o}>{o}</option>)}</select>
-              : <input type={field.type||'text'} value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"/>
+              ? <select value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o}>{o}</option>)}</select>
+              : <input type={field.type||'text'} value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"/>
           }
         </label>)}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
