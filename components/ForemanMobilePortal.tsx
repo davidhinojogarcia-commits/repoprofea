@@ -1749,7 +1749,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               title:'Repetir firma del trabajador',confirmLabel:'Revocar y repetir firma'}))return;
             setDocSignatures(current=>{const next={...current};delete next.worker;return next;});
             setDocSigning('worker');
-          }} className="min-h-[50px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 dark:border-rose-700 dark:bg-slate-900 dark:text-rose-200">Revocar y repetir firma del trabajador</button>
+          }} className="min-h-[50px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 dark:border-rose-700 dark:bg-slate-900 dark:text-rose-200">Revocar y repetir firma del trabajador</button>}
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
         {additionalDraftId&&<div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-3 text-sm font-black text-blue-900">Editando borrador guardado. Si cambias los datos, vuelve a recoger las firmas antes de enviar.</div>}
         <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
