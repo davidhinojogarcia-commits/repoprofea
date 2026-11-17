@@ -115,8 +115,10 @@ jobs:
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
-      - name: Touch worker recovery and PDF placement smoke (Chromium)
-        run: node scripts/testSignatureEditorLayeringBrowser.mjs
+      - name: Touch worker recovery and PDF placement smoke (Chromium + WebKit)
+        run: |
+          node scripts/testSignatureEditorLayeringBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testSignatureEditorLayeringBrowser.mjs
       - name: Portal Encargados mobile/tablet alignment (Chromium + WebKit)
         timeout-minutes: 8
         run: |
