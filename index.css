@@ -1200,3 +1200,195 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .mandatory-anchor-editor .mandatory-pdf-touch-nudge > span { display:none; }
   .mandatory-anchor-editor .mandatory-pdf-touch-nudge button { height:40px; min-height:40px; }
 }
+
+
+/* PHONE-ONLY PDF SIGNATURE PLACEMENT. Desktop and tablet layouts are unchanged.
+   Visual vertices are 8px; the SE handle keeps a larger invisible touch target. */
+.mandatory-editor-phone-place,
+.mandatory-editor-phone-selection-bar,
+.mandatory-pdf-phone-navigate,
+.mandatory-pdf-phone-tool-label,
+.mandatory-pdf-phone-corner { display:none; }
+
+@media (pointer:coarse) and (max-width:699px),
+       (pointer:coarse) and (max-width:960px) and (max-height:550px) {
+  .mandatory-anchor-editor .mandatory-editor-shell {
+    height:100%; min-height:0; width:100%; max-width:none; border-radius:0;
+  }
+  .mandatory-anchor-editor .mandatory-editor-header {
+    padding:5px 10px; flex-wrap:nowrap; gap:7px; min-height:44px;
+  }
+  .mandatory-anchor-editor .mandatory-editor-header > div { flex:1 1 auto; min-width:0; }
+  .mandatory-anchor-editor .mandatory-editor-header > div > div:first-child { display:none; }
+  .mandatory-anchor-editor .mandatory-editor-header h2 {
+    font-size:14px; line-height:1.25; max-height:2.5em; overflow:hidden;
+  }
+  .mandatory-anchor-editor .mandatory-editor-header > button:last-child {
+    min-height:40px; padding:6px 10px; font-size:13px;
+  }
+  .mandatory-anchor-editor .mandatory-editor-mobile-tabs {
+    padding:4px 8px; gap:6px; border-color:#cbd5e1;
+  }
+  .mandatory-anchor-editor .mandatory-editor-mobile-tabs > button {
+    min-height:40px; padding:5px 7px; font-size:12px; line-height:1.15;
+  }
+  .mandatory-anchor-editor .mandatory-editor-main {
+    min-height:0; flex:1 1 0; overflow:hidden;
+  }
+  .mandatory-anchor-editor .mandatory-editor-controls {
+    min-height:0; overflow-y:auto; padding:10px 12px;
+  }
+  .mandatory-anchor-editor .mandatory-editor-phone-place {
+    display:block; width:100%; min-height:48px; margin:12px 0;
+    padding:10px; border-radius:12px; background:#00548e; color:#fff;
+    font-size:14px; font-weight:800; text-align:center;
+    touch-action:manipulation;
+  }
+  .mandatory-anchor-editor .mandatory-editor-phone-place:disabled { opacity:.5; }
+  .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-preview {
+    position:relative; display:flex; flex:1 1 0; height:100%; min-height:0;
+    width:100%; overflow:hidden;
+  }
+  .mandatory-anchor-editor .mandatory-editor-phone-selection-bar {
+    display:flex; align-items:center; gap:6px; position:absolute;
+    inset:0 0 auto; height:44px; z-index:8;
+    padding:3px 8px; border-bottom:1px solid #cbd5e1;
+    background:#f8fafc; color:#0f172a;
+  }
+  .mandatory-anchor-editor .mandatory-editor-phone-selection-bar button {
+    display:inline-flex; flex:0 0 40px; width:40px; height:38px; min-height:38px;
+    align-items:center; justify-content:center;
+    border:1px solid #cbd5e1; border-radius:9px; background:#fff;
+    color:#00548e; font-size:24px; font-weight:800; touch-action:manipulation;
+  }
+  .mandatory-anchor-editor .mandatory-editor-phone-selection-bar button:disabled { opacity:.3; }
+  .mandatory-anchor-editor .mandatory-editor-phone-selection-bar span {
+    min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; text-align:center; font-size:12px; font-weight:800;
+  }
+  .mandatory-anchor-editor .mandatory-continuous-viewport {
+    position:relative; width:100%; height:100%; flex:1 1 0; min-height:0;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-tool-toggle {
+    position:absolute; top:45px; left:5px; right:5px; z-index:7;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:4px; padding:4px; border:1px solid #cbd5e1;
+    border-radius:11px; background:#fff;
+    box-shadow:0 2px 7px #0f172a20;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-tool-toggle > button {
+    display:inline-flex; min-width:0; min-height:40px; height:40px; padding:4px 5px;
+    align-items:center; justify-content:center; flex:1 1 0;
+    border:1px solid #cbd5e1; border-radius:8px;
+    font-size:12px; font-weight:800; line-height:1.15;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-phone-navigate {
+    display:inline-flex; background:#fff; color:#00548e;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-phone-navigate[aria-pressed="true"] {
+    background:#00548e; border-color:#00548e; color:white;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-tool-toggle .mandatory-pdf-desktop-tool-label { display:none; }
+  .mandatory-anchor-editor .mandatory-pdf-phone-tool-label { display:inline; }
+  .mandatory-anchor-editor .mandatory-pdf-touch-mode {
+    min-height:40px; height:40px; padding:4px;
+  }
+  .mandatory-anchor-editor .mandatory-continuous-toolbar {
+    position:absolute; top:94px; left:5px; right:5px; z-index:7;
+    max-height:calc(100% - 152px); overflow-y:auto;
+    padding:8px; border:1px solid #cbd5e1; border-radius:10px;
+    box-shadow:0 8px 18px #0f172a40;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-modes,
+  .mandatory-anchor-editor .mandatory-pdf-mode-hint { display:none; }
+  .mandatory-anchor-editor .mandatory-continuous-scroll {
+    width:100%; min-height:0; padding:102px 8px 76px;
+    overflow:auto; scrollbar-gutter:auto;
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-stack {
+    gap:14px; padding-bottom:24px;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge {
+    position:absolute; left:50%; bottom:8px; transform:translateX(-50%);
+    z-index:7; display:flex !important; width:max-content; max-width:calc(100% - 12px);
+    gap:4px; padding:4px; flex-wrap:nowrap;
+    border:1px solid #93c5fd; border-radius:13px;
+    box-shadow:0 3px 10px #0f172a30;
+    background:#eff6ff;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge:has(button) > span { display:none; }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge > span {
+    flex:1 1 auto; padding:6px 8px; white-space:normal;
+    font-size:12px; text-align:center; line-height:1.3;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge button {
+    flex:0 0 44px; width:44px; min-height:44px; height:44px;
+    border:1px solid #64748b; border-radius:9px; font-size:22px;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-signature-box {
+    border-width:1px; background:#164b9b12;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-signature-box.is-selected {
+    border-width:1px; border-style:solid; background:#164b9b16;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-box-label {
+    max-width:160px; font-size:10px; line-height:1.1;
+  }
+  /* 28px transparent pointer target; only the 8px inner square is painted. */
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle {
+    width:28px; height:28px; min-height:28px; padding:0;
+    border:0; border-radius:0; background:transparent; box-shadow:none;
+    touch-action:none;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle::after {
+    content:""; position:absolute; top:50%; left:50%;
+    width:8px; height:8px; transform:translate(-50%,-50%);
+    box-sizing:border-box; border:1px solid #fff; border-radius:2px;
+    background:#00548e; box-shadow:0 0 0 1px #00548e;
+    pointer-events:none;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle.se {
+    right:-14px; bottom:-14px; z-index:3;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-phone-corner {
+    display:block; position:absolute; width:8px; height:8px;
+    box-sizing:border-box; border:1px solid #fff; border-radius:2px;
+    background:#00548e; box-shadow:0 0 0 1px #00548e;
+    pointer-events:none; z-index:2;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-phone-corner.nw { left:-4px; top:-4px; }
+  .mandatory-anchor-editor .mandatory-pdf-phone-corner.ne { right:-4px; top:-4px; }
+  .mandatory-anchor-editor .mandatory-pdf-phone-corner.sw { left:-4px; bottom:-4px; }
+  .mandatory-anchor-editor .mandatory-editor-footer {
+    display:flex; align-items:center; gap:6px; padding:6px 9px;
+    padding-bottom:max(6px,env(safe-area-inset-bottom));
+  }
+  .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-footer > div:not([role="alert"]),
+  .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-footer > button:first-of-type {
+    display:none;
+  }
+  .mandatory-anchor-editor .mandatory-editor-footer > button:last-of-type {
+    min-height:46px; flex:1 1 auto; padding:6px 10px;
+    font-size:13px; line-height:1.2;
+  }
+  .mandatory-anchor-editor .mandatory-editor-footer > button:first-of-type {
+    min-height:46px; flex:1 1 auto;
+  }
+  .mandatory-anchor-editor .mandatory-editor-footer > div[role="alert"] {
+    width:100%; max-width:100%; font-size:12px;
+  }
+  .dark .mandatory-anchor-editor .mandatory-editor-phone-selection-bar {
+    background:#0f172a; color:#f8fafc; border-color:#475569;
+  }
+  .dark .mandatory-anchor-editor .mandatory-editor-phone-selection-bar button,
+  .dark .mandatory-anchor-editor .mandatory-pdf-tool-toggle {
+    background:#1e293b; color:#f8fafc; border-color:#64748b;
+  }
+  .dark .mandatory-anchor-editor .mandatory-pdf-phone-navigate {
+    background:#1e293b; color:#bfdbfe; border-color:#64748b;
+  }
+  .dark .mandatory-anchor-editor .mandatory-pdf-phone-navigate[aria-pressed="true"] {
+    background:#00548e; color:#fff; border-color:#00548e;
+  }
+}
