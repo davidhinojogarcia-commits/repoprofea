@@ -232,7 +232,9 @@ begin
     raise exception 'La jornada ya fue enviada o está en revisión'; end if;
   insert into public.foreman_portal_draft_audit(owner_id,obra,document_id,document_group,action,previous_snapshot)
     values(v_access.owner_id,v_access.obra,v_day.id,'attendance','DELETE',
-    jsonb_build_object('workDate',v_day.work_date,'rows',v_day.rows,'status',v_day.status));
+    jsonb_build_object('workDate',v_day.work_date,'rows',v_day.rows,'status',v_day.status,
+      'foremanSignatureEvidence',v_day.foreman_signature_evidence,
+      'foremanSignatureTemplate',v_day.foreman_signature_template));
   delete from public.foreman_attendance_days where id=v_day.id;
   return true;
 end; $$;
