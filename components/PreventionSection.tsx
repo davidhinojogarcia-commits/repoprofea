@@ -6,8 +6,8 @@ import { appConfirm } from '../src/lib/appDialog';
 import { createPreventionCommunicationActPdf, shareOrDownloadPreventionAct } from '../src/services/preventionActPdf';
 
 const inputClass = 'min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition focus:border-[#00548E] focus:ring-2 focus:ring-[#00548E]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
-const buttonClass = 'fp-action-button min-h-12 min-w-0 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-900 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
-const primaryClass = 'fp-action-button min-h-12 min-w-0 rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99]';
+const buttonClass = 'fp-action-button min-h-12 rounded-xl border border-slate-300 bg-white px-4 py-3 font-bold text-slate-900 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
+const primaryClass = 'fp-action-button min-h-12 rounded-xl bg-[#00548E] px-4 py-3 font-bold text-white disabled:opacity-50 inline-flex items-center justify-center gap-1.5 active:scale-[0.99]';
 const freshDraft = (obra: string, kind: PreventionDraft['kind']): PreventionDraft => ({ obra, kind, work_date: preventionToday(), category: 'Otros', severity: 'medium', title: kind === 'precheck' ? 'Comprobación antes de empezar' : '', task: '', description: '', measures: '', responsible: '', deadline: '', checks: {}, photo: null });
 
 async function readPhoto(file: File): Promise<string> {
