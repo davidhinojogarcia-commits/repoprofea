@@ -12,6 +12,10 @@ type Props={
 };
 type PageProps=Props&{meta:MandatoryPdfPageMeta;scale:number;mode:'navigate'|'edit';scroll:React.RefObject<HTMLDivElement|null>};
 const hasBox=(a:MandatoryWorkerAnchor)=>[a.signatureX,a.signatureY,a.signatureWidth,a.signatureHeight].every(v=>v!=null&&Number.isFinite(v));
+// Phone portrait and landscape only. Do not alter mouse/desktop or iPad controls.
+const isPhoneTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia(
+  '(pointer: coarse) and (max-width: 699px), (pointer: coarse) and (max-width: 960px) and (max-height: 550px)'
+).matches;
 
 const PdfPage:React.FC<PageProps>=({pdf,meta,scale,anchors,activeIndex,mode,disabled,onSelect,onChange,scroll})=>{
   const ref=useRef<HTMLDivElement>(null),canvasRef=useRef<HTMLCanvasElement>(null);
@@ -124,6 +128,8 @@ const PdfPage:React.FC<PageProps>=({pdf,meta,scale,anchors,activeIndex,mode,disa
         onPointerDown={e=>startBox(e,index)} onPointerMove={moveBox} onPointerUp={endBox} onPointerCancel={endBox}
       >
         <span className="mandatory-pdf-box-label">{a.workerName}</span>
+        {selected&&mode==='edit'&&!disabled&&['nw','ne','sw'].map(corner=><span key={corner}
+          className={'mandatory-pdf-phone-corner '+corner} aria-hidden="true"/>)}
         {selected&&mode==='edit'&&!disabled&&['nw','ne','sw','se'].map(corner=><button type="button" key={corner}
           className={'mandatory-pdf-resize-handle '+corner} aria-label={'Redimensionar firma '+corner}
           onPointerDown={e=>startBox(e,index,corner)} onPointerMove={moveBox} onPointerUp={endBox} onPointerCancel={endBox}
@@ -139,7 +145,7 @@ export default function MandatoryPdfViewport(props:Props){
   const scroll=useRef<HTMLDivElement>(null);
   const [mode,setMode]=useState<'navigate'|'edit'>('navigate');
   const [fit,setFit]=useState<'width'|'page'|'custom'>('width'),[zoom,setZoom]=useState(1);
-  const [size,setSize]=useState({width:0,height:0}),[page,setPage]=useState(1),[tools,setTools]=useState(()=>typeof window==='undefined'||window.innerHeight>=600);
+  const [size,setSize]=useState({width:0,height:0}),[page,setPage]=useState(1),[tools,setTools]=useState(()=>typeof window==='undefined'||(!isPhoneTouchLayout()&&window.innerHeight>=600));
   const active=anchors[activeIndex];
   useEffect(()=>{
     const collapseLandscapeTools=()=>{
@@ -241,8 +247,15 @@ export default function MandatoryPdfViewport(props:Props){
 
   return <div className="mandatory-continuous-viewport">
     <div className="mandatory-pdf-tool-toggle">
-      <button type="button" onClick={()=>setTools(v=>!v)}>{tools?'Ocultar herramientas':'Mostrar herramientas'}</button>
-      {!props.readOnly&&<button type="button" className="mandatory-pdf-touch-mode" aria-pressed={mode==='edit'} onClick={()=>setMode(v=>v==='edit'?'navigate':'edit')}>{mode==='edit'?'✓ Colocar o mover firma':'Colocar o mover firma'}</button>}
+      <button type="button" aria-expanded={tools} onClick={()=>setTools(v=>!v)}>
+        <span className="mandatory-pdf-desktop-tool-label">{tools?'Ocultar herramientas':'Mostrar herramientas'}</span>
+        <span className="mandatory-pdf-phone-tool-label">Zoom y páginas</span>
+      </button>
+      {!props.readOnly&&<button type="button" className="mandatory-pdf-phone-navigate" aria-pressed={mode==='navigate'} onClick={()=>setMode('navigate')}>Desplazar PDF</button>}
+      {!props.readOnly&&<button type="button" className="mandatory-pdf-touch-mode" aria-pressed={mode==='edit'} onClick={()=>setMode(v=>isPhoneTouchLayout()?'edit':v==='edit'?'navigate':'edit')}>
+        <span className="mandatory-pdf-desktop-tool-label">{mode==='edit'?'✓ Colocar o mover firma':'Colocar o mover firma'}</span>
+        <span className="mandatory-pdf-phone-tool-label">Colocar firma</span>
+      </button>}
     </div>
     {tools&&<div className="mandatory-editor-toolbar mandatory-continuous-toolbar">
       <div className="mandatory-editor-pages">
