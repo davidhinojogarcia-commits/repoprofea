@@ -115,10 +115,13 @@ try {
   await touch.waitForFunction(before=>Number.parseFloat(document.querySelector('[data-signature-index="1"]').style.left)>before,before);
   await touch.getByRole('button',{name:'Trabajador y ajustes'}).click();
   assert(await touch.locator('.mandatory-editor-controls').isVisible(),'worker list remains accessible after placement');
+  assert(await touch.getByRole('searchbox',{name:'Buscar trabajador por nombre o DNI'}).isVisible(),'mobile worker lookup must be searchable');
   await touch.setViewportSize({width:820,height:1180});
   assert(await touch.locator('.mandatory-editor-mobile-tabs').isVisible(),'tablet retains full-width touch panels');
   await touch.getByRole('button',{name:'PDF y posición de firma'}).click();
   assert(await touch.locator('.mandatory-editor-preview').isVisible(),'tablet can edit the PDF without narrow split panes');
+  await touch.setViewportSize({width:1366,height:1024});
+  assert(await touch.locator('.mandatory-editor-mobile-tabs').isVisible(),'large landscape iPad must remain in tablet mode');
   await touch.setViewportSize({width:844,height:390});
   assert(await touch.locator('.mandatory-editor-preview').isVisible(),'landscape touch remains in PDF editor');
   assert(!await touch.evaluate(()=>document.documentElement.scrollWidth>innerWidth),'no horizontal overflow on touch');
