@@ -357,7 +357,7 @@ export default function WorkforceDocumentsPanel({
     );
   return (
     <section
-      className="space-y-4 rounded-2xl border bg-white p-4 sm:p-6 dark:bg-slate-900"
+      className="fp-workforce-panel min-w-0 space-y-4 rounded-2xl border bg-white p-3 sm:p-6 dark:bg-slate-900"
       aria-label={DOCUMENT_KINDS[kind]}
     >
       <h2 className="text-xl font-black">{DOCUMENT_KINDS[kind]}</h2>
