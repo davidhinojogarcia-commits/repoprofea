@@ -801,10 +801,13 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
     overflow-x: clip;
   }
   .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab) {
-    min-height: 44px;
     border-radius: 12px;
     touch-action: manipulation;
     transition: background-color .14s ease, border-color .14s ease;
+  }
+  /* Respect explicit 48/52/58px min-heights on signing and submission actions. */
+  .fp-portal-ui .fp-portal-main button:not([class*="min-h-"]):not(.fp-document-toggle):not(.fp-section-tab) {
+    min-height: 44px;
   }
   .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab):disabled {
     opacity: .58;
