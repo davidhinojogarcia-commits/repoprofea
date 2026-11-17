@@ -33,8 +33,8 @@ import { appConfirm } from "../src/lib/appDialog";
 const input =
   "mt-1 block w-full min-h-[48px] rounded-xl border border-slate-300 bg-white p-3 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100";
 const button =
-  "fp-action-button inline-flex min-h-[48px] min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-bold text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
-const primary = button + " !border-[#00548E] !bg-[#00548E] !text-white";
+  "fp-action-button min-h-[48px] rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50";
+const primary = button + " fp-action-primary bg-[#00548E] text-white";
 const empty = (): PartContent => ({
   reason: "mobile",
   occurredAt: new Date().toISOString(),
