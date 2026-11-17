@@ -56,7 +56,7 @@ begin
     then raise exception 'Selecciona trabajadores válidos y sin duplicados'; end if;
   select count(*),coalesce(jsonb_agg(jsonb_build_object(
     'id',t.id,'apellidosNombre',t.apellidos_nombre,'dni',t.dni,'categoria',t.categoria,'obra',t.obra,
-    'numOferta',t.num_oferta,'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin,
+    'numOferta',t.num_oferta,'quincena',t.quincena,'periodoInicio',t.periodo_inicio,'periodoFin',t.periodo_fin,
     'calzado',t.calzado,'formacion',t.formacion) order by t.apellidos_nombre),'[]'::jsonb)
     into v_actual,v_workers from public.trabajadores t
    where t.owner_id=v_access.owner_id and lower(t.obra)=lower(v_access.obra)
@@ -74,7 +74,10 @@ begin
     delete from public.worker_document_evidence where document_id=v_doc.id and owner_id=v_access.owner_id;
   end if;
   update public.foreman_mandatory_documents
-     set work_date=p_work_date,workers=v_workers,details=p_details,
+     set work_date=p_work_date,
+         period_key='encargado:'||v_doc.document_type||':'||to_char(p_work_date,'YYYY-MM-DD')
+           ||':'||coalesce(nullif(split_part(v_doc.period_key,':',4),''),replace(v_doc.id::text,'-','')),
+         workers=v_workers,details=p_details,
          signatures='{}'::jsonb,status='pending',completed_at=null,updated_at=now()
    where id=v_doc.id;
   return v_doc.id;
