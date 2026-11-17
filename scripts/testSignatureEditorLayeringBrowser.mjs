@@ -107,6 +107,7 @@ try {
   await touch.locator('.mandatory-pdf-touch-mode').waitFor({state:'attached'});
   await touch.getByPlaceholder('Nombre y apellidos exactamente como aparecen en el PDF').fill('Trabajador prueba tactil');
   await touch.getByRole('button',{name:'Añadir trabajador del PDF'}).click();
+  await touch.waitForTimeout(250);
   const touchState=await touch.evaluate(()=>({
     panel:document.querySelector('.mandatory-anchor-editor')?.getAttribute('data-mobile-panel'),
     preview:getComputedStyle(document.querySelector('.mandatory-editor-preview')).display,
@@ -115,7 +116,11 @@ try {
     pointerCoarse:matchMedia('(pointer:coarse)').matches,
     viewport:innerWidth,
     loading:document.body.textContent.includes('Abriendo PDF original'),
-    error:document.querySelector('.mandatory-editor-footer [role="alert"]')?.textContent||null
+    error:document.querySelector('.mandatory-editor-footer [role="alert"]')?.textContent||null,
+    errors:[...document.querySelectorAll('.mandatory-editor-controls .text-rose-800, .mandatory-editor-controls [role="alert"]')].map(e=>e.textContent),
+    workerInput:document.querySelector('input[placeholder="Nombre y apellidos exactamente como aparecen en el PDF"]')?.value,
+    addDisabled:[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Añadir trabajador del PDF'))?.disabled,
+    currentButtons:[...document.querySelectorAll('.mandatory-editor-mobile-tabs button')].map(b=>({text:b.textContent,pressed:b.getAttribute('aria-pressed')}))
   }));
   console.log('Touch placement diagnostic',JSON.stringify(touchState));
   assert.equal(touchState.panel,'pdf','adding an omitted worker must switch to PDF panel automatically');
