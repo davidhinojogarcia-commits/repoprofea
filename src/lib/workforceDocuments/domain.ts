@@ -113,11 +113,13 @@ export function cleanContent(input: unknown, kind: DocumentKind): Content {
   const result: Content = {};
   const keys = new Set(
     [
-      ...COMMON_FIELDS,
-      ...(kind === "rechazo_voluntario" ? REJECTION_FIELDS : EXIT_FIELDS),
+      ...fieldsForKind(kind),
     ].map((f) => f.key),
   );
   for (const [k, v] of Object.entries(input)) {
+    // Old unsigned rejection drafts may still carry the previous verbose fields.
+    // Strip them on the next save; never silently accept unknown new fields.
+    if (kind === "rechazo_voluntario" && LEGACY_REJECTION_KEYS.has(k)) continue;
     if (!keys.has(k) || typeof v !== "string" || v.length > 4000)
       throw fail("Campo no admitido o demasiado largo.");
     result[k] = v.trim();
@@ -143,12 +145,9 @@ export function validateDocument(p: WorkforceDocument, now: string) {
       "Faltan datos de entidad, CIF, obra, municipio, encargado o trabajador en Configuración/contratación.",
       409,
     );
-  required([
-    "contractReference",
-    "contractConfirmed",
-    "communication",
-    "reason",
-  ]);
+  required(p.kind === "rechazo_voluntario"
+    ? ["contractConfirmed", "communication", "reason"]
+    : ["contractReference", "contractConfirmed", "communication", "reason"]);
   if (c.contractConfirmed !== "yes")
     throw fail(
       "Confirma una contratación real; no se emite para candidatos sin contratar.",
@@ -161,54 +160,16 @@ export function validateDocument(p: WorkforceDocument, now: string) {
       "La comunicación debe tener fecha y hora reales, completas y no futuras.",
     );
   if (p.kind === "rechazo_voluntario") {
-    required([
-      "contractDate",
-      "incorporation",
-      "started",
-      "intention",
-      "effects",
-      "regime",
-      "regimeSource",
-      "notice",
-      "contractReview",
-    ]);
-    if (
-      !date(c.contractDate) ||
-      !date(c.incorporation) ||
-      !date(c.effects) ||
-      c.contractDate > c.incorporation
-    )
-      throw fail("Revisa fechas de contrato, incorporación y efectos.");
-    if (
-      c.contractDate > day(c.communication) ||
-      c.effects < day(c.communication)
-    )
-      throw fail(
-        "La fecha del contrato y la fecha de efectos no son coherentes con la comunicación.",
-      );
-    if (!["yes", "no"].includes(c.started))
-      throw fail("Indica si ha comenzado la prestación de servicios.");
-    if (
-      c.started === "yes" &&
-      (c.incorporation > day(c.communication) || c.effects < c.incorporation)
-    )
-      throw fail(
-        "El inicio efectivo no puede ser posterior a la comunicación o a los efectos.",
-      );
-    if (
-      (c.started === "yes" && c.intention !== "cease") ||
-      (c.started === "no" && !["no_join", "cease"].includes(c.intention))
-    )
-      throw fail(
-        "Sin voluntad expresa de terminar la relación no corresponde un cese voluntario. Conserva el borrador y utiliza Prevención o Partes y avisos.",
-      );
-    if (c.contractReview !== "yes")
-      throw fail(
-        "Falta contrastar la situación concreta, contrato y régimen aplicable. No se clasifica como rechazo de oferta sin contrato.",
-      );
-    if (!["Motivos personales", "Otro"].includes(c.reason))
-      throw fail("Selecciona un motivo general.");
-    if (c.reason === "Otro") required(["reasonBrief"]);
+    // The worksite identifier and contract period are taken from the
+    // authorization-controlled snapshot, never typed by the foreman.
+    if (!date(p.worker.start) || !date(p.worker.end) || p.worker.start > p.worker.end)
+      throw fail("Completa o corrige el periodo de contratación en la ficha del trabajador.");
+    if (!p.worksite.code.trim())
+      throw fail("Falta el código de obra en Configuración.");
+    if (c.reason === "Otro" || c.reason.trim().length < 3 || c.reason.length > 500)
+      throw fail("Selecciona un motivo habitual o escribe un motivo concreto.");
+    if (["task", "risk"].includes(c.intention))
+      throw fail("El rechazo de una tarea o una alerta de riesgo sin voluntad de dejar el puesto se tramita por Prevención o Partes y avisos.");
   } else {
     required(["exit", "exitType", "returnMode", "returnDay"]);
     if (
@@ -288,24 +249,14 @@ export function validateDocument(p: WorkforceDocument, now: string) {
   }
 }
 export function documentVariant(p: WorkforceDocument) {
-  if (p.kind === "salida_obra")
-    return "Comunicación de salida temporal de obra";
-  if (p.content.intention === "task" || p.content.intention === "risk")
-    return "Sin voluntad de cesar: este circuito de cese no corresponde";
-  if (p.content.started === "yes" && p.content.intention === "cease")
-    return "Comunicación de dimisión de la persona trabajadora";
-  if (p.content.started === "no")
-    return p.content.intention === "cease"
-      ? "Manifestación de finalización voluntaria con contrato firmado y sin incorporación efectiva"
-      : "Manifestación de no incorporación con contrato firmado";
-  return "Supuesto pendiente de determinar: solo borrador";
+  return p.kind === "salida_obra"
+    ? "Comunicación de salida temporal de obra"
+    : "Comunicación de rechazo voluntario del puesto de trabajo";
 }
 export function declaration(p: WorkforceDocument): string {
   const c = p.content;
   if (p.kind === "rechazo_voluntario") {
-    if (c.intention === "task" || c.intention === "risk")
-      return "BORRADOR: no se manifiesta voluntad de cesar. Este supuesto debe seguir el circuito de Partes y avisos o Prevención; no corresponde un cese voluntario.";
-    return `${c.started === "yes" ? "Comunico expresamente mi voluntad de finalizar voluntariamente mi relación laboral" : "Habiendo firmado un contrato y sin haber iniciado la prestación de servicios, comunico mi voluntad de " + (c.intention === "cease" ? "finalizar voluntariamente esa relación" : "no incorporarme a la prestación de servicios")}, con fecha de efectos que manifiesto ${c.effects || "pendiente"}. Motivo: ${c.reason || "pendiente"}${c.reasonBrief ? ": " + c.reasonBrief : ""}. He podido leer el documento y firmo voluntariamente este contenido concreto. Esta manifestación no es una renuncia genérica a derechos ni un finiquito.`;
+    return `La persona trabajadora manifiesta voluntariamente que no desea incorporarse o continuar en el puesto de trabajo correspondiente a la obra ${p.worksite.code}, durante el periodo de contratación ${p.worker.start || "pendiente"} a ${p.worker.end || "pendiente"}. Motivo: ${c.reason || "pendiente"}. Esta comunicación se realiza en la fecha indicada y queda documentada mediante la firma del trabajador. La naturaleza y los efectos laborales y administrativos de esta manifestación deberán ser comprobados por el órgano competente; este documento no constituye por sí solo una baja, una extinción contractual acreditada ni un finiquito.`;
   }
   return `Comunico ${c.exitType === "actual" ? "mi salida temporal registrada como efectivamente constatada" : "mi previsión de salida temporal"} de la obra indicada el ${stamp(c.exit)} por ${c.reason || "motivo pendiente"}${c.reasonBrief ? ": " + c.reasonBrief : ""}. Previsión de regreso: ${c.returnMode === "at" ? stamp(c.returnAt) : c.returnMode === "duration" ? (c.duration || "?") + " minutos estimados" : "Pendiente de determinar"}. ${c.returnDay === "same" ? "Preveo volver durante esa jornada." : c.returnDay === "later" ? "Preveo volver en fecha posterior." : "La jornada de regreso está pendiente de determinar."} Firmo para dejar constancia de esta comunicación y del contenido que he podido leer. No constituye dimisión, abandono ni concesión de permiso.`;
 }
@@ -352,64 +303,43 @@ export const COMMON_FIELDS: Field[] = [
     type: "textarea",
   },
 ];
+/** Presets are non-clinical, neutral and do not imply an automatic legal classification. */
+export const REJECTION_REASONS = [
+  "Motivos personales",
+  "Motivos familiares",
+  "Incompatibilidad de horarios",
+  "Problemas de desplazamiento",
+  "Aceptación de otro empleo",
+  "Cambio de disponibilidad",
+  "No desea incorporarse al puesto",
+] as const;
+/** Rejection has ONE reason field; a custom value is stored in that same key. */
 export const REJECTION_FIELDS: Field[] = [
-  { key: "contractDate", label: "Fecha de firma del contrato", type: "date" },
   {
-    key: "incorporation",
-    label: "Fecha prevista de incorporación",
-    type: "date",
-  },
-  {
-    key: "started",
-    label: "¿Ha comenzado efectivamente a prestar servicios?",
+    key: "contractConfirmed",
+    label: "¿Existe contratación formalizada?",
     options: [
-      ["no", "No"],
-      ["yes", "Sí"],
+      ["yes", "Sí, comprobada"],
+      ["no", "No / pendiente: solo borrador"],
     ],
   },
   {
-    key: "intention",
-    label: "¿Qué manifiesta exactamente la persona?",
-    options: [
-      ["no_join", "No incorporarse (con contrato firmado)"],
-      ["cease", "Finalizar expresamente la relación laboral"],
-      ["task", "Rechazar solo una tarea/puesto sin cesar"],
-      ["risk", "Comunicar riesgo o limitación, sin cesar"],
-    ],
+    key: "communication",
+    label: "Fecha y hora reales de comunicación (Europe/Madrid)",
+    type: "instant",
   },
-  {
-    key: "effects",
-    label: "Fecha de efectos que manifiesta el trabajador",
-    type: "date",
-  },
-  {
-    key: "reason",
-    label: "Motivo general obligatorio",
-    options: [
-      ["Motivos personales", "Motivos personales"],
-      ["Otro", "Otro"],
-    ],
-  },
-  { key: "regime", label: "Convenio o régimen laboral realmente aplicable" },
-  {
-    key: "regimeSource",
-    label:
-      "Referencia oficial, artículo y ámbito contrastados del convenio/régimen",
-  },
-  {
-    key: "notice",
-    label: "Preaviso según contrato/régimen comprobado (sin plazo universal)",
-  },
-  {
-    key: "contractReview",
-    label:
-      "¿Se ha contrastado este supuesto con contrato y régimen aplicables?",
-    options: [
-      ["no", "Pendiente: conservar borrador"],
-      ["yes", "Sí; referencias concretas consignadas arriba"],
-    ],
-  },
+  { key: "reason", label: "Motivo", type: "textarea" },
 ];
+const LEGACY_REJECTION_KEYS = new Set([
+  "contractReference", "reasonBrief", "workerNotes", "foremanNotes",
+  "contractDate", "incorporation", "started", "intention", "effects",
+  "regime", "regimeSource", "notice", "contractReview",
+]);
+export function fieldsForKind(kind: DocumentKind): Field[] {
+  return kind === "rechazo_voluntario"
+    ? REJECTION_FIELDS
+    : [...COMMON_FIELDS, ...EXIT_FIELDS];
+}
 export const EXIT_FIELDS: Field[] = [
   {
     key: "exit",

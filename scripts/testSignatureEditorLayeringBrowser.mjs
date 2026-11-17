@@ -22,6 +22,7 @@ const root=createRoot(document.getElementById('mount'));
 window.saved=null;
 window.anchor={workerId:7,workerName:'Persona de prueba',page:1,order:0,nameX:100,nameY:150,rowHeight:20,signatureX:100,signatureY:100,signatureWidth:90,signatureHeight:20,confidence:1,resolved:true};
 window.openEditor=()=>root.render(<Editor documentId="test" title="Prórroga · Ajustar firmas" obra="Obra de prueba" documentType="prorroga" anchors={[window.anchor]} onSave={anchors=>{window.saved=anchors;}} onCancel={()=>root.render(null)}/>);
+window.openTouchEditor=()=>root.render(<Editor documentId="test" title="Inicio · Ajustar firmas" obra="Obra de prueba" documentType="inicio" anchors={[window.anchor]} onSave={anchors=>{window.saved=anchors;}} onCancel={()=>root.render(null)}/>);
 window.openWorkspace=()=>root.render(<ModalPortal label="Modal normal"><div className="bg-white">Modal normal</div></ModalPortal>);
 `;
 let browser;
@@ -90,8 +91,76 @@ try {
   await page.waitForSelector('[data-modal-layout="workspace"]');
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('.profea-modal-overlay')).position==='fixed');
   assert(await page.locator('.profea-modal-overlay').evaluate(el=>el.getBoundingClientRect().left>80));
+  // Phone/tablet touchscreen regression: add an omitted worker, position the
+  // signature by touch and adjust it without requiring numeric PDF coordinates.
+  const touch=await browser.newPage({hasTouch:true,isMobile:true,viewport:{width:390,height:844}});
+  touch.on('pageerror',e=>errors.push(e.message));
+  await touch.setContent('<html><head><script>'+tailwind+'</script><script>tailwind.config={darkMode:"class"}</script><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="mount"></div></body></html>');
+  // about:blank in Playwright is not always a secure context, whereas the
+  // installed PWA runs on HTTPS and exposes crypto.randomUUID().
+  // Preserve a deterministic UUID generator for this synthetic browser fixture.
+  await touch.evaluate(()=>{
+    if(typeof crypto.randomUUID!=='function')Object.defineProperty(crypto,'randomUUID',{
+      configurable:true,value:()=> '10000000-0000-4000-8000-000000000777'
+    });
+  });
+  for(const content of styles)await touch.addStyleTag({content});
+  await touch.addScriptTag({content:bundle.outputFiles[0].text});
+  await touch.evaluate(()=>window.openTouchEditor());
+  await touch.locator('.mandatory-editor-controls').waitFor();
+  assert(await touch.evaluate(()=>matchMedia('(pointer:coarse)').matches),'touch media query is enabled');
+  assert(await touch.locator('.mandatory-editor-controls').isVisible(),'phone opens the worker selection panel');
+  assert(!await touch.locator('.mandatory-editor-preview').isVisible(),'phone avoids simultaneous cramped panels');
+  // Loading the one-page PDF fixture is async; do not create a worker while the editor is still loading.
+  await touch.locator('.mandatory-pdf-touch-mode').waitFor({state:'attached'});
+  await touch.getByPlaceholder('Nombre y apellidos exactamente como aparecen en el PDF').fill('Trabajador prueba tactil');
+  await touch.getByRole('button',{name:'Añadir trabajador del PDF'}).click();
+  await touch.waitForTimeout(250);
+  await touch.evaluate(e=>{window.__touchErrors=e;},errors);
+  const touchState=await touch.evaluate(()=>({
+    panel:document.querySelector('.mandatory-anchor-editor')?.getAttribute('data-mobile-panel'),
+    preview:getComputedStyle(document.querySelector('.mandatory-editor-preview')).display,
+    touchModeButtons:[...document.querySelectorAll('.mandatory-pdf-touch-mode')].map(b=>({pressed:b.getAttribute('aria-pressed'),display:getComputedStyle(b).display,visible:b.getBoundingClientRect().width>0})),
+    hasAddedWorker:document.body.textContent.includes('Trabajador prueba tactil'),
+    pointerCoarse:matchMedia('(pointer:coarse)').matches,
+    viewport:innerWidth,
+    loading:document.body.textContent.includes('Abriendo PDF original'),
+    error:document.querySelector('.mandatory-editor-footer [role="alert"]')?.textContent||null,
+    pageErrors:window.__touchErrors||[],
+    errors:[...document.querySelectorAll('.mandatory-editor-controls .text-rose-800, .mandatory-editor-controls [role="alert"]')].map(e=>e.textContent),
+    workerInput:document.querySelector('input[placeholder="Nombre y apellidos exactamente como aparecen en el PDF"]')?.value,
+    addDisabled:[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Añadir trabajador del PDF'))?.disabled,
+    currentButtons:[...document.querySelectorAll('.mandatory-editor-mobile-tabs button')].map(b=>({text:b.textContent,pressed:b.getAttribute('aria-pressed')}))
+  }));
+  console.log('Touch placement diagnostic',JSON.stringify(touchState));
+  assert.equal(touchState.panel,'pdf','adding an omitted worker must switch to PDF panel automatically');
+  assert.equal(touchState.hasAddedWorker,true,'new worker must appear in editor');
+  await touch.locator('.mandatory-pdf-touch-mode[aria-pressed="true"]').waitFor({timeout:5000});
+  assert(await touch.locator('.mandatory-editor-preview').isVisible(),'adding a worker opens PDF placement in edit mode');
+  await touch.waitForFunction(()=>document.querySelector('.mandatory-pdf-page canvas')?.getBoundingClientRect().width>150);
+  await touch.locator('.mandatory-pdf-page canvas').tap({position:{x:70,y:70}});
+  await touch.locator('[data-signature-index="1"]').waitFor();
+  const before=await touch.locator('[data-signature-index="1"]').evaluate(el=>Number.parseFloat(el.style.left));
+  await touch.getByRole('button',{name:'Mover firma a la derecha'}).click();
+  await touch.waitForFunction(before=>Number.parseFloat(document.querySelector('[data-signature-index="1"]').style.left)>before,before);
+  await touch.getByRole('button',{name:'Trabajador y ajustes'}).click();
+  assert(await touch.locator('.mandatory-editor-controls').isVisible(),'worker list remains accessible after placement');
+  assert(await touch.getByRole('searchbox',{name:'Buscar trabajador por nombre o DNI'}).isVisible(),'mobile worker lookup must be searchable');
+  await touch.setViewportSize({width:820,height:1180});
+  assert(await touch.locator('.mandatory-editor-mobile-tabs').isVisible(),'tablet retains full-width touch panels');
+  await touch.getByRole('button',{name:'PDF y posición de firma'}).click();
+  assert(await touch.locator('.mandatory-editor-preview').isVisible(),'tablet can edit the PDF without narrow split panes');
+  await touch.setViewportSize({width:1366,height:1024});
+  assert(await touch.locator('.mandatory-editor-mobile-tabs').isVisible(),'large landscape iPad must remain in tablet mode');
+  await touch.setViewportSize({width:844,height:390});
+  assert(await touch.locator('.mandatory-editor-preview').isVisible(),'landscape touch remains in PDF editor');
+  assert(!await touch.evaluate(()=>document.documentElement.scrollWidth>innerWidth),'no horizontal overflow on touch');
+  await touch.getByRole('button',{name:'Guardar trabajadores y posiciones'}).click();
+  await touch.waitForFunction(()=>window.saved?.length===2);
+  assert.equal((await touch.evaluate(()=>window.saved))[1].workerName,'Trabajador prueba tactil');
+  await touch.close();
   assert.deepEqual(errors,[]);
-  console.log('PASS: real signature editor/portal; 24 viewport/sidebar/theme cases, control hit-testing, unchanged identity/positions on save, close/focus restoration and default workspace layout.');
+  console.log('PASS: desktop/modal layering plus real touchscreen phone, tablet and landscape worker creation, PDF placement and 2pt precision nudging.');
 } finally {
   await browser?.close();
   await fs.rm(out,{recursive:true,force:true});

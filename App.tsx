@@ -2511,7 +2511,7 @@ function App() {
             </Suspense>
           )}
 
-          {cardPerson && <Suspense fallback={<ViewLoadingFallback />}><WorkerCardModal key={cardPerson.id} person={cardPerson} onClose={() => setCardPerson(null)} /></Suspense>}
+          {cardPerson && <Suspense fallback={<ViewLoadingFallback />}><WorkerCardModal key={cardPerson.id} person={cardPerson} people={visiblePeople} onClose={() => setCardPerson(null)} /></Suspense>}
           {editingPerson && (
             <Suspense fallback={null}><EditPersonModal 
               key={editingPerson.id}

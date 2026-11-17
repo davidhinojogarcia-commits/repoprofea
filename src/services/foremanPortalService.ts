@@ -650,6 +650,54 @@ export async function createForemanOperationalDocument(input: {
 }
 
 
+/** Los documentos asignados por el supervisor quedan fuera de estas operaciones. */
+export async function updateForemanOperationalDraft(input:{
+  token:string;documentId:string;workDate:string;workerIds:number[];
+  details:Record<string,unknown>;resetSignatures:boolean;
+}) {
+  return withForemanTimeout(supabase.rpc('update_foreman_operational_draft',{
+    p_token:input.token,p_document_id:input.documentId,p_work_date:input.workDate,
+    p_worker_ids:input.workerIds,p_details:input.details,p_reset_signatures:input.resetSignatures,
+  }),'La edición no se ha confirmado. Actualiza el documento antes de reintentar.');
+}
+
+export async function deleteForemanOperationalDraft(token:string,documentId:string) {
+  return withForemanTimeout(supabase.rpc('delete_foreman_operational_draft',{
+    p_token:token,p_document_id:documentId,
+  }),'No se ha confirmado la eliminación. Actualiza antes de reintentar.');
+}
+
+export async function saveForemanAdditionalDraft(input:{
+  token:string;documentType:string;workDate:string;workerId:number;
+  answers:Record<string,string>;documentId?:string|null;
+}):Promise<string>{
+  return String(await withForemanTimeout(supabase.rpc('save_foreman_additional_draft',{
+    p_token:input.token,p_document_type:input.documentType,p_work_date:input.workDate,
+    p_worker_id:input.workerId,p_answers:input.answers,p_document_id:input.documentId||null,
+  }),'No se ha confirmado el guardado del borrador.'));
+}
+
+export async function submitForemanAdditionalDraft(input:{
+  token:string;documentId:string;answers:Record<string,string>;signatures:Record<string,string>;
+}){
+  return withForemanTimeout(supabase.rpc('submit_foreman_additional_draft',{
+    p_token:input.token,p_document_id:input.documentId,
+    p_answers:input.answers,p_signatures:input.signatures,
+  }),'No se ha confirmado el envío del documento.');
+}
+
+export async function deleteForemanAdditionalDraft(token:string,documentId:string){
+  return withForemanTimeout(supabase.rpc('delete_foreman_additional_draft',{
+    p_token:token,p_document_id:documentId,
+  }),'No se ha confirmado la eliminación del borrador.');
+}
+
+export async function deleteForemanAttendanceDraft(token:string,workDate:string){
+  return withForemanTimeout(supabase.rpc('delete_foreman_attendance_draft',{
+    p_token:token,p_work_date:workDate,
+  }),'No se ha confirmado la eliminación de la jornada.');
+}
+
 export async function returnForemanItemForCorrection(
   entityType: 'mandatory' | 'attendance' | 'document',
   id: string,

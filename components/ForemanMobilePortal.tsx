@@ -20,8 +20,7 @@ import {
   resolveForemanPortal,
   saveForemanAttendance,
   signForemanAttendance,
-  submitForemanDocument,
-  signMandatoryForemanDocument,
+   signMandatoryForemanDocument,
   finalizeForemanMandatoryDocument,
   correctForemanMandatoryWorkerName,
   getForemanMandatoryPdf,
@@ -32,6 +31,12 @@ import {
   signImportedDocumentAsForeman,
   getImportedForemanSignature,
   createForemanOperationalDocument,
+  updateForemanOperationalDraft,
+  deleteForemanOperationalDraft,
+  saveForemanAdditionalDraft,
+  submitForemanAdditionalDraft,
+  deleteForemanAdditionalDraft,
+  deleteForemanAttendanceDraft,
   resubmitForemanDocument,
   type ForemanAttendanceRow,
   type ForemanMandatoryDocument,
@@ -93,7 +98,7 @@ export const SignaturePad: React.FC<{ title: string; onSave: (data: string) => v
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Firma con el dedo dentro del recuadro.</p>
       <canvas ref={ref} aria-label={title} className="mt-4 w-full h-[240px] sm:h-[280px] touch-none rounded-2xl border-2 border-slate-300 bg-white" {...handlers}/>
       {(error||saveError)&&<p role="alert" className="mt-2 text-sm font-bold text-red-700 dark:text-red-300">{error||saveError}</p>}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="fp-signature-actions mt-4 grid grid-cols-3 gap-2">
         <button disabled={busy} onClick={()=>{clear();setSaveError('');}} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50 disabled:opacity-50"><RotateCcw className="inline w-4 h-4 mr-1"/>Borrar</button>
         <button disabled={busy} onClick={onCancel} className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50 disabled:opacity-50">Cancelar</button>
         <button disabled={busy} onClick={()=>void exportSignature()} className="min-h-[52px] rounded-xl bg-[#00548E] px-4 py-3 text-base font-black text-white disabled:opacity-50">{busy?'Guardando…':'Guardar'}</button>
@@ -204,6 +209,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [docSignatures,setDocSignatures]=useState<Record<string,string>>({});
   const [docSigning,setDocSigning]=useState<'worker'|'foreman'|null>(null);
   const [correctionDocumentId,setCorrectionDocumentId]=useState<string>('');
+  const [additionalDraftId,setAdditionalDraftId]=useState('');
+  const [operationalEdit,setOperationalEdit]=useState<{
+    id:string;type:string;workDate:string;workerIds:number[];details:Record<string,any>;
+    signedCount:number;
+  }|null>(null);
+  const [operationalWorkerSearch,setOperationalWorkerSearch]=useState('');
   const [mandatorySigning,setMandatorySigning]=useState<{documentId:string;workerId:number;documentWorkerId?:string;name:string}|null>(null);
   const [mandatoryWorkerChoice,setMandatoryWorkerChoice]=useState<Record<string,string>>({});
   const [installPromptAvailable,setInstallPromptAvailable]=useState(Boolean(window.__profeaInstallPrompt));
@@ -211,6 +222,9 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   const [installedStandalone,setInstalledStandalone]=useState(isStandaloneDisplay());
   const [pdfPreview,setPdfPreview]=useState<{bytes:Uint8Array;title:string;notice?:string}|null>(null);
   const [operationFeedback,setOperationFeedback]=useState('');
+  // Prevent accidental duplicate relations from rapid repeated taps.
+  const preparingOperationalRef=useRef(false);
+  const submittingAdditionalRef=useRef(false);
   const [focusDocumentId,setFocusDocumentId]=useState('');
   const [pushActive,setPushActive]=useState(false);
   const [pushBusy,setPushBusy]=useState(false);
@@ -483,10 +497,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   },[data?.workers,selectedPeriodKeys]);
   const selectedWorkerIds=useMemo(()=>new Set(documentWorkers.map(worker=>Number(worker.id))),[documentWorkers]);
   useEffect(()=>{
-    if(workerId!=='' && !documentWorkers.some(worker=>Number(worker.id)===Number(workerId))){
+    if(!correctionDocumentId&&!additionalDraftId&&workerId!=='' && !documentWorkers.some(worker=>Number(worker.id)===Number(workerId))){
       setWorkerId('');
     }
-  },[documentWorkers,workerId]);
+  },[documentWorkers,workerId,correctionDocumentId,additionalDraftId]);
   const controlRows=useMemo(()=>rows.filter(row=>selectedWorkerIds.has(Number(row.workerId))),[rows,selectedWorkerIds]);
   const periodLabel = selectedPeriodKeys.size
     ? [...selectedPeriodKeys].map(key=>key.startsWith('q:')?key.slice(2):monthLabel(key.slice(2))).join(' + ')
@@ -505,10 +519,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     maquinariaPorTrabajador: machineryByWorker,
   };
   const prepareOperationalDocument=async(type:'epis'|'formacion'|'autorizacion_uso_maquinaria')=>{
+    if(preparingOperationalRef.current)return;
     if(!documentWorkers.length){setError('Selecciona al menos un periodo con trabajadores.');return;}
     if(type==='autorizacion_uso_maquinaria' && documentWorkers.some(worker=>!String(machineryByWorker[String(worker.id)]||'').trim())){
       setError('Indica la maquinaria o equipos autorizados para todos los trabajadores seleccionados.');return;
     }
+    preparingOperationalRef.current=true;
     setSaving(true);
     setOperationFeedback('');
     try{
@@ -545,8 +561,61 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       setOperationFeedback(message);
 
     }finally{
+      preparingOperationalRef.current=false;
       setSaving(false);
     }
+  };
+  const editOperationalDocument=(doc:ForemanMandatoryDocument)=>{
+    setOperationalWorkerSearch('');
+    setOperationalEdit({
+      id:doc.id,type:doc.documentType,workDate:String(doc.workDate||'').slice(0,10),
+      workerIds:(doc.workers||[]).map(worker=>Number(worker.id)).filter(Number.isFinite),
+      details:{...(doc.details||{}),epis:{...(doc.details?.epis||{})},
+        maquinariaPorTrabajador:{...(doc.details?.maquinariaPorTrabajador||{})}},
+      signedCount:Object.keys(doc.signatures||{}).length,
+    });
+  };
+  const saveOperationalEdit=async()=>{
+    if(!operationalEdit||saving)return;
+    if(!operationalEdit.workerIds.length){setError('Selecciona al menos un trabajador.');return;}
+    if(operationalEdit.type==='autorizacion_uso_maquinaria' && operationalEdit.workerIds.some(id=>
+      !String(operationalEdit.details.maquinariaPorTrabajador?.[String(id)]||'').trim())){
+      setError('Indica la maquinaria autorizada de cada trabajador incluido.');return;
+    }
+    const changedSignatures=operationalEdit.signedCount>0;
+    if(changedSignatures&&!await appConfirm(
+      'Este documento contiene firmas. Para modificar los datos o trabajadores se retirarán TODAS sus firmas y habrá que recogerlas de nuevo. La versión anterior quedará registrada.',
+      {title:'Modificar documento firmado',confirmLabel:'Retirar firmas y guardar'}
+    ))return;
+    setSaving(true);setError('');
+    try{
+      await updateForemanOperationalDraft({
+        token,documentId:operationalEdit.id,workDate:operationalEdit.workDate,
+        workerIds:operationalEdit.workerIds,details:operationalEdit.details,
+        resetSignatures:changedSignatures,
+      });
+      setOperationalEdit(null);
+      await refresh();
+      setOperationFeedback(changedSignatures
+        ? 'Documento corregido. Las firmas anteriores se han retirado: recoge las nuevas antes de enviar.'
+        : 'Cambios del documento guardados.');
+    }catch(e:any){setError(e?.message||'No se pudo editar el documento.');}
+    finally{setSaving(false);}
+  };
+  const deleteOperational=async(doc:ForemanMandatoryDocument)=>{
+    if(saving)return;
+    const count=Object.keys(doc.signatures||{}).length;
+    if(!await appConfirm(
+      `¿Eliminar esta relación preparada? ${count? `Contiene ${count} firma(s), que dejarán de estar activas. `:''}El documento todavía no enviado desaparecerá del portal y quedará constancia de la eliminación.`,
+      {title:'Eliminar documento en preparación',confirmLabel:'Eliminar documento'}
+    ))return;
+    setSaving(true);setError('');
+    try{
+      await deleteForemanOperationalDraft(token,doc.id);
+      setOperationalEdit(null);await refresh();
+      setOperationFeedback('Documento eliminado antes de enviarlo al supervisor.');
+    }catch(e:any){setError(e?.message||'No se pudo eliminar el documento.');}
+    finally{setSaving(false);}
   };
   const operationalDocumentsFor=(type:'epis'|'formacion'|'maquinaria')=>{
     const accepted=type==='maquinaria'?['maquinaria','autorizacion_uso_maquinaria']:[type];
@@ -756,7 +825,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       const month=monthNames[Math.max(0,Number(match[2])-1)]||match[2];
       return `${match[3].toUpperCase()==='1Q'?'1ª quincena':'2ª quincena'} · ${month} ${match[1]}`;
     }
+    const monthKey=key.match(/^(\d{4})-(\d{2})$/);
     const date=String(doc.workDate||'').slice(0,10);
+    if(monthKey && !date.startsWith(key)){
+      const names=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      return `Mes de ${names[Math.max(0,Number(monthKey[2])-1)]||monthKey[2]} ${monthKey[1]}`;
+    }
     if(/^\d{4}-\d{2}-\d{2}$/.test(date)){
       const [year,month,day]=date.split('-');
       const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -776,12 +850,18 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     for(const doc of allAssignedMandatoryDocuments){
       const key=String(doc.periodKey||doc.workDate||'sin-periodo');
       const current=byKey.get(key);
-      const latest=Date.parse(String(doc.workDate||''))||0;
+      // The declared fortnight wins over the upload/creation date for chronological ordering.
+      const match=key.match(/^(\d{4})-(\d{2})(?:-(1Q|2Q))?$/i);
+      const year=match?Number(match[1]):0;
+      const month=match?Number(match[2]):0;
+      const periodDate=match&&month>=1&&month<=12
+        ? Date.UTC(year,month-1,match[3]?.toUpperCase()==='2Q'?16:1)
+        : Date.parse(String(doc.workDate||''))||0;
       if(current){
         current.count+=1;
-        current.latest=Math.max(current.latest,latest);
+        current.latest=Math.max(current.latest,periodDate);
       }else{
-        byKey.set(key,{key,label:periodDisplayLabel(doc),count:1,latest});
+        byKey.set(key,{key,label:periodDisplayLabel(doc),count:1,latest:periodDate});
       }
     }
     return [...byKey.values()].sort((a,b)=>b.latest-a.latest||a.label.localeCompare(b.label,'es'));
@@ -791,11 +871,11 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     !selectedMandatoryPeriodKeys.size || selectedMandatoryPeriodKeys.has(String(doc.periodKey||doc.workDate||'sin-periodo'))
   );
 
-  const toggleMandatoryPeriod=(key:string)=>setSelectedMandatoryPeriodKeys(current=>{
-    const next=new Set(current);
-    if(next.has(key))next.delete(key);else next.add(key);
-    return next;
-  });
+  const selectMandatoryPeriod=(key:string)=>
+    setSelectedMandatoryPeriodKeys(key?new Set([key]):new Set());
+  const mandatoryPeriodValue=selectedMandatoryPeriodKeys.size===1?[...selectedMandatoryPeriodKeys][0]:'';
+  const mandatorySelectedLabel=mandatoryPeriodOptions.find(option=>option.key===mandatoryPeriodValue)?.label||'Todos los periodos';
+
 
   const signatureLoadsRef=useRef(new Map<string,Promise<void>>());
   const activePortalTokenRef=useRef(token);
@@ -1037,14 +1117,18 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     const foremanSigned=Boolean(foremanEvidence[doc.id]?.signed);
     const canFinalize=requiredSignatureTotal>0&&pendingRequired===0&&(!foremanRequired||foremanSigned);
     const expanded=expandedMandatoryDocuments.has(doc.id);
+    const canManageOperational=!isImportedMandatory &&
+      String(doc.periodKey||'').startsWith('encargado:') &&
+      !doc.lifecycleStatus && !doc.correctionPending &&
+      (doc.status==='pending'||doc.status==='in_progress');
 
-    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`scroll-mt-24 overflow-hidden rounded-2xl bg-white border shadow-sm ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
-      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="flex w-full items-start justify-between gap-3 p-4 text-left">
+    return <div id={'foreman-signing-'+doc.id} key={doc.id} className={`fp-document-card scroll-mt-24 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${focusDocumentId===doc.id?'ring-4 ring-blue-200 border-[#00548E]':''} ${correction?'border-amber-300':''}`}>
+      <button type="button" onClick={()=>toggleMandatoryDocument(doc.id)} className="fp-document-toggle flex min-h-[62px] w-full min-w-0 items-start justify-between gap-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] sm:p-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="mt-0.5 shrink-0 text-[#00548E]">{expanded?<ChevronDown className="h-5 w-5"/>:<ChevronRight className="h-5 w-5"/>}</span>
           <div className="min-w-0">
             <div className="font-black">{mandatoryLabel(doc.documentType)}</div>
-            <div className="mt-1 truncate text-sm font-black text-[#00548E]" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
+            <div className="mt-0.5 truncate text-sm font-bold text-[#00548E] dark:text-blue-300" title={String(doc.details?.sourceFilename||'')}>{String(doc.details?.sourceFilename||'Documento importado')}</div>
             <div className="mt-1 text-xs text-slate-500">{String(doc.workDate).slice(0,10)} · {periodDisplayLabel(doc)}{doc.category?' · '+doc.category:''}</div>
             {unresolvedAnchorCount>0&&<div className="mt-1 text-[11px] font-bold text-amber-700">{unresolvedAnchorCount} trabajador(es) pendientes de localizar con seguridad en el PDF</div>}
           </div>
@@ -1052,11 +1136,17 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${closed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800'}`}>{signedCount}/{requiredSignatureTotal || 0}</span>
       </button>
       {expanded&&<div className="border-t p-4">
+      {canManageOperational&&<div className="mb-3 grid grid-cols-2 gap-2" role="group" aria-label="Editar o eliminar documento antes de enviar">
+        <button type="button" disabled={saving} onClick={()=>editOperationalDocument(doc)}
+          className="min-h-[50px] rounded-xl border border-[#00548E] bg-white px-3 py-2.5 text-sm font-black text-[#00548E] disabled:opacity-50">Editar documento</button>
+        <button type="button" disabled={saving} onClick={()=>void deleteOperational(doc)}
+          className="min-h-[50px] rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm font-black text-rose-800 disabled:opacity-50">Eliminar documento</button>
+      </div>}
 
       {exactOriginalMode&&<div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-3">
         <div className="text-sm font-black text-[#00548E]">PDF original conservado</div>
         <p className="mt-1 text-sm leading-5 text-slate-600">El documento no se reconstruye. Las firmas se añaden como una capa sobre el archivo importado.</p>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="fp-action-row fp-action-row--two mt-3 grid grid-cols-2 gap-2">
           <button type="button" disabled={saving} onClick={()=>void previewMandatoryPdf(doc,'original')} className="min-h-[50px] rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-black text-[#00548E]">Ver documento original</button>
           <button type="button" disabled={saving||signedCount===0} onClick={()=>void previewMandatoryPdf(doc,'signed')} className="min-h-[50px] rounded-xl bg-[#00548E] px-3 py-2.5 text-sm font-black text-white disabled:bg-slate-300">Previsualizar con firmas</button>
         </div>
@@ -1208,18 +1298,58 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
   const currentAttendance=data?.attendance.find(day=>String(day.workDate).slice(0,10)===date);
   const attendanceLocked=Boolean(currentAttendance&&['completed','reviewed'].includes(currentAttendance.status)&&!currentAttendance.correctionPending);
+  const additionalDrafts=(data?.documents||[]).filter(doc=>doc.status==='draft'&&!doc.correctionPending);
+  const openAdditionalDraft=(doc:typeof additionalDrafts[number])=>{
+    setAdditionalDraftId(doc.id);setCorrectionDocumentId('');setDocumentView('other');
+    setDocType(doc.documentType as AdditionalWorksiteDocumentType);
+    setWorkerId(Number(doc.workerId||'')||'');
+    setDate(String(doc.workDate).slice(0,10));
+    setAnswers({...doc.answers});setDocSignatures({});
+    setTab('documents');
+  };
+  const patchAdditionalAnswer=(key:string,value:string)=>{
+    setAnswers(current=>({...current,[key]:value}));
+    setDocSignatures({}); // A changed signed statement must be signed again.
+  };
+  const resetAdditionalEditor=()=>{
+    setAdditionalDraftId('');setCorrectionDocumentId('');setAnswers({});
+    setDocSignatures({});setWorkerId('');
+  };
+  const saveAdditional=async()=>{
+    if(!selectedWorker){setError('Selecciona un trabajador.');return;}
+    setSaving(true);setError('');
+    try{
+      const id=await saveForemanAdditionalDraft({token,documentType:docType,workDate:date,
+        workerId:Number(selectedWorker.id),answers,documentId:additionalDraftId||null});
+      setAdditionalDraftId(id);setDocSignatures({});
+      await refresh();setOperationFeedback('Borrador guardado. Puedes volver a abrirlo, editarlo o eliminarlo antes de enviarlo.');
+    }catch(e:any){setError(e?.message||'No se pudo guardar el borrador.');}
+    finally{setSaving(false);}
+  };
+  const deleteAdditional=async()=>{
+    if(!additionalDraftId){resetAdditionalEditor();setOperationFeedback('Datos sin guardar descartados.');return;}
+    if(!await appConfirm('Se eliminará este borrador sin enviar al supervisor.',{
+      title:'Eliminar borrador',confirmLabel:'Eliminar borrador'}))return;
+    setSaving(true);setError('');
+    try{
+      await deleteForemanAdditionalDraft(token,additionalDraftId);
+      resetAdditionalEditor();await refresh();
+      setOperationFeedback('Borrador eliminado.');
+    }catch(e:any){setError(e?.message||'No se pudo eliminar el borrador.');}
+    finally{setSaving(false);}
+  };
   const attendanceTemplate=effectiveForemanTemplate('control_horario',attendanceEvidence?.workDate===date?attendanceEvidence.layout:undefined);
   const attendanceForemanSigned=Boolean(attendanceEvidence?.workDate===date&&attendanceEvidence.signed);
   const completedToday=controlRows.filter(r=>r.entrySignature&&r.exitSignature).length;
-  return <div className="min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
-    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
+  return <div className="fp-portal-ui min-h-[100dvh] bg-slate-100 text-slate-900 overscroll-none">
+    <header className="fp-portal-header sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 pb-3" style={{paddingTop:'max(12px, env(safe-area-inset-top))'}}>
       <div className="max-w-4xl mx-auto">
         <div className="text-[11px] sm:text-xs font-black uppercase tracking-[.14em] text-[#00548E]">PFEA Encargados</div>
         <h1 className="mt-0.5 text-lg sm:text-xl font-black leading-tight break-words">{data.obra}</h1>
         <p className="mt-0.5 text-sm text-slate-600">{data.foremanName||'Encargado de obra'}</p>
       </div>
     </header>
-    <main className="max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-28 sm:pb-6 space-y-4">
+    <main className="fp-portal-main max-w-4xl mx-auto px-3 sm:px-5 pt-3 sm:pt-5 pb-6 space-y-4">
       <section className="rounded-3xl border bg-white dark:bg-slate-900 p-4 space-y-3" aria-label="Avisos móviles">
         <h2 className="text-lg font-black">Avisos de mi obra</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">{pushActive?`Avisos activos en este dispositivo para ${data.obra}.`:'Activa las notificaciones para saber cuándo el supervisor envía un documento nuevo a tu obra.'}</p>
@@ -1257,20 +1387,25 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       </div>}
       <div
         role="navigation" aria-label="Secciones del portal de encargados"
-        className="fixed bottom-0 left-0 right-0 z-30 sm:static overflow-x-auto overscroll-x-contain bg-white/95 backdrop-blur border-t sm:border sm:rounded-2xl p-2 shadow-[0_-8px_30px_rgba(15,23,42,0.10)] sm:shadow-none"
-        style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))',WebkitOverflowScrolling:'touch'}}
+        className="fp-section-nav w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
       >
-        <div className="flex w-max min-w-full gap-2">
-          <button aria-label="Control, inicios y contratos" onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
-          <button onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
-          <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
-          <button onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
-          <button onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
-          <button onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
-          <button onClick={()=>setTab('control')} style={{flex:'0 0 auto',minWidth:122,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='control'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogIn className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control horario</span></button>
-          <button onClick={()=>setTab('documents')} style={{flex:'0 0 auto',minWidth:110,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
-          <button onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
-          <button onClick={()=>setTab('completed')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap',wordBreak:'keep-all'}} className={`min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
+        <div className="mb-2 flex items-center justify-between gap-2 px-1 sm:hidden">
+          <span className="text-sm font-black text-[#00548E] dark:text-blue-300">Sección del portal</span>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Desliza para ver más <span aria-hidden="true">→</span></span>
+        </div>
+        <div className="fp-section-track w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-xl pb-1 touch-pan-x" style={{WebkitOverflowScrolling:'touch'}} tabIndex={0} aria-label="Desliza horizontalmente por los botones de secciones">
+          <div className="fp-section-items flex w-max min-w-full gap-2">
+          <button aria-label="Control, inicios y contratos" aria-pressed={tab==='mandatory'} onClick={()=>setTab('mandatory')} style={{flex:'0 0 auto',minWidth:96,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='mandatory'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardList className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control, inicios<br/>y contratos</span></button>
+          <button aria-pressed={tab==='prevention'} onClick={()=>setTab('prevention')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='prevention'?'bg-[#00548E] text-white':'text-slate-700'}`}><ShieldCheck className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Prevención</span></button>
+          <button type="button" aria-label="Partes y avisos" aria-pressed={tab==='parts'} onClick={()=>setTab('parts')} style={{flex:'0 0 auto',minWidth:112,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='parts'?'bg-red-700 text-white':'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800'}`}><ClipboardList aria-hidden="true" className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Partes y avisos</span></button>
+          <button aria-pressed={tab==='epis'} onClick={()=>setTab('epis')} style={{flex:'0 0 auto',minWidth:82,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='epis'?'bg-[#00548E] text-white':'text-slate-700'}`}><HardHat className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">EPIs</span></button>
+          <button aria-pressed={tab==='formacion'} onClick={()=>setTab('formacion')} style={{flex:'0 0 auto',minWidth:104,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='formacion'?'bg-[#00548E] text-white':'text-slate-700'}`}><GraduationCap className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Formación</span></button>
+          <button aria-pressed={tab==='maquinaria'} onClick={()=>setTab('maquinaria')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='maquinaria'?'bg-[#00548E] text-white':'text-slate-700'}`}><Wrench className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Maquinaria</span></button>
+          <button aria-pressed={tab==='control'} onClick={()=>setTab('control')} style={{flex:'0 0 auto',minWidth:122,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='control'?'bg-[#00548E] text-white':'text-slate-700'}`}><LogIn className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Control horario</span></button>
+          <button aria-pressed={tab==='documents'} onClick={()=>setTab('documents')} style={{flex:'0 0 auto',minWidth:110,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='documents'?'bg-[#00548E] text-white':'text-slate-700'}`}><FileSignature className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Documentos</span></button>
+          <button type="button" aria-label="Actas de visitas" aria-pressed={tab==='visits'} onClick={()=>setTab('visits')} style={{flex:'0 0 auto',minWidth:130,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black ${tab==='visits'?'bg-[#00548E] text-white':'text-slate-700'}`}><ClipboardPenLine className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Actas de visitas</span></button>
+          <button aria-pressed={tab==='completed'} onClick={()=>setTab('completed')} style={{flex:'0 0 auto',minWidth:108,whiteSpace:'nowrap'}}  className={`fp-section-tab min-h-[64px] rounded-xl px-3 py-2 text-xs font-black touch-manipulation ${tab==='completed'?'bg-[#00548E] text-white':'text-slate-700'}`}><CheckCircle2 className="w-5 h-5 mx-auto mb-1"/><span className="block whitespace-nowrap">Finalizados</span></button>
+          </div>
         </div>
       </div>
 
@@ -1288,6 +1423,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             <div className="font-black text-amber-900">Corrección solicitada por el supervisor</div>
             <p className="mt-1 text-sm text-amber-800">{data.attendance.find(a=>String(a.workDate).slice(0,10)===date)?.correctionReason||'Revisa esta jornada antes de volver a finalizarla.'}</p>
           </div>}
+        {attendanceLocked&&<p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">Jornada enviada: no se puede modificar desde el portal. Solicita su devolución al supervisor para corregirla.</p>}
         {controlRows.map(row=><div key={row.workerId} className="rounded-2xl bg-white border p-4 shadow-sm">
           <div><div className="font-black">{row.name}</div><div className="text-xs text-slate-500">{row.dni} · {row.category}</div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -1296,13 +1432,14 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.entryTime || data.defaultWorkStartHour || '08:00'}
+                disabled={attendanceLocked}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item));
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
-              <button onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
+              <button disabled={attendanceLocked} onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
                 <LogIn className="w-4 h-4 inline mr-1"/>{row.entrySignature?'Entrada firmada':'Firmar entrada'}
               </button>
             </div>
@@ -1311,35 +1448,66 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.exitTime || data.defaultWorkEndHour || '15:00'}
+                disabled={attendanceLocked}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item));
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
-              <button onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
+              <button disabled={attendanceLocked} onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
                 <LogOut className="w-4 h-4 inline mr-1"/>{row.exitSignature?'Salida firmada':'Firmar salida'}
               </button>
             </div>
           </div>
         </div>)}
         {attendanceTemplate&&<div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 text-slate-900"><h3 className="font-black">Firma del encargado</h3><p className="mt-1 text-sm">Completa primero las firmas de entrada y salida. Si cambias la jornada, el encargado deberá firmar de nuevo.</p><p className="mt-1 text-sm">{attendanceForemanSigned?'Firma guardada y verificada':attendanceTemplate.required?'Firma obligatoria pendiente':'Firma pendiente'}</p><button type="button" disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>setAttendanceSigning(true)} className="mt-3 min-h-[52px] w-full rounded-xl bg-[#00548E] px-3 py-3 font-black text-white">Firmar como encargado</button></div>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button disabled={saving||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
-          <button disabled={saving||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
+        <div className="fp-action-row fp-action-row--stack-mobile grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button disabled={saving||attendanceLocked||!controlRows.length} onClick={()=>void persist(rows,'draft')} className="w-full rounded-2xl border border-slate-300 bg-white py-4 font-black text-slate-800 disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><Save className="inline w-5 h-5 mr-2"/>Guardar cambios</>}</button>
+          <button disabled={saving||attendanceLocked||!controlRows.length||completedToday!==controlRows.length||Boolean(attendanceTemplate?.required&&!attendanceForemanSigned)} onClick={()=>void persist(controlRows,'completed')} className="w-full rounded-2xl bg-emerald-600 text-white py-4 font-black disabled:opacity-50">{saving?<Loader2 className="w-5 h-5 animate-spin mx-auto"/>:<><CheckCircle2 className="inline w-5 h-5 mr-2"/>Finalizar y enviar control horario</>}</button>
         </div>
+        {currentAttendance?.status==='draft'&&!currentAttendance.correctionPending&&<button type="button"
+          disabled={saving} onClick={async()=>{
+            if(!await appConfirm('¿Eliminar el borrador de control horario de esta fecha? Si contiene firmas, quedarán conservadas en el registro de auditoría y tendrán que recogerse nuevamente.',
+              {title:'Eliminar borrador de control horario',confirmLabel:'Eliminar borrador'}))return;
+            setSaving(true);setError('');
+            try{await deleteForemanAttendanceDraft(token,date);await refresh();setOperationFeedback('Borrador de control horario eliminado.');}
+            catch(e:any){setError(e?.message||'No se pudo eliminar el borrador.');}
+            finally{setSaving(false);}
+          }} className="min-h-[50px] w-full rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 disabled:opacity-50">
+            <Trash2 className="mr-2 inline h-4 w-4"/>Eliminar borrador de control horario
+          </button>}
       </section>}
 
       {tab==='mandatory'&&<section className="space-y-3">
-        <div className="rounded-2xl bg-white border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-black">Control, inicios y contratos</h2><button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments} className="min-h-[48px] inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"><RefreshCw className="w-4 h-4"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}</button></div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Aquí aparecen Inicio, Control de presencia, Contratos y Prórrogas enviados por el supervisor. Cada PDF conserva su identidad, muestra únicamente las personas reconocidas en ese documento y respeta el periodo seleccionado.</p>
-        </div>
-        {documentsUpdatedAt&&<p role="status" className="px-1 text-xs text-slate-600 dark:text-slate-300">Última consulta: {documentsUpdatedAt} · {allAssignedMandatoryDocuments.length} documento(s) enviados a esta obra.</p>}
-        <div className="rounded-2xl border bg-white p-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:'touch'}}>
-            <button type="button" onClick={()=>setSelectedMandatoryPeriodKeys(new Set())} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black ${selectedMandatoryPeriodKeys.size===0?'border-[#00548E] bg-[#00548E] text-white':'bg-white text-slate-700'}`}>Todos</button>
-            {mandatoryPeriodOptions.map(option=><button key={option.key} type="button" onClick={()=>toggleMandatoryPeriod(option.key)} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-black whitespace-nowrap ${selectedMandatoryPeriodKeys.has(option.key)?'border-[#00548E] bg-[#00548E] text-white':'bg-slate-50 text-slate-700'}`}>{option.label} · {option.count}</button>)}
+        <div className="min-w-0 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+          <div>
+            <h2 className="text-lg font-black leading-tight text-slate-900 dark:text-slate-100">Control, inicios y contratos</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Documentos enviados por el supervisor, listos para consultar y firmar.</p>
+          </div>
+          <label htmlFor="foreman-mandatory-period" className="block text-sm font-bold text-slate-700 dark:text-slate-200">1. Selecciona la quincena</label>
+          <select
+            id="foreman-mandatory-period"
+            aria-label="Periodo o quincena de documentos"
+            value={mandatoryPeriodValue}
+            onChange={event=>selectMandatoryPeriod(event.target.value)}
+            className="min-h-[50px] w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-base font-bold text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+          >
+            <option value="">Todos los periodos · {allAssignedMandatoryDocuments.length} doc.</option>
+            {mandatoryPeriodOptions.map(option=><option key={option.key} value={option.key}>{option.label} · {option.count} doc.</option>)}
+          </select>
+          <div role="group" aria-label="Acciones guiadas de documentos" className="fp-action-row fp-action-row--two grid grid-cols-2 gap-2">
+            <button type="button" onClick={()=>selectMandatoryPeriod('')} aria-pressed={!selectedMandatoryPeriodKeys.size}
+              className={`min-h-[48px] min-w-0 rounded-xl border px-3 py-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] ${!selectedMandatoryPeriodKeys.size?'border-[#00548E] bg-[#00548E] text-white':'border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'}`}>Todos</button>
+            <button type="button" onClick={()=>void refresh()} disabled={refreshingDocuments}
+              className="inline-flex min-h-[48px] min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 py-2 text-sm font-bold text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00548E] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+              <RefreshCw className="h-4 w-4 shrink-0"/>{refreshingDocuments?'Actualizando…':'Actualizar documentos'}
+            </button>
+          </div>
+          <div role="status" className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
+            <p>2. Abre un documento para revisar o firmar.</p>
+            <p>{assignedMandatoryDocuments.length} de {allAssignedMandatoryDocuments.length} documentos · {mandatorySelectedLabel}</p>
+            {documentsUpdatedAt&&<p>Última consulta: {documentsUpdatedAt}</p>}
           </div>
         </div>
         {assignedByWorksiteAndPeriod.map(group=><div key={group.worksite} className="space-y-3">
@@ -1358,7 +1526,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             {periodGroup.documents.map(doc=>renderSigningDocument(doc))}
           </div>)}
         </div>)}
-        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en los periodos seleccionados. Pulsa Todos para ver todos los documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
+        {!assignedMandatoryDocuments.length&&<div className="rounded-2xl bg-white border p-8 text-center text-sm text-slate-500">{selectedMandatoryPeriodKeys.size?'No hay documentos en la quincena seleccionada. Pulsa «Todos» para ver los demás documentos enviados.':'No hay documentos enviados de Inicio ni Control de presencia para esta obra. Pulsa Actualizar documentos y comprueba con el supervisor la obra del envío.'}</div>}
       </section>}
 
       {tab==='epis'&&<section className="space-y-3">
@@ -1427,10 +1595,32 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
       {tab==='documents'&&<section className="rounded-2xl bg-white border p-4 sm:p-5 space-y-4 shadow-sm">
         <div>
-          <h2 className="text-lg font-black">Documentos</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-black">Documentos</h2>
+            {(additionalDraftId||correctionDocumentId)&&<button type="button" disabled={saving}
+              onClick={resetAdditionalEditor}
+              className="min-h-[44px] rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E]">Nuevo documento</button>}
+          </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecciona el documento que necesitas preparar o consultar.</p>
+          {operationFeedback&&<p role="status" className="mt-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">{operationFeedback}</p>}
         </div>
 
+        {additionalDrafts.length>0&&<div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+          <h3 className="font-black text-[#00548E]">Borradores pendientes de enviar ({additionalDrafts.length})</h3>
+          {additionalDrafts.map(doc=><div key={doc.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <button type="button" onClick={()=>openAdditionalDraft(doc)} className="min-h-[48px] min-w-0 rounded-lg px-2 text-left text-sm font-bold text-slate-900">
+              <span className="block break-words">{ADDITIONAL_WORKSITE_DOCUMENTS[doc.documentType as AdditionalWorksiteDocumentType]?.short||doc.documentType}</span>
+              <span className="block text-xs font-normal text-slate-600">{doc.workerSnapshot?.apellidosNombre||'Trabajador'} · {String(doc.workDate).slice(0,10)}</span>
+            </button>
+            <button type="button" disabled={saving} onClick={async()=>{
+              if(!await appConfirm('¿Eliminar este borrador antes de enviarlo?',{title:'Eliminar borrador',confirmLabel:'Eliminar borrador'}))return;
+              setSaving(true);setError('');
+              try{await deleteForemanAdditionalDraft(token,doc.id);if(additionalDraftId===doc.id)resetAdditionalEditor();await refresh();}
+              catch(e:any){setError(e?.message||'No se pudo eliminar el borrador.');}
+              finally{setSaving(false);}
+            }} className="min-h-[48px] rounded-lg border border-rose-200 bg-rose-50 px-3 text-sm font-black text-rose-700">Eliminar</button>
+          </div>)}
+        </div>}
         {data.documents.some(d=>d.correctionPending)&&<div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
           <div>
             <div className="text-base font-black text-amber-900">Correcciones solicitadas por el supervisor</div>
@@ -1441,6 +1631,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
             type="button"
             onClick={()=>{
               setCorrectionDocumentId(String(d.id));
+              setAdditionalDraftId('');
               setDocumentView('other');
               setDocType(d.documentType as AdditionalWorksiteDocumentType);
               setWorkerId(Number(d.workerId||'')||'');
@@ -1476,50 +1667,69 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         {documentView!=='other'&&<WorkforceDocumentsPanel key={documentView} kind={documentView} token={token}/>}
         {documentView==='other'&&<>
         <label className="block text-sm font-black">Trabajador
-          <select value={workerId} onChange={e=>setWorkerId(e.target.value?Number(e.target.value):'')} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
+          <select value={workerId} onChange={e=>{setWorkerId(e.target.value?Number(e.target.value):'');setDocSignatures({});}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-semibold bg-white">
             <option value="">Seleccionar trabajador…</option>
-            {documentWorkers.map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
+            {(correctionDocumentId||additionalDraftId?data.workers:documentWorkers).map(w=><option key={w.id} value={w.id}>{w.apellidosNombre} · {w.dni}</option>)}
           </select>
         </label>
         <label className="block text-sm font-black">Fecha
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
+          <input type="date" value={date} onChange={e=>{setDate(e.target.value);setDocSignatures({});}} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base bg-white"/>
         </label>
         {def.fields.map(field=><label key={field.key} className="block text-sm font-black">{field.label}
           {field.type==='textarea'
-            ? <textarea rows={4} value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-2 w-full rounded-xl border px-3 py-3 text-base font-normal"/>
+            ? <textarea rows={4} value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-3 text-base font-normal"/>
             : field.type==='select'
-              ? <select value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o}>{o}</option>)}</select>
-              : <input type={field.type||'text'} value={answers[field.key]||''} onChange={e=>setAnswers(a=>({...a,[field.key]:e.target.value}))} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"/>
+              ? <select value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o}>{o}</option>)}</select>
+              : <input type={field.type||'text'} value={answers[field.key]||''} onChange={e=>patchAdditionalAnswer(field.key,e.target.value)} className="mt-2 min-h-[52px] w-full rounded-xl border px-3 py-3 text-base font-normal bg-white"/>
           }
         </label>)}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="fp-action-row fp-action-row--two grid grid-cols-1 sm:grid-cols-2 gap-3">
           {def.signatureWorker&&<button onClick={()=>setDocSigning('worker')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.worker?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma trabajador {docSignatures.worker?'✓':''}</button>}
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firmar como encargado {docSignatures.foreman?'✓':''}</button>
         </div>
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
+        {additionalDraftId&&<div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-3 text-sm font-black text-blue-900">Editando borrador guardado. Si cambias los datos, vuelve a recoger las firmas antes de enviar.</div>}
         <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">
           <FileDown className="mr-2 inline h-5 w-5"/>Generar PDF exactamente como Documentación de obra
         </button>
+        {!correctionDocumentId&&<div className="fp-action-row fp-action-row--two grid grid-cols-2 gap-2">
+          <button type="button" disabled={saving||!selectedWorker} onClick={()=>void saveAdditional()}
+            className="min-h-[52px] rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] disabled:opacity-50">
+            <Save className="mr-1 inline h-4 w-4"/>Guardar borrador
+          </button>
+          <button type="button" disabled={saving} onClick={()=>void deleteAdditional()}
+            className="min-h-[52px] rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-700 disabled:opacity-50">
+            <Trash2 className="mr-1 inline h-4 w-4"/>{additionalDraftId?'Eliminar borrador':'Descartar'}
+          </button>
+        </div>}
         <button
           onClick={async()=>{
+            if(submittingAdditionalRef.current)return;
             if(!selectedWorker)return alert('Selecciona un trabajador.');
             const missing=def.fields.filter(f=>f.required&&!String(answers[f.key]||'').trim());
             if(missing.length)return alert('Completa: '+missing.map(f=>f.label).join(', '));
             if(def.signatureWorker&&!docSignatures.worker)return alert('Falta la firma del trabajador.');
             if(!docSignatures.foreman)return alert('Falta la firma del encargado.');
+            submittingAdditionalRef.current=true;
             setSaving(true);
             try{
               if(correctionDocumentId){
                 await resubmitForemanDocument({token,documentId:correctionDocumentId,answers,signatures:docSignatures});
               }else{
-                await submitForemanDocument({token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),answers,signatures:docSignatures});
+                // Registrar el documento de forma estable y completar el mismo borrador.
+                const savedId=await saveForemanAdditionalDraft({
+                  token,documentType:docType,workDate:date,workerId:Number(selectedWorker.id),
+                  answers,documentId:additionalDraftId||null,
+                });
+                setAdditionalDraftId(savedId);
+                await submitForemanAdditionalDraft({token,documentId:savedId,answers,signatures:docSignatures});
               }
-              setAnswers({});setDocSignatures({});setWorkerId('');setCorrectionDocumentId('');
+              resetAdditionalEditor();
               setError('');
               await refresh();setTab('completed');
             }catch(e:any){
               setError(e?.message||'No se pudo enviar el documento al supervisor.');
-            }finally{setSaving(false);}
+            }finally{submittingAdditionalRef.current=false;setSaving(false);}
           }}
           disabled={saving}
           className="min-h-[58px] w-full rounded-2xl bg-[#00548E] px-4 py-4 text-base font-black text-white touch-manipulation disabled:opacity-50"
@@ -1536,7 +1746,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           <div className="mt-1 truncate text-sm font-bold text-[#00548E]" title={String(d.details?.sourceFilename||'')}>{String(d.details?.sourceFilename||'Documento firmado')}</div>
           <div className="mt-1 text-sm text-slate-500">{String(d.workDate).slice(0,10)}{d.category?' · '+d.category:''}{d.details?.periodoLabel?' · '+String(d.details.periodoLabel):''}</div>
           <span className="mt-3 inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700">{d.status==='reviewed'?'Revisado por el supervisor':'Enviado al supervisor'}</span>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="fp-action-row fp-action-row--two mt-3 grid grid-cols-2 gap-2">
             <button type="button" disabled={saving} onClick={()=>void previewCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-black text-[#00548E] disabled:opacity-50"><FileDown className="mr-2 inline h-4 w-4"/>Ver PDF</button>
             <button type="button" disabled={saving} onClick={()=>void shareCompletedMandatoryPdf(d)} className="min-h-[52px] rounded-xl bg-[#00548E] px-3 py-3 text-sm font-black text-white disabled:opacity-50"><Share2 className="mr-2 inline h-4 w-4"/>Compartir</button>
           </div>
@@ -1546,6 +1756,91 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
         {!data.mandatoryDocuments.some(d=>d.status==='completed'||d.status==='reviewed')&&!data.attendance.some(day=>day.status==='completed'||day.status==='reviewed')&&!data.documents.some(d=>!d.correctionPending&&d.status!=='draft')&&<div className="rounded-2xl bg-white border p-8 text-center text-base text-slate-500">Todavía no hay documentos finalizados.</div>}
       </section>}
     </main>
+    {operationalEdit&&<ModalPortal label="Editar relación preparada"><div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/70 p-0 sm:p-3">
+      <div className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white text-slate-900 shadow-2xl sm:h-auto sm:max-h-[95dvh] sm:rounded-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b bg-[#00548E] px-4 py-3 text-white">
+          <div className="min-w-0"><h2 className="text-lg font-black">Editar {mandatoryLabel(operationalEdit.type)}</h2>
+            <p className="mt-1 text-xs text-blue-100">Solo antes de enviar al supervisor</p></div>
+          <button type="button" onClick={()=>setOperationalEdit(null)} disabled={saving} aria-label="Cerrar editor de relación"
+            className="min-h-[44px] shrink-0 rounded-xl border border-white/70 px-3 py-2 text-sm font-bold">Cerrar</button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" style={{overscrollBehavior:'contain'}}>
+          {operationalEdit.signedCount>0&&<p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+            Hay {operationalEdit.signedCount} firma(s) guardada(s). Para corregir el contenido, tendrás que confirmar su retirada y recogerlas de nuevo.
+          </p>}
+          <label className="block text-sm font-bold">Fecha del documento
+            <input type="date" value={operationalEdit.workDate} onChange={e=>setOperationalEdit(d=>d?{...d,workDate:e.target.value}:d)}
+              className="mt-2 min-h-[50px] w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900"/>
+          </label>
+          <label className="block text-sm font-bold">Buscar trabajador por nombre o DNI
+            <input type="search" value={operationalWorkerSearch} onChange={e=>setOperationalWorkerSearch(e.target.value)}
+              placeholder="Buscar en la obra…" className="mt-2 min-h-[50px] w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900"/>
+          </label>
+          <div className="rounded-2xl border border-slate-200 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2 text-sm font-black">
+              <span>Trabajadores incluidos</span><span>{operationalEdit.workerIds.length} seleccionados</span>
+            </div>
+            <div className="max-h-[32dvh] space-y-1 overflow-y-auto">
+              {data.workers.filter(w=>[w.apellidosNombre,w.dni].some(v=>String(v||'').toLocaleLowerCase('es').includes(operationalWorkerSearch.trim().toLocaleLowerCase('es'))))
+                .map(w=><label key={w.id} className="flex min-h-[54px] cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <input type="checkbox" checked={operationalEdit.workerIds.includes(Number(w.id))}
+                    onChange={e=>setOperationalEdit(d=>{
+                      if(!d)return d;
+                      const ids=new Set(d.workerIds);
+                      if(e.target.checked)ids.add(Number(w.id));else ids.delete(Number(w.id));
+                      return {...d,workerIds:[...ids]};
+                    })} className="h-6 w-6 shrink-0 accent-[#00548E]"/>
+                  <span className="min-w-0"><span className="block break-words text-sm font-bold">{w.apellidosNombre}</span>
+                    <span className="text-xs text-slate-600">{w.dni} · {w.categoria}</span></span>
+                </label>)}
+            </div>
+          </div>
+          {operationalEdit.type==='epis'&&<div className="space-y-2">
+            <h3 className="text-sm font-black">EPIs entregados</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries({casco:'Casco',chaleco:'Chaleco',orejeras:'Orejeras',gafas:'Gafas',
+                guantes:'Guantes',mascarillas:'Mascarillas',calzado:'Calzado'}).map(([key,label])=><label key={key}
+                  className="flex min-h-[50px] items-center gap-2 rounded-xl border p-3 text-sm font-bold">
+                  <input type="checkbox" checked={operationalEdit.details.epis?.[key]!==false}
+                    onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,epis:{...d.details.epis,[key]:e.target.checked}}}:d)}
+                    className="h-5 w-5 accent-[#00548E]"/>{label}</label>)}
+            </div></div>}
+          {operationalEdit.type==='formacion'&&<div className="space-y-3">
+            <label className="block text-sm font-bold">Acción formativa
+              <textarea rows={3} value={operationalEdit.details.accionFormativa||''}
+                onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,accionFormativa:e.target.value}}:d)}
+                className="mt-2 w-full rounded-xl border p-3 text-base"/>
+            </label>
+            <label className="block text-sm font-bold">Duración
+              <input value={operationalEdit.details.duracionFormacion||''}
+                onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,duracionFormacion:e.target.value}}:d)}
+                className="mt-2 min-h-[50px] w-full rounded-xl border px-3 text-base"/>
+            </label></div>}
+          {['maquinaria','autorizacion_uso_maquinaria'].includes(operationalEdit.type)&&<div className="space-y-2">
+            <h3 className="text-sm font-black">Maquinaria autorizada por trabajador</h3>
+            {operationalEdit.workerIds.map(id=>{
+              const w=data.workers.find(person=>Number(person.id)===id);
+              return <label key={id} className="block rounded-xl border border-slate-200 p-3 text-sm font-bold">
+                {w?.apellidosNombre||'Trabajador '+id}
+                <input value={operationalEdit.details.maquinariaPorTrabajador?.[String(id)]||''}
+                  onChange={e=>setOperationalEdit(d=>d?{...d,details:{...d.details,
+                    maquinariaPorTrabajador:{...d.details.maquinariaPorTrabajador,[String(id)]:e.target.value}}}:d)}
+                  placeholder="Maquinaria o equipos" className="mt-2 min-h-[50px] w-full rounded-xl border px-3 text-base"/>
+              </label>;
+            })}
+          </div>}
+          {error&&<p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</p>}
+        </div>
+        <div className="fp-action-row fp-action-row--two grid shrink-0 grid-cols-2 gap-2 border-t bg-white p-3" style={{paddingBottom:'max(12px,env(safe-area-inset-bottom))'}}>
+          <button type="button" disabled={saving} onClick={()=>setOperationalEdit(null)}
+            className="min-h-[52px] rounded-xl border border-slate-300 px-3 text-sm font-black">Cancelar</button>
+          <button type="button" disabled={saving||!operationalEdit.workerIds.length||!operationalEdit.workDate}
+            onClick={()=>void saveOperationalEdit()}
+            className="min-h-[52px] rounded-xl bg-[#00548E] px-3 text-sm font-black text-white disabled:opacity-50">
+            {saving?'Guardando…':'Guardar cambios'}</button>
+        </div>
+      </div>
+    </div></ModalPortal>}
     {pdfPreview&&<PdfCanvasPreview bytes={pdfPreview.bytes} title={pdfPreview.title} notice={pdfPreview.notice} onClose={closePdfPreview}/>} 
     {attendanceSigning&&<SignaturePad title="Firma del encargado · Control horario" onCancel={()=>setAttendanceSigning(false)} onSave={async image=>{
       setSaving(true);

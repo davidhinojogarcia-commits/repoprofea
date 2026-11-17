@@ -21,6 +21,7 @@ globalThis.__foremanUi={
  async resolveForemanPortal(){portalReads++;return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
  async getForemanMandatorySignatures(){signatureReads++;return Object.fromEntries(Object.keys(doc.signatures).map(k=>[k,{signature:'data:image/png;base64,AAAA'}]));},
  async getSupervisorMandatorySignatures(){return {};},
+ async getAttendanceForemanEvidence(){return {signed:false,layout:null};},
 };
 globalThis.__foremanApi={
  async query(table){return table==='foreman_mandatory_documents'?[structuredClone(doc),...structuredClone(extraDocs)]:table==='foreman_attendance_days'&&includeAttendance?[
@@ -52,6 +53,12 @@ try {
  const find=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text||b.getAttribute('aria-label')===text);
  const mount=async component=>{if(root)await action(()=>root.unmount());root=createRoot(document.getElementById('root'));await action(()=>root.render(component));};
  await mount(React.createElement(ForemanDocumentsDashboard));
+ const headerActions=document.querySelector('[role="group"][aria-label="Acciones de documentación de encargados"]');
+ assert(headerActions,'document header groups the three actions without hiding others');
+ assert(headerActions.className.includes('sm:grid-cols-3')&&headerActions.className.includes('grid-cols-1'),'header actions stack on narrow screens and align across three columns otherwise');
+ const headerButtons=[...headerActions.querySelectorAll('button')];
+ assert.deepEqual(headerButtons.map(button=>button.textContent.trim()),['Importar documento','Revisar Gmail','Actualizar'],'existing header actions and order retained');
+ assert(headerButtons.every(button=>button.className.includes('min-h-12')&&button.className.includes('w-full')),'all three actions share institutional minimum height and width');
  assert(document.body.textContent.includes('ENCARGADO CON FIRMAS'),'signed attendance remains visible even in a mixed draft');
  assert(!document.body.textContent.includes('ENCARGADO SIN FIRMAS'),'completed status alone cannot expose unsigned attendance');
  assert(!document.body.textContent.includes('ENCARGADO FIRMA PARCIAL'),'partial signatures cannot expose an unsigned PDF');
@@ -76,16 +83,60 @@ try {
  await action(()=>find('Enviar al portal de encargados').click());
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  assert(find('Actualizar documentos'),'manual refresh in Control inicios');
+ const navigation=document.querySelector('nav[aria-label="Secciones del portal de encargados"],div[role="navigation"][aria-label="Secciones del portal de encargados"]');
+ assert(navigation,'mobile portal has guided icon-button ribbon');
+ assert.equal(document.getElementById('foreman-section-picker'),null,'mobile dropdown removed');
+ assert(!navigation.className.includes('hidden')&&!navigation.className.includes('sm:block'),'mobile ribbon is visible regardless of portrait width');
+ const touchTrack=navigation.querySelector('[aria-label="Desliza horizontalmente por los botones de secciones"]');
+ assert(touchTrack&&touchTrack.className.includes('overflow-x-auto'),'portrait section ribbon has independent horizontal scrolling');
+ assert(navigation.textContent.includes('Desliza para ver más'),'portrait mode gives a discoverable swipe hint');
+
+ if(process.env.FOREMAN_LAYOUT_CAPTURE_DIR){
+   const dir=process.env.FOREMAN_LAYOUT_CAPTURE_DIR;
+   await fs.mkdir(dir,{recursive:true});
+   const capture=async(name)=>fs.writeFile(
+     dir+'/'+name+'.html',document.getElementById('root').outerHTML,'utf8');
+   await capture('mandatory');
+   for(const [name,selector] of [
+     ['epis','EPIs'],['formacion','Formación'],['maquinaria','Maquinaria'],
+     ['control','Control horario'],['documents','Documentos'],
+     ['completed','Finalizados'],['visits','Actas de visitas']
+   ]){
+     const tile=[...navigation.querySelectorAll('.fp-section-tab')].find(button=>button.textContent.replace(/\s+/g,' ').trim()===selector);
+     assert(tile,'missing mobile section: '+selector);
+     await action(()=>tile.click());
+     await capture(name);
+   }
+   await action(()=>navigation.querySelector('button[aria-label="Control, inicios y contratos"]').click());
+ }
+
+
+ const labels=['Control, inicios y contratos','Prevención','Partes y avisos','EPIs','Formación','Maquinaria','Control horario','Documentos','Actas de visitas','Finalizados'];
+ assert.deepEqual([...navigation.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')||button.textContent.replace(/\s+/g,' ').trim()),labels,'all ten sections stay accessible');
+ await action(()=>navigation.querySelector('button[aria-label="Actas de visitas"]').click());
+ assert(document.querySelector('[data-testid=actual-visit-tab]'),'guided ribbon opens visits');
+ await action(()=>navigation.querySelector('button[aria-label="Control, inicios y contratos"]').click());
+ assert(!document.querySelector('[data-testid=actual-visit-tab]'),'guided ribbon returns to mandatory');
+ assert(find('Actualizar documentos'),'mandatory documents return after ribbon selection');
  await action(()=>find('Actas de visitas').click());assert(document.querySelector('[data-testid=actual-visit-tab]'),'visit tab mounts its panel in the complete portal');assert.equal(document.querySelector('[data-testid=actual-visit-tab]').dataset.token,'test');assert.equal(document.querySelector('[data-testid=actual-visit-tab]').dataset.viewer,'function');assert([...document.querySelectorAll('button')].every(b=>!b.className.includes('[object Object]')),'panels must not be interpolated into button classes');await action(()=>find('Control, inicios y contratos').click());assert(!document.querySelector('[data-testid=actual-visit-tab]'));
 
  const beforeRefresh=portalReads;await action(()=>find('Actualizar documentos').click());
  assert.equal(portalReads,beforeRefresh+1,'manual refresh queries portal');
- const periodButton=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('quincena')&&b.textContent.includes('· 1'));
- await action(()=>periodButton.click());
+ const periodPicker=document.getElementById('foreman-mandatory-period');
+ assert(periodPicker&&periodPicker.tagName==='SELECT','mandatory document period is a native accessible dropdown');
+ assert.equal(periodPicker.options[0].value,'','first option lists all periods');
+ assert.equal(periodPicker.options[1].value,'2026-10','fortnight selector exposes actual period key');
+ assert.match(periodPicker.options[1].textContent,/Octubre 2026 · 1 doc\./,'period option contains readable month, year and document count');
+ const quickActions=document.querySelector('[aria-label="Acciones guiadas de documentos"]');
+ assert(quickActions&&quickActions.querySelectorAll('button').length===2,'guided ribbon only exposes working actions');
+ await action(()=>{periodPicker.value='2026-10';periodPicker.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ assert.equal(document.getElementById('foreman-mandatory-period').value,'2026-10','selector keeps selected period');
  doc.period_key='2026-07';await action(()=>find('Actualizar documentos').click());
- assert(document.body.textContent.includes('No hay documentos en los periodos seleccionados'),'filtered empty state explains hidden documents');
- await action(()=>find('Todos').click());
+ assert(document.body.textContent.includes('No hay documentos en la quincena seleccionada'),'filtered empty state explains hidden documents');
+ await action(()=>quickActions.querySelector('button').click());
+ assert.equal(document.getElementById('foreman-mandatory-period').value,'','Todos resets period selector');
  assert([...document.querySelectorAll('button')].some(b=>b.textContent.includes('control.pdf')),'clear filters reveals new period');
+ assert.equal(document.getElementById('foreman-mandatory-period').options[1].value,'2026-07','refreshed selector reflects current periods');
 
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,false,'all signatures allow send');
@@ -123,14 +174,18 @@ try {
  const headings=[...document.querySelectorAll('h3')].map(h=>h.textContent);
  assert(headings.some(h=>h.includes('1ª quincena'))&&headings.some(h=>h.includes('2ª quincena')),'both quincenas grouped inside month');
  assert.equal(document.querySelectorAll('article').length,2,'work and authoritative period month restrict documents');
- const fortnightSelect=document.getElementById('foreman-documents-fortnight');
- assert(fortnightSelect,'accessible fortnight dropdown replaces horizontal button strip');
- const secondHalf=[...fortnightSelect.options].find(option=>option.textContent.startsWith('2ª quincena'));
- assert(secondHalf,'second half appears in dropdown');
- await action(()=>{fortnightSelect.value=secondHalf.value;fortnightSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ const fortnightTrigger=document.querySelector('button[aria-label="Filtrar documentos por quincena"]');
+ assert(fortnightTrigger,'app-styled fortnight dropdown replaces native iOS picker');
+ assert.equal(fortnightTrigger.getAttribute('aria-expanded'),'false','picker initially closed');
+ await action(()=>fortnightTrigger.click());
+ assert.equal(fortnightTrigger.getAttribute('aria-expanded'),'true','picker opens in the app');
+ const secondHalf=[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('2ª quincena'));
+ assert(secondHalf,'second half appears in app menu');
+ await action(()=>secondHalf.click());
  assert.equal(document.querySelectorAll('article').length,1,'second quincena filters documents');
  assert(!document.querySelector('article').textContent.includes('FIRST_HALF'),'period key wins over work date');
- await action(()=>{fortnightSelect.value='';fortnightSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ await action(()=>fortnightTrigger.click());
+ await action(()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Todas las quincenas').click());
  assert.equal(document.querySelectorAll('article').length,2,'all quincenas restores documents without duplicates');
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Septiembre 2026')).click());
  assert.equal(document.querySelectorAll('article').length,1,'month change clears quincena filter');

@@ -3,6 +3,7 @@ import type { VisitContent, VisitPoint } from '../src/lib/visitMinutes';
 import { applyWritingPoints, mergeWritingPoints, pointSource, writingInput, writingProposal, WRITING_INPUT_LIMIT, type WritingInput, type WritingProposal } from '../src/lib/visitWriting';
 import { visitRequest } from '../src/services/visitMinutesService';
 import { visitInput } from './VisitContactsPanel';
+import { VisitVoiceDictation } from './VisitVoiceDictation';
 
 const button = 'min-h-[44px] rounded-xl border px-3 py-2 font-bold disabled:opacity-50';
 type Proposal = { input: WritingInput; value: WritingProposal; source?: { id: string; snapshot: string } };
@@ -66,6 +67,7 @@ export function VisitPointsEditor({ content, onChange, onCreateOrder, recordId, 
     {dictating && <div className="rounded-xl border p-3 space-y-3">
       <p id="visit-dictation-help" className="text-sm">Usa el micrófono del teclado del móvil en este campo. Cuando termines, pulsa «Organizar dictado». GestionProfea recibe texto, no graba audio. También puedes escribir o pegar aquí.</p>
       <label className="block font-bold">Dictado de la visita<textarea aria-label="Dictado de la visita" ref={dictationRef} aria-describedby="visit-dictation-help" className={visitInput} rows={6} maxLength={WRITING_INPUT_LIMIT} value={dictation} onChange={e => onDictationChange?.(e.target.value)} /></label>
+      <VisitVoiceDictation label="Dictar visita con micrófono" value={dictation} onChange={text => onDictationChange?.(text)} disabled={busy || !!proposal} />
       <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={busy || !!proposal || !dictation.trim() || !content.worksiteId} onClick={() => void improve()}>Organizar dictado</button><button type="button" className={button} disabled={busy} onClick={() => { onDictationChange?.(''); setDictating(false); if (!proposal?.source) setProposal(null); }}>Descartar dictado</button></div>
       {!!dictation.trim() && <p className="text-sm">Este texto está pendiente de incorporar al acta. Su copia local no equivale a guardado en el servidor.</p>}
     </div>}
@@ -83,6 +85,7 @@ export function VisitPointsEditor({ content, onChange, onCreateOrder, recordId, 
     {points.map((p, i) => <fieldset key={p.id} className="min-w-0 rounded-xl border p-3 space-y-3"><legend className="font-bold">Punto {i + 1}</legend>
       <label className="block">Título (opcional)<input className={visitInput} value={p.title} maxLength={200} onChange={e => update(p.id, { title: e.target.value })} /></label>
       <label className="block font-bold">Descripción del punto {i + 1}<textarea aria-label={'Descripción del punto ' + (i + 1)} className={visitInput} rows={4} value={p.description} maxLength={20000} onChange={e => update(p.id, { description: e.target.value })} /></label>
+      <VisitVoiceDictation value={p.description} onChange={description => update(p.id, { description })} disabled={busy || !!proposal} />
       <button type="button" className={button} disabled={busy || !!proposal || !p.description.trim() || !content.worksiteId} onClick={() => void improve(p)}>Mejorar redacción</button>
       {i > 0 && <button type="button" className={button} onClick={() => { try { onChange({...content,points:mergeWritingPoints(points,i)}); } catch(e:any) {setError(e.message);} }}>Unir punto {i + 1} con el anterior</button>}
       {!!content.attachments.length && <details><summary className="min-h-[44px] font-bold">Fotografías o anexos de este punto</summary>{content.attachments.map(a => <label key={a.id} className="flex min-h-[44px] items-center gap-2 break-words"><input type="checkbox" checked={p.attachmentIds.includes(a.id)} onChange={e => update(p.id, { attachmentIds: e.target.checked ? [...p.attachmentIds, a.id] : p.attachmentIds.filter(id => id !== a.id) })} />{a.name}</label>)}</details>}

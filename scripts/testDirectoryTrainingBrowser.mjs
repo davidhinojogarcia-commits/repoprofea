@@ -26,7 +26,7 @@ const workers=[
  {...base,id:8,apellidosNombre:'Hugo Sin Año',dni:'88888888H',formacion:'Desconocido',periodoInicio:'',quincena:'',fechaRegistro:''},
 ];
 window.exports=[];window.scanOpens=0;window.pairOpens=0;window.gapi={};window.google={accounts:{}};
-function App(){const[people,setPeople]=useState(workers);const[search,setSearch]=useState('');const[obra,setObra]=useState(['Todas']);const[quincena,setQuincena]=useState(['Todas']);window.replacePeople=setPeople;return <PersonList accountId="supervisor-a" people={people} savedObras={['Obra A','Obra B']} searchTerm={search} setSearchTerm={setSearch} selectedObraFilter={obra} setSelectedObraFilter={setObra} selectedQuincenaFilter={quincena} setSelectedQuincenaFilter={setQuincena} onEdit={()=>{}} onDelete={()=>{}} onExport={()=>{}} onExportPDF={p=>window.exports.push(p.map(w=>w.id))} onExportRRMMExcel={()=>{}} onExportRRMMPDF={()=>{}} onExportPRLExcel={()=>{}} onExportPRLPDF={()=>{}} onExportCalzadoExcel={()=>{}} onExportCalzadoPDF={()=>{}} onEmail={()=>{}} onImport={()=>{}} onGenerateIDCard={()=>{}} onExportHistoryPDF={()=>{}}/>}
+function App(){const[people,setPeople]=useState(workers);const[search,setSearch]=useState('');const[obra,setObra]=useState(['Todas']);const[quincena,setQuincena]=useState(['Todas']);window.replacePeople=setPeople;return <PersonList accountId="supervisor-a" people={people} savedObras={['Obra A','Obra B']} searchTerm={search} setSearchTerm={setSearch} selectedObraFilter={obra} setSelectedObraFilter={setObra} selectedQuincenaFilter={quincena} setSelectedQuincenaFilter={setQuincena} onEdit={()=>{}} onDelete={()=>{}} onExport={()=>{}} onExportPDF={p=>window.exports.push(p.map(w=>w.id))} onExportRRMMExcel={()=>{}} onExportRRMMPDF={()=>{}} onExportPRLExcel={()=>{}} onExportPRLPDF={()=>{}} onExportCalzadoExcel={()=>{}} onExportCalzadoPDF={()=>{}} onEmail={()=>{}} onImport={()=>{}} onGenerateIDCard={()=>{}} onExportHistoryPDF={()=>{}} onToast={(message,type)=>{window.lastToast={message,type}}}/>}
 createRoot(document.getElementById('root')).render(<App/>);`;
 const stubs = {
   PartsPanel: 'export default function PartsPanel(){return null}',
@@ -34,6 +34,7 @@ const stubs = {
   BulkShareButton: 'export const BulkShareButton=()=>null',
   GoogleCalendarModal: 'export const GoogleCalendarModal=()=>null',
   directoryCommunications: 'export const sendDirectoryCommunication=async()=>{}',
+  administrativeRelationExport: "export const prepareAdministrativeRelationPDF=(workers)=>({doc:{output:()=>new Blob(['%PDF-1.4'],{type:'application/pdf'})},filename:'PROFEA_RELACION_ADMINISTRATIVA_test.pdf'});export const prepareAdministrativeRelationExcel=async(workers)=>({buffer:new Uint8Array([1,2,3]),filename:'PROFEA_RELACION_ADMINISTRATIVA_test.xlsx'});",
   workerImportService: 'export const moveWorkersToTrashBulk=async()=>{}',
   partsService: 'export const partsRequest=async()=>({rows:[],cursor:null})',
   WorkerCardScanner: "export default function Scanner(){window.scanOpens++;return null}",
@@ -60,14 +61,72 @@ try {
   const scope = async expected => {
     await page.waitForFunction(ids => JSON.stringify(window.__profeaDirectoryExportScope?.filteredIds) === JSON.stringify(ids), expected);
   };
-  for (const width of [390, 820, 1440]) {
+  for (const width of [360, 390, 820, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
+    // Regresión visual: cruces de selección y contador deben contrastar en ambos temas.
+    const period = page.getByText('Periodo / quincena', {exact:true}).locator('..').locator('[role="button"][aria-expanded]');
+    await period.click();
+    await page.getByRole('button', {name:'1ª Enero 2026', exact:true}).click();
+    const removePeriod = page.getByRole('button', {name:'Quitar filtro 1ª Enero 2026',exact:true});
+    await removePeriod.waitFor();
+    await page.getByText('Filtros del directorio', {exact:true}).click(); // Cerrar fuera sin activar accidentalmente la X.
+    for(const theme of ['light','dark']){
+      await page.evaluate(theme => document.documentElement.classList.toggle('dark',theme==='dark'),theme);
+      assert.equal(await removePeriod.locator('svg').evaluate(el=>getComputedStyle(el).stroke),theme==='light'?'rgb(0, 63, 112)':'rgb(255, 255, 255)','Cruz legible '+theme);
+      await page.locator('#btn-view-compact').click();
+      const counter=page.locator('[data-parts-count="true"]').first();
+      await counter.waitFor();
+      assert.equal(await counter.evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)','Contador blanco sobre azul '+theme);
+    }
+    await page.evaluate(()=>document.documentElement.classList.remove('dark'));
+    await removePeriod.click();
+    await scope([1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'ALERTA DE PREVENCIÓN DE CONTRATACIÓN' }).count(), 0, 'medical warning hidden until No aptos is selected');
+    await page.getByText('Más filtros', { exact: true }).click();
     const year = page.getByLabel('Año de contratación', { exact: true });
     const training = page.getByLabel('Formación', { exact: true });
-    await year.selectOption('2026');
-    await training.selectOption('trained');
+    const choose = async (control, label, option) => {
+      await control.click();
+      await page.getByRole('group', { name: label, exact: true }).getByRole('button', { name: option, exact: true }).click();
+    };
+    const reportsButton = page.getByRole('button', { name: 'Informes', exact: true });
+    assert.equal(await reportsButton.getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.getByLabel('Seleccionar informe del Directorio').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Partes y avisos', exact: true }).count(), 1, 'El filtro de Partes y avisos está en la barra principal');
+    assert.equal(await page.getByText('Filtrar por partes y avisos · uso restringido').count(), 0, 'No debe existir el panel antiguo');
+    await reportsButton.click();
+    assert.equal(await reportsButton.getAttribute('aria-expanded'), 'true');
+    await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Relación administrativa de trabajadores');
+    assert.equal(await page.getByRole('button', { name: 'PDF', exact: true }).count(), 1, 'Un solo PDF administrativo');
+    assert.equal(await page.getByRole('button', { name: 'Excel', exact: true }).count(), 1, 'Un solo Excel administrativo');
+    assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1, 'Mail administrativo');
+    assert.equal(await page.locator('[data-admin-relation-row="1"]').count(), 0, 'Sin fila dinámica administrativa duplicada');
+    const adminPdf = page.waitForEvent('download', {timeout: 20000});
+    await page.getByRole('button', { name: 'PDF', exact: true }).click();
+    assert.match((await adminPdf.catch(async () => { throw new Error('PDF administrativo no descargado: ' + JSON.stringify(await page.evaluate(() => window.lastToast)) + ' / ' + JSON.stringify(errors)) })).suggestedFilename(), /\.pdf$/i, 'Exportación administrativa en PDF');
+    const adminExcel = page.waitForEvent('download', {timeout: 20000});
+    await page.getByRole('button', { name: 'Excel', exact: true }).click();
+    assert.match((await adminExcel.catch(async () => { throw new Error('Excel administrativo no descargado: ' + JSON.stringify(await page.evaluate(() => window.lastToast)) + ' / ' + JSON.stringify(errors)) })).suggestedFilename(), /\.xlsx$/i, 'Exportación administrativa en Excel');
+    await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Reconocimientos médicos');
+    assert.equal(await page.getByRole('button', { name: 'Mail', exact: true }).count(), 1);
+    await choose(page.getByLabel('Seleccionar informe del Directorio'), 'Seleccionar informe del Directorio', 'Relación de trabajadores para encargados');
+    assert.equal(await page.getByRole('button', { name: 'WhatsApp', exact: true }).count(), 1);
+    for (const name of ['Informes','PDF','Excel','WhatsApp']) {
+      const button = page.getByRole('button', { name, exact: true });
+      const bounds = await button.boundingBox();
+      assert.ok(bounds && bounds.width >= 44 && bounds.height >= 44 && bounds.x >= -1 && bounds.x + bounds.width <= width + 1, name + ' móvil proporcionado: ' + width);
+    }
+    for (const label of ['Año de contratación', 'Formación', 'Partes y avisos']) {
+      const filter = page.getByLabel(label, { exact: true });
+      const box = await filter.boundingBox();
+      assert.ok(box && box.width >= 150 && box.height >= 44 && box.x >= -1 && box.x + box.width <= width + 1, label + ' filtro adaptado: ' + width);
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Sin desbordamiento de informes ni filtros: ' + width);
+    await reportsButton.click();
+    await choose(year, 'Año de contratación', '2026');
+    await choose(training, 'Formación', 'Con formación');
     await scope([1]);
     assert.equal(await page.getByText('Ana Formada', { exact: true }).count(), 1);
     for (const layout of ['table', 'compact', 'cards']) {
@@ -79,28 +138,34 @@ try {
     await page.locator('#btn-view-compact').click();
     // Selecting a former result must not leak into exports after a filter change.
     await page.locator('#selectAllVisible').check();
-    await training.selectOption('pending');
+    await choose(training, 'Formación', 'Sin formación / pendiente');
     await scope([2, 4, 5]);
     await page.waitForFunction(() => window.__profeaDirectoryExportScope.hasSelection === false);
+    await reportsButton.click();
     await page.locator('[data-encargados-relation-row] button').first().click();
+    await reportsButton.click();
     assert.deepEqual(await page.evaluate(() => window.exports.at(-1)), [2, 4, 5]);
     const search = page.getByPlaceholder('Buscar por nombre, DNI, oferta, obra o categoría...');
     await search.fill('Bruno');await scope([2]);
     await search.fill('sin coincidencias');await scope([]);
     assert.equal(await page.getByRole('button', { name: 'Escanear carnet con este dispositivo', exact: true }).isVisible(), true);
     await search.fill('');await scope([2, 4, 5]);
-    await year.selectOption('2025');await scope([]);
-    await training.selectOption('trained');await scope([3]);
-    await year.selectOption('2024');await scope([6]);
-    await year.selectOption('2023');await training.selectOption('pending');await scope([7]);
-    await year.selectOption('unknown');await scope([8]);
-    await page.getByRole('button', { name: 'Limpiar filtros de formación', exact: true }).click();
+    await choose(year, 'Año de contratación', '2025');await scope([]);
+    await choose(training, 'Formación', 'Con formación');await scope([3]);
+    await choose(year, 'Año de contratación', '2024');await scope([6]);
+    await choose(year, 'Año de contratación', '2023');await choose(training, 'Formación', 'Sin formación / pendiente');await scope([7]);
+    await choose(year, 'Año de contratación', 'Sin año registrado');await scope([8]);
+    await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
     await scope([1, 2, 3, 4, 5, 6, 7, 8]);
-    await year.selectOption('2026');await training.selectOption('pending');
-    await page.getByRole('button', { name: 'Aptitud médica', exact: true }).click();
+    await choose(year, 'Año de contratación', '2026');await choose(training, 'Formación', 'Sin formación / pendiente');
+    await page.locator('summary[aria-label="Aptitud médica"]').click();
     await page.getByText('No aptos', { exact: true }).click();
     await scope([5]);
-    await page.getByRole('button', { name: /No aptos \(/ }).click();
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'ALERTA DE PREVENCIÓN DE CONTRATACIÓN' }).count(), 1, 'selected No aptos shows red warning');
+    await page.getByRole('button', { name: 'Todas las aptitudes', exact: true }).click();
+    await scope([2, 4, 5]);
+    await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
+    await scope([1, 2, 3, 4, 5, 6, 7, 8]);
     for (const theme of ['light', 'dark']) {
       await page.evaluate(theme => document.documentElement.classList.toggle('dark', theme === 'dark'), theme);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, width + ' ' + theme + ' no page overflow');
@@ -120,5 +185,5 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Escanear carnet con este dispositivo', exact: true }).isVisible(), true);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS ' + engine + ': directory year/training filters, legacy and unknown values, combined medical/search filters, selection/export scope, all layouts, scanner placement/callbacks and empty states; 390/820/1440 light/dark. Transport and camera mocked; no physical devices.');
+  console.log('PASS ' + engine + ': directory compact reports, Partes filter position, responsive 360/390/820/1440, year/training filters, legacy and unknown values, combined medical/search filters, selection/export scope, all layouts, scanner placement/callbacks and empty states; 390/820/1440 light/dark. Transport and camera mocked; no physical devices.');
 } finally { await browser?.close();server.closeAllConnections();await new Promise(resolve => server.close(resolve)); }

@@ -18,17 +18,30 @@ try {
  const page=await browser.newPage({viewport:{width:390,height:844}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(`http://127.0.0.1:${server.address().port}`);
+ await page.waitForFunction(()=>Boolean(document.querySelector('[role="img"],img,[role="alert"]')),{timeout:30000});
+ const startupError=await page.getByRole('alert').allTextContents();
+ assert.equal(startupError.length,0,'Worker card must render without error: '+startupError.join(' | '));
  const img=page.getByRole('img');await img.waitFor();
  assert(await img.evaluate(i=>i.complete&&i.naturalWidth>1000&&Math.abs(i.naturalWidth/i.naturalHeight-95/62)<0.01));
  for(const width of [390,820,1440]){
   await page.setViewportSize({width,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  for(const name of ['Compartir tarjeta','Descargar imagen','PDF tamaño DNI · A4','PDF original','Cerrar carnet']){
+  for(const name of ['Compartir tarjeta','Descargar imagen','Imprimir carnet A4 · Doble cara','Ver cara trasera','Cerrar carnet']){
    const button=page.getByRole('button',{name,exact:true});await button.scrollIntoViewIfNeeded();
    assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44&&r.x>=0&&r.right<=innerWidth}));
   }
  }
  await page.setViewportSize({width:390,height:844});
+ assert(await page.getByText('la misma hoja física',{exact:false}).count()>0,'duplex workflow explicitly describes one physical sheet');
+ assert(await page.getByText('Voltear por borde largo',{exact:false}).count()>0,'duplex workflow explains printer flipping');
+ assert.equal(await page.getByRole('button',{name:'Imprimir carnet A4 · Doble cara'}).count(),1);
+ const originalSrc=await img.getAttribute('src');
+ await page.getByRole('button',{name:'Ver cara trasera'}).click();
+ assert.notEqual(await img.getAttribute('src'),originalSrc,'back preview is a separate image');
+ await page.waitForFunction(()=>{const i=document.querySelector('img');return Boolean(i?.complete&&i.naturalWidth>=900);},{timeout:10000});
+ assert(await img.evaluate(i=>i.complete&&i.naturalWidth>=900),'rendered ID-1 reverse preview');
+ await page.getByRole('button',{name:'Ver carnet',exact:true}).click();
+ assert.equal(await img.getAttribute('src'),originalSrc,'front preview remains unchanged');
  await page.screenshot({path:'/tmp/worker-card-modal.png'});
  await img.screenshot({path:'/tmp/worker-card-preview.png'});
  const pdf=await page.evaluate(()=>window.cardPdf());
@@ -43,8 +56,26 @@ assert(!text.includes('CONTRATO'));assert(!text.includes('12345678Z'),'No expone
  for(const forbidden of ['PRIVATE_','HISTORIAL','1960','FICHA COMPLETA','worker-qr'])assert(!text.includes(forbidden),forbidden);
  await parseTask.destroy();
  let dl=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar imagen',exact:true}).click();assert((await dl).suggestedFilename().endsWith('.png'));
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF original'}).click();
- dl=page.waitForEvent('download');await page.getByRole('button',{name:'PDF tamaño DNI · A4'}).click();assert((await dl).suggestedFilename().includes('DNI_A4'));assert((await dl).suggestedFilename().endsWith('.pdf'));
+ await page.evaluate(()=>{
+   const originalOpen=window.open.bind(window);
+   window.open=(url,target)=>{window.lastDuplexPrintOpen={url:String(url),target};return originalOpen(url,target)};
+ });
+ const popupPromise=page.waitForEvent('popup');
+ await page.getByRole('button',{name:'Imprimir carnet A4 · Doble cara'}).click();
+ const openedPdf=await popupPromise;
+ const printOpen=await page.evaluate(()=>window.lastDuplexPrintOpen);
+ assert(printOpen?.url.startsWith('blob:')&&printOpen?.target==='_blank','print action opens generated duplex PDF in a separate tab');
+ await openedPdf.close();
+ const duplexBytes=await page.evaluate(async()=>Array.from(new Uint8Array(await(await fetch(window.lastDuplexPrintOpen.url)).arrayBuffer())));
+ const duplexPdf=await PDFDocument.load(new Uint8Array(duplexBytes));
+ assert.equal(duplexPdf.getPageCount(),2,'single worker has front and back pages');
+ for(const p of duplexPdf.getPages()){
+   assert(Math.abs(p.getWidth()*25.4/72-210)<0.03);
+   assert(Math.abs(p.getHeight()*25.4/72-297)<0.03);
+ }
+ await page.getByText('Seleccionar varios carnets').click();
+ assert.equal(await page.getByRole('checkbox').count(),1);
+ assert.equal(await page.getByRole('button',{name:'Imprimir carnet A4 · Doble cara'}).count(),1,'single print action also supports bulk selection');
  // Native image sharing must receive the actual PNG, even on desktop.
  await page.evaluate(()=>{
    Object.defineProperty(navigator,'canShare',{configurable:true,writable:true,value:({files})=>files?.[0]?.type==='image/png'});

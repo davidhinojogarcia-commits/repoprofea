@@ -71,7 +71,7 @@ try{
  assert.equal(await tech.getByLabel('Cargo / función',{exact:true}).inputValue(),'Técnico responsable');
  assert.equal(await tech.getByLabel('Teléfono',{exact:true}).inputValue(),'600000001');if(!(await tech.evaluate(el=>el.open)))await tech.locator('summary').click();await page.getByLabel('Función de participación 3',{exact:true}).selectOption('remote');
  const resourceReads=await page.evaluate(()=>window.visitResourcesReads);assert.equal(resourceReads,1,'one minimal authenticated work-resource read on opening module');await page.getByRole('button',{name:'Añadir encargado',exact:true}).click();await page.getByRole('button',{name:'Añadir encargado',exact:true}).click();assert.equal(await page.evaluate(()=>window.visitResourcesReads),resourceReads,'adding foreman does not reread configuration');
- const configuredForeman=page.locator('details').filter({has:page.locator('input[value="600000099"]')});assert.equal(await configuredForeman.count(),1,'configured work foreman is not duplicated');assert.equal(await configuredForeman.getByLabel('Nombre',{exact:true}).inputValue(),'Encargado');assert.equal(await configuredForeman.getByLabel('Apellidos',{exact:true}).inputValue(),'Presente Prueba');assert.equal(await configuredForeman.getByLabel('Cargo / función',{exact:true}).inputValue(),'Encargado de obra');assert.equal(await configuredForeman.getByLabel('Correo',{exact:true}).inputValue(),'');assert(await configuredForeman.getByRole('checkbox',{name:'Asistió a la visita',exact:true}).isChecked());assert(!await configuredForeman.getByRole('checkbox',{name:'Recibe PDF final',exact:true}).isChecked());
+ const configuredForeman=page.locator('details').filter({has:page.locator('input[value="600000099"]')});assert.equal(await configuredForeman.count(),1,'configured work foreman is not duplicated');assert.equal(await configuredForeman.getByLabel('Nombre',{exact:true}).inputValue(),'Encargado');assert.equal(await configuredForeman.getByLabel('Apellidos',{exact:true}).inputValue(),'Presente Prueba');assert.equal(await configuredForeman.getByLabel('Cargo / función',{exact:true}).inputValue(),'Encargado de obra');assert.equal(await configuredForeman.getByLabel('Correo',{exact:true}).inputValue(),'');if(!(await configuredForeman.evaluate(el=>el.open)))await configuredForeman.locator('summary').click();assert(await configuredForeman.getByRole('checkbox',{name:'Asistió a la visita',exact:true}).isChecked());assert(!await configuredForeman.getByRole('checkbox',{name:'Recibe PDF final',exact:true}).isChecked());
  await page.getByLabel('Seleccionar archivo',{exact:true}).setInputFiles({name:'Foto pequeña.png',mimeType:'image/png',buffer:Buffer.from(png.split(',')[1],'base64')});await page.getByRole('status').filter({hasText:'conservado sin modificar'}).waitFor();await saved();
  const created=(await env.invoke({action:'list'})).data.records[0];let r=(await env.invoke({clientVersion:'3.1',action:'get',id:created.id})).data.record;assert.equal(r.state.content.points.length,2);assert.equal(r.state.content.attachments.length,1);assert(r.state.content.attachments[0].fileId&&!r.state.content.attachments[0].base64);
  const expectedProfiles=[['Encargado','Presente Prueba','Encargado de obra','600000099'],['Tecnico','Responsable Prueba','Técnico responsable','600000001']];
@@ -86,6 +86,7 @@ try{
  await reopenedPage.getByRole('button',{name:'Editar acta '+r.number,exact:true}).click();
  for(const [firstName,lastName,role,phone] of expectedProfiles){
    const person=reopenedPage.locator('details').filter({has:reopenedPage.locator('input[value="'+phone+'"]')});
+   if(!(await person.evaluate(el=>el.open))) await person.locator('summary').click();
    await person.getByLabel('Teléfono',{exact:true}).waitFor();
    assert.equal(await person.count(),1);
    assert.equal(await person.getByLabel('Nombre',{exact:true}).inputValue(),firstName);
@@ -95,6 +96,13 @@ try{
  }
  await reopenedContext.close();
 assert.equal(apiLog.filter(x=>x.action==='create').length,1,'autosave creates one acta');
+ const dfSection=page.getByRole('region',{name:'Participación de Dirección Facultativa en la redacción'});
+ assert.equal(await dfSection.count(),1,'DF collaboration stays discoverable in the acta editor');
+ const dfDisclosure=dfSection.getByLabel('Colaboración con Dirección Facultativa');
+ assert.equal(await dfDisclosure.count(),1,'DF invitation and contributions panel is mounted');
+ assert.equal(await dfDisclosure.evaluate(el=>el.open),true,'DF invitation is expanded by default');
+ assert.equal(await dfSection.getByText('Invitar a DF a redactar · Revisar aportaciones').count(),1,'invitation has a visible descriptive heading');
+
  const idle=apiLog.length;await page.waitForTimeout(4100);assert.equal(apiLog.length,idle,'no polling or repeated unchanged autosaves');
  await page.evaluate(()=>{window.delayVisitLocalCompletion=true;});
  await page.getByLabel('Descripción del punto 2',{exact:true}).fill('Copia local terminada después de confirmar el servidor.');

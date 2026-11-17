@@ -38,10 +38,17 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
   const [foremanTemplate,setForemanTemplate]=useState<ForemanSignatureTemplate|null>(null);
   const [foremanSelected,setForemanSelected]=useState(false);
   const [manualName,setManualName]=useState('');
+  const [directoryQuery,setDirectoryQuery]=useState('');
   const [toolsHidden,setToolsHidden]=useState(false);
   const [pageRequest,setPageRequest]=useState<{page:number;sequence:number;focusSignature?:boolean}>({page:1,sequence:0});
   const saveInFlight=useRef(false);
   const [mobilePanel,setMobilePanel]=useState<'controls'|'pdf'>('controls');
+  const [touchEditRequest,setTouchEditRequest]=useState(0);
+  const isTouchLayout=()=>typeof window!=='undefined'&&window.matchMedia('(pointer: coarse) and (max-width: 1366px)').matches;
+  const filteredAvailableWorkers=useMemo(()=>{
+    const query=directoryQuery.trim().toLocaleLowerCase('es');
+    return !query||!isTouchLayout()?availableWorkers:availableWorkers.filter(worker=>[worker.apellidos_nombre,worker.dni].some(value=>String(value||'').toLocaleLowerCase('es').includes(query)));
+  },[availableWorkers,directoryQuery]);
   const employment=['contrato','prorroga'].includes(String(documentType));
   const current=draft[index]||null;
   const signedIds=useMemo(()=>new Set(signedWorkerIds.map(Number)),[signedWorkerIds]);
@@ -217,6 +224,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
       return;
     }
     setError('');
+    setDirectoryQuery('');
     setDraft(list=>list.map((anchor,i)=>i===index?{
       ...anchor,
       workerName:String(worker.apellidos_nombre||''),
@@ -268,6 +276,12 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
     setIndex(draft.length);
     setManualName('');
     setError('');
+    // The new row needs a PDF position in every layout. On touch screens this
+    // also opens the PDF pane; in desktop it selects placement without hiding
+    // any controls. Do not rely on pointer detection during this transition.
+    setToolsHidden(false);
+    setMobilePanel('pdf');
+    setTouchEditRequest(value=>value+1);
   };
 
   const removeCurrentWorker=async()=>{
@@ -305,7 +319,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
 
       <nav className="mandatory-editor-mobile-tabs" aria-label="Panel de ajuste de firmas">
         <button type="button" aria-pressed={mobilePanel==='controls'} onClick={()=>{setToolsHidden(false);setMobilePanel('controls');}}>Trabajador y ajustes</button>
-        <button type="button" aria-pressed={mobilePanel==='pdf'} onClick={()=>setMobilePanel('pdf')}>PDF y posición de firma</button>
+        <button type="button" aria-pressed={mobilePanel==='pdf'} onClick={()=>{setMobilePanel('pdf');setTouchEditRequest(value=>value+1);}}>PDF y posición de firma</button>
       </nav>
       <div className="mandatory-editor-main">
         <aside className="mandatory-editor-controls border-b p-4">
@@ -316,6 +330,9 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <div className={`mt-2 text-sm font-black ${current?.resolved?'text-emerald-700 dark:text-emerald-300':'text-amber-700 dark:text-amber-300'}`}>{current?.resolved?'✓ Identidad y posición confirmadas':'Confirmación pendiente'}</div>
           </div>
 
+          {documentType!=='control_presencia'&&<label className="mandatory-editor-touch-worker-search mt-4 block text-sm font-black">Buscar trabajador del Directorio
+            <input type="search" aria-label="Buscar trabajador por nombre o DNI" placeholder="Escribe nombre, apellidos o DNI…" value={directoryQuery} onChange={e=>setDirectoryQuery(e.target.value)} autoComplete="off" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
+          </label>}
           {documentType!=='control_presencia'&&<label className="mt-4 block text-sm font-black">Trabajador asociado a esta línea
             <select
               value={String(availableWorkers.find(worker=>String(worker.apellidos_nombre).trim().toLocaleLowerCase('es')===String(current?.workerName).trim().toLocaleLowerCase('es'))?.id||'')}
@@ -324,7 +341,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
               className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
             >
               <option value="">Seleccionar trabajador…</option>
-              {availableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
+              {filteredAvailableWorkers.map(worker=><option key={worker.id} value={String(worker.id)}>{worker.apellidos_nombre} · {worker.dni||'Sin DNI'}</option>)}
             </select>
           </label>}
           {currentIdentityLocked&&<div className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">La identidad está bloqueada porque esta persona ya ha firmado. Sí puedes ajustar su zona de firma.</div>}
@@ -379,7 +396,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
             <label className="block text-xs font-black uppercase tracking-wide text-[#00548E] dark:text-blue-200">Trabajador omitido por el reconocimiento
               <input value={manualName} onChange={event=>setManualName(event.target.value)} placeholder="Nombre y apellidos exactamente como aparecen en el PDF" className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50"/>
             </label>
-            <button type="button" onClick={addManualWorker} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador del PDF</button>
+            <button type="button" onClick={addManualWorker} disabled={saving||removing||loading} className="mt-2 min-h-[48px] w-full rounded-xl border border-[#00548E] bg-white px-3 py-2 text-sm font-black text-[#00548E] dark:border-blue-400 dark:bg-slate-800 dark:text-blue-200">Añadir trabajador del PDF</button>
             <div className="mt-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">Se añadirá solo a este documento. {employment?'Después toca debajo de su nombre, en la zona de firma del PDF.':'Después toca en el PDF, a la derecha de su nombre, para fijar la firma.'}</div>
           </div>
           <button
@@ -403,7 +420,7 @@ export const MandatoryPdfAnchorEditor: React.FC<Props> = ({ documentId, title, o
         </aside>
 
         <div className="mandatory-editor-preview flex min-h-0 flex-col bg-slate-200 dark:bg-slate-950">
-          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} anchors={foremanPreviewAnchor?[...draft,foremanPreviewAnchor]:draft} activeIndex={foremanSelected&&foremanPreviewAnchor?draft.length:index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={selected=>{if(selected===draft.length)setForemanSelected(true);else{setIndex(selected);setForemanSelected(false);}}} onChange={(target,box,page)=>{if(target===draft.length){setForemanBox({x:box.signatureX,y:box.signatureY,width:box.signatureWidth,height:box.signatureHeight},page);}else changeAnchorBox(target,box,page);}}/>:<div role="alert">{error||'PDF no disponible'}</div>}
+          {loading?<div className="p-10 text-center font-bold">Abriendo PDF original…</div>:pdf?<MandatoryPdfViewport pdf={pdf} pages={pages.map(p=>({...p,rotation:p.rotation||0}))} editRequest={touchEditRequest} anchors={foremanPreviewAnchor?[...draft,foremanPreviewAnchor]:draft} activeIndex={foremanSelected&&foremanPreviewAnchor?draft.length:index} disabled={saving||removing} pageRequest={pageRequest} onPageChange={setPreviewPage} onSelect={selected=>{if(selected===draft.length)setForemanSelected(true);else{setIndex(selected);setForemanSelected(false);}}} onChange={(target,box,page)=>{if(target===draft.length){setForemanBox({x:box.signatureX,y:box.signatureY,width:box.signatureWidth,height:box.signatureHeight},page);}else changeAnchorBox(target,box,page);}}/>:<div role="alert">{error||'PDF no disponible'}</div>}
         </div>
       </div>
 

@@ -701,3 +701,502 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
 .dark .sae-hiring-complete .sae-hiring-balance { color: #86efac; }
 .dark .sae-hiring-excess .sae-hiring-balance { color: #fda4af; }
 @media (max-width: 480px) { .sae-hiring-summary { padding: 9px; } .sae-hiring-row { grid-template-columns: minmax(0, 1fr) repeat(3, 60px); gap: 3px; } .sae-hiring-number { font-size: 9px; } }
+
+/* Supervisor · editor de firmas: controles de PDF alineados y con el mismo lenguaje institucional.
+   Las dos filas permanecen agrupadas, sin cambios en las funciones de zoom o firma. */
+.mandatory-continuous-toolbar .mandatory-editor-zoom {
+  display: grid;
+  grid-template-columns: 44px minmax(52px,auto) 44px minmax(112px,1fr) minmax(112px,1fr);
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+}
+.mandatory-continuous-toolbar .mandatory-editor-zoom > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+.mandatory-continuous-toolbar .mandatory-editor-zoom > button,
+.mandatory-continuous-toolbar .mandatory-pdf-modes > button {
+  min-width: 0;
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+.mandatory-continuous-toolbar .mandatory-pdf-modes {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 370px;
+  margin-inline: auto;
+}
+.mandatory-continuous-toolbar .mandatory-editor-zoom > button[aria-pressed="true"],
+.mandatory-continuous-toolbar .mandatory-pdf-modes > button[aria-pressed="true"] {
+  background: #00548e;
+  border-color: #00548e;
+  color: #fff;
+}
+.mandatory-continuous-toolbar .mandatory-editor-zoom > button:focus-visible,
+.mandatory-continuous-toolbar .mandatory-pdf-modes > button:focus-visible {
+  outline: 2px solid #00548e;
+  outline-offset: 2px;
+}
+.dark .mandatory-continuous-toolbar .mandatory-editor-zoom > span { color: #f1f5f9; }
+.dark .mandatory-continuous-toolbar .mandatory-editor-zoom > button:not([aria-pressed="true"]),
+.dark .mandatory-continuous-toolbar .mandatory-pdf-modes > button:not([aria-pressed="true"]) {
+  color: #f1f5f9;
+  background: #1e293b;
+  border-color: #64748b;
+}
+@media (max-width: 560px) {
+  .mandatory-continuous-toolbar .mandatory-editor-zoom {
+    grid-template-columns: repeat(4,minmax(0,1fr));
+    max-width: 400px;
+  }
+  .mandatory-continuous-toolbar .mandatory-editor-zoom > button:nth-of-type(1) { grid-column: 1 / 2; }
+  .mandatory-continuous-toolbar .mandatory-editor-zoom > span { grid-column: 2 / 4; }
+  .mandatory-continuous-toolbar .mandatory-editor-zoom > button:nth-of-type(2) { grid-column: 4 / 5; }
+  .mandatory-continuous-toolbar .mandatory-editor-zoom > button:nth-of-type(3) { grid-column: 1 / 3; }
+  .mandatory-continuous-toolbar .mandatory-editor-zoom > button:nth-of-type(4) { grid-column: 3 / 5; }
+  .mandatory-continuous-toolbar .mandatory-pdf-modes { max-width: 400px; }
+}
+
+
+/* Portal de Encargados · sistema institucional de acciones táctiles.
+   Solo afecta al portal; directorio y escritorio de supervisión permanecen intactos.
+   Se activa en pantallas reducidas o tabletas con puntero táctil. */
+.fp-portal-ui {
+  --fp-institutional: #00548e;
+  --fp-ink: #102a43;
+  --fp-line: #cbd5e1;
+}
+.fp-portal-ui button:focus-visible,
+.fp-signature-actions button:focus-visible {
+  outline: 3px solid #1680bd;
+  outline-offset: 3px;
+}
+.fp-portal-ui button:disabled,
+.fp-signature-actions button:disabled {
+  cursor: not-allowed;
+}
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1440px) {
+  .fp-portal-ui {
+    overflow-x: clip;
+  }
+  .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab) {
+    border-radius: 12px;
+    touch-action: manipulation;
+    transition: background-color .14s ease, border-color .14s ease;
+  }
+  /* Respect explicit 48/52/58px min-heights on signing and submission actions. */
+  .fp-portal-ui .fp-portal-main button:not([class*="min-h-"]):not(.fp-document-toggle):not(.fp-section-tab) {
+    min-height: 44px;
+  }
+  .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab):disabled {
+    opacity: .58;
+  }
+  .fp-portal-ui .fp-portal-main {
+    min-width: 0;
+    padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
+  }
+  .fp-portal-ui .fp-section-nav {
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, .06);
+  }
+  .fp-portal-ui .fp-section-track {
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    scrollbar-color: #a9bdd2 transparent;
+  }
+  .fp-portal-ui .fp-section-items { gap: 8px; align-items: stretch; }
+  .fp-portal-ui .fp-section-tab {
+    display: inline-flex;
+    flex: 0 0 116px !important;
+    width: 116px !important;
+    min-width: 116px !important;
+    min-height: 72px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 7px;
+    text-align: center;
+    line-height: 1.2;
+    white-space: normal;
+    border: 1px solid #d5e0eb;
+    border-radius: 12px;
+    background: #f7f9fc;
+    color: #16334e;
+    scroll-snap-align: start;
+    box-shadow: none;
+    transition: background-color .14s ease, border-color .14s ease, box-shadow .14s ease;
+  }
+  .fp-portal-ui .fp-section-tab svg {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-bottom: 0;
+  }
+  .fp-portal-ui .fp-section-tab > span {
+    min-height: 27px;
+    display: block;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: normal;
+  }
+  .fp-portal-ui .fp-section-tab[aria-pressed="true"] {
+    background: var(--fp-institutional);
+    border-color: var(--fp-institutional);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0, 84, 142, .2);
+  }
+  .fp-portal-ui .fp-section-tab[aria-label="Partes y avisos"]:not([aria-pressed="true"]) {
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #9f1239;
+  }
+  .fp-portal-ui .fp-section-tab[aria-label="Partes y avisos"][aria-pressed="true"] {
+    background: #b91c1c;
+    border-color: #b91c1c;
+    color: #fff;
+  }
+  .fp-portal-ui .fp-action-row {
+    display: grid;
+    gap: 8px;
+    align-items: stretch;
+    min-width: 0;
+  }
+  .fp-portal-ui .fp-action-row--two,
+  .fp-portal-ui .fp-action-row--adaptive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fp-portal-ui .fp-action-row--stack-mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fp-portal-ui .fp-action-row > button,
+  .fp-portal-ui .fp-action-row > label,
+  .fp-portal-ui .fp-action-button {
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: 50px;
+    margin: 0;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .fp-portal-ui .fp-action-row > button,
+  .fp-portal-ui .fp-action-row > label {
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px 9px;
+    gap: 6px;
+  }
+  /* Row actions must override the generic 44px portal button minimum. */
+  .fp-portal-ui .fp-portal-main .fp-action-row > button,
+  .fp-portal-ui .fp-portal-main .fp-action-row > label {
+    min-height: 50px !important;
+  }
+  .fp-portal-ui .fp-action-row > label:has(input[type="file"]) {
+    flex-direction: column;
+  }
+  .fp-portal-ui .fp-action-row > label input[type="file"] {
+    width: 100%;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .fp-portal-ui .fp-action-row > button svg,
+  .fp-portal-ui .fp-action-button svg { flex-shrink: 0; }
+  .fp-portal-ui .fp-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    background-clip: padding-box;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-button:not(.fp-action-primary),
+  .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    background: #fff;
+    color: #1e293b;
+    border-color: #cbd5e1;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-primary {
+    background: #00548e;
+    color: #fff;
+    border-color: #00548e;
+  }
+  .dark .fp-portal-ui .fp-parts-panel .fp-action-button:not(.fp-action-primary),
+  .dark .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #64748b;
+  }
+  .fp-portal-ui .fp-panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .fp-portal-ui .fp-panel-heading > div {
+    width: 100%;
+  }
+  .fp-portal-ui .fp-push-actions {
+    padding: 8px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+  .fp-portal-ui .fp-visit-tabs > button {
+    min-height: 52px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #fff;
+    color: #16334e;
+  }
+  .fp-portal-ui .fp-visit-tabs > button[aria-pressed="true"] {
+    border-color: var(--fp-institutional);
+    background: var(--fp-institutional);
+    color: #fff;
+  }
+  .fp-portal-ui .fp-prevention-panel button,
+  .fp-portal-ui .fp-visit-panel button {
+    min-height: 48px;
+    overflow-wrap: anywhere;
+  }
+  .fp-portal-ui .fp-parts-panel,
+  .fp-portal-ui .fp-visit-panel,
+  .fp-portal-ui .fp-prevention-panel {
+    min-width: 0;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-row > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-workforce-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
+    grid-column: 1 / -1;
+  }
+  .fp-portal-ui .fp-workforce-panel .fp-action-button {
+    width: 100%;
+    min-height: 50px;
+  }
+  .fp-portal-ui .fp-document-card {
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+  }
+  .fp-portal-ui .fp-document-card .fp-document-toggle {
+    min-height: 64px;
+  }
+  .fp-signature-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+  }
+  .fp-signature-actions > button {
+    min-width: 0;
+    min-height: 52px;
+    padding: 10px 6px;
+    font-size: 14px;
+    line-height: 1.2;
+    border-radius: 12px;
+    text-align: center;
+  }
+}
+@media (min-width: 700px) and (max-width: 900px), (pointer: coarse) and (min-width: 700px) and (max-width: 1440px) {
+  .fp-portal-ui .fp-action-row--adaptive {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .fp-portal-ui .fp-action-row--stack-mobile {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fp-portal-ui .fp-panel-heading {
+    flex-direction: row;
+    align-items: center;
+  }
+  .fp-portal-ui .fp-panel-heading > div {
+    width: auto;
+  }
+  .fp-portal-ui .fp-parts-panel .fp-action-row > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-visit-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child),
+  .fp-portal-ui .fp-workforce-panel .fp-action-row--adaptive > :last-child:nth-child(odd):not(:first-child) {
+    grid-column: auto;
+  }
+}
+@media (max-width: 370px) {
+  .fp-portal-ui .fp-section-tab {
+    flex-basis: 108px !important;
+    width: 108px !important;
+    min-width: 108px !important;
+  }
+  .fp-portal-ui .fp-action-row > button,
+  .fp-portal-ui .fp-action-row > label {
+    padding-inline: 7px;
+    font-size: 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-portal-ui .fp-section-tab { transition: none; }
+}
+.dark .fp-portal-ui .fp-section-nav,
+.dark .fp-portal-ui .fp-push-actions {
+  border-color: #475569;
+  background: #0f172a;
+}
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1440px) {
+  .dark .fp-portal-ui .fp-section-tab:not([aria-pressed="true"]),
+  .dark .fp-portal-ui .fp-visit-tabs > button:not([aria-pressed="true"]) {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #475569;
+  }
+  .dark .fp-portal-ui .fp-section-tab[aria-label="Partes y avisos"]:not([aria-pressed="true"]) {
+    background: #450a0a;
+    color: #fecaca;
+    border-color: #991b1b;
+  }
+}
+
+
+/* TOUCH-ONLY FOREMAN DOCUMENT EDITORS — keep the desktop layout unchanged. */
+.mandatory-pdf-touch-mode,
+.mandatory-pdf-touch-nudge { display:none !important; }
+.mandatory-editor-touch-worker-search { display:none; }
+@media (pointer:coarse) and (max-width:1366px) {
+  .mandatory-anchor-editor { padding:env(safe-area-inset-top) 0 0; }
+  .mandatory-anchor-editor .mandatory-editor-shell { border-radius:0; }
+  .mandatory-anchor-editor .mandatory-editor-header {
+    padding:8px 12px; align-items:center; gap:8px;
+  }
+  .mandatory-anchor-editor .mandatory-editor-header > div { flex:1 1 0; min-width:0; }
+  .mandatory-anchor-editor .mandatory-editor-header p { display:none; }
+  .mandatory-anchor-editor .mandatory-editor-header > button:nth-of-type(-n+2) { display:none; }
+  .mandatory-anchor-editor .mandatory-editor-mobile-tabs {
+    display:grid; padding:8px; gap:8px;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .mandatory-anchor-editor .mandatory-editor-mobile-tabs > button { min-height:48px; font-size:14px; }
+  .mandatory-anchor-editor .mandatory-editor-main {
+    display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  }
+  .mandatory-anchor-editor[data-mobile-panel="controls"] .mandatory-editor-controls {
+    display:block; flex:1 1 auto; min-height:0; overflow-y:auto; border:0;
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  }
+  .mandatory-anchor-editor[data-mobile-panel="controls"] .mandatory-editor-preview { display:none; }
+  .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-controls { display:none; }
+  .mandatory-anchor-editor[data-mobile-panel="pdf"] .mandatory-editor-preview {
+    display:flex; flex:1 1 auto; min-height:0; height:auto; width:100%;
+  }
+  .mandatory-anchor-editor .mandatory-editor-footer {
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:6px; padding:8px 10px;
+  }
+  .mandatory-anchor-editor .mandatory-editor-footer > div { font-size:12px; }
+  .mandatory-anchor-editor .mandatory-editor-footer > button {
+    min-height:48px; font-size:13px; touch-action:manipulation;
+  }
+  .mandatory-anchor-editor .mandatory-editor-controls { padding:12px; }
+  .mandatory-anchor-editor .mandatory-editor-touch-worker-search { display:block; }
+  .mandatory-anchor-editor .mandatory-editor-controls button,
+  .mandatory-anchor-editor .mandatory-editor-controls select,
+  .mandatory-anchor-editor .mandatory-editor-controls input { min-height:48px; }
+  .mandatory-anchor-editor .mandatory-editor-controls input[type="checkbox"] { min-height:24px; min-width:24px; }
+  .mandatory-anchor-editor .mandatory-pdf-tool-toggle {
+    display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-mode {
+    display:inline-flex !important; align-items:center; justify-content:center;
+    flex:1 1 auto; min-height:44px; padding:6px 10px;
+    background:#fff; color:#00548e; border:2px solid #00548e;
+    border-radius:10px; font-size:13px; font-weight:800;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-mode[aria-pressed="true"] { background:#00548e; color:#fff; }
+  .dark .mandatory-anchor-editor .mandatory-pdf-touch-mode { background:#0f172a; color:#bfdbfe; border-color:#93c5fd; }
+  .dark .mandatory-anchor-editor .mandatory-pdf-touch-mode[aria-pressed="true"] { background:#00548e; color:#fff; }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge {
+    display:flex !important; align-items:center; justify-content:center;
+    flex-wrap:wrap; gap:5px; flex-shrink:0; padding:5px 8px;
+    background:#eff6ff; color:#0f172a; border-bottom:1px solid #93c5fd;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge span {
+    flex:1 0 100%; font-size:12px; text-align:center; font-weight:700;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge button {
+    flex:0 0 48px; width:48px; height:44px; min-height:44px;
+    border:1px solid #64748b; border-radius:10px;
+    background:#fff; color:#00548e; font-size:23px; font-weight:900;
+    touch-action:manipulation;
+  }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge button:disabled { opacity:.4; }
+  .dark .mandatory-anchor-editor .mandatory-pdf-touch-nudge { background:#172554; color:#f8fafc; }
+  .dark .mandatory-anchor-editor .mandatory-pdf-touch-nudge button { background:#0f172a; color:#bfdbfe; }
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle.nw,
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle.ne,
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle.sw { display:none; }
+  .mandatory-anchor-editor .mandatory-pdf-resize-handle.se { z-index:2; }
+  .mandatory-workers-overlay { padding:0; align-items:stretch; }
+  .mandatory-workers-dialog {
+    display:flex; flex-direction:column; width:100%; max-width:none;
+    height:100dvh; max-height:100dvh; min-height:0; border-radius:0;
+  }
+  .mandatory-workers-dialog > :first-child { flex-shrink:0; padding:12px; }
+  .mandatory-workers-content {
+    flex:1 1 auto; min-height:0; max-height:none;
+    padding:12px; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  }
+  .mandatory-workers-content input { font-size:16px; min-height:48px; }
+  .mandatory-workers-content .flex.flex-wrap.gap-2 { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+  .mandatory-worker-filter {
+    flex:0 0 auto; min-height:44px; padding:10px 14px;
+    font-size:13px; touch-action:manipulation;
+  }
+  .mandatory-workers-list {
+    max-height:min(44dvh,460px); min-height:120px;
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  }
+  .mandatory-worker-option { min-height:64px; padding:12px; }
+  .mandatory-worker-option label { min-height:48px; }
+  .mandatory-worker-option input[type="checkbox"] { width:25px; height:25px; flex-shrink:0; accent-color:#00548e; }
+  .mandatory-workers-footer {
+    position:relative; display:grid; grid-template-columns:minmax(0,1fr);
+    gap:8px; flex-shrink:0; padding:10px 12px max(10px,env(safe-area-inset-bottom));
+  }
+  .mandatory-workers-footer > div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .mandatory-workers-footer button { min-height:48px; min-width:0; padding:8px; touch-action:manipulation; }
+}
+
+@media (pointer:coarse) and (max-width:1366px) and (max-height:600px) {
+  .mandatory-anchor-editor .mandatory-editor-header { padding:5px 10px; }
+  .mandatory-anchor-editor .mandatory-editor-header h2 { font-size:14px; }
+  .mandatory-anchor-editor .mandatory-editor-mobile-tabs { padding:4px 8px; }
+  .mandatory-anchor-editor .mandatory-editor-mobile-tabs > button { min-height:44px; padding:4px; font-size:12px; }
+  .mandatory-anchor-editor .mandatory-editor-footer { padding:4px 8px; }
+  .mandatory-anchor-editor .mandatory-editor-footer > div:not([role="alert"]) { display:none; }
+  .mandatory-anchor-editor .mandatory-editor-footer > button { min-height:44px; }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge { padding:3px; }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge > span { display:none; }
+  .mandatory-anchor-editor .mandatory-pdf-touch-nudge button { height:40px; min-height:40px; }
+}

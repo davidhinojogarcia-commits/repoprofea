@@ -181,17 +181,15 @@ async function draw(page) {
   await page.mouse.up();
 }
 async function openDocuments(page) {
-  const navigation = page.getByRole("navigation", { name: "Secciones del portal de encargados" });
-  const parts = navigation.getByRole("button", { name: "Partes y avisos", exact: true });
-  await parts.waitFor();
-  assert.equal(await page.getByRole("button", { name: "Partes y avisos", exact: true }).count(), 1, "Single parts entry inside the navigation ribbon");
-  assert.equal(await parts.locator("svg").count(), 1, "Parts has an icon like the other entries");
-
-  await page.getByRole("button", { name: "Documentos", exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "Rechazo voluntario", exact: true }).count(), 0, "Rejection is inside Documents");
-  assert.equal(await page.getByRole("button", { name: "Salida de obra", exact: true }).count(), 0, "Departure is inside Documents");
-  assert.equal(await page.getByRole("button", { name: "Actas de visitas", exact: true }).locator("svg").count(), 1, "Visit minutes has a navigation icon");
-  await page.getByRole("button", { name: "Documentos", exact: true }).click();
+  assert.equal(await page.locator("#foreman-section-picker").count(),0,"No mobile section dropdown remains");
+  const navigation=page.getByRole("navigation",{name:"Secciones del portal de encargados",exact:true});
+  await navigation.waitFor();
+  const labels=["Prevención","Partes y avisos","EPIs","Formación","Maquinaria","Control horario","Documentos","Actas de visitas","Finalizados"];
+  assert.equal(await navigation.getByRole("button").count(),10,"All ten section buttons exist in portrait and landscape");
+  for(const label of labels)assert.equal(await navigation.getByRole("button",{name:label,exact:true}).count(),1,"Ribbon includes section "+label);
+  const documentsButton=navigation.getByRole("button",{name:"Documentos",exact:true});
+  await documentsButton.click();
+  await page.getByRole("combobox", { name: "Documento", exact: true }).waitFor();
 }
 async function signed(page, kind) {
   await page.getByRole("combobox", { name: "Documento", exact: true }).selectOption(kind);
@@ -202,9 +200,17 @@ async function signed(page, kind) {
     .getByRole("button", { name: /Persona Homónima · Peón/ })
     .first()
     .click();
-  await panel
-    .getByLabel("Referencia del contrato firmado / contratación")
-    .fill("Contrato sintético BROWSER-100");
+  if (kind === "salida_obra") {
+    await panel.getByLabel("Referencia del contrato firmado / contratación")
+      .fill("Contrato sintético BROWSER-100");
+  } else {
+    assert.equal(await panel.getByText("11002GR", { exact: true }).count() >= 1, true, "El código de obra se muestra automáticamente");
+    assert.equal(await panel.getByText("2026-10-01 a 2026-10-31", { exact: true }).count(), 1, "Periodo previsto automático");
+    assert.equal(await panel.getByLabel("Referencia del contrato firmado / contratación").count(), 0);
+    assert.equal(await panel.getByLabel("Fecha de firma del contrato").count(), 0);
+    assert.equal(await panel.getByLabel("Convenio o régimen laboral realmente aplicable").count(), 0);
+    assert.equal(await panel.getByLabel("Observaciones del encargado y hechos comprobados").count(), 0);
+  }
   await panel
     .getByLabel("¿Existe contratación formalizada?")
     .selectOption("yes");
@@ -219,40 +225,12 @@ async function signed(page, kind) {
       .getByLabel("Motivo general obligatorio")
       .selectOption("Consulta médica");
   } else {
-    await panel.getByLabel("Fecha de firma del contrato").fill("2026-10-01");
-    await panel
-      .getByLabel("Fecha prevista de incorporación")
-      .fill("2026-10-01");
-    await panel
-      .getByLabel("¿Ha comenzado efectivamente a prestar servicios?")
-      .selectOption("yes");
-    await panel
-      .getByLabel("¿Qué manifiesta exactamente la persona?")
-      .selectOption("cease");
-    await panel
-      .getByLabel("Fecha de efectos que manifiesta el trabajador")
-      .fill("2026-10-28");
-    await panel
-      .getByLabel("Motivo general obligatorio")
-      .selectOption("Motivos personales");
-    await panel
-      .getByLabel("Convenio o régimen laboral realmente aplicable")
-      .fill("Régimen sintético de ensayo");
-    await panel
-      .getByLabel(
-        "Referencia oficial, artículo y ámbito contrastados del convenio/régimen",
-      )
-      .fill("Referencia sintética del ensayo");
-    await panel
-      .getByLabel(
-        "Preaviso según contrato/régimen comprobado (sin plazo universal)",
-      )
-      .fill("Comprobación de ensayo");
-    await panel
-      .getByLabel(
-        "¿Se ha contrastado este supuesto con contrato y régimen aplicables?",
-      )
-      .selectOption("yes");
+    await panel.getByLabel("Motivo", { exact: true }).selectOption("Aceptación de otro empleo");
+    assert.equal(await panel.getByLabel("Especificar motivo").count(), 0);
+    await panel.getByLabel("Motivo", { exact: true }).selectOption("other");
+    await panel.getByLabel("Especificar motivo").fill("No puede incorporarse por circunstancias personales.");
+    assert.equal(await panel.getByLabel("Especificar motivo").inputValue(), "No puede incorporarse por circunstancias personales.");
+
   }
   await panel
     .getByRole("button", { name: "Guardar borrador en servidor", exact: true })

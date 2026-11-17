@@ -72,10 +72,10 @@ class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErro
 const App = React.lazy(() => import('./App'));
 const MedicalAppointmentConfirmationPortal = React.lazy(() => import('./components/MedicalAppointmentConfirmationPortal').then(module => ({ default: module.MedicalAppointmentConfirmationPortal })));
 const WorkerQrPortal = React.lazy(() => import('./components/WorkerQrPortal').then(module => ({ default: module.WorkerQrPortal })));
-const InspectionAccessPortal = React.lazy(() => import('./components/InspectionAccessPortal'));
 const RemoteScannerPortal = React.lazy(() => import('./components/RemoteScannerPortal').then(module => ({ default: module.RemoteScannerPortal })));
 const ForemanMobilePortal = React.lazy(() => import('./components/ForemanMobilePortal').then(module => ({ default: module.ForemanMobilePortal })));
 const VisitMinutesPortal = React.lazy(() => import('./components/VisitMinutesPortal').then(module => ({ default: module.VisitMinutesPortal })));
+const VisitDfPortal = React.lazy(() => import('./components/VisitDfPortal').then(module => ({ default: module.VisitDfPortal })));
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Could not find root element to mount to');
 const normalizeLegacyLoginRoute = () => {
@@ -107,10 +107,12 @@ if ('serviceWorker' in navigator) {
 }
 const initialSearchParams = new URLSearchParams(window.location.search);
 const visitToken = new URLSearchParams(window.location.hash.slice(1)).get('visit') || '';
+const visitDfToken = new URLSearchParams(window.location.hash.slice(1)).get('visit-df') || '';
 const isMedicalConfirmation = initialSearchParams.get('confirmacion_reconocimiento') === '1';
 const remoteScannerToken = initialSearchParams.get('remote-scanner')?.trim() || '';
 const cardPairToken = new URLSearchParams(window.location.hash.slice(1)).get('card-pair')?.trim() || '';
 const WorkerCardPairMobile = React.lazy(() => import('./components/WorkerCardPairMobile'));
+const InspectionAccessPortal = React.lazy(() => import('./components/InspectionAccessPortal'));
 const workerQrToken = initialSearchParams.get('worker-qr')?.trim() || '';
 const inspectionAccessId = initialSearchParams.get('inspection-access')?.trim() || '';
 const workerQrDni = initialSearchParams.get('view-worker-pdf')?.trim() || '';
@@ -178,7 +180,9 @@ ReactDOM.createRoot(rootElement).render(
     <RootErrorBoundary>
       <>
         <AppDialogHost />
-        {visitToken ? (
+        {visitDfToken ? (
+          <React.Suspense fallback={<RouteLoadingFallback />}><VisitDfPortal token={visitDfToken}/></React.Suspense>
+        ) : visitToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><VisitMinutesPortal token={visitToken}/></React.Suspense>
       ) : isMedicalConfirmation ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><MedicalAppointmentConfirmationPortal /></React.Suspense>
@@ -188,10 +192,10 @@ ReactDOM.createRoot(rootElement).render(
         <ForemanUnlinkedScreen />
       ) : cardPairToken ? (
         <AuthGate><React.Suspense fallback={<RouteLoadingFallback />}><WorkerCardPairMobile token={cardPairToken} /></React.Suspense></AuthGate>
-      ) : inspectionAccessId ? (
-        <React.Suspense fallback={<RouteLoadingFallback />}><InspectionAccessPortal id={inspectionAccessId} /></React.Suspense>
       ) : workerQrToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><WorkerQrPortal token={workerQrToken} /></React.Suspense>
+      ) : inspectionAccessId ? (
+        <React.Suspense fallback={<RouteLoadingFallback />}><InspectionAccessPortal id={inspectionAccessId} /></React.Suspense>
       ) : remoteScannerToken ? (
         <React.Suspense fallback={<RouteLoadingFallback />}><RemoteScannerPortal token={remoteScannerToken} /></React.Suspense>
       ) : (

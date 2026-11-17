@@ -61,8 +61,16 @@ jobs:
           grep -q 'IDLE_WARNING_MS = 2 \* 60 \* 1000' src/hooks/useIdleTimeout.ts
       - name: Worker annual lookup projection and pagination
         run: npm run test:worker-annual-lookup
+      - name: Verify idle Gmail scans avoid unnecessary REST reads
+        run: npm run test:idle-gmail-consumption
+      - name: Verify low-consumption cache and offline persistence regressions
+        run: |
+          npm run test:low-consumption
+          npm run test:consumption-cache
       - name: Ensure diagnostics do not expose private payloads
         run: npm run test:operational-logs
+      - name: Foreman edit/delete draft authorization and regression
+        run: node scripts/testForemanDraftEditing.mjs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail
@@ -97,14 +105,27 @@ jobs:
         run: npm run test:employment-documents
       - name: Employment worksite assignment regression
         run: npm run test:employment-worksites
+      - name: Inspector access: RLS, verified identities, expiration and revocation (PGlite)
+        run: npm run test:inspection-access
       - name: Install browser runtimes
         timeout-minutes: 8
         run: |
           # The Azure Ubuntu mirror stalled package downloads on hosted runners.
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chromium webkit
+      - name: Touch worker recovery and PDF placement smoke (Chromium)
+        run: node scripts/testSignatureEditorLayeringBrowser.mjs
+      - name: Portal Encargados mobile/tablet alignment (Chromium + WebKit)
+        timeout-minutes: 8
+        run: |
+          node scripts/testForemanPortalResponsiveBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testForemanPortalResponsiveBrowser.mjs
+      - name: Worker card duplex geometry and browser regression
+        run: npm run test:worker-card
       - name: Worker card QR scan authorization
         run: npm run test:worker-card-scan
+      - name: Institutional documentary actions mobile and desktop (Chromium + WebKit)
+        run: node scripts/testInstitutionalDocumentActionsBrowser.mjs
       - name: Directory training filters and QR actions (Chromium + WebKit)
         run: npm run test:directory-training
       - name: Voluntary rejection and worksite exits in both portals (Chromium + WebKit)
@@ -182,6 +203,12 @@ jobs:
         run: npm run test:visit-minutes-browser
       - name: Visit writing mobile browser workflow
         run: npm run test:visit-writing-browser
+      - name: DF collaboration permissions and contribution regression
+        run: node --import tsx scripts/testVisitDfContributions.mjs
+      - name: DF migration security and append-only invariants
+        run: node scripts/testVisitDfSql.mjs
+      - name: DF collaboration end-to-end with isolated PostgreSQL
+        run: node scripts/testVisitDfPostgres.mjs
       - name: Signed attendance PDFs
         run: npm run test:signed-attendance
       - name: Mandatory selection and manual position persistence
@@ -230,8 +257,6 @@ jobs:
           BROWSER_ENGINE=webkit npm run test:registration-qr
       - name: Worker card pairing isolation
         run: npm run test:worker-card-pairing
-      - name: Worker card QR browser regression
-        run: npm run test:worker-card
       - name: TypeScript validation
         run: |
           set -o pipefail
