@@ -800,6 +800,15 @@ body.profea-dialog-open .profea-modal-overlay { visibility: hidden; pointer-even
   .fp-portal-ui {
     overflow-x: clip;
   }
+  .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab) {
+    min-height: 44px;
+    border-radius: 12px;
+    touch-action: manipulation;
+    transition: background-color .14s ease, border-color .14s ease;
+  }
+  .fp-portal-ui .fp-portal-main button:not(.fp-document-toggle):not(.fp-section-tab):disabled {
+    opacity: .58;
+  }
   .fp-portal-ui .fp-portal-main {
     min-width: 0;
     padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
