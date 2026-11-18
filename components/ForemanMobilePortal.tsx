@@ -1321,7 +1321,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
                 <span className="mt-1 text-[10px] font-black text-emerald-700">Firmado ✓</span>
               </div>;
             }
-            return correction&&!closed
+            return !isImportedMandatory&&correction&&!closed
               ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
               : <span className="ml-auto inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-700">Firma guardada ✓</span>;
           })()}
