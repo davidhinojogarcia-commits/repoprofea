@@ -221,6 +221,9 @@ try {
      await action(()=>card.click());
    };
    await open();
+   if(process.env.FOREMAN_LAYOUT_CAPTURE_DIR){
+     await fs.writeFile(process.env.FOREMAN_LAYOUT_CAPTURE_DIR+'/mandatory-'+type+'.html',document.getElementById('root').outerHTML,'utf8');
+   }
    const correctionButtons=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Revocar y repetir firma');
    assert.equal(correctionButtons.length,ids.length,'individual repeat actions on '+type);
    assert.match(document.body.textContent,/Se retirará únicamente su firma|Se retirará únicamente/);
