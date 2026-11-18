@@ -1,12 +1,13 @@
 declare const __APP_BUILD__: string;
 
-export const APP_VERSION = '1.23.3';
-export const APP_RELEASE_DATE = '17/11/2026';
+export const APP_VERSION = '1.23.4';
+export const APP_RELEASE_DATE = '18/11/2026';
 export const APP_BUILD = typeof __APP_BUILD__ === 'string' && __APP_BUILD__
   ? __APP_BUILD__.slice(0, 7)
   : 'local';
 
 export const APP_RELEASE_NOTES = [
+  'Portal de Encargados: revocar y repetir individualmente firmas en Control de presencia, Inicio, Contrato y Prórroga, con identidad V2 verificada y conservación de las restantes firmas y versiones históricas.',
   'Editor móvil de documentación de encargados: PDF amplio, modos Desplazar/Colocar firma, cambio rápido de trabajador y vértices compactos con la vista PC intacta.',
   'Portal de Encargados: revocar de manera individual una firma errónea y repetirla con confirmación, verificación y auditoría; control horario independiente de entrada y salida.',
   'Editor de firmas: controles de zoom, ajuste al ancho, ajuste de página y modos de interacción alineados con formato institucional y adaptación móvil.',
