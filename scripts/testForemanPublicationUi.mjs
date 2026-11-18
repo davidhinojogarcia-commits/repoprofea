@@ -245,6 +245,7 @@ try {
    await open();
    const returnedButton=find('Revocar y repetir firma');
    assert(returnedButton,'supervisor-returned '+type+' offers selective revocation');
+   assert(!find('Volver a firmar'),'returned imported '+type+' must not expose a broken repeat shortcut without V2 worker ID');
    await action(()=>returnedButton.click());
    assert.equal(doc.signatures['1'],undefined,'returned '+type+' revokes only selected signature');
    if(ids.length===2)assert.equal(doc.signatures['2'],'signed','returned '+type+' retains other signatures');
