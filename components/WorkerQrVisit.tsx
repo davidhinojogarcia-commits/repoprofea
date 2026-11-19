@@ -172,6 +172,7 @@ export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrV
 
       <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
         <h3 className="flex items-center gap-2 text-sm font-bold text-[#00548E] dark:text-sky-300"><BriefcaseBusiness className="h-4 w-4" /> Contratación vigente</h3>
+        <p className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-100">Contrato vigente en la obra autorizada</p>
         <dl className="mt-3 grid grid-cols-2 gap-3">
           <div className="col-span-2"><dt className="text-xs font-semibold text-slate-600 dark:text-slate-300">Obra asignada</dt><dd className="mt-1 break-words font-bold">{d.worksite}</dd></div>
           <div><dt className="text-xs font-semibold text-slate-600 dark:text-slate-300">Desde</dt><dd className="mt-1 text-sm font-semibold"><time dateTime={d.periodStart}>{date(d.periodStart)}</time></dd></div>
