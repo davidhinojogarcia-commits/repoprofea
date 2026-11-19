@@ -5,6 +5,8 @@ import {
   workerQrVisitFragmentKey, workerQrVisitStorageKey, type WorkerQrVisitResult, type WorkerQrVisitSession,
 } from '../src/services/workerQrVisitService';
 
+import { workerQrAptitude } from '../src/lib/workerQrAptitude';
+
 type VisitDetails = Extract<WorkerQrVisitResult, { status: 'ok' }>;
 const messages = {
   visit_closed: 'La autorización de visita ha finalizado o se ha revocado.',
@@ -144,12 +146,12 @@ export function useWorkerQrVisit(card: string | null) {
 const date = (value: string) => value.split('-').reverse().join('/');
 const badge = {
   Apto: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-100',
-  'No apto': 'border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/70 dark:text-red-100',
   'Apto con limitación': 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-100',
 };
 
 export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrVisit> }) {
   const d = visit.details;
+  const aptitude = workerQrAptitude(d?.aptitudeConclusion);
   const minutes = Math.floor(visit.remaining / 60);
   const seconds = String(visit.remaining % 60).padStart(2, '0');
 
@@ -184,12 +186,12 @@ export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrV
             <HardHat className="mt-0.5 h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300" />
             <div><dt className="font-semibold">Formación PRL de 20 horas</dt><dd className="text-slate-700 dark:text-slate-200">{d.trainingRecord}</dd></div>
           </div>
-          {d.aptitudeConclusion && <div className="flex items-start gap-2 text-sm">
+          {aptitude && <div className="flex items-start gap-2 text-sm">
             <HeartPulse className="mt-0.5 h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300" />
             <div className="min-w-0"><dt className="font-semibold">Aptitud médica</dt>
-              <dd className="mt-1"><span className={`inline-flex rounded-full border px-2.5 py-1 font-bold ${badge[d.aptitudeConclusion]}`}>{d.aptitudeConclusion}</span></dd>
-              {d.aptitudeConclusion === 'Apto con limitación' && <dd className="mt-2 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200">
-                {d.workRestrictions || 'Limitaciones sin especificar para esta consulta'}
+              <dd className="mt-1"><span className={`inline-flex rounded-full border px-2.5 py-1 font-bold ${badge[aptitude]}`}>{aptitude}</span></dd>
+              {aptitude === 'Apto con limitación' && d.workRestrictions && <dd className="mt-2 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200">
+                {d.workRestrictions}
               </dd>}
             </div>
           </div>}

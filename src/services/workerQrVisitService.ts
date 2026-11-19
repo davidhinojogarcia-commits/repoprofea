@@ -12,7 +12,7 @@ export type WorkerQrVisitResult =
       periodStart: string;
       periodEnd: string;
       trainingRecord: string;
-      aptitudeConclusion?: 'Apto' | 'No apto' | 'Apto con limitación';
+      aptitudeConclusion?: 'Apto' | 'Apto con limitación';
       workRestrictions?: string;
     };
 

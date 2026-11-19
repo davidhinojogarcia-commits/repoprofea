@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable/es';
 import { OFFICIAL_LOGO_BASE64 } from '../src/assets/logoData';
 import { readWorkerQrDetails, resolveWorkerQrShare, type WorkerQrDetails } from '../src/services/workerQrShareService';
 import { supabase } from '../src/lib/supabase';
+import { workerQrAptitude } from '../src/lib/workerQrAptitude';
 import { workerTokenFromQr } from '../src/lib/workerQrScan';
 import { useWorkerQrVisit, WorkerQrVisit } from './WorkerQrVisit';
 
@@ -18,11 +19,21 @@ const fields: { key: keyof WorkerQrDetails; label: string }[] = [
   { key: 'contractStatus', label: 'Estado contractual según periodo' },
   { key: 'trainingRecord', label: 'Formación PRL de 20 horas' },
   { key: 'aptitudeConclusion', label: 'Conclusión de aptitud médica' },
+  { key: 'workRestrictions', label: 'Limitaciones de trabajo' },
 ];
 
 function fieldValue(key: keyof WorkerQrDetails, value: string) {
   const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return (key === 'periodStart' || key === 'periodEnd') && date ? `${date[3]}/${date[2]}/${date[1]}` : value;
+}
+
+function displayedFields(details: WorkerQrDetails) {
+  const aptitude = workerQrAptitude(details.aptitudeConclusion);
+  return fields.flatMap(({ key, label }) => {
+    const value = key === 'aptitudeConclusion' ? aptitude
+      : key === 'workRestrictions' && aptitude !== 'Apto con limitación' ? undefined : details[key];
+    return value ? [{ key, label, value: fieldValue(key, value) }] : [];
+  });
 }
 
 const formatDateTime = (date: Date) => date.toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
@@ -47,10 +58,7 @@ function makeVerificationPdf(checkedAt: Date, details?: WorkerQrDetails): Blob {
       startY: 46,
       margin: { left: 15, right: 15, top: 15 },
       head: [['Dato', 'Información registrada']],
-      body: fields.flatMap(({ key, label }) => {
-        const value = details[key];
-        return value ? [[label, fieldValue(key, value)]] : [];
-      }),
+      body: displayedFields(details).map(({ label, value }) => [label, value]),
       styles: { fontSize: 10, cellPadding: 3, overflow: 'linebreak' },
       headStyles: { fillColor: [0, 84, 142] },
       columnStyles: { 0: { cellWidth: 69, fontStyle: 'bold' } },
@@ -209,9 +217,9 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
         {accountId && details && <section aria-label="Datos autorizados del carnet" className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
           <h2 className="font-bold">Ficha del trabajador</h2>
           <dl className="divide-y divide-slate-200 dark:divide-slate-700">
-            {fields.map(({ key, label }) => details[key] && <div key={key} className="grid gap-1 py-2 text-sm sm:grid-cols-2">
+            {displayedFields(details).map(({ key, label, value }) => <div key={key} className="grid gap-1 py-2 text-sm sm:grid-cols-2">
               <dt className="font-bold text-slate-600 dark:text-slate-300">{label}</dt>
-              <dd className="break-words">{fieldValue(key, details[key])}</dd>
+              <dd className="break-words">{value}</dd>
             </div>)}
           </dl>
           {details.expiresAt && <p className="mt-2 text-xs">Acceso temporal hasta {new Date(details.expiresAt).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>}

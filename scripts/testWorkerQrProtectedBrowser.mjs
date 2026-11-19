@@ -47,7 +47,7 @@ const bundle = (await build({
           if (window.partial) return { maskedDni: '*****678*', trainingRecord: 'Consta en ficha' };
           return { maskedDni: '*****678*', worksite: 'Obra autorizada', periodStart: '2026-11-01',
             periodEnd: '2026-11-29', contractStatus: 'En periodo registrado', trainingRecord: 'Consta en ficha',
-            aptitudeConclusion: 'Apto con limitaciones', dni: '12345678Z', expiresAt: new Date(Date.now() + 60000).toISOString() };
+            aptitudeConclusion: window.negative ? 'No apto' : 'Apto con limitaciones', workRestrictions:'No realizar trabajos en altura.', dni: '12345678Z', expiresAt: new Date(Date.now() + 60000).toISOString() };
         }
       };
     ` }));
@@ -118,7 +118,7 @@ try {
 
       await page.evaluate(() => window.setAccount('authorized'));
       await protectedFields.waitFor();
-      for (const field of ['*****678*', 'Obra autorizada', '01/11/2026', '29/11/2026', 'En periodo registrado', 'Consta en ficha', 'Apto con limitaciones']) {
+      for (const field of ['*****678*', 'Obra autorizada', '01/11/2026', '29/11/2026', 'En periodo registrado', 'Consta en ficha', 'Apto con limitación', 'No realizar trabajos en altura.']) {
         assert.equal(await protectedFields.getByText(field, { exact: true }).count(), 1, field);
       }
       assert.equal(await page.getByText('12345678Z', { exact: true }).count(), 0);
@@ -131,9 +131,20 @@ try {
       const authorizedPdf = await authorizedDownload;
       assert.equal(authorizedPdf.suggestedFilename(), 'FICHA_TRABAJADOR_PROFEA.pdf');
       const text = await pdfText(authorizedPdf);
-      for (const expected of ['*****678*', 'Obra autorizada', '01/11/2026', '29/11/2026', 'En periodo registrado', 'Formación PRL de 20 horas', 'Consta en ficha', 'Apto con limitaciones'])
+      for (const expected of ['*****678*', 'Obra autorizada', '01/11/2026', '29/11/2026', 'En periodo registrado', 'Formación PRL de 20 horas', 'Consta en ficha', 'Apto con limitación', 'No realizar trabajos en altura.'])
         assert.ok(text.includes(expected), expected);
       assert.doesNotMatch(text, /12345678Z/);
+
+      await page.evaluate(() => {
+        window.negative = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await protectedFields.getByText('Obra autorizada',{exact:true}).waitFor();
+      assert.equal(await protectedFields.getByText(/No apto|No realizar trabajos/).count(), 0);
+      const negativeDownload = page.waitForEvent('download');
+      await fullPdf.click();
+      assert.doesNotMatch(await pdfText(await negativeDownload), /No apto|No realizar trabajos|Conclusión de aptitud médica/);
+      await page.evaluate(() => { window.negative = false; });
 
       await page.evaluate(() => { window.partial = true; });
       const partialDownload = page.waitForEvent('download');

@@ -192,6 +192,9 @@ try {
   assert.equal(await rpc("public.save_worker_qr_restrictions(7,'No realizar trabajos en altura.')"), true);
   assert.equal(await rpc("public.get_worker_qr_restrictions(7)"), 'No realizar trabajos en altura.');
 
+  assert.equal((await details(card)).aptitudeConclusion, 'Apto con limitación');
+  assert.equal((await details(card)).workRestrictions, 'No realizar trabajos en altura.');
+
   await db.exec('reset role; set role anon');
   await assert.rejects(() => visitIssue(), /permission denied/i);
   assert.deepEqual(await readVisit(invitation.code), { status: 'visit_closed' });
@@ -215,6 +218,26 @@ try {
   await db.exec('set role anon');
   assert.deepEqual(await readVisit(session.token, otherCard), { status: 'not_available' }, 'a current contract from a different worksite is unavailable');
   await db.exec('reset role');
+  await query("update public.trabajadores set aptitud_medica = 'No Apto' where owner_id=$1::uuid and id=7", [owner]);
+  await as(owner);
+  const negativeSigned = await details(card);
+  assert.equal(negativeSigned.aptitudeConclusion, undefined);
+  assert.equal(negativeSigned.workRestrictions, undefined);
+  await db.exec('reset role; set role anon');
+  const negative = await readVisit(session.token);
+  assert.equal(negative.status, 'ok');
+  assert.equal(negative.aptitudeConclusion, undefined);
+  assert.equal(negative.workRestrictions, undefined);
+
+  await db.exec('reset role');
+  await query("update public.trabajadores set aptitud_medica = 'Apto' where owner_id=$1::uuid and id=7", [owner]);
+  await db.exec('set role anon');
+  const positive = await readVisit(session.token);
+  assert.equal(positive.aptitudeConclusion, 'Apto');
+  assert.equal(positive.workRestrictions, undefined);
+
+  await db.exec('reset role');
+  await query("update public.trabajadores set aptitud_medica = 'Apto con Limitación' where owner_id=$1::uuid and id=7", [owner]);
   await query("update public.trabajadores set reconocimiento_fecha='2026-10-01' where owner_id=$1::uuid and id=7", [owner]);
   await db.exec('set role anon');
   assert.equal((await readVisit(session.token)).workRestrictions, undefined, 'a changed assessment invalidates the reviewed text');
