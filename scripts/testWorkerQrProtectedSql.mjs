@@ -176,6 +176,7 @@ try {
 
   await db.exec('reset role');
   await migration('20261119221000_worker_qr_visit_access.sql');
+  await migration('20261119224500_worker_qr_visit_ten_minutes.sql');
   const visitIssue = () => rpc('public.issue_worker_qr_visit(7,$1)', ['Profesional habilitado QA']);
   const redeemVisit = code => rpc('public.redeem_worker_qr_visit($1::uuid)', [code]);
   const readVisit = (session, token = card) => rpc('public.read_worker_qr_visit($1::uuid,$2::uuid)', [session, token]);
@@ -204,7 +205,7 @@ try {
   assert.equal(visit.trainingRecord, 'Consta en ficha');
   assert.equal(visit.aptitudeConclusion, 'Apto con limitación');
   assert.equal(visit.workRestrictions, 'No realizar trabajos en altura.');
-  assert.ok(visit.remainingMs > 0 && visit.remainingMs <= 120000);
+  assert.ok(visit.remainingMs > 599000 && visit.remainingMs <= 600000);
   assert.ok(!JSON.stringify(visit).match(/TEXTO PRIVADO|IBAN PRIVADO|12345678Z|PERSONA SINTÉTICA/));
   assert.equal((await readVisit(session.token)).expiresAt, visit.expiresAt);
   assert.deepEqual(await readVisit(session.token, otherCard), { status: 'not_available' });

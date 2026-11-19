@@ -12,7 +12,7 @@ const WorkerQrVisitManager = React.lazy(() => import('./WorkerQrVisitManager'));
 const InspectionAccessManager = React.lazy(() => import('./InspectionAccessManager'));
 
 export default function WorkerCardModal({ person, people = [person], onClose }: { person: Person; people?: Person[]; onClose: () => void }) {
-  const [card, setCard] = useState<{ url: string; backUrl: string; image: File; duplexPdf: Blob; duplexName: string; backPdf: Blob } | null>(null);
+  const [card, setCard] = useState<{ url: string; qrUrl: string; backUrl: string; image: File; duplexPdf: Blob; duplexName: string; backPdf: Blob } | null>(null);
   const [viewBack, setViewBack] = useState(false);
   const [selectedIds,setSelectedIds]=useState<string[]>([String(person.id)]);
   const [bulkOpen,setBulkOpen]=useState(false);
@@ -75,7 +75,7 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
       const reverseBlob=await new Promise<Blob>((resolve,reject)=>reverseCanvas.toBlob(value=>value?resolve(value):reject(new Error('No se ha podido representar el reverso.')),'image/png'));
       if(cancelled)return;
       backUrl=URL.createObjectURL(reverseBlob);
-      setCard({url,backUrl,image,duplexPdf:duplexDoc.output('blob'),duplexName,backPdf:reverseDoc.output('blob')});
+      setCard({url,qrUrl,backUrl,image,duplexPdf:duplexDoc.output('blob'),duplexName,backPdf:reverseDoc.output('blob')});
     })().catch(e => { if (!cancelled) setError(e.message || 'No se ha podido preparar el carnet.'); })
       .finally(() => { void task?.destroy().catch(() => undefined); void backTask?.destroy().catch(() => undefined); });
     return () => {
@@ -220,7 +220,7 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
             </button>
             {inspectionExpanded && <div id="card-inspection-access" className="mt-3 space-y-3">
               <Suspense fallback={<p role="status">Preparando acceso seguro…</p>}>
-                <WorkerQrVisitManager key={person.id} person={person} />
+                <WorkerQrVisitManager key={person.id} person={person} cardUrl={card.qrUrl} />
                 <InspectionAccessManager person={person}/>
               </Suspense>
             </div>}

@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Clipboard, KeyRound, ShieldCheck } from 'lucide-react';
 import type { Person } from '../types';
 import {
-  getWorkerQrRestrictions, issueWorkerQrVisit, listWorkerQrVisits, revokeWorkerQrVisit, saveWorkerQrRestrictions, type WorkerQrVisitGrant,
+  getWorkerQrRestrictions, issueWorkerQrVisit, listWorkerQrVisits, revokeWorkerQrVisit, saveWorkerQrRestrictions, workerQrVisitUrl, type WorkerQrVisitGrant,
 } from '../src/services/workerQrVisitService';
 
 const control = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
 
-export default function WorkerQrVisitManager({ person }: { person: Person }) {
+export default function WorkerQrVisitManager({ person, cardUrl }: { person: Person; cardUrl: string }) {
   const [recipient, setRecipient] = useState('');
   const [verified, setVerified] = useState(false);
   const [restrictions, setRestrictions] = useState('');
@@ -44,9 +44,9 @@ export default function WorkerQrVisitManager({ person }: { person: Person }) {
     finally { setBusy(false); }
   };
 
-  return <section aria-label="Códigos de visita para carnets QR" className="space-y-4 rounded-xl border border-[#00548E]/25 bg-blue-50/40 p-4 dark:border-blue-800 dark:bg-slate-800/60">
-    <h3 className="flex items-center gap-2 font-black text-[#00548E] dark:text-blue-300"><KeyRound className="h-5 w-5" /> Código de visita para carnets QR</h3>
-    <p className="text-sm leading-relaxed">Obra autorizada <strong>{person.obra || 'Sin obra asignada'}</strong>. El visitante introduce el código una vez y puede leer los carnets con contratación vigente en esta obra durante 30 minutos.</p>
+  return <section aria-label="Enlaces de visita para carnets QR" className="space-y-4 rounded-xl border border-[#00548E]/25 bg-blue-50/40 p-4 dark:border-blue-800 dark:bg-slate-800/60">
+    <h3 className="flex items-center gap-2 font-black text-[#00548E] dark:text-blue-300"><KeyRound className="h-5 w-5" /> Enlace de visita para carnets QR</h3>
+    <p className="text-sm leading-relaxed">Obra autorizada <strong>{person.obra || 'Sin obra asignada'}</strong>. El visitante abre el enlace una vez en su móvil. Después, al escanear los carnets de esta obra, cada ficha se abre directamente durante un máximo de 10 minutos.</p>
     <form className="space-y-3" onSubmit={event => {
       event.preventDefault();
       if (!verified) return;
@@ -67,16 +67,16 @@ export default function WorkerQrVisitManager({ person }: { person: Person }) {
         <input type="checkbox" required checked={verified} onChange={event => setVerified(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-[#00548E]" />
         <span>He comprobado presencialmente la identidad y la habilitación de esta persona para consultar los datos preventivos y de contratación de la obra.</span>
       </label>
-      <button type="submit" disabled={busy || !person.obra?.trim()} className="min-h-11 w-full rounded-xl bg-[#00548E] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Emitir código de un solo uso</button>
+      <button type="submit" disabled={busy || !person.obra?.trim()} className="min-h-11 w-full rounded-xl bg-[#00548E] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Crear enlace de un solo uso</button>
     </form>
     {invitation && <div className="space-y-2 rounded-xl border border-sky-200 bg-white p-3 dark:border-sky-800 dark:bg-slate-900">
-      <label className="block space-y-1 text-sm font-bold">Código para la persona presente
-        <input readOnly value={invitation.code} onFocus={event => event.target.select()} className={control} />
+      <label className="block space-y-1 text-sm font-bold">Enlace para la persona presente
+        <input readOnly value={workerQrVisitUrl(cardUrl, invitation.code)} onFocus={event => event.target.select()} className={control} />
       </label>
       <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-bold" onClick={() => void run(async () => {
-        await navigator.clipboard.writeText(invitation.code);
-        setMessage('Código copiado.');
-      })}><Clipboard className="h-4 w-4" /> Copiar código</button>
+        await navigator.clipboard.writeText(workerQrVisitUrl(cardUrl, invitation.code));
+        setMessage('Enlace copiado. Compártelo con la persona verificada.');
+      })}><Clipboard className="h-4 w-4" /> Copiar enlace</button>
     </div>}
     {grants.map(grant => <div key={grant.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
       <div className="min-w-0 break-words"><p className="font-bold">{grant.recipient}</p><p>{grant.redeemed ? 'En uso' : 'Por utilizar'} · {new Date(grant.expiresAt).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</p></div>

@@ -19,6 +19,14 @@ export type WorkerQrVisitResult =
 export const workerQrVisitStorageKey = 'profea-worker-qr-visit';
 export const isWorkerQrVisitCode = (value: string) => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
 
+export const workerQrVisitFragmentKey = 'qr-visit-access';
+
+export function workerQrVisitUrl(cardUrl: string, code: string): string {
+  const url = new URL(cardUrl);
+  url.hash = new URLSearchParams({ [workerQrVisitFragmentKey]: code }).toString();
+  return url.toString();
+}
+
 export function getWorkerQrVisitSession(): WorkerQrVisitSession | null {
   try {
     const session = JSON.parse(localStorage.getItem(workerQrVisitStorageKey) || 'null') as WorkerQrVisitSession | null;

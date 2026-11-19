@@ -30,16 +30,15 @@ const bundle = (await build({
             queueMicrotask(() => window.setAccount(new URLSearchParams(location.search).get('account')));
             return { data: { subscription: { unsubscribe() {} } } };
           },
-          async signInWithOtp(value) { window.otp = value; return { error: null }; },
           async signOut() { window.setAccount(null); return { error: null }; }
         },
         async rpc(name, args) {
           window.calls.push({name, args});
           if (name === 'resolve_worker_qr_share') return { valid: args.p_token === '${token}', history: [{}] };
-          if (name === 'redeem_worker_qr_visit') return {token:'77777777-7777-4777-8777-777777777777',expiresAt:new Date(Date.now()+1800000).toISOString()};
+          if (name === 'redeem_worker_qr_visit') return args.p_code === '77777777-7777-4777-8777-777777777777' ? {token:'77777777-7777-4777-8777-777777777777',expiresAt:new Date(Date.now()+1800000).toISOString()} : null;
           if (name === 'close_worker_qr_visit') return null;
           if (name === 'read_worker_qr_visit') return {
-            status:'ok', remainingMs: window.quickExpiry ? 400 : 120000, maskedDni:'*****678*',
+            status:'ok', remainingMs: window.quickExpiry ? 400 : 600000, maskedDni:'*****678*',
             worksite:'Obra de visita', periodStart:'2026-11-01', periodEnd:'2026-11-29',
             trainingRecord:'Consta en ficha', aptitudeConclusion:'Apto con limitación',
             workRestrictions:'No realizar trabajos en altura.'
@@ -99,12 +98,8 @@ try {
       await page.getByRole('alert').waitFor();
       assert.deepEqual(await page.evaluate(() => window.calls), []);
       await page.goto(url + token);
-      const email = page.getByRole('textbox', {name:'Correo autorizado'});
-      await email.fill('professional@example.test');
-      await page.getByRole('button', {name:'Verificar correo'}).click();
-      await page.getByText(/Abre el enlace de verificación/).waitFor();
-      assert.equal(await page.evaluate(() => window.otp.options.emailRedirectTo), url + token);
-      assert.equal(await page.evaluate(() => window.otp.options.shouldCreateUser), false);
+      await page.getByText(/Carnet activo/).waitFor();
+      assert.equal(await page.getByRole('textbox').count(), 0);
       assert.deepEqual(await page.evaluate(() => window.calls.map(call => call.name)), ['resolve_worker_qr_share']);
       assert.equal(await protectedFields.count(), 0);
       const fullPdf = page.getByRole('button', { name:'Descargar ficha del trabajador' });
@@ -157,12 +152,18 @@ try {
       assert.equal(unexpectedDownload, false);
 
       await page.getByRole('button', {name:'Cambiar cuenta'}).click();
-      await email.waitFor();
+      await page.getByText('Abre un enlace de visita vigente para consultar la ficha.',{exact:true}).waitFor();
       assert.equal(await protectedFields.count(), 0);
-      await page.getByRole('textbox', { name:'Código facilitado por el supervisor' }).fill('77777777-7777-4777-8777-777777777777');
-      await page.getByRole('button', { name:'Abrir consulta temporal' }).click();
+      await page.goto(url + token + '#qr-visit-access=11111111-1111-1111-1111-111111111111');
+      await page.getByRole('alert').filter({hasText:'ya se ha usado o ha caducado'}).waitFor();
+      assert.equal(await page.getByText('Apto con limitación',{exact:true}).count(), 0);
+      await page.goto(url + token + '#qr-visit-access=77777777-7777-4777-8777-777777777777');
       const visit = page.getByRole('region', { name:'Ficha temporal del trabajador' });
       await visit.getByText('No realizar trabajos en altura.',{exact:true}).waitFor();
+      assert.equal(await page.evaluate(() => location.hash), '');
+      assert.equal(await page.evaluate(() => window.calls.filter(call => call.name === 'redeem_worker_qr_visit' && call.args.p_code === '77777777-7777-4777-8777-777777777777').length), 1);
+      assert.match(await visit.getByRole('timer').innerText(), /(?:10:00|9:5[6-9])/);
+      assert.equal(await page.getByRole('textbox').count(), 0);
       assert.equal(await visit.getByText('Obra de visita',{exact:true}).count(), 1);
       assert.equal(await visit.getByText('29/11/2026',{exact:true}).count(), 1);
       assert.equal(await visit.getByText('*****678*',{exact:true}).count(), 1);
@@ -181,9 +182,9 @@ try {
       await page.getByRole('alert').filter({hasText:'ha caducado'}).waitFor();
       assert.equal(await visit.getByText('*****678*',{exact:true}).count(), 0);
       await visit.getByRole('button', { name:'Cerrar visita' }).click();
-      await page.getByRole('button', { name:'Abrir consulta temporal' }).waitFor();
+      await page.getByText('Abre un enlace de visita vigente para consultar la ficha.',{exact:true}).waitFor();
       assert.deepEqual(errors, []);
-      console.log('PASS ' + label + ': external QR, public/authorized views, public and scoped PDFs, masked DNI, revocation and session cleanup.');
+      console.log('PASS ' + label + ': external QR, direct visit links, public/authorized views, public and scoped PDFs, masked DNI, revocation and session cleanup.');
     } finally {
       await browser.close();
     }
