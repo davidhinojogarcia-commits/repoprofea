@@ -1,0 +1,114 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { build } from 'esbuild';
+import { chromium, webkit, devices } from 'playwright';
+
+const root = new URL('../', import.meta.url).pathname;
+const tailwind = process.env.SIGNATURE_TAILWIND_SCRIPT
+  ? await readFile(process.env.SIGNATURE_TAILWIND_SCRIPT, 'utf8')
+  : await (await fetch('https://cdn.tailwindcss.com', {signal: AbortSignal.timeout(30000)})).text();
+const token = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const bundle = (await build({
+  stdin: { contents: `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { WorkerQrPortal } from './components/WorkerQrPortal';
+    createRoot(document.getElementById('root')).render(<WorkerQrPortal token={new URLSearchParams(location.search).get('worker-qr') || ''}/>);
+  `, loader: 'tsx', resolveDir: root },
+  bundle: true, format: 'esm', platform: 'browser', write: false,
+  plugins: [{ name: 'supabase-transport', setup(b) {
+    b.onResolve({ filter: /[/]supabase$/ }, () => ({ path: 'supabase', namespace: 'mock' }));
+    b.onLoad({ filter: /.*/, namespace: 'mock' }, () => ({ contents: `
+      window.calls = [];
+      let account = null;
+      export const supabase = {
+        auth: {
+          onAuthStateChange(callback) {
+            window.setAccount = id => { account = id; callback(id ? 'SIGNED_IN' : 'SIGNED_OUT', id ? { user: { id } } : null); };
+            queueMicrotask(() => window.setAccount(new URLSearchParams(location.search).get('account')));
+            return { data: { subscription: { unsubscribe() {} } } };
+          },
+          async signInWithOtp(value) { window.otp = value; return { error: null }; },
+          async signOut() { window.setAccount(null); return { error: null }; }
+        },
+        async rpc(name, args) {
+          window.calls.push({name, args});
+          if (name === 'resolve_worker_qr_share') return { valid: args.p_token === '${token}', history: [{}] };
+          if (account !== 'authorized') return null;
+          return { maskedDni: '*****678*', worksite: 'Obra autorizada', periodStart: '2026-11-01',
+            periodEnd: '2026-11-29', contractStatus: 'En periodo registrado', trainingRecord: 'Consta en ficha',
+            aptitudeConclusion: 'Apto con limitaciones', expiresAt: new Date(Date.now() + 60000).toISOString() };
+        }
+      };
+    ` }));
+  } }],
+})).outputFiles[0].text;
+const server = http.createServer((req, res) => {
+  const script = req.url === '/app.js' || req.url === '/tailwind.js';
+  res.setHeader('Content-Type', script ? 'text/javascript' : 'text/html');
+  res.end(req.url === '/app.js' ? bundle : req.url === '/tailwind.js' ? tailwind
+    : '<!doctype html><html lang="es"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><div id="root"></div><script type="module" src="/app.js"></script></html>');
+});
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+const configurations = [
+  ['PC Chromium', chromium, {viewport: {width: 1440, height: 900}}],
+  ['Android Chromium', chromium, devices['Pixel 7']],
+  ['iPhone WebKit', webkit, devices['iPhone 13']],
+];
+
+try {
+  for (const [label, engine, device] of configurations) {
+    const browser = await engine.launch({ headless: true });
+    try {
+      const page = await browser.newPage(device);
+      const errors = [];
+      page.on('pageerror', err => errors.push(err.message));
+      const url = 'http://127.0.0.1:' + server.address().port + '/?worker-qr=';
+      const protectedFields = page.getByRole('region', { name: 'Datos autorizados del carnet' });
+      await page.goto(url + 'incorrecto');
+      await page.getByRole('alert').waitFor();
+      assert.deepEqual(await page.evaluate(() => window.calls), []);
+      await page.goto(url + token);
+      const email = page.getByRole('textbox', {name:'Correo autorizado'});
+      await email.fill('professional@example.test');
+      await page.getByRole('button', {name:'Verificar correo'}).click();
+      await page.getByText(/Abre el enlace de verificación/).waitFor();
+      assert.equal(await page.evaluate(() => window.otp.options.emailRedirectTo), url + token);
+      assert.equal(await page.evaluate(() => window.otp.options.shouldCreateUser), false);
+      assert.deepEqual(await page.evaluate(() => window.calls.map(call => call.name)), ['resolve_worker_qr_share']);
+      assert.equal(await protectedFields.count(), 0);
+
+      await page.evaluate(() => window.setAccount('unauthorized'));
+      await page.getByText(/Esta cuenta no dispone/).waitFor();
+      assert.equal(await protectedFields.count(), 0);
+
+      await page.evaluate(() => window.setAccount('authorized'));
+      await protectedFields.waitFor();
+      for (const field of ['*****678*', 'Obra autorizada', '01/11/2026', '29/11/2026', 'En periodo registrado', 'Consta en ficha', 'Apto con limitaciones']) {
+        assert.equal(await protectedFields.getByText(field, { exact: true }).count(), 1, field);
+      }
+      assert.equal(await page.getByText('12345678Z', { exact: true }).count(), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      const changeAccount = page.getByRole('button', {name:'Cambiar cuenta'});
+      assert.ok((await changeAccount.boundingBox()).height >= 44);
+      if (engine === chromium) {
+        const download = page.waitForEvent('download');
+        await page.getByRole('button', { name:'PDF de verificación' }).click();
+        assert.equal((await download).suggestedFilename(), 'VERIFICACION_PROFEA.pdf');
+      }
+
+      await page.getByRole('button', {name:'Cambiar cuenta'}).click();
+      await email.waitFor();
+      assert.equal(await protectedFields.count(), 0);
+      assert.deepEqual(errors, []);
+      console.log('PASS ' + label + ': external QR, public/authorized views, scoped email, masked DNI and session cleanup.');
+    } finally {
+      await browser.close();
+    }
+  }
+} finally {
+  server.closeAllConnections();
+  await new Promise(resolve => server.close(resolve));
+}

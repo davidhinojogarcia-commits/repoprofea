@@ -920,7 +920,7 @@ function App() {
     }
   };
 
-  const handleRegister = async (personData: Omit<Person, 'id' | 'fechaRegistro'>) => {
+  const handleRegister = async (personData: Omit<Person, 'id' | 'fechaRegistro'>, fromWorkerCard = false) => {
     // Si la persona ya estuvo registrada anteriormente sin formación, se actualiza a 'Sí'
     const cleanDni = personData.dni ? personData.dni.trim().toUpperCase().replace(/[\s-]/g, '') : '';
     const cleanName = personData.apellidosNombre ? personData.apellidosNombre.trim().toLowerCase() : '';
@@ -932,7 +932,7 @@ function App() {
     });
 
     const finalPersonData = {
-      ...(hadPreviousNoFormacion ? { ...personData, formacion: 'Sí' } : personData),
+      ...(hadPreviousNoFormacion && !fromWorkerCard ? { ...personData, formacion: 'Sí' } : personData),
       supervisorResponsable: supervisorName,
     };
     const newPerson: Person = {
@@ -943,11 +943,15 @@ function App() {
     };
 
     try {
-      await createDocument('trabajadores', newPerson.id, newPerson as any);
+      await createDocument('trabajadores', newPerson.id, newPerson as any, { fromWorkerCard });
     } catch (error) {
       reportOperationalError('Error guardando trabajador en Supabase:', error);
-      setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
-      return;
+      if (fromWorkerCard && (error as { code?: string })?.code === '23505') {
+        setToast({ message: 'Ya existe un registro de este DNI/NIE para el mismo periodo.', type: 'error' });
+      } else {
+        setToast({ message: 'No se ha podido guardar el trabajador en la base de datos.', type: 'error' });
+      }
+      return false;
     }
 
     setPeopleWithHistory(prev => [...prev, newPerson]);
@@ -1118,7 +1122,7 @@ function App() {
 
       // Reflejar el cambio inmediatamente en la ficha; la suscripción de Supabase
       // seguirá actuando como fuente de sincronización posterior.
-      setPeople(prev => prev.map(person => person.id === savedPerson.id ? savedPerson : person));
+      setPeople(prev => prev.map(person => person.id === savedPerson.id && (!savedPerson.ownerId || person.ownerId === savedPerson.ownerId) ? savedPerson : person));
       updateAutocompleteLists(savedPerson);
       setEditingPerson(null);
 
@@ -2273,7 +2277,8 @@ function App() {
             <div className="max-w-3xl mx-auto">
                <Suspense fallback={<ViewLoadingFallback />}>
                <RegistrationForm 
-                 onRegister={handleRegister} 
+                 onRegister={handleRegister}
+                 onOpenWorker={handleEdit}
                  savedObras={savedObras} 
                  savedLugares={savedLugares} 
                  savedSitios={savedSitios} 

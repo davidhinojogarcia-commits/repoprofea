@@ -1,3 +1,4 @@
+import type { Person } from '../../types';
 import { reportOperationalError } from '../lib/operationalLog';
 import { getSessionUser, supabase } from "../lib/supabase";
 import { syncMedicalAppointmentFromWorker } from "./medicalAppointmentAutoSync";
@@ -372,6 +373,7 @@ export async function createDocument<T extends DatabaseRecord>(
   collectionName: string,
   id: string | number,
   data: T,
+  options: { fromWorkerCard?: boolean } = {},
 ) {
   const user = await requireUser();
   const table = canonicalTable(collectionName);
@@ -406,11 +408,15 @@ export async function createDocument<T extends DatabaseRecord>(
             updated_by: user.id,
           }
         : { id: String(id), ...serialized };
-  await supabase.query(table, {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body,
-  });
+  if (table === "trabajadores" && options.fromWorkerCard) {
+    await supabase.rpc("register_worker_from_card", { p_worker: body });
+  } else {
+    await supabase.query(table, {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body,
+    });
+  }
   if (table === "trabajadores") {
     void syncMedicalAppointmentFromWorker(effectiveData, id, user.id).catch(
       (error) => {
@@ -442,7 +448,7 @@ export async function updateDocument<T extends DatabaseRecord>(
   const mutationResult = await supabase.query(table, {
     method: "PATCH",
     prefer: requireVerifiedWorkerUpdate ? "return=representation" : "return=minimal",
-    query: `id=eq.${encodeURIComponent(String(id))}`,
+    query: `id=eq.${encodeURIComponent(String(id))}${requireVerifiedWorkerUpdate && merged.ownerId ? `&owner_id=eq.${encodeURIComponent(String(merged.ownerId))}` : ''}`,
     body,
   });
 
@@ -497,6 +503,27 @@ export async function getDocument<T = DatabaseRecord>(
     query: `select=*&id=eq.${encodeURIComponent(String(id))}&limit=1`,
   });
   return rows?.[0] ? (hydrate(rows[0], table) as T) : null;
+}
+
+export async function getWorkerByOwner(id: number, ownerId: string): Promise<Person | null> {
+  const rows = await supabase.query('trabajadores', {
+    query: `select=*&id=eq.${encodeURIComponent(String(id))}&owner_id=eq.${encodeURIComponent(ownerId)}&limit=1`,
+    fresh: true,
+    networkOnly: true,
+  });
+  const row = rows?.[0];
+  if (!row) return null;
+  const person = hydrate(row, 'trabajadores') as Person;
+  return {
+    ...person,
+    apellidosNombre: row.apellidos_nombre || person.apellidosNombre,
+    dni: row.dni || person.dni,
+    fechaNacimiento: row.fecha_nacimiento || person.fechaNacimiento,
+    telefono: row.telefono || person.telefono,
+    numeroSeguridadSocial: row.numero_seguridad_social || person.numeroSeguridadSocial,
+    iban: row.iban || person.iban,
+    calzado: row.calzado || person.calzado,
+  };
 }
 
 export async function getDocuments<T = DatabaseRecord>(
