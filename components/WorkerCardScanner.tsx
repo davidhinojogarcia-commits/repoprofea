@@ -6,16 +6,16 @@ import { decodeQrFrame } from '../src/lib/qrFrameDecoder';
 import { resolveWorkerCardOwner } from '../src/services/workerQrShareService';
 
 type NativeDetector = { detect: (source: HTMLVideoElement) => Promise<{ rawValue?: string }[]> };
-export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: { onClose: () => void; onFound?: (id: number) => boolean; onRemoteToken?: (token: string) => Promise<boolean> }) {
+export default function WorkerCardScanner({ onClose, onFound, onRemoteToken, onToken }: { onClose: () => void; onFound?: (id: number) => boolean | Promise<boolean>; onToken?: (token: string, isActive: () => boolean) => Promise<boolean>; onRemoteToken?: (token: string) => Promise<boolean> }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const callbacks = useRef({ onClose, onFound, onRemoteToken });
+  const callbacks = useRef({ onClose, onFound, onRemoteToken, onToken });
   const photoReader = useRef<((file: File) => Promise<void>) | null>(null);
   const [message, setMessage] = useState('Solicitando acceso a la cámara…');
   const [restart, setRestart] = useState(0);
   const [busy, setBusy] = useState(false);
   const [completed, setCompleted] = useState(false);
-  useEffect(() => { callbacks.current = { onClose, onFound, onRemoteToken }; }, [onClose, onFound, onRemoteToken]);
+  useEffect(() => { callbacks.current = { onClose, onFound, onRemoteToken, onToken }; }, [onClose, onFound, onRemoteToken, onToken]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); callbacks.current.onClose(); } };
     window.addEventListener('keydown', escape);
@@ -47,9 +47,11 @@ export default function WorkerCardScanner({ onClose, onFound, onRemoteToken }: {
           const sent = await callbacks.current.onRemoteToken(token);
           if (active) setMessage(sent ? 'Carnet enviado al ordenador. Pulsa Reintentar para otro trabajador.' : 'Carnet o vinculación no disponible.');
         } else {
-          const id = await resolveWorkerCardOwner(token);
+          const found = callbacks.current.onToken
+            ? await callbacks.current.onToken(token, () => active)
+            : await resolveWorkerCardOwner(token).then(id => active && id !== null && callbacks.current.onFound?.(id));
           if (!active) return true;
-          if (id && callbacks.current.onFound?.(id)) { callbacks.current.onClose(); return true; }
+          if (found) { callbacks.current.onClose(); return true; }
           setMessage('Carnet no disponible para esta cuenta o trabajador no cargado.');
         }
       } catch {

@@ -26,7 +26,7 @@ const workers=[
  {...base,id:8,apellidosNombre:'Hugo Sin Año',dni:'88888888H',formacion:'Desconocido',periodoInicio:'',quincena:'',fechaRegistro:''},
 ];
 window.exports=[];window.scanOpens=0;window.pairOpens=0;window.gapi={};window.google={accounts:{}};
-function App(){const[people,setPeople]=useState(workers);const[search,setSearch]=useState('');const[obra,setObra]=useState(['Todas']);const[quincena,setQuincena]=useState(['Todas']);window.replacePeople=setPeople;return <PersonList accountId="supervisor-a" people={people} savedObras={['Obra A','Obra B']} searchTerm={search} setSearchTerm={setSearch} selectedObraFilter={obra} setSelectedObraFilter={setObra} selectedQuincenaFilter={quincena} setSelectedQuincenaFilter={setQuincena} onEdit={()=>{}} onDelete={()=>{}} onExport={()=>{}} onExportPDF={p=>window.exports.push(p.map(w=>w.id))} onExportRRMMExcel={()=>{}} onExportRRMMPDF={()=>{}} onExportPRLExcel={()=>{}} onExportPRLPDF={()=>{}} onExportCalzadoExcel={()=>{}} onExportCalzadoPDF={()=>{}} onEmail={()=>{}} onImport={()=>{}} onGenerateIDCard={()=>{}} onExportHistoryPDF={()=>{}} onToast={(message,type)=>{window.lastToast={message,type}}}/>}
+function App(){const[people,setPeople]=useState(workers);const[search,setSearch]=useState('');const[obra,setObra]=useState(['Todas']);const[quincena,setQuincena]=useState(['Todas']);window.replacePeople=setPeople;return <PersonList accountId="supervisor-a" people={people} savedObras={['Obra A','Obra B']} searchTerm={search} setSearchTerm={setSearch} selectedObraFilter={obra} setSelectedObraFilter={setObra} selectedQuincenaFilter={quincena} setSelectedQuincenaFilter={setQuincena} onEdit={worker=>{window.openedWorker=worker}} onDelete={()=>{}} onExport={()=>{}} onExportPDF={p=>window.exports.push(p.map(w=>w.id))} onExportRRMMExcel={()=>{}} onExportRRMMPDF={()=>{}} onExportPRLExcel={()=>{}} onExportPRLPDF={()=>{}} onExportCalzadoExcel={()=>{}} onExportCalzadoPDF={()=>{}} onEmail={()=>{}} onImport={()=>{}} onGenerateIDCard={()=>{}} onExportHistoryPDF={()=>{}} onToast={(message,type)=>{window.lastToast={message,type}}}/>}
 createRoot(document.getElementById('root')).render(<App/>);`;
 const stubs = {
   PartsPanel: 'export default function PartsPanel(){return null}',
@@ -37,13 +37,15 @@ const stubs = {
   administrativeRelationExport: "export const prepareAdministrativeRelationPDF=(workers)=>({doc:{output:()=>new Blob(['%PDF-1.4'],{type:'application/pdf'})},filename:'PROFEA_RELACION_ADMINISTRATIVA_test.pdf'});export const prepareAdministrativeRelationExcel=async(workers)=>({buffer:new Uint8Array([1,2,3]),filename:'PROFEA_RELACION_ADMINISTRATIVA_test.xlsx'});",
   workerImportService: 'export const moveWorkersToTrashBulk=async()=>{}',
   partsService: 'export const partsRequest=async()=>({rows:[],cursor:null})',
-  WorkerCardScanner: "export default function Scanner(){window.scanOpens++;return null}",
+  databaseService: 'export const getWorkerByOwner=async(id,ownerId)=>({id,ownerId,apellidosNombre:"Ficha fuera de la lista",dni:"12345678Z"})',
+  workerQrShareService: 'export const resolveWorkerCardReference=async()=>({id:101,ownerId:"supervisor-a"})',
+  WorkerCardScanner: "import React from 'react';export default function Scanner({onToken,onClose}){window.scanOpens++;return <button onClick={async()=>{if(await onToken('worker-card-token',()=>true))onClose()}}>Simular lectura de una ficha fuera de la lista</button>}",
   WorkerCardPairing: "export default function Pairing(){window.pairOpens++;return null}",
 };
 const bundle = (await build({ stdin: { contents: source, loader: 'tsx', resolveDir: root }, bundle: true, format: 'esm', platform: 'browser', write: false,
   plugins: [{ name: 'external-boundaries', setup(b) {
     for (const name of Object.keys(stubs)) b.onResolve({ filter: new RegExp('/' + name + '$') }, () => ({ path: name, namespace: 'stub' }));
-    b.onLoad({ filter: /.*/, namespace: 'stub' }, ({ path }) => ({ contents: stubs[path], loader: 'tsx' }));
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, ({ path }) => ({ contents: stubs[path], loader: 'tsx', resolveDir: root }));
   } }],
 })).outputFiles[0].text;
 const server = http.createServer((req, res) => {
@@ -173,6 +175,9 @@ try {
     }
     await page.getByRole('button', { name: 'Escanear carnet con este dispositivo', exact: true }).click();
     await page.waitForFunction(() => window.scanOpens > 0);
+    await page.getByRole('button', {name: 'Simular lectura de una ficha fuera de la lista'}).click();
+    await page.waitForFunction(() => window.openedWorker?.id === 101);
+    assert.equal(await page.evaluate(() => window.openedWorker.apellidosNombre), 'Ficha fuera de la lista');
     await page.getByRole('button', { name: 'Vincular cámara del móvil', exact: true }).click();
     await page.waitForFunction(() => window.pairOpens > 0);
     if (process.env.DIRECTORY_EVIDENCE_DIR) {

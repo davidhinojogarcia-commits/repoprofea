@@ -253,6 +253,8 @@ jobs:
         run: npm run test:inventory-usage-browser
       - name: Public worker QR privacy regression
         run: npm run test:worker-qr-public
+      - name: Protected worker QR database and browser integration
+        run: npm run test:worker-qr-protected
       - name: Rehire prevention review
         run: npm run test:rehire-prevention
       - name: Registration QR autofill and confirmation

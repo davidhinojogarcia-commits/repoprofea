@@ -1,7 +1,7 @@
 {
   "name": "sistema-contratación-profea_dhg",
   "private": true,
-  "version": "1.23.4",
+  "version": "1.23.5",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -64,6 +64,7 @@
     "test:worker-annual-lookup": "node scripts/testWorkerAnnualLookup.mjs",
     "test:parts": "node scripts/testPartsLegacyWorksites.mjs && node scripts/testParts.mjs",
     "test:parts-browser": "node scripts/testPartsBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testPartsBrowser.mjs",
+    "test:worker-qr-protected": "node scripts/testWorkerQrProtectedSql.mjs && node scripts/testWorkerQrProtectedBrowser.mjs",
     "test:worker-qr-public": "node scripts/testWorkerQrPublicPrivacy.mjs",
     "test:worker-card-scan": "node --import tsx scripts/testWorkerCardScan.mjs && node scripts/testWorkerCardScanBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testWorkerCardScanBrowser.mjs && npm run test:worker-card-print",
     "test:directory-training": "node scripts/testDirectoryTrainingBrowser.mjs && BROWSER_ENGINE=webkit node scripts/testDirectoryTrainingBrowser.mjs",

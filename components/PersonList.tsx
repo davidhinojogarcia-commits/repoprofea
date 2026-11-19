@@ -8,6 +8,8 @@ import { moveWorkersToTrashBulk } from '../src/services/workerImportService';
 import { partsRequest } from '../src/services/partsService';
 import type { Person } from '../types';
 import ModalPortal from './ModalPortal';
+import { getWorkerByOwner } from '../src/services/databaseService';
+import { resolveWorkerCardReference } from '../src/services/workerQrShareService';
 
 const PartsPanel = lazy(() => import('./PartsPanel'));
 const WorkerCardScanner = lazy(() => import('./WorkerCardScanner'));
@@ -36,11 +38,26 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
   const [pairing, setPairing] = useState(false);
   const closeScanner = React.useCallback(() => setScanning(false), []);
   const openScannedWorker = React.useCallback((id: number) => {
-    const worker = props.people.find(person => Number(person.id) === id);
+    const worker = props.people.find(person => Number(person.id) === id && (!person.ownerId || person.ownerId === props.accountId));
     if (!worker) return false;
     props.onEdit(worker);
     return true;
-  }, [props.people, props.onEdit]);
+  }, [props.people, props.onEdit, props.accountId]);
+  const openPairedCard = useCallback(async (id: number, ownerId?: string, isActive = () => true) => {
+    if (!ownerId) return openScannedWorker(id);
+    const worker = await getWorkerByOwner(id, ownerId);
+    if (!worker || !isActive()) return false;
+    props.onEdit(worker);
+    return true;
+  }, [openScannedWorker, props.onEdit]);
+  const openScannedCard = useCallback(async (token: string, isActive: () => boolean) => {
+    const ref = await resolveWorkerCardReference(token);
+    if (!ref || !isActive()) return false;
+    const worker = await getWorkerByOwner(ref.id, ref.ownerId);
+    if (!worker || !isActive()) return false;
+    props.onEdit(worker);
+    return true;
+  }, [props.onEdit]);
   const [statusFilters, setStatusFilters] = useState<DirectoryStatusValue[]>([]);
 
   useEffect(() => {
@@ -184,7 +201,7 @@ export const PersonList: React.FC<React.ComponentProps<typeof PersonListView> & 
         </div>
       </div>
     </ModalPortal>}
-    {pairing && <Suspense fallback={<p role="status">Preparando vinculación…</p>}><WorkerCardPairing onClose={() => setPairing(false)} onWorker={openScannedWorker} /></Suspense>}
-    {scanning && <Suspense fallback={<p role="status">Preparando escáner…</p>}><WorkerCardScanner onClose={closeScanner} onFound={openScannedWorker} /></Suspense>}
+    {pairing && <Suspense fallback={<p role="status">Preparando vinculación…</p>}><WorkerCardPairing key={props.accountId} onClose={() => setPairing(false)} onWorker={openPairedCard} /></Suspense>}
+    {scanning && <Suspense fallback={<p role="status">Preparando escáner…</p>}><WorkerCardScanner key={props.accountId} onClose={closeScanner} onToken={openScannedCard} /></Suspense>}
   </div>;
 };
