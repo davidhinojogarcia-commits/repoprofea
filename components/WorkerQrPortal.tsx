@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Download, Loader2, LockKeyhole, ShieldCheck, X } from 'lucide-react';
+import { Download, Loader2, ShieldCheck, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable/es';
 import { OFFICIAL_LOGO_BASE64 } from '../src/assets/logoData';
 import { readWorkerQrDetails, resolveWorkerQrShare, type WorkerQrDetails } from '../src/services/workerQrShareService';
 import { supabase } from '../src/lib/supabase';
+import { workerQrAptitude } from '../src/lib/workerQrAptitude';
 import { workerTokenFromQr } from '../src/lib/workerQrScan';
 import { useWorkerQrVisit, WorkerQrVisit } from './WorkerQrVisit';
 
@@ -18,11 +19,21 @@ const fields: { key: keyof WorkerQrDetails; label: string }[] = [
   { key: 'contractStatus', label: 'Estado contractual según periodo' },
   { key: 'trainingRecord', label: 'Formación PRL de 20 horas' },
   { key: 'aptitudeConclusion', label: 'Conclusión de aptitud médica' },
+  { key: 'workRestrictions', label: 'Limitaciones de trabajo' },
 ];
 
 function fieldValue(key: keyof WorkerQrDetails, value: string) {
   const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return (key === 'periodStart' || key === 'periodEnd') && date ? `${date[3]}/${date[2]}/${date[1]}` : value;
+}
+
+function displayedFields(details: WorkerQrDetails) {
+  const aptitude = workerQrAptitude(details.aptitudeConclusion);
+  return fields.flatMap(({ key, label }) => {
+    const value = key === 'aptitudeConclusion' ? aptitude
+      : key === 'workRestrictions' && aptitude !== 'Apto con limitación' ? undefined : details[key];
+    return value ? [{ key, label, value: fieldValue(key, value) }] : [];
+  });
 }
 
 const formatDateTime = (date: Date) => date.toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
@@ -47,10 +58,7 @@ function makeVerificationPdf(checkedAt: Date, details?: WorkerQrDetails): Blob {
       startY: 46,
       margin: { left: 15, right: 15, top: 15 },
       head: [['Dato', 'Información registrada']],
-      body: fields.flatMap(({ key, label }) => {
-        const value = details[key];
-        return value ? [[label, fieldValue(key, value)]] : [];
-      }),
+      body: displayedFields(details).map(({ label, value }) => [label, value]),
       styles: { fontSize: 10, cellPadding: 3, overflow: 'linebreak' },
       headStyles: { fillColor: [0, 84, 142] },
       columnStyles: { 0: { cellWidth: 69, fontStyle: 'bold' } },
@@ -63,7 +71,7 @@ function makeVerificationPdf(checkedAt: Date, details?: WorkerQrDetails): Blob {
     doc.text(doc.splitTextToSize('Consulta autorizada. Datos informativos del registro de GestionProfea. El periodo indicado no acredita el alta en la Seguridad Social.', 180), 15, noteY);
   } else {
     doc.text('Estado en el momento de la consulta: carnet activo', 15, 48);
-    doc.text(doc.splitTextToSize('Este PDF contiene el estado del carnet. Abre el enlace del QR e identifícate con una cuenta autorizada para consultar la ficha del trabajador.', 180), 15, 59);
+    doc.text(doc.splitTextToSize('Este PDF contiene el estado del carnet. La ficha del trabajador está disponible con un acceso de visita vigente.', 180), 15, 59);
   }
   return doc.output('blob');
 }
@@ -83,7 +91,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
   const normalizedToken = workerTokenFromQr(`${location.origin}/?worker-qr=${encodeURIComponent(token)}`, location.origin);
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'error'>('loading');
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
-  const visit = useWorkerQrVisit(normalizedToken);
+  const visit = useWorkerQrVisit(status === 'valid' ? normalizedToken : null);
   const currentAccount = useRef<string | null>(null);
   const activeToken = useRef<string | null>(null);
   const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
@@ -92,9 +100,6 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
   const [downloading, setDownloading] = useState(false);
   const [checkingDetails, setCheckingDetails] = useState(false);
   const [detailsError, setDetailsError] = useState('');
-  const [email, setEmail] = useState('');
-  const [sending, setSending] = useState(false);
-  const [loginMessage, setLoginMessage] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -122,7 +127,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
     setScopedDetails(null);
     setDetailsError('');
     setCheckingDetails(false);
-    if (status !== 'valid' || !normalizedToken || !accountId || visit.active) return;
+    if (status !== 'valid' || !normalizedToken || !accountId || visit.active || visit.submitting) return;
     let active = true;
     let expiry: number | undefined;
     let request = 0;
@@ -154,29 +159,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('pageshow', refresh);
     };
-  }, [accountId, normalizedToken, status, visit.active]);
-
-  const requestLogin = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (sending || !normalizedToken) return;
-    setSending(true);
-    setLoginMessage('');
-    try {
-      const redirect = new URL(location.pathname, location.origin);
-      redirect.searchParams.set('worker-qr', normalizedToken);
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: redirect.toString(), shouldCreateUser: false },
-      });
-      setLoginMessage(error
-        ? 'No se pudo enviar el enlace. Revisa el correo o vuelve a intentarlo.'
-        : 'Abre el enlace de verificación que recibirás en el correo que has indicado.');
-    } catch {
-      setLoginMessage('No se pudo enviar el enlace. Comprueba la conexión y vuelve a intentarlo.');
-    } finally {
-      setSending(false);
-    }
-  };
+  }, [accountId, normalizedToken, status, visit.active, visit.submitting]);
 
   const downloadDetails = async () => {
     if (downloading || !details || !accountId || !normalizedToken) return;
@@ -221,31 +204,22 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
       {status === 'invalid' && <p role="alert">El código no es válido, ha sido revocado o ya no está disponible.</p>}
       {status === 'error' && <p role="alert">No se ha podido consultar el carnet. Comprueba la conexión y vuelve a intentarlo.</p>}
       {status === 'valid' && <>
-        {!visit.active && <>
+        {!visit.active && !visit.submitting && <>
         <p className="font-bold text-emerald-700 dark:text-emerald-300">Carnet activo en el momento de la consulta</p>
         <p className="text-sm text-slate-600 dark:text-slate-300">Consulta realizada {checkedAt?.toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>
         </>}
         <WorkerQrVisit visit={visit} />
-        {!visit.active && <>
-        {accountId === null && <form onSubmit={requestLogin} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
-          <h2 className="font-bold">Consultar la ficha del trabajador</h2>
-          <p className="text-sm">Identifícate con el correo autorizado para ver la obra, el periodo, la formación PRL y la aptitud médica según tus permisos. Si es tu primer acceso profesional, abre primero el enlace que te ha facilitado el supervisor.</p>
-          <label className="block text-sm font-bold">Correo autorizado
-            <input type="email" required autoComplete="email" value={email} onChange={event => setEmail(event.target.value)}
-              className="mt-1 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base dark:border-slate-600 dark:bg-slate-900" />
-          </label>
-          <button type="submit" disabled={sending} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00548E] px-4 py-2 font-bold text-white disabled:opacity-50"><LockKeyhole className="h-4 w-4" />{sending ? 'Enviando…' : 'Verificar correo'}</button>
-          {loginMessage && <p role="status" className="text-sm">{loginMessage}</p>}
-        </form>}
+        {!visit.active && !visit.submitting && <>
+        {accountId === null && !visit.error && <p className="text-sm text-slate-600 dark:text-slate-300">Abre un enlace de visita vigente para consultar la ficha.</p>}
         {checkingDetails && <p role="status">Comprobando autorización…</p>}
         {detailsError && <p role="alert" className="text-sm">{detailsError}</p>}
         {accountId && !details && !checkingDetails && !detailsError && <p className="text-sm">Esta cuenta no dispone de una autorización vigente para consultar los datos del carnet.</p>}
         {accountId && details && <section aria-label="Datos autorizados del carnet" className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
           <h2 className="font-bold">Ficha del trabajador</h2>
           <dl className="divide-y divide-slate-200 dark:divide-slate-700">
-            {fields.map(({ key, label }) => details[key] && <div key={key} className="grid gap-1 py-2 text-sm sm:grid-cols-2">
+            {displayedFields(details).map(({ key, label, value }) => <div key={key} className="grid gap-1 py-2 text-sm sm:grid-cols-2">
               <dt className="font-bold text-slate-600 dark:text-slate-300">{label}</dt>
-              <dd className="break-words">{fieldValue(key, details[key])}</dd>
+              <dd className="break-words">{value}</dd>
             </div>)}
           </dl>
           {details.expiresAt && <p className="mt-2 text-xs">Acceso temporal hasta {new Date(details.expiresAt).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>}
@@ -259,7 +233,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
         </>}
       </>}
       {(!visit.active || status !== 'valid') && <footer className="flex flex-wrap gap-2">
-        {status === 'valid' && !visit.active && accountId !== undefined && !checkingDetails && !details && <button type="button" onClick={downloadStatus} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Download className="h-4 w-4" /> PDF del estado del carnet</button>}
+        {status === 'valid' && !visit.active && !visit.submitting && accountId !== undefined && !checkingDetails && !details && <button type="button" onClick={downloadStatus} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Download className="h-4 w-4" /> PDF del estado del carnet</button>}
         <button type="button" onClick={closeViewer} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><X className="h-4 w-4" /> Cerrar</button>
       </footer>}
       <p className="border-t border-slate-200 pt-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300">

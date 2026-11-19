@@ -17,6 +17,7 @@ export interface WorkerQrDetails {
   contractStatus?: string;
   trainingRecord?: string;
   aptitudeConclusion?: string;
+  workRestrictions?: string;
   expiresAt?: string;
 }
 

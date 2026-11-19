@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { BriefcaseBusiness, Clock3, HardHat, HeartPulse, KeyRound, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { BriefcaseBusiness, Clock3, HardHat, HeartPulse, ShieldCheck } from 'lucide-react';
 import {
   closeWorkerQrVisit, getWorkerQrVisitSession, isWorkerQrVisitCode, readWorkerQrVisit, redeemWorkerQrVisit, storeWorkerQrVisitSession,
-  workerQrVisitStorageKey, type WorkerQrVisitResult, type WorkerQrVisitSession,
+  workerQrVisitFragmentKey, workerQrVisitStorageKey, type WorkerQrVisitResult, type WorkerQrVisitSession,
 } from '../src/services/workerQrVisitService';
+
+import { workerQrAptitude } from '../src/lib/workerQrAptitude';
 
 type VisitDetails = Extract<WorkerQrVisitResult, { status: 'ok' }>;
 const messages = {
@@ -18,7 +20,53 @@ export function useWorkerQrVisit(card: string | null) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [remaining, setRemaining] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(() => new URLSearchParams(location.hash.slice(1)).has(workerQrVisitFragmentKey));
+  const redemption = useRef<Promise<WorkerQrVisitSession | null> | null>(null);
+
+  useEffect(() => {
+    if (!card) return;
+    let active = true;
+    const redeemLink = () => {
+      const url = new URL(location.href);
+      const fragment = new URLSearchParams(url.hash.slice(1));
+      const code = fragment.get(workerQrVisitFragmentKey);
+      if (code !== null) {
+        fragment.delete(workerQrVisitFragmentKey);
+        url.hash = fragment.toString();
+        history.replaceState(history.state, '', url);
+        if (!isWorkerQrVisitCode(code)) {
+          redemption.current = null;
+          setSubmitting(false);
+          setError('El enlace de visita no es válido.');
+          return;
+        }
+        setError('');
+        setSubmitting(true);
+        redemption.current = redeemWorkerQrVisit(code);
+      }
+      const pending = redemption.current;
+      if (!pending) return;
+      const isCurrent = () => active && redemption.current === pending;
+      void pending.then(next => {
+        if (!isCurrent()) return;
+        if (!next) { setError('El enlace de visita ya se ha usado o ha caducado.'); return; }
+        storeWorkerQrVisitSession(next);
+        setSession(next);
+      }).catch(() => {
+        if (isCurrent()) setError('No se ha podido iniciar la visita. Comprueba la conexión.');
+      }).finally(() => {
+        if (!isCurrent()) return;
+        redemption.current = null;
+        setSubmitting(false);
+      });
+    };
+    redeemLink();
+    window.addEventListener('hashchange', redeemLink);
+    return () => {
+      active = false;
+      window.removeEventListener('hashchange', redeemLink);
+    };
+  }, [card]);
 
   useEffect(() => {
     const sync = (event: StorageEvent) => {
@@ -31,7 +79,7 @@ export function useWorkerQrVisit(card: string | null) {
   useEffect(() => {
     setView(null);
     setRemaining(0);
-    if (!session || !card) { setLoading(false); return; }
+    if (!session || !card || submitting) { setLoading(false); return; }
     let current = true;
     let request = 0;
     const refresh = () => {
@@ -64,7 +112,7 @@ export function useWorkerQrVisit(card: string | null) {
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('pageshow', restore);
     };
-  }, [card, session]);
+  }, [card, session, submitting]);
 
   useEffect(() => {
     if (!view) return;
@@ -79,23 +127,6 @@ export function useWorkerQrVisit(card: string | null) {
     return () => window.clearInterval(timer);
   }, [view]);
 
-  const activate = async (code: string) => {
-    if (submitting) return;
-    setError('');
-    if (!isWorkerQrVisitCode(code)) { setError('Comprueba el formato del código de visita.'); return; }
-    setSubmitting(true);
-    try {
-      const next = await redeemWorkerQrVisit(code);
-      if (!next) { setError('El código no es válido, ya se ha usado o ha caducado.'); return; }
-      storeWorkerQrVisitSession(next);
-      setSession(next);
-    } catch {
-      setError('No se ha podido iniciar la visita. Comprueba la conexión.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const close = () => {
     storeWorkerQrVisitSession(null);
     setSession(null);
@@ -107,7 +138,7 @@ export function useWorkerQrVisit(card: string | null) {
   };
 
   return {
-    active: session !== null, activate, close, error, loading, remaining, submitting,
+    active: session !== null, close, error, loading, remaining, submitting,
     details: view && view.card === card && view.session === session?.token ? view.data : null,
   };
 }
@@ -115,30 +146,17 @@ export function useWorkerQrVisit(card: string | null) {
 const date = (value: string) => value.split('-').reverse().join('/');
 const badge = {
   Apto: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-100',
-  'No apto': 'border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/70 dark:text-red-100',
   'Apto con limitación': 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-100',
 };
 
 export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrVisit> }) {
-  const [code, setCode] = useState('');
   const d = visit.details;
+  const aptitude = workerQrAptitude(d?.aptitudeConclusion);
   const minutes = Math.floor(visit.remaining / 60);
   const seconds = String(visit.remaining % 60).padStart(2, '0');
 
-  if (!visit.active) return <form className="space-y-3 rounded-2xl border border-[#00548E]/20 bg-sky-50/60 p-4 dark:border-sky-800 dark:bg-sky-950/45" onSubmit={event => {
-    event.preventDefault();
-    void visit.activate(code.trim());
-  }}>
-    <h2 className="flex items-center gap-2 text-base font-bold text-[#00548E] dark:text-sky-300"><KeyRound className="h-5 w-5" /> Consulta temporal en obra</h2>
-    <label className="block space-y-2 text-sm font-semibold">Código facilitado por el supervisor
-      <input value={code} onChange={event => setCode(event.target.value)} required autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={36}
-        className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base font-normal text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
-    </label>
-    <button disabled={visit.submitting} className="min-h-12 w-full rounded-xl bg-[#00548E] px-4 py-3 text-sm font-bold text-white disabled:opacity-50" type="submit">
-      {visit.submitting ? 'Validando código…' : 'Abrir consulta temporal'}
-    </button>
-    {visit.error && <p role="alert" className="text-sm text-red-800 dark:text-red-200">{visit.error}</p>}
-  </form>;
+  if (visit.submitting) return <p role="status" className="text-sm">Abriendo la ficha…</p>;
+  if (!visit.active) return visit.error ? <p role="alert" className="text-sm text-red-800 dark:text-red-200">{visit.error}</p> : null;
 
   return <section className="space-y-4 print:hidden" aria-label="Ficha temporal del trabajador">
     {visit.loading && <p role="status" className="text-sm">Consultando el carnet…</p>}
@@ -168,12 +186,12 @@ export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrV
             <HardHat className="mt-0.5 h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300" />
             <div><dt className="font-semibold">Formación PRL de 20 horas</dt><dd className="text-slate-700 dark:text-slate-200">{d.trainingRecord}</dd></div>
           </div>
-          {d.aptitudeConclusion && <div className="flex items-start gap-2 text-sm">
+          {aptitude && <div className="flex items-start gap-2 text-sm">
             <HeartPulse className="mt-0.5 h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300" />
             <div className="min-w-0"><dt className="font-semibold">Aptitud médica</dt>
-              <dd className="mt-1"><span className={`inline-flex rounded-full border px-2.5 py-1 font-bold ${badge[d.aptitudeConclusion]}`}>{d.aptitudeConclusion}</span></dd>
-              {d.aptitudeConclusion === 'Apto con limitación' && <dd className="mt-2 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200">
-                {d.workRestrictions || 'Limitaciones sin especificar para esta consulta'}
+              <dd className="mt-1"><span className={`inline-flex rounded-full border px-2.5 py-1 font-bold ${badge[aptitude]}`}>{aptitude}</span></dd>
+              {aptitude === 'Apto con limitación' && d.workRestrictions && <dd className="mt-2 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200">
+                {d.workRestrictions}
               </dd>}
             </div>
           </div>}
