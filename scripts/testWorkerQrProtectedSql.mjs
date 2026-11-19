@@ -7,6 +7,7 @@ const owner = '11111111-1111-4111-8111-111111111111';
 const registrar = '22222222-2222-4222-8222-222222222222';
 const inspector = '33333333-3333-4333-8333-333333333333';
 const unrelated = '44444444-4444-4444-8444-444444444444';
+const readOnly = '99999999-9999-4999-8999-999999999999';
 const desktop = '55555555-5555-4555-8555-555555555555';
 const mobile = '66666666-6666-4666-8666-666666666666';
 const card = '77777777-7777-4777-8777-777777777777';
@@ -32,7 +33,8 @@ try {
     create table auth.users(id uuid primary key, email text, email_confirmed_at timestamptz);
     insert into auth.users values
       ('${owner}','owner@example.test',now()), ('${registrar}','register@example.test',now()),
-      ('${inspector}','inspection@example.test',now()), ('${unrelated}','other@example.test',null);
+      ('${inspector}','inspection@example.test',now()), ('${unrelated}','other@example.test',null),
+      ('${readOnly}','reader@example.test',now());
     create function auth.uid() returns uuid language sql stable as
       $$select nullif(current_setting('request.uid',true),'')::uuid$$;
     create function auth.jwt() returns jsonb language sql stable as
@@ -40,13 +42,13 @@ try {
     create function extensions.digest(text,text) returns bytea language sql immutable as
       $$select sha256(convert_to($1,'UTF8'))$$;
     create function private.has_module_permission(text,text) returns boolean language sql stable as
-      $$select auth.uid() in ('${owner}'::uuid,'${registrar}'::uuid)$$;
+      $$select auth.uid() in ('${owner}'::uuid,'${registrar}'::uuid) or (auth.uid()='${readOnly}'::uuid and $2='read')$$;
     create table private.worker_permissions(recipient uuid, worker_id bigint, owner_id uuid);
     create function private.has_explicit_resource_permission(text,text,uuid,text) returns boolean
       language sql stable security definer set search_path='' as
       $$select exists (select 1 from private.worker_permissions
           where recipient=auth.uid() and worker_id::text=$2 and owner_id=$3 and $4='read')$$;
-    insert into private.worker_permissions values ('${registrar}',7,'${owner}');
+    insert into private.worker_permissions values ('${registrar}',7,'${owner}'), ('${readOnly}',7,'${owner}');
     create table public.trabajadores(
       owner_id uuid, id bigint, obra_id uuid, supervisor_responsable text, num_oferta text, obra text,
       categoria text, quincena text, apellidos_nombre text, dni text, fecha_nacimiento text,
@@ -138,6 +140,10 @@ try {
   assert.equal(await details(card), null);
   assert.ok(unverified);
 
+  await as(readOnly);
+  assert.deepEqual(await reference(card), { id: 7, ownerId: owner }, 'directory read is independent of creation permission');
+  await assert.rejects(() => rpc('public.register_worker_from_card($1::jsonb)', [{}]), /permiso de alta/i);
+
   await as(registrar);
   assert.equal(await details(card), null, 'directory share alone does not grant external medical access');
   assert.equal(await reference(otherCard), null);
@@ -161,6 +167,7 @@ try {
     [{worker_id: 7, worker_owner_id: owner}]);
   const register = worker => rpc('public.register_worker_from_card($1::jsonb)', [worker]);
   const newWorker = { id: 10, owner_id: owner, dni: '12 345678-Z', periodo_inicio: '2030-04-01', periodo_fin: '2030-04-15', data: {} };
+  await assert.rejects(() => register({...newWorker, periodo_fin: '2030-02-30'}), /periodo válido/);
   await register(newWorker);
   assert.deepEqual(await reference(card), { id: 10, ownerId: registrar }, 'existing own DNI wins over shared row');
   await assert.rejects(() => register({...newWorker, id: 11, dni: '12345678z'}), /mismo periodo/);

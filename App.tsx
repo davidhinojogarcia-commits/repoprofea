@@ -2276,7 +2276,7 @@ function App() {
           {activeView === 'registro' && (
             <div className="max-w-3xl mx-auto">
                <Suspense fallback={<ViewLoadingFallback />}>
-               <RegistrationForm 
+               <RegistrationForm key={authenticatedUser.id}
                  onRegister={handleRegister}
                  onOpenWorker={handleEdit}
                  savedObras={savedObras} 

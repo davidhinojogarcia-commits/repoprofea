@@ -27,9 +27,7 @@ as $$
       and coalesce(t.periodo_fin, '') >= to_char(now() at time zone 'Europe/Madrid', 'YYYY-MM-DD')) desc nulls last,
       coalesce(nullif(t.periodo_inicio, ''), nullif(t.fecha_registro, '')) desc nulls last, t.id desc
     limit 1
-  ) current_worker on source.owner_id <> (select auth.uid())
-  where source.owner_id = (select auth.uid()) or current_worker.id is not null
-    or (select private.has_module_permission('trabajadores', 'create'));
+  ) current_worker on source.owner_id <> (select auth.uid());
 $$;
 
 -- Preserve compatibility for clients requesting only their own worker id.
@@ -146,8 +144,11 @@ begin
   end if;
   v_row := jsonb_populate_record(null::public.trabajadores, p_worker);
   v_dni := upper(regexp_replace(coalesce(v_row.dni, ''), '[[:space:]-]', '', 'g'));
-  if v_dni = '' or nullif(v_row.periodo_inicio, '') is null or nullif(v_row.periodo_fin, '') is null then
-    raise exception 'DNI/NIE y periodo requeridos';
+  if v_dni = '' or coalesce(v_row.periodo_inicio, '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    or coalesce(v_row.periodo_fin, '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    or not pg_input_is_valid(v_row.periodo_inicio, 'date') or not pg_input_is_valid(v_row.periodo_fin, 'date')
+    or v_row.periodo_inicio > v_row.periodo_fin then
+    raise exception 'DNI/NIE y periodo válido requeridos';
   end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_owner::text || ':' || v_dni, 0));
   if exists (
