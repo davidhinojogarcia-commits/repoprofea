@@ -3,6 +3,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 import { chromium, webkit, devices } from 'playwright';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
 const tailwind = process.env.SIGNATURE_TAILWIND_SCRIPT
@@ -35,10 +36,11 @@ const bundle = (await build({
         async rpc(name, args) {
           window.calls.push({name, args});
           if (name === 'resolve_worker_qr_share') return { valid: args.p_token === '${token}', history: [{}] };
-          if (account !== 'authorized') return null;
+          if (account !== 'authorized' || window.revoked) return null;
+          if (window.partial) return { maskedDni: '*****678*', trainingRecord: 'Consta en ficha' };
           return { maskedDni: '*****678*', worksite: 'Obra autorizada', periodStart: '2026-11-01',
             periodEnd: '2026-11-29', contractStatus: 'En periodo registrado', trainingRecord: 'Consta en ficha',
-            aptitudeConclusion: 'Apto con limitaciones', expiresAt: new Date(Date.now() + 60000).toISOString() };
+            aptitudeConclusion: 'Apto con limitaciones', dni: '12345678Z', expiresAt: new Date(Date.now() + 60000).toISOString() };
         }
       };
     ` }));
@@ -57,6 +59,19 @@ const configurations = [
   ['Android Chromium', chromium, devices['Pixel 7']],
   ['iPhone WebKit', webkit, devices['iPhone 13']],
 ];
+
+async function pdfText(download) {
+  const path = await download.path();
+  if (process.env.PROFEA_QR_TEST_PDF && download.suggestedFilename() === 'FICHA_TRABAJADOR_PROFEA.pdf' && !pdfText.saved)
+    { await download.saveAs(process.env.PROFEA_QR_TEST_PDF); pdfText.saved = true; }
+  const task = getDocument({ data: new Uint8Array(await readFile(path)), useSystemFonts: true });
+  try {
+    const pdf = await task.promise;
+    return (await (await pdf.getPage(1)).getTextContent()).items.map(item => item.str).join(' ');
+  } finally {
+    await task.destroy();
+  }
+}
 
 try {
   for (const [label, engine, device] of configurations) {
@@ -79,6 +94,15 @@ try {
       assert.equal(await page.evaluate(() => window.otp.options.shouldCreateUser), false);
       assert.deepEqual(await page.evaluate(() => window.calls.map(call => call.name)), ['resolve_worker_qr_share']);
       assert.equal(await protectedFields.count(), 0);
+      const fullPdf = page.getByRole('button', { name:'Descargar ficha del trabajador' });
+      assert.equal(await fullPdf.count(), 0);
+      const publicDownload = page.waitForEvent('download');
+      await page.getByRole('button', { name:'PDF del estado del carnet' }).click();
+      const publicPdf = await publicDownload;
+      assert.equal(publicPdf.suggestedFilename(), 'VERIFICACION_PROFEA.pdf');
+      const publicText = await pdfText(publicPdf);
+      assert.match(publicText, /carnet activo/);
+      assert.doesNotMatch(publicText, /\*\*\*|Obra autorizada|Apto con limitaciones/);
 
       await page.evaluate(() => window.setAccount('unauthorized'));
       await page.getByText(/Esta cuenta no dispone/).waitFor();
@@ -93,17 +117,37 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       const changeAccount = page.getByRole('button', {name:'Cambiar cuenta'});
       assert.ok((await changeAccount.boundingBox()).height >= 44);
-      if (engine === chromium) {
-        const download = page.waitForEvent('download');
-        await page.getByRole('button', { name:'PDF de verificación' }).click();
-        assert.equal((await download).suggestedFilename(), 'VERIFICACION_PROFEA.pdf');
-      }
+      assert.equal(await page.getByRole('button', { name:'PDF del estado del carnet' }).count(), 0);
+      const authorizedDownload = page.waitForEvent('download');
+      await fullPdf.click();
+      const authorizedPdf = await authorizedDownload;
+      assert.equal(authorizedPdf.suggestedFilename(), 'FICHA_TRABAJADOR_PROFEA.pdf');
+      const text = await pdfText(authorizedPdf);
+      for (const expected of ['*****678*', 'Obra autorizada', '01/11/2026', '29/11/2026', 'En periodo registrado', 'Formación PRL de 20 horas', 'Consta en ficha', 'Apto con limitaciones'])
+        assert.ok(text.includes(expected), expected);
+      assert.doesNotMatch(text, /12345678Z/);
+
+      await page.evaluate(() => { window.partial = true; });
+      const partialDownload = page.waitForEvent('download');
+      await fullPdf.click();
+      const partialText = await pdfText(await partialDownload);
+      assert.ok(partialText.includes('*****678*'));
+      assert.ok(partialText.includes('Consta en ficha'));
+      assert.doesNotMatch(partialText, /Obra autorizada|Apto con limitaciones|29\/11\/2026/);
+
+      let unexpectedDownload = false;
+      page.once('download', () => { unexpectedDownload = true; });
+      await page.evaluate(() => { window.revoked = true; });
+      await fullPdf.click();
+      await page.getByRole('alert').filter({ hasText: 'se ha revocado' }).waitFor();
+      assert.equal(await fullPdf.count(), 0);
+      assert.equal(unexpectedDownload, false);
 
       await page.getByRole('button', {name:'Cambiar cuenta'}).click();
       await email.waitFor();
       assert.equal(await protectedFields.count(), 0);
       assert.deepEqual(errors, []);
-      console.log('PASS ' + label + ': external QR, public/authorized views, scoped email, masked DNI and session cleanup.');
+      console.log('PASS ' + label + ': external QR, public/authorized views, public and scoped PDFs, masked DNI, revocation and session cleanup.');
     } finally {
       await browser.close();
     }
