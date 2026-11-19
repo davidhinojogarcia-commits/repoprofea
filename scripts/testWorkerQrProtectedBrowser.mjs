@@ -36,6 +36,14 @@ const bundle = (await build({
         async rpc(name, args) {
           window.calls.push({name, args});
           if (name === 'resolve_worker_qr_share') return { valid: args.p_token === '${token}', history: [{}] };
+          if (name === 'redeem_worker_qr_visit') return {token:'77777777-7777-4777-8777-777777777777',expiresAt:new Date(Date.now()+1800000).toISOString()};
+          if (name === 'close_worker_qr_visit') return null;
+          if (name === 'read_worker_qr_visit') return {
+            status:'ok', remainingMs: window.quickExpiry ? 400 : 120000, maskedDni:'*****678*',
+            worksite:'Obra de visita', periodStart:'2026-11-01', periodEnd:'2026-11-29',
+            trainingRecord:'Consta en ficha', aptitudeConclusion:'Apto con limitación',
+            workRestrictions:'No realizar trabajos en altura.'
+          };
           if (account !== 'authorized' || window.revoked) return null;
           if (window.partial) return { maskedDni: '*****678*', trainingRecord: 'Consta en ficha' };
           return { maskedDni: '*****678*', worksite: 'Obra autorizada', periodStart: '2026-11-01',
@@ -47,10 +55,15 @@ const bundle = (await build({
   } }],
 })).outputFiles[0].text;
 const server = http.createServer((req, res) => {
+  if (req.url?.startsWith('/logo-diputacion-profea') && req.url.endsWith('.svg')) {
+    res.setHeader('Content-Type', 'image/svg+xml');
+    void readFile(root + 'public' + req.url).then(svg => res.end(svg));
+    return;
+  }
   const script = req.url === '/app.js' || req.url === '/tailwind.js';
   res.setHeader('Content-Type', script ? 'text/javascript' : 'text/html');
   res.end(req.url === '/app.js' ? bundle : req.url === '/tailwind.js' ? tailwind
-    : '<!doctype html><html lang="es"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><div id="root"></div><script type="module" src="/app.js"></script></html>');
+    : '<!doctype html><html lang="es"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/tailwind.js"></script><style>body{font-family:Inter,system-ui,sans-serif}</style><div id="root"></div><script type="module" src="/app.js"></script></html>');
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
@@ -146,6 +159,29 @@ try {
       await page.getByRole('button', {name:'Cambiar cuenta'}).click();
       await email.waitFor();
       assert.equal(await protectedFields.count(), 0);
+      await page.getByRole('textbox', { name:'Código facilitado por el supervisor' }).fill('77777777-7777-4777-8777-777777777777');
+      await page.getByRole('button', { name:'Abrir consulta temporal' }).click();
+      const visit = page.getByRole('region', { name:'Ficha temporal del trabajador' });
+      await visit.getByText('No realizar trabajos en altura.',{exact:true}).waitFor();
+      assert.equal(await visit.getByText('Obra de visita',{exact:true}).count(), 1);
+      assert.equal(await visit.getByText('29/11/2026',{exact:true}).count(), 1);
+      assert.equal(await visit.getByText('*****678*',{exact:true}).count(), 1);
+      assert.equal(await visit.getByText('Apto con limitación',{exact:true}).count(), 1);
+      assert.equal(await page.getByRole('button', { name:/PDF|Descargar ficha/ }).count(), 0);
+      assert.equal(await page.getByText(/David Hinojo García\. Todos los derechos reservados/).count(), 1);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      if (process.env.PROFEA_QR_VISIT_SCREENSHOT && label === 'iPhone WebKit')
+        await page.screenshot({ path: process.env.PROFEA_QR_VISIT_SCREENSHOT, fullPage:true });
+      await page.reload();
+      await visit.getByText('No realizar trabajos en altura.',{exact:true}).waitFor();
+      await page.evaluate(() => {
+        window.quickExpiry = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.getByRole('alert').filter({hasText:'ha caducado'}).waitFor();
+      assert.equal(await visit.getByText('*****678*',{exact:true}).count(), 0);
+      await visit.getByRole('button', { name:'Cerrar visita' }).click();
+      await page.getByRole('button', { name:'Abrir consulta temporal' }).waitFor();
       assert.deepEqual(errors, []);
       console.log('PASS ' + label + ': external QR, public/authorized views, public and scoped PDFs, masked DNI, revocation and session cleanup.');
     } finally {

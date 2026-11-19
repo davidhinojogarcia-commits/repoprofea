@@ -56,7 +56,7 @@ try {
       calzado text, formacion text, lugar_formacion text, cita_dia text, cita_hora text,
       sitio_reconocimiento text, documentacion_completa text, observaciones text, fecha_registro text,
       necesita_reconocimiento text, aptitud_medica text, reconocimiento_estado text,
-      limitaciones_aptitud text, data jsonb, created_by uuid, updated_by uuid, primary key(owner_id,id)
+      limitaciones_aptitud text, reconocimiento_limitaciones text, reconocimiento_fecha text, reconocimiento_validez text, data jsonb, created_by uuid, updated_by uuid, primary key(owner_id,id)
     );
     alter table public.trabajadores enable row level security;
     grant select, insert on public.trabajadores to authenticated;
@@ -173,6 +173,65 @@ try {
   await assert.rejects(() => register({...newWorker, id: 11, dni: '12345678z'}), /mismo periodo/);
   await register({...newWorker, id: 11, periodo_inicio: '2030-05-01', periodo_fin: '2030-05-15'});
   assert.deepEqual(await query('select distinct owner_id from public.trabajadores where id in (10,11)'), [{owner_id: registrar}]);
+
+  await db.exec('reset role');
+  await migration('20261119221000_worker_qr_visit_access.sql');
+  const visitIssue = () => rpc('public.issue_worker_qr_visit(7,$1)', ['Profesional habilitado QA']);
+  const redeemVisit = code => rpc('public.redeem_worker_qr_visit($1::uuid)', [code]);
+  const readVisit = (session, token = card) => rpc('public.read_worker_qr_visit($1::uuid,$2::uuid)', [session, token]);
+
+  await as(readOnly);
+  assert.equal(await visitIssue(), null, 'read-only directorio permission cannot issue a visit');
+  await as(owner);
+  const invitation = await visitIssue();
+  assert.ok(invitation.code);
+  const listed = await rpc('public.list_worker_qr_visits(7)');
+  assert.equal(listed[0].id, invitation.id);
+  assert.ok(!JSON.stringify(listed).includes(invitation.code));
+  assert.equal(await rpc("public.save_worker_qr_restrictions(7,'No realizar trabajos en altura.')"), true);
+  assert.equal(await rpc("public.get_worker_qr_restrictions(7)"), 'No realizar trabajos en altura.');
+
+  await db.exec('reset role; set role anon');
+  await assert.rejects(() => visitIssue(), /permission denied/i);
+  assert.deepEqual(await readVisit(invitation.code), { status: 'visit_closed' });
+  const session = await redeemVisit(invitation.code);
+  assert.ok(session.token);
+  assert.equal(await redeemVisit(invitation.code), null, 'redeeming twice fails');
+  const visit = await readVisit(session.token);
+  assert.equal(visit.status, 'ok');
+  assert.equal(visit.maskedDni, '*****678*');
+  assert.equal(visit.worksite, 'Obra autorizada');
+  assert.equal(visit.trainingRecord, 'Consta en ficha');
+  assert.equal(visit.aptitudeConclusion, 'Apto con limitación');
+  assert.equal(visit.workRestrictions, 'No realizar trabajos en altura.');
+  assert.ok(visit.remainingMs > 0 && visit.remainingMs <= 120000);
+  assert.ok(!JSON.stringify(visit).match(/TEXTO PRIVADO|IBAN PRIVADO|12345678Z|PERSONA SINTÉTICA/));
+  assert.equal((await readVisit(session.token)).expiresAt, visit.expiresAt);
+  assert.deepEqual(await readVisit(session.token, otherCard), { status: 'not_available' });
+
+  await db.exec('reset role');
+  await query("update public.trabajadores set periodo_inicio = '2026-01-01', periodo_fin = '2099-12-31' where owner_id=$1::uuid and id=9", [owner]);
+  await db.exec('set role anon');
+  assert.deepEqual(await readVisit(session.token, otherCard), { status: 'not_available' }, 'a current contract from a different worksite is unavailable');
+  await db.exec('reset role');
+  await query("update public.trabajadores set reconocimiento_fecha='2026-10-01' where owner_id=$1::uuid and id=7", [owner]);
+  await db.exec('set role anon');
+  assert.equal((await readVisit(session.token)).workRestrictions, undefined, 'a changed assessment invalidates the reviewed text');
+  await db.exec('reset role');
+  await query("update private.worker_qr_visit_reads set expires_at=now()-interval '1 second' where visit_id=$1::uuid", [invitation.id]);
+  await db.exec('set role anon');
+  assert.deepEqual(await readVisit(session.token), { status: 'card_expired' });
+  await as(owner);
+  assert.equal(await rpc('public.revoke_worker_qr_visit($1::uuid)', [invitation.id]), true);
+  await db.exec('reset role; set role anon');
+  assert.deepEqual(await readVisit(session.token), { status: 'visit_closed' });
+  await as(owner);
+  const closeInvitation = await visitIssue();
+  await db.exec('reset role; set role anon');
+  const closeSession = await redeemVisit(closeInvitation.code);
+  await rpc('public.close_worker_qr_visit($1::uuid)', [closeSession.token]);
+  assert.deepEqual(await readVisit(closeSession.token), { status: 'visit_closed' });
+  console.log('PASS PostgreSQL: visit activation, role and worksite scope, contract selection, masked DNI, reviewed restrictions and non-renewable expiry.');
 
   await db.exec('reset role');
   await query('update public.worker_qr_shares set revoked_at=now() where token=$1::uuid', [card]);

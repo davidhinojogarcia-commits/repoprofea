@@ -8,6 +8,7 @@ import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import QRCode from 'qrcode';
 import { ensureWorkerQrShare } from '../src/services/workerQrShareService';
 
+const WorkerQrVisitManager = React.lazy(() => import('./WorkerQrVisitManager'));
 const InspectionAccessManager = React.lazy(() => import('./InspectionAccessManager'));
 
 export default function WorkerCardModal({ person, people = [person], onClose }: { person: Person; people?: Person[]; onClose: () => void }) {
@@ -217,8 +218,9 @@ export default function WorkerCardModal({ person, people = [person], onClose }: 
               className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#00548E]/30 px-4 py-3 text-sm font-bold text-[#00548E] dark:border-blue-700 dark:text-blue-300">
               <ShieldCheck className="h-4 w-4"/> Acceso temporal a Inspección y Dirección Facultativa
             </button>
-            {inspectionExpanded && <div id="card-inspection-access" className="mt-3">
+            {inspectionExpanded && <div id="card-inspection-access" className="mt-3 space-y-3">
               <Suspense fallback={<p role="status">Preparando acceso seguro…</p>}>
+                <WorkerQrVisitManager key={person.id} person={person} />
                 <InspectionAccessManager person={person}/>
               </Suspense>
             </div>}

@@ -6,6 +6,7 @@ import { OFFICIAL_LOGO_BASE64 } from '../src/assets/logoData';
 import { readWorkerQrDetails, resolveWorkerQrShare, type WorkerQrDetails } from '../src/services/workerQrShareService';
 import { supabase } from '../src/lib/supabase';
 import { workerTokenFromQr } from '../src/lib/workerQrScan';
+import { useWorkerQrVisit, WorkerQrVisit } from './WorkerQrVisit';
 
 interface WorkerQrPortalProps { token: string; }
 
@@ -82,6 +83,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
   const normalizedToken = workerTokenFromQr(`${location.origin}/?worker-qr=${encodeURIComponent(token)}`, location.origin);
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'error'>('loading');
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  const visit = useWorkerQrVisit(normalizedToken);
   const currentAccount = useRef<string | null>(null);
   const activeToken = useRef<string | null>(null);
   const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
@@ -120,7 +122,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
     setScopedDetails(null);
     setDetailsError('');
     setCheckingDetails(false);
-    if (status !== 'valid' || !normalizedToken || !accountId) return;
+    if (status !== 'valid' || !normalizedToken || !accountId || visit.active) return;
     let active = true;
     let expiry: number | undefined;
     let request = 0;
@@ -152,7 +154,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('pageshow', refresh);
     };
-  }, [accountId, normalizedToken, status]);
+  }, [accountId, normalizedToken, status, visit.active]);
 
   const requestLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -202,21 +204,29 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
 
   return <main className="min-h-screen bg-slate-100 px-3 py-5 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:px-6 sm:py-10">
     <section className="mx-auto w-full max-w-xl space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:p-6">
-      <header className="flex items-start gap-3">
+      <header className="space-y-4 border-b border-slate-200 pb-4 dark:border-slate-700">
+        <img src="/logo-diputacion-profea.svg" alt="Diputación de Cádiz · PROFEA" className="h-12 max-w-full object-contain object-left dark:hidden" />
+        <img src="/logo-diputacion-profea-dark.svg" alt="Diputación de Cádiz · PROFEA" className="hidden h-12 max-w-full object-contain object-left dark:block" />
+        <div className="flex items-start gap-3">
         <div className="rounded-xl bg-blue-50 p-3 text-[#00548E] dark:bg-slate-800 dark:text-blue-300">
           {status === 'loading' ? <Loader2 className="h-6 w-6 animate-spin" /> : <ShieldCheck className="h-6 w-6" />}
         </div>
         <div>
-          <h1 className="text-xl font-black">Verificación de carnet PROFEA</h1>
+          <h1 className="text-xl font-black">{visit.active ? 'Consulta temporal PROFEA' : 'Verificación de carnet PROFEA'}</h1>
           <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Diputación Provincial de Cádiz</p>
+        </div>
         </div>
       </header>
       {status === 'loading' && <p role="status">Consultando el estado del carnet…</p>}
       {status === 'invalid' && <p role="alert">El código no es válido, ha sido revocado o ya no está disponible.</p>}
       {status === 'error' && <p role="alert">No se ha podido consultar el carnet. Comprueba la conexión y vuelve a intentarlo.</p>}
       {status === 'valid' && <>
+        {!visit.active && <>
         <p className="font-bold text-emerald-700 dark:text-emerald-300">Carnet activo en el momento de la consulta</p>
         <p className="text-sm text-slate-600 dark:text-slate-300">Consulta realizada {checkedAt?.toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>
+        </>}
+        <WorkerQrVisit visit={visit} />
+        {!visit.active && <>
         {accountId === null && <form onSubmit={requestLogin} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
           <h2 className="font-bold">Consultar la ficha del trabajador</h2>
           <p className="text-sm">Identifícate con el correo autorizado para ver la obra, el periodo, la formación PRL y la aptitud médica según tus permisos. Si es tu primer acceso profesional, abre primero el enlace que te ha facilitado el supervisor.</p>
@@ -246,11 +256,15 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
           </button>
         </section>}
         {accountId && <button type="button" onClick={() => { currentAccount.current = null; setScopedDetails(null); void supabase.auth.signOut({ scope: 'local' }); }} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-bold">Cambiar cuenta</button>}
+        </>}
       </>}
-      <footer className="flex flex-wrap gap-2">
-        {status === 'valid' && accountId !== undefined && !checkingDetails && !details && <button type="button" onClick={downloadStatus} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Download className="h-4 w-4" /> PDF del estado del carnet</button>}
+      {(!visit.active || status !== 'valid') && <footer className="flex flex-wrap gap-2">
+        {status === 'valid' && !visit.active && accountId !== undefined && !checkingDetails && !details && <button type="button" onClick={downloadStatus} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Download className="h-4 w-4" /> PDF del estado del carnet</button>}
         <button type="button" onClick={closeViewer} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><X className="h-4 w-4" /> Cerrar</button>
-      </footer>
+      </footer>}
+      <p className="border-t border-slate-200 pt-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300">
+        © {new Date().getFullYear()} David Hinojo García. Todos los derechos reservados.
+      </p>
     </section>
   </main>;
 };
