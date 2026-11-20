@@ -1,3 +1,4 @@
+import { WorkerQrPublicConsultation } from './WorkerQrPublicConsultation';
 import React, { useEffect, useRef, useState } from 'react';
 import { Download, Loader2, ShieldCheck, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
@@ -210,7 +211,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
         </>}
         <WorkerQrVisit visit={visit} />
         {!visit.active && !visit.submitting && <>
-        {accountId === null && !visit.error && <p className="text-sm text-slate-600 dark:text-slate-300">Abre un enlace de visita vigente para consultar la ficha.</p>}
+        {normalizedToken && accountId !== undefined && !details && !checkingDetails && <WorkerQrPublicConsultation key={normalizedToken} card={normalizedToken} />}
         {checkingDetails && <p role="status">Comprobando autorización…</p>}
         {detailsError && <p role="alert" className="text-sm">{detailsError}</p>}
         {accountId && !details && !checkingDetails && !detailsError && <p className="text-sm">Esta cuenta no dispone de una autorización vigente para consultar los datos del carnet.</p>}
@@ -233,7 +234,7 @@ export const WorkerQrPortal: React.FC<WorkerQrPortalProps> = ({ token }) => {
         </>}
       </>}
       {(!visit.active || status !== 'valid') && <footer className="flex flex-wrap gap-2">
-        {status === 'valid' && !visit.active && !visit.submitting && accountId !== undefined && !checkingDetails && !details && <button type="button" onClick={downloadStatus} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Download className="h-4 w-4" /> PDF del estado del carnet</button>}
+        {status === 'valid' && !visit.active && !visit.submitting && accountId && !checkingDetails && !details && <button type="button" onClick={downloadStatus} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Download className="h-4 w-4" /> PDF del estado del carnet</button>}
         <button type="button" onClick={closeViewer} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><X className="h-4 w-4" /> Cerrar</button>
       </footer>}
       <p className="border-t border-slate-200 pt-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300">
