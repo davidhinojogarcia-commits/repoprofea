@@ -8,6 +8,8 @@ export type WorkerQrVisitResult =
       status: 'ok';
       remainingMs: number;
       maskedDni: string;
+      workerName?: string;
+      professionalCategory?: string;
       worksite: string;
       periodStart: string;
       periodEnd: string;
