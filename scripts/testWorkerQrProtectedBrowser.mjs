@@ -35,6 +35,12 @@ const bundle = (await build({
         async rpc(name, args) {
           window.calls.push({name, args});
           if (name === 'resolve_worker_qr_share') return { valid: args.p_token === '${token}', history: [{}] };
+          if (name === 'read_worker_qr_public_consultation') return {
+            status:'ok', remainingMs: window.quickExpiry ? 400 : 600000, maskedDni:'*****678*',
+            workerName:'Trabajador de prueba', professionalCategory:'Oficial',
+            worksite:'Obra de prueba', periodStart:'2026-11-01', periodEnd:'2026-11-29',
+            contractActive:true, trainingRecord:'Consta en ficha'
+          };
           if (name === 'redeem_worker_qr_visit') return args.p_code === '77777777-7777-4777-8777-777777777777' ? {token:'77777777-7777-4777-8777-777777777777',expiresAt:new Date(Date.now()+1800000).toISOString()} : null;
           if (name === 'close_worker_qr_visit') return null;
           if (name === 'read_worker_qr_visit') return {
@@ -100,17 +106,28 @@ try {
       await page.goto(url + token);
       await page.getByText(/Carnet activo/).waitFor();
       assert.equal(await page.getByRole('textbox').count(), 0);
-      assert.deepEqual(await page.evaluate(() => window.calls.map(call => call.name)), ['resolve_worker_qr_share']);
+      const publicCard = page.getByRole('region', { name:'Ficha temporal del trabajador' });
+      await publicCard.getByText('Trabajador de prueba', { exact:true }).waitFor();
+      assert.deepEqual(await page.evaluate(() => window.calls.map(call => call.name)),
+        ['resolve_worker_qr_share', 'read_worker_qr_public_consultation']);
+      for (const value of ['*****678*', 'Oficial', 'Obra de prueba', 'Contrato vigente', '01/11/2026', '29/11/2026', 'Consta en ficha']) {
+        assert.equal(await publicCard.getByText(value, { exact:true }).count(), 1, value);
+      }
+      assert.equal(await publicCard.getByText(/Aptitud médica|No realizar trabajos/).count(), 0);
       assert.equal(await protectedFields.count(), 0);
       const fullPdf = page.getByRole('button', { name:'Descargar ficha del trabajador' });
-      assert.equal(await fullPdf.count(), 0);
-      const publicDownload = page.waitForEvent('download');
-      await page.getByRole('button', { name:'PDF del estado del carnet' }).click();
-      const publicPdf = await publicDownload;
-      assert.equal(publicPdf.suggestedFilename(), 'VERIFICACION_PROFEA.pdf');
-      const publicText = await pdfText(publicPdf);
-      assert.match(publicText, /carnet activo/);
-      assert.doesNotMatch(publicText, /\*\*\*|Obra autorizada|Apto con limitaciones/);
+      assert.equal(await page.getByRole('button', { name:/PDF|Descargar ficha/ }).count(), 0);
+      await page.evaluate(() => {
+        window.quickExpiry = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await publicCard.getByRole('alert').waitFor();
+      assert.equal(await publicCard.getByText('Trabajador de prueba', { exact:true }).count(), 0);
+      assert.deepEqual(await page.evaluate(() => window.calls
+        .filter(call => call.name === 'read_worker_qr_public_consultation')
+        .map(call => call.args.p_start)), [true, false]);
+      await page.goto(url + token);
+      await publicCard.getByText('Trabajador de prueba', { exact:true }).waitFor();
 
       await page.evaluate(() => window.setAccount('unauthorized'));
       await page.getByText(/Esta cuenta no dispone/).waitFor();
@@ -163,7 +180,7 @@ try {
       assert.equal(unexpectedDownload, false);
 
       await page.getByRole('button', {name:'Cambiar cuenta'}).click();
-      await page.getByText('Abre un enlace de visita vigente para consultar la ficha.',{exact:true}).waitFor();
+      await publicCard.getByText('Trabajador de prueba',{exact:true}).waitFor();
       assert.equal(await protectedFields.count(), 0);
       await page.goto(url + token + '#qr-visit-access=11111111-1111-1111-1111-111111111111');
       await page.getByRole('alert').filter({hasText:'ya se ha usado o ha caducado'}).waitFor();
@@ -193,9 +210,9 @@ try {
       await page.getByRole('alert').filter({hasText:'ha caducado'}).waitFor();
       assert.equal(await visit.getByText('*****678*',{exact:true}).count(), 0);
       await visit.getByRole('button', { name:'Cerrar visita' }).click();
-      await page.getByText('Abre un enlace de visita vigente para consultar la ficha.',{exact:true}).waitFor();
+      await publicCard.getByText('Trabajador de prueba',{exact:true}).waitFor();
       assert.deepEqual(errors, []);
-      console.log('PASS ' + label + ': external QR, direct visit links, public/authorized views, public and scoped PDFs, masked DNI, revocation and session cleanup.');
+      console.log('PASS ' + label + ': external QR, direct visit links, public/authorized views, scoped PDFs, masked DNI, revocation and session cleanup.');
     } finally {
       await browser.close();
     }

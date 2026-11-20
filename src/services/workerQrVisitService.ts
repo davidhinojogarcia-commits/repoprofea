@@ -11,6 +11,7 @@ export type WorkerQrVisitResult =
       workerName?: string;
       professionalCategory?: string;
       worksite: string;
+      contractActive?: boolean;
       periodStart: string;
       periodEnd: string;
       trainingRecord: string;
@@ -77,4 +78,10 @@ export async function saveWorkerQrRestrictions(workerId: number, restrictions: s
 
 export async function getWorkerQrRestrictions(workerId: number): Promise<string | null> {
   return await supabase.rpc('get_worker_qr_restrictions', { p_worker_id: workerId }, { fresh: true }) ?? null;
+}
+
+export async function readWorkerQrPublicConsultation(card: string, consultation: string, start: boolean): Promise<WorkerQrVisitResult> {
+  return await supabase.rpc('read_worker_qr_public_consultation', {
+    p_card: card, p_consultation: consultation, p_start: start,
+  }, { fresh: true });
 }
