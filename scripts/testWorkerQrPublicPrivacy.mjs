@@ -18,5 +18,34 @@ try {
   assert.deepEqual(await query('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), { valid: true, history: [{}] });
   for (const token of ['cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'])
     assert.deepEqual(await query(token), { valid: false, history: [] });
-  console.log('PASS: anonymous PostgreSQL RPC returns status only; revoked, missing and unlinked tokens are invalid.');
+  await db.exec(`reset role; create schema private;
+    alter table public.trabajadores add column categoria text,
+      add column periodo_inicio text, add column periodo_fin text;
+    update public.trabajadores set categoria = 'Oficial', formacion = 'Sí',
+      periodo_inicio = '2000-01-01', periodo_fin = '2099-12-31';`);
+  await db.exec(await readFile(new URL('../supabase/migrations/20261120083000_worker_qr_public_consultation.sql', import.meta.url), 'utf8'));
+  const card = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const nonce = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const read = async (token = card, session = nonce, start = false) =>
+    (await db.query('select public.read_worker_qr_public_consultation($1, $2, $3) as result', [token, session, start])).rows[0].result;
+
+  await db.exec('set role anon');
+  assert.deepEqual(await read(card, nonce, true), { status: 'not_available' });
+  await db.exec(`reset role; update public.worker_qr_shares set public_consultation_enabled = true; set role anon;`);
+  assert.deepEqual(await read(), { status: 'card_expired' });
+  const { remainingMs, ...data } = await read(card, nonce, true);
+  assert.ok(remainingMs > 599000 && remainingMs <= 600000);
+  assert.deepEqual(data, {
+    status: 'ok', workerName: 'PRIVATE_NAME', professionalCategory: 'Oficial', maskedDni: '*****678*',
+    worksite: 'PRIVATE_WORK', periodStart: '2000-01-01', periodEnd: '2099-12-31',
+    contractActive: true, trainingRecord: 'Consta en ficha',
+  });
+  assert.deepEqual(await read('cccccccc-cccc-4ccc-8ccc-cccccccccccc', nonce, true), { status: 'not_available' });
+  await assert.rejects(db.query('select * from private.worker_qr_public_consultations'), /permission denied/);
+  await db.exec(`reset role; update private.worker_qr_public_consultations set expires_at = now() - interval '1 second'; set role anon;`);
+  assert.deepEqual(await read(card, nonce, true), { status: 'card_expired' });
+  assert.equal((await read(card, 'ffffffff-ffff-4fff-8fff-ffffffffffff', true)).status, 'ok');
+  await db.exec(`reset role; update public.worker_qr_shares set revoked_at = now(); set role anon;`);
+  assert.deepEqual(await read(), { status: 'not_available' });
+  console.log('PASS: anonymous QR allowlist, masked DNI, expiry, rescan, revocation and excluded medical fields.');
 } finally { await db.close(); }
