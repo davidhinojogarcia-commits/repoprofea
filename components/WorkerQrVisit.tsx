@@ -149,14 +149,14 @@ const badge = {
   'Apto con limitación': 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-100',
 };
 
-export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrVisit> }) {
+export function WorkerQrVisit({ visit }: { visit: Pick<ReturnType<typeof useWorkerQrVisit>, 'active' | 'close' | 'details' | 'error' | 'loading' | 'remaining' | 'submitting'> & { publicConsultation?: boolean } }) {
   const d = visit.details;
   const aptitude = workerQrAptitude(d?.aptitudeConclusion);
   const minutes = Math.floor(visit.remaining / 60);
   const seconds = String(visit.remaining % 60).padStart(2, '0');
 
   if (visit.submitting) return <p role="status" className="text-sm">Abriendo la ficha…</p>;
-  if (!visit.active) return visit.error ? <p role="alert" className="text-sm text-red-800 dark:text-red-200">{visit.error}</p> : null;
+  if (!visit.active) return visit.error ? <p role={visit.publicConsultation ? 'status' : 'alert'} className="text-sm">{visit.error}</p> : null;
 
   return <section className="space-y-4 print:hidden" aria-label="Ficha temporal del trabajador">
     {visit.loading && <p role="status" className="text-sm">Consultando el carnet…</p>}
@@ -172,8 +172,8 @@ export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrV
       </div>
 
       <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
-        <h3 className="flex items-center gap-2 text-sm font-bold text-[#00548E] dark:text-sky-300"><BriefcaseBusiness className="h-4 w-4" /> Contratación vigente</h3>
-        <p className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-100">Contrato vigente en la obra autorizada</p>
+        <h3 className="flex items-center gap-2 text-sm font-bold text-[#00548E] dark:text-sky-300"><BriefcaseBusiness className="h-4 w-4" /> Contratación</h3>
+        <p className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-100">{d.contractActive === false ? 'Sin contrato vigente' : visit.publicConsultation ? 'Contrato vigente' : 'Contrato vigente en la obra autorizada'}</p>
         <dl className="mt-3 grid grid-cols-2 gap-3">
           <div className="col-span-2"><dt className="text-xs font-semibold text-slate-600 dark:text-slate-300">Categoría profesional</dt><dd className="mt-1 break-words font-bold">{d.professionalCategory || "No consta"}</dd></div>
           <div className="col-span-2"><dt className="text-xs font-semibold text-slate-600 dark:text-slate-300">Obra asignada</dt><dd className="mt-1 break-words font-bold">{d.worksite}</dd></div>
@@ -201,6 +201,6 @@ export function WorkerQrVisit({ visit }: { visit: ReturnType<typeof useWorkerQrV
         </dl>
       </section>
     </>}
-    <button type="button" onClick={visit.close} className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-bold dark:border-slate-600">Cerrar visita</button>
+    <button type="button" onClick={visit.close} className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-bold dark:border-slate-600">{visit.publicConsultation ? 'Cerrar consulta' : 'Cerrar visita'}</button>
   </section>;
 }
