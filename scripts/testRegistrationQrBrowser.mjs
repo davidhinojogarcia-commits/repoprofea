@@ -7,21 +7,23 @@ import { chromium, webkit } from 'playwright';
 // are fixtures; physical devices and Supabase Realtime are separate checks.
 const root = new URL('../', import.meta.url).pathname;
 const code = `import React,{useState}from 'react';import{createRoot}from'react-dom/client';import{RegistrationForm}from './components/RegistrationForm';
-window.accountId='supervisor-a';window.registered=[];
+window.accountId='supervisor-a';window.registered=[];window.opened=[];
 const base={supervisorResponsable:'Anterior',numOferta:'OFERTA ANTERIOR',obra:'Obra antigua',categoria:'Oficial de 1ª',quincena:'1ª Enero 2025',periodoInicio:'2025-01-01',periodoFin:'2025-01-15',formacion:'Sí',lugarFormacion:'Centro antiguo',documentacionCompleta:'Sí',necesitaReconocimiento:'No',citaDia:'2025-01-01',citaHora:'09:00',sitioReconocimiento:'Centro antiguo',fechaRegistro:'2025-01-01',observaciones:'Datos del contrato anterior'};
 const workers=[{...base,id:42,ownerId:'another-supervisor',apellidosNombre:'Ficha ajena con el mismo ID',dni:'12345678Z',telefono:'600999999'}, {...base,id:42,ownerId:'supervisor-a',apellidosNombre:'Persona Uno',dni:'12345678Z',fechaNacimiento:'1980-01-02',telefono:'600111222',numeroSeguridadSocial:'281234567840',iban:'ES9121000418450200051332',calzado:'42'}, {...base,id:43,ownerId:'supervisor-a',apellidosNombre:'Persona Dos',dni:'87654321X',fechaNacimiento:'',telefono:'',numeroSeguridadSocial:'',iban:'',calzado:''}];
-function App(){const[people,setPeople]=useState(workers);const[tick,setTick]=useState(0);window.updateDirectory=setPeople;window.switchAccount=()=>{window.accountId='supervisor-b';setTick(n=>n+1)};return <RegistrationForm onRegister={p=>window.registered.push(p)} savedObras={['Obra nueva']} savedLugares={[]} savedSitios={['Centro nuevo']} savedTelefonos={[]} savedCategorias={[]} people={people}/>;}createRoot(document.getElementById('root')).render(<App/>);`;
+function App(){const[people,setPeople]=useState(workers);const[tick,setTick]=useState(0);window.updateDirectory=setPeople;window.enableProtectedFlow=()=>{window.protectedFlow=true;setTick(n=>n+1)};window.switchAccount=()=>{window.accountId='supervisor-b';setTick(n=>n+1)};return <RegistrationForm onRegister={(p,fromCard)=>{window.registered.push(p);window.fromCard=fromCard;return !window.rejectSave}} onOpenWorker={window.protectedFlow?p=>window.opened.push(p):undefined} savedObras={['Obra nueva']} savedLugares={[]} savedSitios={['Centro nuevo']} savedTelefonos={[]} savedCategorias={[]} people={people}/>;}createRoot(document.getElementById('root')).render(<App/>);`;
 const bundle = (await build({
   stdin: { contents: code, loader: 'tsx', resolveDir: root },
   bundle: true, format: 'esm', platform: 'browser', write: false,
   plugins: [{ name: 'fixtures', setup(b) {
-    for (const [filter, path] of [[/AuthGate$/, 'auth'], [/annualHiringPeriodsService$/, 'periods'], [/workerCardPairing$/, 'pair'], [/WorkerCardScanner$/, 'scanner']])
+    for (const [filter, path] of [[/AuthGate$/, 'auth'], [/annualHiringPeriodsService$/, 'periods'], [/workerCardPairing$/, 'pair'], [/WorkerCardScanner$/, 'scanner'], [/databaseService$/, 'database'], [/workerQrShareService$/, 'qr']])
       b.onResolve({ filter }, () => ({ path, namespace: 'fixture' }));
     b.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({ loader: 'tsx', resolveDir: root, contents: {
       auth: "export function useAuthShell(){return {supervisorName:'Supervisor actual',user:{id:window.accountId}}}",
       periods: 'export async function listAnnualHiringPeriods(){return []}',
       pair: `export async function createCardPairing(){window.created=(window.created||0)+1;return{id:'test-session',expiresAt:new Date(Date.now()+300000).toISOString(),url:location.origin+'/#card-pair=fixture'}};export function watchCardPairing(id,cb,status){window.emitWorker=cb;queueMicrotask(()=>status('SUBSCRIBED'));return {ready:Promise.resolve(),unsubscribe(){window.unsubscribed=(window.unsubscribed||0)+1}}};export async function closeCardPairing(){window.testPairClosed=(window.testPairClosed||0)+1}`,
-      scanner: `import React from 'react';export default function Scanner({onFound,onClose}){return <section aria-label="Cámara de prueba"><button type="button" onClick={()=>{if(onFound(42))onClose()}}>Simular lectura directa</button><button type="button" onClick={onClose}>Cerrar cámara de prueba</button></section>}`,
+      database: `export async function getWorkerByOwner(id,ownerId){if(id===42&&ownerId==='supervisor-a')return {id,ownerId,apellidosNombre:'Ficha completa',dni:'12345678Z'};if(id===88&&ownerId==='shared-owner')return {id,ownerId,apellidosNombre:'Persona de origen autorizado',dni:'11111111H',fechaNacimiento:'1995-01-01',telefono:'600123456',calzado:'43'};return null;}`,
+      qr: `export async function resolveWorkerCardReference(token){return token==='shared'?{id:88,ownerId:'shared-owner'}:token==='owned'?{id:42,ownerId:'supervisor-a'}:null}`,
+      scanner: `import React from 'react';export default function Scanner({onFound,onClose,onToken}){const scan=async(token)=>{if(await (onToken?onToken(token,()=>true):onFound(42)))onClose()};return <section aria-label="Cámara de prueba"><button type="button" onClick={()=>void scan('owned')}>Simular lectura directa</button><button type="button" onClick={()=>void scan('shared')}>Simular una ficha autorizada</button><button type="button" onClick={()=>void scan('unauthorized')}>Simular una ficha sin permiso</button><button type="button" onClick={onClose}>Cerrar cámara de prueba</button></section>}`,
     }[path] }));
   } }],
 })).outputFiles[0].text;
@@ -142,6 +144,36 @@ try {
   assert.equal(saved.id, undefined);
   assert.equal(saved.aptitudMedica, undefined);
   assert.equal(saved.citaDia, '');
+  await page.evaluate(() => window.enableProtectedFlow());
+  const openScanner = () => page.getByRole('button', { name: 'Leer QR con este dispositivo', exact: true }).click();
+  await openScanner();
+  await page.getByRole('button', { name: 'Simular lectura directa' }).click();
+  await page.waitForFunction(() => window.opened.length === 1);
+  assert.equal(await page.evaluate(() => window.opened[0].apellidosNombre), 'Ficha completa');
+  assert.equal(await field('dni').inputValue(), '');
+  await openScanner();
+  await page.getByRole('button', { name: 'Simular una ficha sin permiso' }).click();
+  assert.equal(await field('dni').inputValue(), '');
+  await page.getByRole('button', { name: 'Simular una ficha autorizada' }).click();
+  await page.getByRole('button', { name: 'Confirmar ficha y rellenar datos' }).click();
+  assert.equal(await field('dni').inputValue(), '11111111H');
+  assert.equal(await field('telefono').inputValue(), '600123456');
+  assert.equal(await field('obra').inputValue(), 'Obra nueva');
+  assert.equal(await field('formacion').inputValue(), '');
+  assert.equal(await page.evaluate(() => window.registered.length), 1);
+  await field('formacion').selectOption('Sí');
+  await field('necesitaReconocimiento').selectOption('No');
+  await field('documentacionCompleta').selectOption('Sí');
+  await page.evaluate(() => { window.rejectSave = true; });
+  const submit = page.getByRole('button', { name: 'Registrar Persona' });
+  await submit.click();
+  await page.waitForFunction(() => window.registered.length === 2);
+  assert.equal(await field('dni').inputValue(), '11111111H', 'failed insert keeps the draft');
+  assert.equal(await page.evaluate(() => window.fromCard), true);
+  await page.evaluate(() => { window.rejectSave = false; });
+  await submit.click();
+  await page.waitForFunction(() => window.registered.length === 3);
+  assert.equal(await field('dni').inputValue(), '');
   assert.deepEqual(errors, []);
   console.log('PASS registration QR (' + (process.env.BROWSER_ENGINE || 'chromium') + '): remote/direct preview, confirmation/cancel, personal autofill, new contract preserved, preventive review, missing fields cleared, unavailable references, account isolation and pairing cleanup.');
 } finally {

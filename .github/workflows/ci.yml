@@ -71,6 +71,8 @@ jobs:
         run: npm run test:operational-logs
       - name: Foreman edit/delete draft authorization and regression
         run: node scripts/testForemanDraftEditing.mjs
+      - name: Foreman individual worker signature revocation and security (PostgreSQL)
+        run: node scripts/testForemanWorkerSignatureRevocation.mjs
       - name: Validate foreman document integrity
         run: |
           set -euo pipefail
@@ -115,8 +117,10 @@ jobs:
           npx playwright install --with-deps chromium webkit
       - name: Fast independent foreman reload and signature smoke
         run: node scripts/testIndependentForemanBrowser.mjs
-      - name: Touch worker recovery and PDF placement smoke (Chromium)
-        run: node scripts/testSignatureEditorLayeringBrowser.mjs
+      - name: Touch worker recovery and PDF placement smoke (Chromium + WebKit)
+        run: |
+          node scripts/testSignatureEditorLayeringBrowser.mjs
+          BROWSER_ENGINE=webkit node scripts/testSignatureEditorLayeringBrowser.mjs
       - name: Portal Encargados mobile/tablet alignment (Chromium + WebKit)
         timeout-minutes: 8
         run: |
@@ -160,14 +164,12 @@ jobs:
       - name: Employment PDF and responsive browser regression
         run: |
           npm run test:employment-browser
-          npm run test:independent-foreman-browser
           npm run test:foreman-offline
           BROWSER_ENGINE=webkit node scripts/testForemanOfflineBrowser.mjs
           node scripts/testAppDialogBrowser.mjs
           BROWSER_ENGINE=webkit node scripts/testAppDialogBrowser.mjs
           npm run test:pdf-signature-workspace
           npm run test:pdf-signature-workspace-browser
-          node scripts/testSignatureEditorLayeringBrowser.mjs
       - name: Signature ink, capture, PDF and consumption regression
         run: |
           npm run test:signature-quality
@@ -253,6 +255,8 @@ jobs:
         run: npm run test:inventory-usage-browser
       - name: Public worker QR privacy regression
         run: npm run test:worker-qr-public
+      - name: Protected worker QR database and browser integration
+        run: npm run test:worker-qr-protected
       - name: Rehire prevention review
         run: npm run test:rehire-prevention
       - name: Registration QR autofill and confirmation

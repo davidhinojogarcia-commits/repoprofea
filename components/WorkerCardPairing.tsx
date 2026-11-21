@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { closeCardPairing, createCardPairing, watchCardPairing } from '../src/services/workerCardPairing';
 
-export default function WorkerCardPairing({ onClose, onWorker }: { onClose: () => void; onWorker: (id: number) => boolean }) {
+export default function WorkerCardPairing({ onClose, onWorker }: { onClose: () => void; onWorker: (id: number, ownerId?: string, isActive?: () => boolean) => boolean | Promise<boolean> }) {
   const [qr, setQr] = useState('');
   const [message, setMessage] = useState('Pulsa Crear vinculación para mostrar el QR.');
   const [busy, setBusy] = useState(false);
@@ -18,10 +18,15 @@ export default function WorkerCardPairing({ onClose, onWorker }: { onClose: () =
     try {
       const session = await createCardPairing();
       if (!active.current) { await closeCardPairing(session.id); return; }
-      const subscription = watchCardPairing(session.id, (id, event) => {
+      const subscription = watchCardPairing(session.id, (id, event, ownerId) => {
         if (event <= newest.current) return;
         newest.current = event;
-        setMessage(workerCallback.current(id) ? 'Trabajador localizado. Puedes seguir escaneando desde el móvil.' : 'La ficha no está disponible en este directorio.');
+        const isCurrent = () => active.current && current.current?.id === session.id && newest.current === event;
+        void Promise.resolve(workerCallback.current(id, ownerId, isCurrent)).then(found => {
+          if (isCurrent()) setMessage(found ? 'Trabajador localizado. Puedes seguir escaneando desde el móvil.' : 'La ficha no está disponible en este directorio.');
+        }).catch(() => {
+          if (isCurrent()) setMessage('No se ha podido recuperar la ficha. Comprueba la conexión.');
+        });
       }, status => {
         if (!active.current) return;
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || status === 'RECONCILE_ERROR') setMessage('Se ha perdido la conexión. Al recuperarse se comprobará la última lectura; si no vuelve, cierra y crea una nueva vinculación.');

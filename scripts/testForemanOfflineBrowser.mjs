@@ -5,7 +5,11 @@ import {build} from 'esbuild';
 import {chromium,webkit} from 'playwright';
 const root=new URL('../',import.meta.url).pathname;
 const bundle=(await build({stdin:{contents:`import {foremanVault} from './src/lib/foremanLocalVault';import * as offline from './src/services/foremanOfflineService';window.api={foremanVault,...offline};`,resolveDir:root,loader:'ts'},bundle:true,format:'iife',write:false,plugins:[{name:'boundary',setup(b){b.onResolve({filter:/\?url$/},()=>({path:'asset',namespace:'asset'}));b.onLoad({filter:/.*/,namespace:'asset'},()=>({contents:"export default '/worker.mjs'"}));b.onResolve({filter:/\/lib\/supabase$/},()=>({path:'rpc',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const getSessionUser=async()=>null;export const supabase={query:async()=>[],rpc:async(...args)=>window.rpc(...args)};'}));}}]})).outputFiles[0].text;
-const server=http.createServer((req,res)=>{res.setHeader('Content-Type',(req.url==='/assets/app.js'||req.url==='/service-worker.js')?'application/javascript':'text/html');res.end(req.url==='/service-worker.js'?fs.readFileSync(new URL('../public/service-worker.js',import.meta.url)):req.url==='/assets/app.js'?bundle:'<!doctype html><script src="/assets/app.js"></script>');});
+let originAvailable=true;
+let disconnectedRequests=0;
+const server=http.createServer((req,res)=>{
+ if(!originAvailable){disconnectedRequests++;req.socket.destroy();return;}
+ res.setHeader('Content-Type',(req.url==='/assets/app.js'||req.url==='/service-worker.js')?'application/javascript':'text/html');res.end(req.url==='/service-worker.js'?fs.readFileSync(new URL('../public/service-worker.js',import.meta.url)):req.url==='/assets/app.js'?bundle:'<!doctype html><script src="/assets/app.js"></script>');});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{
  const engine=process.env.BROWSER_ENGINE==='webkit'?webkit:chromium;
@@ -25,11 +29,12 @@ try{
   window.receipts=[];window.rpc=async(name,args)=>{if(name==='get_foreman_offline_snapshot')return window.snapshot;window.receipts.push(args.p_operation_id);return {ok:true};};
  });
  await createFixture(page);await page.evaluate(()=>window.api.downloadPortalDocument('access-A','doc-A'));
- await context.setOffline(true);
+ originAvailable=false;
  await page.evaluate(()=>window.api.queuePortalSignature('access-A',{documentId:'doc-A',workerId:7,signature:'data:image/png;base64,'+'A'.repeat(120)}));
  await page.reload();await page.waitForFunction(()=>window.api);
  assert.equal(await page.evaluate(async()=>(await window.api.pendingPortalSignatures('access-A')).length),1,'queue survives reload');
- await context.setOffline(false);await createFixture(page);
+ assert.ok(disconnectedRequests>0,'the origin was unreachable during reload');
+ originAvailable=true;await createFixture(page);
  const op=await page.evaluate(async()=>(await window.api.pendingPortalSignatures('access-A'))[0].id);
  await page.evaluate(()=>window.api.synchronizePortalSignatures('access-A',true));
  assert.deepEqual(await page.evaluate(()=>window.receipts),[op]);

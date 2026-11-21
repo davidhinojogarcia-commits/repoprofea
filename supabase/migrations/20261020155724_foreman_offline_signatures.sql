@@ -59,6 +59,14 @@ begin
  if p_version is distinct from foreman_private.document_version(d.id) then raise exception 'Documento modificado. Es necesario revisarlo.';end if;
  if p_foreman then
    select signature into existing from public.foreman_document_signatures where document_id=d.id;
+ elsif d.document_type in ('inicio','control_presencia','contrato','prorroga') then
+   if not exists (
+     select 1 from public.mandatory_document_workers_v2 w
+     where w.id=p_document_worker_id and w.document_id=d.id
+       and w.legacy_worker_id is not distinct from p_worker_id
+   ) then raise exception 'Persona no válida';end if;
+   select signature into existing from public.mandatory_document_signatures_v2
+   where document_id=d.id and document_worker_id=p_document_worker_id;
  else
    existing:=case when jsonb_typeof(d.signatures->p_worker_id::text)='string' then d.signatures->>p_worker_id::text else d.signatures#>>array[p_worker_id::text,'signature'] end;
  end if;
@@ -66,7 +74,6 @@ begin
  if coalesce(existing,'')='' then
    if p_foreman then result:=public.sign_foreman_document_as_foreman(p_token,d.id,p_signature);
    elsif d.document_type in ('inicio','control_presencia','contrato','prorroga') then
-     if not exists(select 1 from public.mandatory_document_workers_v2 where id=p_document_worker_id and document_id=d.id and legacy_worker_id=p_worker_id) then raise exception 'Persona no válida';end if;
      result:=public.sign_mandatory_document_worker_v2(p_token,d.id,p_document_worker_id,p_signature);
    else perform public.sign_foreman_mandatory_document(p_token,d.id,p_worker_id,p_signature);
    end if;
@@ -94,6 +101,49 @@ drop policy if exists foreman_changes_owner_read on public.foreman_document_chan
 create policy foreman_changes_owner_read on public.foreman_document_change_requests for select to authenticated using(owner_id=(select auth.uid()));
 create index if not exists foreman_changes_pending_idx on public.foreman_document_change_requests(owner_id,status,created_at desc);
 create unique index if not exists foreman_changes_one_pending on public.foreman_document_change_requests(document_id,access_id,action) where status='pending';
+
+create or replace function public.guard_mandatory_v2_lifecycle_transition()
+returns trigger
+language plpgsql
+set search_path=public
+as $$
+begin
+  if old.v2_initialized_at is not null and new.v2_initialized_at is null then
+    raise exception 'No se puede desactivar la trazabilidad V2 de un documento inicializado';
+  end if;
+  if old.v2_initialized_at is null then
+    return new;
+  end if;
+  if new.lifecycle_status is not distinct from old.lifecycle_status then
+    return new;
+  end if;
+
+  -- Only the supervisor's approved disposition may archive a V2 original.
+  if new.lifecycle_status='ARCHIVED' and new.assigned_at is null and exists (
+    select 1 from public.foreman_document_change_requests r
+    where r.document_id=old.id and r.owner_id=old.owner_id
+      and r.document_id=new.id and r.owner_id=new.owner_id
+      and r.status='approved' and r.resolved_by=auth.uid()
+      and r.id::text=new.details->>'documentChangeRequestId'
+  ) then return new; end if;
+
+  if old.lifecycle_status='ANALYZED' and new.lifecycle_status in ('NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY') then return new; end if;
+  if old.lifecycle_status='NEEDS_WORKSITE_REVIEW' and new.lifecycle_status in ('NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY') then return new; end if;
+  if old.lifecycle_status='NEEDS_WORKER_REVIEW' and new.lifecycle_status in ('NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY') then return new; end if;
+  if old.lifecycle_status='NEEDS_SIGNATURE_POSITION_REVIEW' and new.lifecycle_status in ('NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY') then return new; end if;
+  if old.lifecycle_status='READY' and new.lifecycle_status in ('NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY','ASSIGNED') then return new; end if;
+  if old.lifecycle_status in ('ASSIGNED','IN_SIGNATURE') and new.lifecycle_status='RETURNED_FOR_CORRECTION' then return new; end if;
+  if old.lifecycle_status='ASSIGNED' and new.lifecycle_status in ('IN_SIGNATURE','SUBMITTED') then return new; end if;
+  if old.lifecycle_status='IN_SIGNATURE' and new.lifecycle_status in ('IN_SIGNATURE','SUBMITTED') then return new; end if;
+  if old.lifecycle_status='SUBMITTED' and new.lifecycle_status in ('RECEIVED','REVIEWED','RETURNED_FOR_CORRECTION') then return new; end if;
+  if old.lifecycle_status='RECEIVED' and new.lifecycle_status in ('REVIEWED','RETURNED_FOR_CORRECTION') then return new; end if;
+  if old.lifecycle_status='REVIEWED' and new.lifecycle_status='RETURNED_FOR_CORRECTION' then return new; end if;
+  if old.lifecycle_status='RETURNED_FOR_CORRECTION' and new.lifecycle_status in ('IN_SIGNATURE','SUBMITTED','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY') then return new; end if;
+  if old.lifecycle_status='PDF_VALIDATION_ERROR' and new.lifecycle_status in ('NEEDS_WORKSITE_REVIEW','NEEDS_WORKER_REVIEW','NEEDS_SIGNATURE_POSITION_REVIEW','READY') then return new; end if;
+
+  raise exception 'Transición V2 no permitida: % -> %',coalesce(old.lifecycle_status,'NULL'),coalesce(new.lifecycle_status,'NULL');
+end;
+$$;
 
 create or replace function public.request_foreman_document_change(p_token text,p_document_id uuid,p_action text,p_reason text)
 returns uuid language plpgsql security definer set search_path=public,extensions as $$
@@ -127,14 +177,23 @@ begin
      select * into n from public.foreman_mandatory_documents where id=p_replacement_id and id<>d.id and owner_id=d.owner_id and lower(obra)=lower(d.obra) for update;
      if not found or coalesce(n.signatures,'{}'::jsonb)<>'{}'::jsonb or n.status in ('completed','reviewed') or exists(select 1 from public.foreman_document_signatures where document_id=n.id) then raise exception 'Selecciona una nueva versión sin firmas de la misma obra';end if;
      if exists(select 1 from public.mandatory_document_signatures_v2 where document_id=n.id) then raise exception 'La nueva versión ya contiene firmas';end if;
+     if d.details->>'originalPdfMode'='overlay' and (
+       n.document_type<>d.document_type or n.details->>'originalPdfMode' is distinct from 'overlay' or not exists(
+         select 1 from public.foreman_mandatory_pdf_files f
+         where f.document_id=n.id and f.owner_id=d.owner_id and f.original_pdf is not null
+       )
+     ) then raise exception 'Selecciona un PDF importado del mismo tipo';end if;
      update public.foreman_mandatory_documents set details=coalesce(details,'{}'::jsonb)||jsonb_build_object('previousDocumentId',d.id,'revisionReason',r.reason),updated_at=now() where id=n.id;
    end if;
+   update public.foreman_document_change_requests set status='approved',replacement_id=n.id,
+     resolved_by=auth.uid(),resolved_at=now() where id=r.id;
    update public.foreman_mandatory_documents set lifecycle_status='ARCHIVED',assigned_at=null,
-     details=coalesce(details,'{}'::jsonb)||jsonb_build_object('lifecycleStatus','ARCHIVED','documentDisposition',r.action,'dispositionReason',r.reason,'replacementDocumentId',n.id,'dispositionAt',now(),'dispositionBy',auth.uid()),updated_at=now() where id=d.id;
+     details=coalesce(details,'{}'::jsonb)||jsonb_build_object('lifecycleStatus','ARCHIVED','documentChangeRequestId',r.id,'documentDisposition',r.action,'dispositionReason',r.reason,'replacementDocumentId',n.id,'dispositionAt',now(),'dispositionBy',auth.uid()),updated_at=now() where id=d.id;
    insert into public.mandatory_document_events_v2(document_id,owner_id,event_type,actor_type,metadata)
    values(d.id,d.owner_id,'DOCUMENT_'||upper(r.action),'supervisor',jsonb_build_object('requestId',r.id,'reason',r.reason,'replacementId',n.id));
+ else
+   update public.foreman_document_change_requests set status='rejected',resolved_by=auth.uid(),resolved_at=now() where id=r.id;
  end if;
- update public.foreman_document_change_requests set status=case when p_approve then 'approved' else 'rejected' end,replacement_id=case when p_approve then n.id else null end,resolved_by=auth.uid(),resolved_at=now() where id=r.id;
  return jsonb_build_object('ok',true);
 end $$;
 
@@ -209,30 +268,89 @@ do $$begin
   alter function public.sign_foreman_mandatory_document(text,uuid,bigint,text) set schema foreman_private;
   alter function foreman_private.sign_foreman_mandatory_document(text,uuid,bigint,text) rename to sign_document_legacy;
  end if;
+ if to_regprocedure('foreman_private.sign_document_worker_v2_legacy(text,uuid,uuid,text)') is null then
+  alter function public.sign_mandatory_document_worker_v2(text,uuid,uuid,text) set schema foreman_private;
+  alter function foreman_private.sign_mandatory_document_worker_v2(text,uuid,uuid,text) rename to sign_document_worker_v2_legacy;
+ end if;
  if to_regprocedure('foreman_private.sign_attendance_legacy(text,date,jsonb,bigint,text,text)') is null then
   alter function public.sign_foreman_attendance(text,date,jsonb,bigint,text,text) set schema foreman_private;
   alter function foreman_private.sign_foreman_attendance(text,date,jsonb,bigint,text,text) rename to sign_attendance_legacy;
  end if;
 end $$;
-revoke all on function foreman_private.sign_document_legacy(text,uuid,bigint,text),foreman_private.sign_attendance_legacy(text,date,jsonb,bigint,text,text) from public,anon,authenticated;
+revoke all on function foreman_private.sign_document_legacy(text,uuid,bigint,text),foreman_private.sign_document_worker_v2_legacy(text,uuid,uuid,text),foreman_private.sign_attendance_legacy(text,date,jsonb,bigint,text,text) from public,anon,authenticated;
 create or replace function public.sign_foreman_mandatory_document(p_token text,p_document_id uuid,p_worker_id bigint,p_signature text)
 returns jsonb language plpgsql security definer set search_path=public,extensions as $$
+declare d public.foreman_mandatory_documents%rowtype; existing text;
+begin
+ select doc.* into d from public.foreman_mandatory_documents doc join public.foreman_portal_access a on a.owner_id=doc.owner_id and lower(a.obra)=lower(doc.obra)
+ where doc.id=p_document_id and a.active and a.token_hash=encode(digest(trim(coalesce(p_token,'')),'sha256'),'hex') for update of doc;
+ if not found or d.lifecycle_status='ARCHIVED' then raise exception 'Documento no disponible o acceso revocado';end if;
+ existing:=case when jsonb_typeof(d.signatures->p_worker_id::text)='string' then d.signatures->>p_worker_id::text else d.signatures#>>array[p_worker_id::text,'signature'] end;
+ if nullif(existing,'') is not null then
+   if existing is distinct from p_signature then raise exception 'Ya existe otra firma. Revócala antes de volver a firmar.';end if;
+   return jsonb_build_object('ok',true,'unchanged',true);
+ end if;
+ return foreman_private.sign_document_legacy(p_token,d.id,p_worker_id,p_signature);
+end $$;
+
+create or replace function public.sign_mandatory_document_worker_v2(p_token text,p_document_id uuid,p_document_worker_id uuid,p_signature text)
+returns jsonb language plpgsql security definer set search_path=public,extensions as $$
+declare existing text;
 begin
  perform 1 from public.foreman_mandatory_documents d join public.foreman_portal_access a on a.owner_id=d.owner_id and lower(a.obra)=lower(d.obra)
- where d.id=p_document_id and a.active and a.token_hash=encode(digest(trim(coalesce(p_token,'')),'sha256'),'hex') for update of d;
- if not found then raise exception 'Documento no disponible o acceso revocado';end if;
- return foreman_private.sign_document_legacy(p_token,p_document_id,p_worker_id,p_signature);
+ where d.id=p_document_id and d.lifecycle_status in ('ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION')
+   and a.active and a.token_hash=encode(digest(trim(coalesce(p_token,'')),'sha256'),'hex') for update of d;
+ if not found then raise exception 'Documento no disponible para firma';end if;
+ select signature into existing from public.mandatory_document_signatures_v2
+ where document_id=p_document_id and document_worker_id=p_document_worker_id;
+ if found then
+   if existing is distinct from p_signature then raise exception 'Ya existe otra firma. Revócala antes de volver a firmar.';end if;
+   return jsonb_build_object('ok',true,'unchanged',true);
+ end if;
+ return foreman_private.sign_document_worker_v2_legacy(p_token,p_document_id,p_document_worker_id,p_signature);
 end $$;
+
+-- The client supplies hours and workers. Only a signature RPC may supply new ink.
+-- Refuse to remove a signed worker or change a signed hour before explicit revocation.
+create or replace function foreman_private.attendance_rows_for_write(p_current jsonb,p_rows jsonb)
+returns jsonb language plpgsql set search_path='' as $$
+begin
+ if exists (
+   select 1
+   from jsonb_array_elements(p_current) old_row
+   cross join (values ('entrySignature','entryTime'),('exitSignature','exitTime')) s(signature_key,time_key)
+   where nullif(old_row->>s.signature_key,'') is not null
+     and not exists (
+       select 1 from jsonb_array_elements(p_rows) new_row
+       where new_row->>'workerId'=old_row->>'workerId'
+         and new_row->>s.time_key is not distinct from old_row->>s.time_key
+     )
+ ) then raise exception 'La jornada contiene una firma guardada. Revócala antes de modificar la hora o retirar al trabajador.';end if;
+ return (select coalesce(jsonb_agg(row-array['entrySignature','exitSignature'] order by ord),'[]')
+         from jsonb_array_elements(p_rows) with ordinality as submitted(row,ord));
+end $$;
+revoke all on function foreman_private.attendance_rows_for_write(jsonb,jsonb) from public,anon,authenticated;
+
 create or replace function public.sign_foreman_attendance(p_token text,p_work_date date,p_rows jsonb,p_worker_id bigint,p_kind text,p_signature text)
 returns uuid language plpgsql security definer set search_path=public,extensions as $$
+declare day_id uuid; current_rows jsonb; submitted jsonb; existing text;
 begin
- perform 1 from public.foreman_attendance_days d join public.foreman_portal_access a on a.owner_id=d.owner_id and lower(a.obra)=lower(d.obra)
+ select d.id,d.rows into day_id,current_rows
+ from public.foreman_attendance_days d join public.foreman_portal_access a on a.owner_id=d.owner_id and lower(a.obra)=lower(d.obra)
  where d.work_date=p_work_date and a.active and a.token_hash=encode(digest(trim(coalesce(p_token,'')),'sha256'),'hex') for update of d;
- -- The legacy function also handles the first online signature before a day exists.
- return foreman_private.sign_attendance_legacy(p_token,p_work_date,p_rows,p_worker_id,p_kind,p_signature);
+ submitted:=foreman_private.attendance_rows_for_write(current_rows,p_rows);
+ if p_kind in ('entry','exit') then
+   select row->>case when p_kind='entry' then 'entrySignature' else 'exitSignature' end into existing
+   from jsonb_array_elements(current_rows) row where row->>'workerId'=p_worker_id::text;
+   if nullif(existing,'') is not null then
+     if existing is distinct from p_signature then raise exception 'Ya existe otra firma. Revócala antes de volver a firmar.';end if;
+     return day_id;
+   end if;
+ end if;
+ return foreman_private.sign_attendance_legacy(p_token,p_work_date,submitted,p_worker_id,p_kind,p_signature);
 end $$;
-revoke all on function public.sign_foreman_mandatory_document(text,uuid,bigint,text),public.sign_foreman_attendance(text,date,jsonb,bigint,text,text) from public;
-grant execute on function public.sign_foreman_mandatory_document(text,uuid,bigint,text),public.sign_foreman_attendance(text,date,jsonb,bigint,text,text) to anon,authenticated;
+revoke all on function public.sign_foreman_mandatory_document(text,uuid,bigint,text),public.sign_mandatory_document_worker_v2(text,uuid,uuid,text),public.sign_foreman_attendance(text,date,jsonb,bigint,text,text) from public;
+grant execute on function public.sign_foreman_mandatory_document(text,uuid,bigint,text),public.sign_mandatory_document_worker_v2(text,uuid,uuid,text),public.sign_foreman_attendance(text,date,jsonb,bigint,text,text) to anon,authenticated;
 do $$begin
  if to_regprocedure('foreman_private.save_attendance_legacy(text,date,jsonb,text)') is null then
   alter function public.save_foreman_attendance(text,date,jsonb,text) set schema foreman_private;
@@ -242,10 +360,13 @@ end $$;
 revoke all on function foreman_private.save_attendance_legacy(text,date,jsonb,text) from public,anon,authenticated;
 create or replace function public.save_foreman_attendance(p_token text,p_work_date date,p_rows jsonb,p_status text default 'draft')
 returns uuid language plpgsql security definer set search_path=public,extensions as $$
+declare current_rows jsonb;
 begin
- perform 1 from public.foreman_attendance_days d join public.foreman_portal_access a on a.owner_id=d.owner_id and lower(a.obra)=lower(d.obra)
+ select d.rows into current_rows
+ from public.foreman_attendance_days d join public.foreman_portal_access a on a.owner_id=d.owner_id and lower(a.obra)=lower(d.obra)
  where d.work_date=p_work_date and a.active and a.token_hash=encode(digest(trim(coalesce(p_token,'')),'sha256'),'hex') for update of d;
- return foreman_private.save_attendance_legacy(p_token,p_work_date,p_rows,p_status);
+ return foreman_private.save_attendance_legacy(p_token,p_work_date,
+   foreman_private.attendance_rows_for_write(current_rows,p_rows),p_status);
 end $$;
 revoke all on function public.save_foreman_attendance(text,date,jsonb,text) from public;
 grant execute on function public.save_foreman_attendance(text,date,jsonb,text) to anon,authenticated;

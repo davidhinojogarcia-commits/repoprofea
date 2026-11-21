@@ -24,7 +24,9 @@ import {
   resolveForemanPortal,
   saveForemanAttendance,
   signForemanAttendance,
+  revokeForemanAttendanceWorkerSignature,
    signMandatoryForemanDocument,
+  revokeForemanOperationalWorkerSignature,
   finalizeForemanMandatoryDocument,
   correctForemanMandatoryWorkerName,
   getForemanMandatoryPdf,
@@ -237,6 +239,7 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   // Prevent accidental duplicate relations from rapid repeated taps.
   const preparingOperationalRef=useRef(false);
   const submittingAdditionalRef=useRef(false);
+  const revokingWorkerSignatureRef=useRef(false);
   const [focusDocumentId,setFocusDocumentId]=useState('');
   const [pushActive,setPushActive]=useState(false);
   const [pushBusy,setPushBusy]=useState(false);
@@ -568,6 +571,36 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
     }finally{
       setSaving(false);
     }
+  };
+  const revokeAttendanceWorkerSignature=async(workerId:number,kind:'entry'|'exit',name:string)=>{
+    if(saving||attendanceLocked)return;
+    const label=kind==='entry'?'entrada':'salida';
+    if(!await appConfirm(`Se revocará solamente la firma de ${label} de ${name}. Después deberá firmar de nuevo. La firma de ${kind==='entry'?'salida':'entrada'} no se modificará.`,{
+      title:'Corregir firma de '+label,confirmLabel:'Revocar y repetir firma',
+    }))return;
+    setSaving(true);setError('');
+    try{
+      const result=await revokeForemanAttendanceWorkerSignature(token,date,workerId,kind);
+      if(!result?.revoked)throw new Error('La firma no se ha revocado. Actualiza la jornada.');
+      const verified=await resolveForemanPortal(token);
+      if(!verified.valid)throw new Error('No se ha podido verificar el guardado en la obra.');
+      const savedDay=(verified.attendance||[]).find(day=>String(day.workDate||'').slice(0,10)===date);
+      const savedRow=savedDay?.rows?.find(row=>Number(row.workerId)===workerId);
+      const key=kind==='entry'?'entrySignature':'exitSignature';
+      if(!savedRow||Boolean(savedRow[key]))throw new Error('La firma continúa guardada. Actualiza antes de reintentar.');
+      setData(verified);
+      setRows(savedDay.rows.map(row=>({
+        ...row,
+        entryTime:row.entryTime||verified.defaultWorkStartHour||'08:00',
+        exitTime:row.exitTime||verified.defaultWorkEndHour||'15:00',
+      })));
+      setAttendanceEvidence(null);
+      setOperationFeedback(`Firma de ${label} revocada y registrada. ${name} debe firmar de nuevo.`);
+      setSigning({workerId,kind});
+    }catch(e:any){
+      const message=e?.message||'No se pudo revocar la firma de la jornada.';
+      setError(message);setOperationFeedback(message);
+    }finally{setSaving(false);}
   };
   const def=ADDITIONAL_WORKSITE_DOCUMENTS[docType];
   const selectedWorker=useMemo(()=>data?.workers.find(w=>Number(w.id)===Number(workerId)),[data?.workers,workerId]);
@@ -1131,18 +1164,58 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const revokeWorkerSignature = async (doc:ForemanMandatoryDocument, worker:any) => {
-    if(saving)return;
-    if(!await appConfirm(`Se eliminará la firma de ${worker.apellidosNombre}. Esta persona tendrá que firmar de nuevo.`,{title:'Revocar firma',confirmLabel:'Revocar firma'}))return;
-    const documentWorker=(doc.details?.documentWorkersV2||[]).find((entry:any)=>String(entry.legacyWorkerId)===String(worker.id));
-    if(!documentWorker?.id){setError('No se pudo identificar esta firma. El supervisor debe revisar el documento.');return;}
-    setSaving(true);
-    try {
-      await revokeMandatorySignatureV2({token,documentId:doc.id,documentWorkerId:String(documentWorker.id)});
-      setMandatorySignatureImages(current=>{const next={...current,[doc.id]:{...current[doc.id]}};delete next[doc.id][String(worker.id)];return next;});
-      await refresh();
-      setError('');setOperationFeedback(`Firma revocada. ${worker.apellidosNombre} puede volver a firmar.`);
-    } catch(e:any){setError(e?.message||'No se pudo revocar la firma.');}
-    finally{setSaving(false);}
+    if(saving||revokingWorkerSignatureRef.current)return;
+    const lifecycle=String(doc.lifecycleStatus||doc.details?.lifecycleStatus||'');
+    if(['SUBMITTED','RECEIVED','REVIEWED'].includes(lifecycle)||doc.status==='completed'||doc.status==='reviewed'){
+      const message='Este documento ya se ha enviado al supervisor. Debe devolverlo para corregir antes de revocar una firma; el PDF firmado anterior se conserva en el historial.';
+      setError(message);setOperationFeedback(message);return;
+    }
+    const imported=['inicio','control_presencia','contrato','prorroga'].includes(String(doc.documentType));
+    const documentWorker=imported
+      ? (doc.details?.documentWorkersV2||[]).find((entry:any)=>String(entry.legacyWorkerId)===String(worker.id))
+      : null;
+    if(imported&&!['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(lifecycle)){
+      setError('Este documento todavía no está disponible para corregir firmas. Solicita su revisión al supervisor.');return;
+    }
+    if(imported&&!documentWorker?.id){
+      setError('No se pudo identificar esta firma. El supervisor debe revisar el documento.');return;
+    }
+    if(!await appConfirm(`Se revocará únicamente la firma de ${worker.apellidosNombre}. El documento quedará pendiente de esta firma y se abrirá el panel para repetirla. No se modificarán las firmas de otros trabajadores.`,{
+      title:'Revocar firma del trabajador',confirmLabel:'Revocar y repetir firma',
+    }))return;
+    if(revokingWorkerSignatureRef.current)return;
+    revokingWorkerSignatureRef.current=true;
+    setSaving(true);setError('');
+    try{
+      const result=imported
+        ? await revokeMandatorySignatureV2({token,documentId:doc.id,documentWorkerId:String(documentWorker.id)})
+        : await revokeForemanOperationalWorkerSignature(token,doc.id,Number(worker.id));
+      if(result?.revoked!==true)throw new Error('La firma ya no consta. Actualiza el documento para comprobar su estado.');
+      const signatures=await getForemanMandatorySignatures(token,doc.id);
+      if(signatures?.[String(worker.id)])throw new Error('La firma todavía consta en el documento. Actualiza antes de repetirla.');
+      const updated=await resolveForemanPortal(token);
+      if(!updated.valid)throw new Error('No se pudo verificar el acceso al documento.');
+      const updatedDoc=(updated.mandatoryDocuments||[]).find(item=>item.id===doc.id);
+      if(!updatedDoc)throw new Error('El documento ya no está disponible en esta obra.');
+      if(updatedDoc.signatures?.[String(worker.id)])throw new Error('La firma sigue registrada en el documento. Actualiza antes de repetirla.');
+      const verifiedWorker=imported
+        ? (updatedDoc.details?.documentWorkersV2||[]).find((item:any)=>String(item.id)===String(documentWorker?.id))
+        : null;
+      if(imported&&(!verifiedWorker||verifiedWorker.detectionStatus!=='CONFIRMED'))throw new Error('La identidad documental debe revisarse antes de repetir la firma.');
+      setData(updated);
+      setMandatorySignatureImages(current=>{
+        const next={...current,[doc.id]:{...current[doc.id]}};
+        delete next[doc.id][String(worker.id)];return next;
+      });
+      setMandatoryWorkerChoice(current=>({...current,[doc.id]:String(worker.id)}));
+      setOperationFeedback(`Firma revocada y registrada. ${worker.apellidosNombre} debe firmar de nuevo.`);
+      setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),
+        ...(verifiedWorker?.id?{documentWorkerId:String(verifiedWorker.id)}:{}),
+        name:worker.apellidosNombre});
+    }catch(e:any){
+      const message=e?.message||'No se pudo revocar la firma.';
+      setError(message);setOperationFeedback(message);
+    }finally{revokingWorkerSignatureRef.current=false;setSaving(false);}
   };
 
   const renderSigningDocument=(doc:ForemanMandatoryDocument)=> {
@@ -1177,7 +1250,9 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
       : assignedWorkers.filter(worker=>signatureIds.has(Number(worker.id)));
     const signedCount=signatureIds.size;
     const correction=Boolean(doc.correctionPending);
-    const closed=doc.status==='completed'||doc.status==='reviewed';
+    const lifecycle=String(doc.lifecycleStatus||doc.details?.lifecycleStatus||'');
+    const closed=doc.status==='completed'||doc.status==='reviewed'||['SUBMITTED','RECEIVED','REVIEWED'].includes(lifecycle);
+    const canRepeatSignature=!closed&&(!isImportedMandatory||['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(lifecycle));
     const sourceText=String(doc.details?.sourceText||'').trim();
     const workDate=String(doc.workDate||'').slice(0,10);
 
@@ -1350,6 +1425,10 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
 
       <div className="mt-3 rounded-xl border bg-slate-50 p-3">
         <div className="text-xs font-black uppercase tracking-wide text-slate-500">Trabajadores que ya han firmado</div>
+        {isImportedMandatory&&signedWorkers.length>0&&<p className="mt-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">{canRepeatSignature
+          ? '¿Firma incorrecta? Pulsa «Revocar y repetir firma» debajo del trabajador. Se retirará únicamente su firma y se abrirá el panel para repetirla.'
+          : closed?'Documento enviado o revisado. Para repetir una firma, el supervisor debe devolverlo para corregir. La versión firmada anterior permanece en el historial.'
+            :'El documento todavía no permite corregir firmas. Solicita al supervisor que complete su revisión.'}</p>}
         {!signedWorkers.length&&<div className="mt-2 text-sm font-semibold text-slate-500">Todavía no hay firmas guardadas.</div>}
         {!!signedWorkers.length&&<div className="mt-2 space-y-2">{signedWorkers.map(worker=><div key={worker.id} className="flex min-h-[58px] flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
           <span><span className="block text-sm font-black text-slate-800">{worker.apellidosNombre}</span><span className="block mt-1 text-xs text-slate-500">{worker.dni} · {worker.categoria}</span></span>
@@ -1364,11 +1443,11 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
                 <span className="mt-1 text-[10px] font-black text-emerald-700">Firmado ✓</span>
               </div>;
             }
-            return correction&&!closed
+            return !isImportedMandatory&&correction&&!closed
               ? <button type="button" onClick={()=>setMandatorySigning({documentId:doc.id,workerId:Number(worker.id),name:worker.apellidosNombre})} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900">Volver a firmar</button>
               : <span className="ml-auto inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-700">Firma guardada ✓</span>;
           })()}
-          {!closed&&isImportedMandatory&&<button type="button" disabled={saving} onClick={()=>void revokeWorkerSignature(doc,worker)} className="min-h-[48px] rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar firma y volver a firmar</button>}
+          {canRepeatSignature&&(isImportedMandatory||['epis','formacion','maquinaria','autorizacion_uso_maquinaria'].includes(String(doc.documentType)))&&<button type="button" disabled={saving} onClick={()=>void revokeWorkerSignature(doc,worker)} aria-label={'Revocar y repetir firma de '+worker.apellidosNombre} className="min-h-[50px] rounded-xl border border-rose-300 bg-white px-3 py-2.5 text-sm font-black text-rose-800 dark:border-rose-700 dark:bg-slate-900 dark:text-rose-200 disabled:opacity-50">Revocar y repetir firma</button>}
         </div>)}</div>}
       </div>
       {foremanTemplate?.enabled&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
@@ -1559,32 +1638,36 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
               <input
                 type="time"
                 value={row.entryTime || data.defaultWorkStartHour || '08:00'}
-                disabled={attendanceLocked}
+                disabled={saving||attendanceLocked||Boolean(row.entrySignature)}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>{const next=current.map(item=>item.workerId===row.workerId?{...item,entryTime:value,entrySignature:''}:item);localRowsRef.current={date,rows:next};return next;});
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
-              <button disabled={attendanceLocked} onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
-                <LogIn className="w-4 h-4 inline mr-1"/>{row.entrySignature?'Entrada firmada':'Firmar entrada'}
+              <button disabled={saving||attendanceLocked||Boolean(row.entrySignature)} onClick={()=>setSigning({workerId:row.workerId,kind:'entry'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.entrySignature?'bg-emerald-600 text-white':'bg-slate-100 text-slate-800'}`}>
+                <LogIn className="w-4 h-4 inline mr-1"/>{row.entrySignature?'Entrada firmada ✓':'Firmar entrada'}
               </button>
+              {row.entrySignature&&!attendanceLocked&&<p className="mt-2 text-xs font-semibold text-slate-600">Para modificar la hora o corregir la firma, revócala primero.</p>}
+              {row.entrySignature&&!attendanceLocked&&<button type="button" disabled={saving} onClick={()=>void revokeAttendanceWorkerSignature(row.workerId,'entry',row.name)} className="mt-2 min-h-[48px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar y repetir firma de entrada</button>}
             </div>
             <div className={`rounded-xl border p-2.5 ${row.exitSignature?'border-blue-300 bg-blue-50':'bg-white'}`}>
               <label className="block text-[10px] font-black uppercase text-slate-500">Hora salida</label>
               <input
                 type="time"
                 value={row.exitTime || data.defaultWorkEndHour || '15:00'}
-                disabled={attendanceLocked}
+                disabled={saving||attendanceLocked||Boolean(row.exitSignature)}
                 onChange={e=>{
                   const value=e.target.value;
                   setRows(current=>{const next=current.map(item=>item.workerId===row.workerId?{...item,exitTime:value,exitSignature:''}:item);localRowsRef.current={date,rows:next};return next;});
                 }}
                 className="mt-1 min-h-[50px] w-full rounded-xl border px-3 py-2 text-base font-black bg-white"
               />
-              <button disabled={attendanceLocked} onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
-                <LogOut className="w-4 h-4 inline mr-1"/>{row.exitSignature?'Salida firmada':'Firmar salida'}
+              <button disabled={saving||attendanceLocked||Boolean(row.exitSignature)} onClick={()=>setSigning({workerId:row.workerId,kind:'exit'})} className={`mt-2 min-h-[50px] w-full rounded-xl px-3 py-3 text-sm font-black touch-manipulation ${row.exitSignature?'bg-blue-600 text-white':'bg-slate-100 text-slate-800'}`}>
+                <LogOut className="w-4 h-4 inline mr-1"/>{row.exitSignature?'Salida firmada ✓':'Firmar salida'}
               </button>
+              {row.exitSignature&&!attendanceLocked&&<p className="mt-2 text-xs font-semibold text-slate-600">Para modificar la hora o corregir la firma, revócala primero.</p>}
+              {row.exitSignature&&!attendanceLocked&&<button type="button" disabled={saving} onClick={()=>void revokeAttendanceWorkerSignature(row.workerId,'exit',row.name)} className="mt-2 min-h-[48px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 disabled:opacity-50">Revocar y repetir firma de salida</button>}
             </div>
           </div>
         </div>)}
@@ -1814,6 +1897,12 @@ const ForemanMobilePortalContent: React.FC<{ token: string }> = ({ token }) => {
           {def.signatureWorker&&<button onClick={()=>setDocSigning('worker')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.worker?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firma trabajador {docSignatures.worker?'✓':''}</button>}
           <button onClick={()=>setDocSigning('foreman')} className={`min-h-[54px] rounded-2xl border px-4 py-3 text-base font-black touch-manipulation ${docSignatures.foreman?'bg-emerald-50 border-emerald-300 text-emerald-800':'bg-white'}`}>Firmar como encargado {docSignatures.foreman?'✓':''}</button>
         </div>
+          {def.signatureWorker&&docSignatures.worker&&<button type="button" disabled={saving} onClick={async()=>{
+            if(!await appConfirm('Se anulará la firma del trabajador de este formulario sin enviar. Tendrá que firmarlo de nuevo.',{
+              title:'Repetir firma del trabajador',confirmLabel:'Revocar y repetir firma'}))return;
+            setDocSignatures(current=>{const next={...current};delete next.worker;return next;});
+            setDocSigning('worker');
+          }} className="min-h-[50px] w-full rounded-xl border border-rose-300 bg-white px-3 py-2 text-sm font-black text-rose-800 dark:border-rose-700 dark:bg-slate-900 dark:text-rose-200">Revocar y repetir firma del trabajador</button>}
         {correctionDocumentId&&<div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-black text-amber-900">Estás corrigiendo un documento devuelto por el supervisor.</div>}
         {additionalDraftId&&<div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-3 text-sm font-black text-blue-900">Editando borrador guardado. Si cambias los datos, vuelve a recoger las firmas antes de enviar.</div>}
         <button type="button" onClick={()=>void generateAdditionalPdf()} className="min-h-[54px] w-full rounded-2xl border-2 border-[#00548E] bg-white px-4 py-3 text-base font-black text-[#00548E]">

@@ -226,6 +226,15 @@ export async function signForemanAttendance(
   );
 }
 
+/** Revoca exclusivamente una firma de entrada o salida de una jornada editable. */
+export async function revokeForemanAttendanceWorkerSignature(
+  token: string, workDate: string, workerId: number, kind: 'entry' | 'exit',
+): Promise<{ok:boolean;revoked:boolean}> {
+  return withForemanTimeout(supabase.rpc('revoke_foreman_attendance_worker_signature',{
+    p_token:token,p_work_date:workDate,p_worker_id:workerId,p_kind:kind,
+  }),'La revocación no se ha confirmado. Actualiza la jornada antes de reintentar.');
+}
+
 export async function submitForemanDocument(input: {
   token: string;
   documentType: string;
@@ -271,6 +280,15 @@ export async function signMandatoryForemanDocument(
   );
 }
 
+
+/** La firma revocada se audita en la base de datos y nunca puede ser enviada. */
+export async function revokeForemanOperationalWorkerSignature(
+  token: string, documentId: string, workerId: number,
+): Promise<{ok:boolean;revoked:boolean}> {
+  return withForemanTimeout(supabase.rpc('revoke_foreman_operational_worker_signature',{
+    p_token:token,p_document_id:documentId,p_worker_id:workerId,
+  }),'La revocación no se ha confirmado. Actualiza el documento antes de reintentar.');
+}
 
 export async function prepareMandatoryDocumentFromEmail(input: {
   documentType: 'inicio' | 'control_presencia' | 'contrato' | 'prorroga';

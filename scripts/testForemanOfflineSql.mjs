@@ -9,12 +9,12 @@ try {
  await db.exec(`create role anon;create role authenticated;create schema extensions;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create function extensions.digest(text,text) returns bytea language sql immutable as $$select sha256(convert_to($1,'UTF8'))$$;
  create table foreman_portal_access(id uuid primary key,owner_id uuid,obra text,active boolean,token_hash text);
- create table foreman_mandatory_documents(id uuid primary key,owner_id uuid,obra text,document_type text,period_key text,work_date date,workers jsonb,details jsonb default '{}',updated_at timestamptz,assigned_at timestamptz,lifecycle_status text,status text,signatures jsonb default '{}');
- create table foreman_mandatory_pdf_files(document_id uuid,original_sha256 text);
+ create table foreman_mandatory_documents(id uuid primary key,owner_id uuid,obra text,document_type text,period_key text,work_date date,workers jsonb,v2_initialized_at timestamptz,details jsonb default '{}',updated_at timestamptz,assigned_at timestamptz,lifecycle_status text,status text,signatures jsonb default '{}');
+ create table foreman_mandatory_pdf_files(document_id uuid,original_sha256 text,owner_id uuid,original_pdf bytea);
  create table mandatory_document_workers_v2(id uuid,document_id uuid,printed_name text,legacy_worker_id bigint,detection_status text,position_status text,signature_box jsonb,page integer);
  create table foreman_document_signatures(document_id uuid,signature text);
  create table foreman_attendance_days(id uuid,owner_id uuid,obra text,work_date date,rows jsonb,status text,foreman_signature_evidence jsonb,foreman_signature_template jsonb);
- create table mandatory_document_signatures_v2(document_id uuid);
+ create table mandatory_document_signatures_v2(document_id uuid,document_worker_id uuid,signature text);
  create table mandatory_document_events_v2(document_id uuid,owner_id uuid,event_type text,actor_type text,metadata jsonb);
  create function get_foreman_mandatory_pdf(text,uuid,text) returns jsonb language sql as $$select jsonb_build_object('base64','JVBERg==','sha256','hash','variant',$3)$$;
  create function save_foreman_attendance(text,date,jsonb,text) returns uuid language sql as $$select id from foreman_attendance_days where work_date=$2$$;
@@ -27,7 +27,7 @@ try {
  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261020155724_foreman_offline_signatures.sql',import.meta.url),'utf8'));
  await q("insert into foreman_portal_access values($1,$2,'Obra A',true,encode(extensions.digest('token','sha256'),'hex'))",[id(1),id(2)]);
  await q("insert into foreman_mandatory_documents(id,owner_id,obra,document_type,period_key,work_date,workers,assigned_at,lifecycle_status,status) values($1,$2,'Obra A','epis','2026-10-1Q','2026-10-01','[]',now(),'ASSIGNED','pending')",[id(3),id(2)]);
- await q("insert into foreman_mandatory_pdf_files values($1,'original-hash')",[id(3)]);
+ await q("insert into foreman_mandatory_pdf_files(document_id,original_sha256) values($1,'original-hash')",[id(3)]);
  await db.exec('set role anon');
  await assert.rejects(q('select * from foreman_private.offline_receipts'),/permission denied/);
  const snapshot=await rpc('get_foreman_offline_snapshot','token',id(3));
@@ -37,6 +37,8 @@ try {
  const sign=(op,version=snapshot.version,signature=png)=>rpc('sync_foreman_offline_signature','token',id(op),id(3),version,signature,7,null,false);
  assert.equal((await sign(10)).ok,true);
  assert.equal((await sign(10)).duplicate,true);
+ await assert.rejects(rpc('sign_foreman_mandatory_document','token',id(3),7,png+'A'),/Revócala/);
+ assert.equal((await rpc('sign_foreman_mandatory_document','token',id(3),7,png)).unchanged,true);
  assert.equal((await rpc('get_foreman_offline_snapshot','token',id(3))).version,snapshot.version,'signature does not invalidate other offline operations');
  await assert.rejects(sign(10,snapshot.version,png+'A'),/incompatible/);
  await assert.rejects(sign(11,snapshot.version,png+'A'),/otra firma/);
@@ -66,11 +68,32 @@ try {
  assert.equal((await q('select original_sha256 from foreman_mandatory_pdf_files where document_id=$1',[id(3)]))[0].original_sha256,'original-hash');
  const replacement=(await q('select * from foreman_mandatory_documents where id=$1',[id(4)]))[0];
  assert.deepEqual(replacement.signatures,{});assert.equal(replacement.details.previousDocumentId,id(3));
+ await db.exec(`create trigger guard_v2_test before update of lifecycle_status,v2_initialized_at
+   on foreman_mandatory_documents for each row execute function public.guard_mandatory_v2_lifecycle_transition()`);
+ await q(`insert into foreman_mandatory_documents(id,owner_id,obra,document_type,period_key,work_date,workers,assigned_at,lifecycle_status,status,v2_initialized_at,details,signatures)
+   values($1,$3,'Obra A','contrato','2026-10-1Q','2026-10-01','[]',now(),'ASSIGNED','in_progress',now(),'{"originalPdfMode":"overlay"}',$4),
+         ($2,$3,'Obra A','contrato','2026-10-2Q','2026-10-16','[]',null,'READY','pending',now(),'{"originalPdfMode":"overlay"}','{}')`,[id(5),id(6),id(2),{'7':png}]);
+ await q(`insert into foreman_mandatory_pdf_files values
+   ($1,'original-v2',$3,decode('25504446','hex')),($2,'replacement-v2',$3,decode('25504446','hex'))`,[id(5),id(6),id(2)]);
+ await assert.rejects(q("update foreman_mandatory_documents set lifecycle_status='ARCHIVED',assigned_at=null where id=$1",[id(5)]),/Transición V2 no permitida/,'direct archival still forbidden');
+ await db.exec('set role anon');
+ const v2Request=await rpc('request_foreman_document_change','token',id(5),'replace','Sustituir PDF');
+ await db.exec('reset role');
+ await db.exec('set role authenticated');
+ await assert.rejects(rpc('resolve_foreman_document_change',v2Request,true,id(4)),/PDF importado/);
+ await rpc('resolve_foreman_document_change',v2Request,true,id(6));
+ await db.exec('reset role');
+ const [originalV2]=await q('select lifecycle_status,signatures from foreman_mandatory_documents where id=$1',[id(5)]);
+ assert.deepEqual(originalV2,{lifecycle_status:'ARCHIVED',signatures:{'7':png}});
+ const [newV2]=await q('select lifecycle_status,signatures from foreman_mandatory_documents where id=$1',[id(6)]);
+ assert.deepEqual(newV2,{lifecycle_status:'READY',signatures:{}});
  await q("insert into foreman_attendance_days values($1,$2,'Obra A','2026-10-20','[{\"workerId\":7,\"name\":\"Persona\",\"entryTime\":\"08:00\",\"exitTime\":\"15:00\"}]','draft',null,null)",[id(20),id(2)]);
  await db.exec('set role anon');
  const day=await rpc('get_foreman_offline_attendance','token','2026-10-20');
  const daySign=(op,kind='entry')=>rpc('sync_foreman_offline_attendance','token',id(op),'2026-10-20',day.version,png,7,kind);
  assert.equal((await daySign(30)).ok,true);assert.equal((await daySign(30)).duplicate,true);
+ await assert.rejects(rpc('sign_foreman_attendance','token','2026-10-20',day.rows,7,'entry',png+'A'),/Revócala/);
+ await assert.rejects(rpc('save_foreman_attendance','token','2026-10-20',[], 'draft'),/Revócala/);
  assert.equal((await daySign(31,'exit')).ok,true);assert.equal((await daySign(32,'foreman')).ok,true);
  assert.equal((await rpc('get_foreman_offline_attendance','token','2026-10-20')).version,day.version,'signatures preserve attendance version');
  await db.exec('reset role');await q("update foreman_attendance_days set rows=jsonb_set(rows,'{0,entryTime}','\"09:00\"') where id=$1",[id(20)]);

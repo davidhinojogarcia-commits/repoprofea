@@ -30,7 +30,8 @@ try {
     stdio: "pipe",
     timeout: 120000
   });
-  const sections = ["mandatory", "control", "documents", "maquinaria"];
+  const signedTypes = ["control_presencia","inicio","contrato","prorroga"];
+  const sections = ["mandatory",...signedTypes.map(type=>"mandatory-"+type),"control", "documents", "maquinaria"];
   for (const section of sections) {
     assert((await fs.stat(path.join(snapshotDir, section + ".html"))).size > 800);
   }
@@ -80,6 +81,17 @@ try {
         await page.goto(base + "/" + section, { waitUntil: "load" });
         await page.waitForFunction(() => !!document.querySelector(".fp-section-tab"));
         await page.waitForTimeout(150);
+        if(section.startsWith("mandatory-")){
+          const count=await page.getByRole("button",{name:/Revocar y repetir firma de/}).count();
+          const expected=["contrato","prorroga"].some(type=>section.endsWith(type))?1:2;
+          assert.equal(count,expected,engine+" "+configuration.name+" "+section+": one accessible correction action per signed worker");
+          const buttons=page.getByRole("button",{name:/Revocar y repetir firma de/});
+          for(let i=0;i<count;i++){
+            const rect=await buttons.nth(i).boundingBox();
+            assert(rect && rect.width>=44 && rect.height>=44,engine+": signature correction touch target too small");
+            if(configuration.touch)assert(rect.x+rect.width<=configuration.width+5,engine+": correction action outside viewport");
+          }
+        }
         const metrics = await page.evaluate(() => {
           const measure = element => {
             const r = element.getBoundingClientRect();

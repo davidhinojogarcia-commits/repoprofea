@@ -18,7 +18,7 @@ globalThis.__alerts=alerts;
 globalThis.__confirm=async(message)=>{confirmMessages.push(message);return confirmResult;};
 const portalDocument=()=>({id:doc.id,workDate:doc.work_date,periodKey:doc.period_key,documentType:doc.document_type,category:doc.category,status:doc.status,lifecycleStatus:doc.lifecycle_status,assignedAt:doc.assigned_at,details:{...doc.details,lifecycleStatus:'READY'},signatures:doc.signatures,workers:doc.workers});
 globalThis.__foremanUi={
- async resolveForemanPortal(){portalReads++;return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
+ async resolveForemanPortal(){portalReads++;return {valid:true,obra:'Obra A',foremanName:'Encargado',workers:[],attendance:[],documents:[],mandatoryDocuments:['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION','SUBMITTED','RECEIVED','REVIEWED'].includes(doc.lifecycle_status)?[portalDocument()]:[]};},
  async getForemanMandatorySignatures(){signatureReads++;return Object.fromEntries(Object.keys(doc.signatures).map(k=>[k,{signature:'data:image/png;base64,AAAA'}]));},
  async getSupervisorMandatorySignatures(){return {};},
  async getAttendanceForemanEvidence(){return {signed:false,layout:null};},
@@ -29,7 +29,7 @@ globalThis.__foremanApi={
    {id:'unsigned-day',obra:'Obra A',work_date:'2026-10-09',foreman_name:'ENCARGADO SIN FIRMAS',status:'completed',rows:[{workerId:2}]},
    {id:'partial-day',obra:'Obra A',work_date:'2026-10-09',foreman_name:'ENCARGADO FIRMA PARCIAL',status:'reviewed',rows:[{workerId:3,entrySignature:'data:image/png;base64,AAAA'}]},
  ]:[];},
- async rpc(name,args){calls.push({name,args});if(name==='sign_mandatory_document_worker_v2'){signatureAttempts++;if(failSignatureSave)throw new Error('Conexión lenta o interrumpida');doc.signatures[args.p_document_worker_id.slice(1)]=args.p_signature;return {ok:true};}if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true};}throw Error(name);},
+ async rpc(name,args){calls.push({name,args});if(name==='sign_mandatory_document_worker_v2'){signatureAttempts++;if(failSignatureSave)throw new Error('Conexión lenta o interrumpida');doc.signatures[args.p_document_worker_id.slice(1)]=args.p_signature;return {ok:true};}if(name==='assign_mandatory_document_v2'){doc.lifecycle_status='ASSIGNED';doc.assigned_at='2026-10-13T07:00:00Z';return {ok:true,lifecycleStatus:'ASSIGNED'};}if(name==='withdraw_mandatory_document_v2'){doc.lifecycle_status='READY';return {ok:true};}if(name==='revoke_mandatory_signature_v2'){if(!['ASSIGNED','IN_SIGNATURE','RETURNED_FOR_CORRECTION'].includes(doc.lifecycle_status))throw new Error('El supervisor debe devolverlo antes de revocar firmas');delete doc.signatures[args.p_document_worker_id.slice(1)];return {ok:true,revoked:true};}throw Error(name);},
 };
 const serviceSource=await fs.readFile(new URL('../src/services/foremanPortalService.ts',import.meta.url),'utf8');
 const exportNames=[...serviceSource.matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]);
@@ -141,11 +141,11 @@ try {
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(find('Finalizar y enviar al supervisor').disabled,false,'all signatures allow send');
  assert(document.body.textContent.includes('Trabajadores revisados y habilitados por el supervisor'));
- await action(()=>find('Revocar firma y volver a firmar').click());
+ await action(()=>find('Revocar y repetir firma').click());
  assert.equal(doc.signatures['1'],undefined);assert.equal(doc.signatures['2'],'signed');
  assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'revoked mandatory signature blocks submission');
  assert(find('Firmar esta persona'),'revoked person can sign again');
- await action(()=>find('Firmar esta persona').click());
+ assert(document.querySelector('canvas'),'revocation immediately opens the signature pad for the same worker');
  await action(()=>{const button=find('Guardar');button.click();button.click();});
  assert.equal(signatureAttempts,1,'double save emits a single mutation');
  assert(document.querySelector('canvas'),'failed save keeps the signature pad mounted');
@@ -155,7 +155,7 @@ try {
  assert.equal(signatureAttempts,2,'explicit retry persists the retained image');
  assert.equal(doc.signatures['1'],'data:image/png;base64,AAAA');
  assert(!find('Guardar'),'pad closes only after verified persistence');
- await action(()=>find('Revocar firma y volver a firmar').click());
+ await action(()=>find('Revocar y repetir firma').click());
 
  await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
@@ -196,6 +196,63 @@ try {
  const beforeUnsigned=signatureReads;
  await action(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf')).click());
  assert.equal(signatureReads,beforeUnsigned,'unsigned document has no signature images to download');
+
+ // Each imported mandatory category must support revoking precisely one signed
+ // worker and immediately repeating it while the version is editable. A sent
+ // or reviewed PDF is immutable until the supervisor returns it for correction.
+ for(const type of ['control_presencia','inicio','contrato','prorroga']){
+   const ids=['contrato','prorroga'].includes(type)?[1]:[1,2];
+   doc.document_type=type;
+   doc.lifecycle_status='IN_SIGNATURE';doc.status='in_progress';doc.correction_pending=false;
+   doc.signatures=Object.fromEntries(ids.map(id=>[String(id),'signed']));
+   doc.details.importedWorkerIds=[...ids];
+   doc.details.importedWorkers=workers.filter(w=>ids.includes(w.id));
+   doc.details.workerAnchors=workers.filter(w=>ids.includes(w.id)).map(w=>({
+     workerId:w.id,workerName:w.apellidosNombre,resolved:true,documentWorkerId:'w'+w.id,
+     page:1,signatureX:350,signatureY:500,signatureWidth:70,signatureHeight:14,
+   }));
+   doc.details.documentWorkersV2=workers.filter(w=>ids.includes(w.id)).map(w=>({
+     id:'w'+w.id,legacyWorkerId:w.id,printedName:w.apellidosNombre,detectionStatus:'CONFIRMED',
+   }));
+   const open=async()=>{
+     await mount(React.createElement(ForemanMobilePortal,{token:'test'}));
+     const card=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('control.pdf'));
+     assert(card,'mandatory document visible: '+type);
+     await action(()=>card.click());
+   };
+   await open();
+   if(process.env.FOREMAN_LAYOUT_CAPTURE_DIR){
+     await fs.writeFile(process.env.FOREMAN_LAYOUT_CAPTURE_DIR+'/mandatory-'+type+'.html',document.getElementById('root').outerHTML,'utf8');
+   }
+   const correctionButtons=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Revocar y repetir firma');
+   assert.equal(correctionButtons.length,ids.length,'individual repeat actions on '+type);
+   assert.match(document.body.textContent,/Se retirará únicamente su firma|Se retirará únicamente/);
+   const previousRevokes=calls.filter(call=>call.name==='revoke_mandatory_signature_v2').length;
+   await action(()=>correctionButtons[0].click());
+   assert.equal(calls.filter(call=>call.name==='revoke_mandatory_signature_v2').length,previousRevokes+1,'V2 revocation RPC called only once on '+type);
+   assert.equal(doc.signatures['1'],undefined,'selected signature revoked: '+type);
+   if(ids.length===2)assert.equal(doc.signatures['2'],'signed','other signature remains unchanged: '+type);
+   assert(document.querySelector('canvas'),'signature pad opens immediately after revocation: '+type);
+   assert.equal(find('Finalizar y enviar al supervisor').disabled,true,'cannot submit with outstanding signature: '+type);
+   await action(()=>find('Cancelar').click());
+   assert(find('Firmar esta persona'),'worker becomes pending and selectable again: '+type);
+   // A reviewed version must remain immutable and provide explicit correction guidance.
+   doc.lifecycle_status='REVIEWED';doc.status='reviewed';doc.signatures=Object.fromEntries(ids.map(id=>[String(id),'signed']));
+   await open();
+   assert.equal([...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Revocar y repetir firma').length,0,'reviewed '+type+' cannot be silently changed');
+   assert(document.body.textContent.includes('el supervisor debe devolverlo para corregir'),'reviewed '+type+' explains the return path');
+   doc.lifecycle_status='RETURNED_FOR_CORRECTION';doc.status='returned';doc.correction_pending=true;
+   await open();
+   const returnedButton=find('Revocar y repetir firma');
+   assert(returnedButton,'supervisor-returned '+type+' offers selective revocation');
+   assert(!find('Volver a firmar'),'returned imported '+type+' must not expose a broken repeat shortcut without V2 worker ID');
+   await action(()=>returnedButton.click());
+   assert.equal(doc.signatures['1'],undefined,'returned '+type+' revokes only selected signature');
+   if(ids.length===2)assert.equal(doc.signatures['2'],'signed','returned '+type+' retains other signatures');
+   assert(document.querySelector('canvas'),'returned '+type+' immediately opens signature pad');
+   await action(()=>find('Cancelar').click());
+ }
+
  console.log('PASS: unsigned expansion skips image RPC; duplicate save blocked; failed save retains pad and verified retry closes it.');
  console.log('PASS: fortnight grouping, explicit period precedence, month/work isolation, filter and reset.');
  console.log('PASS: rendered React UI; traceability button absent, explicit publication/withdrawal, selective revocation, pending signer and send restriction after reload.');

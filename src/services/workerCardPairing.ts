@@ -10,7 +10,7 @@ async function hash(secret: string) {
 }
 export async function createCardPairing() {
   const secret = newSecret();
-  const result = await supabase.rpc('worker_card_pair_create', { p_pair_hash: await hash(secret) });
+  const result = await supabase.rpc('worker_card_pair_create_v2', { p_pair_hash: await hash(secret) });
   if (!result?.id || !result?.expires_at) throw new Error('No se pudo crear la vinculación.');
   return { id: String(result.id), expiresAt: String(result.expires_at), url: `${location.origin}/#card-pair=${secret}` };
 }
@@ -24,7 +24,7 @@ export async function sendPairedCard(secret: string, token: string) {
   return (await supabase.rpc('worker_card_pair_submit', { p_mobile_token: secret, p_worker_token: token })) === true;
 }
 export async function closeCardPairing(id: string) { await supabase.rpc('worker_card_pair_close', { p_id: id }); }
-export function watchCardPairing(id: string, onWorker: (workerId: number, eventId: number) => void, onStatus: (status: string) => void) {
+export function watchCardPairing(id: string, onWorker: (workerId: number, eventId: number, workerOwnerId?: string) => void, onStatus: (status: string) => void) {
   let readyResolve: () => void = () => {};
   let readyReject: (error: Error) => void = () => {};
   let active = true;
@@ -36,7 +36,8 @@ export function watchCardPairing(id: string, onWorker: (workerId: number, eventI
     const worker = Number(row?.worker_id); const event = Number(row?.id);
     if (!active || !Number.isSafeInteger(worker) || worker <= 0 || !Number.isSafeInteger(event) || event <= latest) return;
     latest = event;
-    onWorker(worker, event);
+    if (row.worker_owner_id) onWorker(worker, event, row.worker_owner_id);
+    else onWorker(worker, event);
   };
   // Only reconcile the newest result: stale events must not replace the latest
   // worker selected. Query the RLS-protected table after each reconnection.
@@ -47,7 +48,7 @@ export function watchCardPairing(id: string, onWorker: (workerId: number, eventI
       do {
         rerun = false;
         const rows = await supabase.query('worker_card_pair_results', {
-          query: `session_id=eq.${encodeURIComponent(id)}&select=id,worker_id&order=id.desc&limit=1`,
+          query: `session_id=eq.${encodeURIComponent(id)}&select=id,worker_id,worker_owner_id&order=id.desc&limit=1`,
           fresh: true, networkOnly: true,
         });
         if (active && Array.isArray(rows) && rows[0]) deliver(rows[0]);

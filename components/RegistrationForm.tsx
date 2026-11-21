@@ -10,11 +10,15 @@ import { listAnnualHiringPeriods, type AnnualHiringPeriodsRecord } from '../src/
 import { useAuthShell } from './AuthGate';
 import { buildWorkerMasterRecords, searchWorkerMasterRecords, type WorkerMasterRecord } from '../src/lib/workerMaster';
 
+import { getWorkerByOwner } from '../src/services/databaseService';
+import { resolveWorkerCardReference } from '../src/services/workerQrShareService';
+
 const WorkerCardScanner = lazy(() => import('./WorkerCardScanner'));
 const WorkerCardPairing = lazy(() => import('./WorkerCardPairing'));
 
 interface RegistrationFormProps {
-  onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>) => void;
+  onRegister: (person: Omit<Person, 'id' | 'fechaRegistro'>, fromWorkerCard?: boolean) => unknown;
+  onOpenWorker?: (person: Person) => void;
   savedObras: string[];
   savedLugares: string[];
   savedSitios: string[];
@@ -111,7 +115,7 @@ const isValidPhone = (phone: string): boolean => {
 };
 
 export const RegistrationForm: React.FC<RegistrationFormProps> = ({ 
-  onRegister, 
+  onRegister, onOpenWorker,
   savedObras, 
   savedLugares, 
   savedSitios,
@@ -183,8 +187,11 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   const cardMasterRecords = useMemo(() => buildWorkerMasterRecords(cardPeople), [cardPeople]);
   const [scanningCard, setScanningCard] = useState(false);
   const [pairingCard, setPairingCard] = useState(false);
-  const [cardCandidate, setCardCandidate] = useState<{ id: number; accountId: string } | null>(null);
+  const [cardCandidate, setCardCandidate] = useState<{ id: number; accountId: string; source?: Person } | null>(null);
   const [cardMessage, setCardMessage] = useState('');
+  const fromWorkerCard = useRef(false);
+  const registering = useRef(false);
+  const [saving, setSaving] = useState(false);
   const cardPreviewRef = useRef<HTMLElement>(null);
   const closeCardScanner = useCallback(() => setScanningCard(false), []);
   // The QR carries only a reference. Resolve it against the authenticated
@@ -195,18 +202,41 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       setCardMessage('La ficha no está disponible o su DNI/NIE necesita revisión en el directorio.');
       return false;
     }
+    if (onOpenWorker) { onOpenWorker(person); setPairingCard(false); return true; }
     setCardCandidate({ id, accountId });
     setCardMessage('Carnet localizado. Confirma la identidad antes de rellenar el formulario.');
     setPairingCard(false);
     return true;
-  }, [cardPeople, accountId]);
+  }, [cardPeople, accountId, onOpenWorker]);
+  const previewPairedCard = useCallback(async (id: number, ownerId?: string, isActive = () => true) => {
+    if (!ownerId) return previewScannedWorker(id);
+    const person = await getWorkerByOwner(id, ownerId);
+    if (!isActive() || !person) return false;
+    if (ownerId === accountId && onOpenWorker) {
+      onOpenWorker(person);
+      setPairingCard(false);
+      return true;
+    }
+    if (!person.apellidosNombre?.trim() || analyzeDNI(person.dni).status !== 'valid') return false;
+    setCardCandidate({ id, accountId, source: person });
+    setPairingCard(false);
+    setCardMessage('Ficha de origen autorizada. Confirma los datos antes de preparar el alta.');
+    return true;
+  }, [accountId, onOpenWorker, previewScannedWorker]);
+  const previewScannedCard = useCallback(async (token: string, isActive: () => boolean) => {
+    const ref = await resolveWorkerCardReference(token);
+    return ref && isActive() ? previewPairedCard(ref.id, ref.ownerId, isActive) : false;
+  }, [previewPairedCard]);
   const cardPerson = cardCandidate?.accountId === accountId
-    ? cardPeople.find(p => Number(p.id) === cardCandidate.id)
+    ? cardCandidate.source || cardPeople.find(p => Number(p.id) === cardCandidate.id)
     : undefined;
   const cardMaster = cardPerson && analyzeDNI(cardPerson.dni).status === 'valid'
-    ? cardMasterRecords.find(w => w.key === cardPerson.dni.replace(/[\s-]/g, '').toUpperCase())
+    ? cardCandidate?.source
+      ? buildWorkerMasterRecords([cardPerson])[0]
+      : cardMasterRecords.find(w => w.key === cardPerson.dni.replace(/[\s-]/g, '').toUpperCase())
     : undefined;
   useEffect(() => {
+    fromWorkerCard.current = false;
     setScanningCard(false);
     setPairingCard(false);
     setCardCandidate(null);
@@ -257,8 +287,9 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     setWorkerHistory(contracts);
     setWorkerLookupField(null);
     if (fromCard) {
+      fromWorkerCard.current = true;
       setIsSameAnnualityActive(contracts.some(p => getContractYear(p) === qYear));
-      setShowHistoryModal(true);
+      setShowHistoryModal(contracts.length > 0);
       setCardCandidate(null);
       setCardMessage('Datos personales recuperados. Revisa los datos del nuevo contrato, los certificados PRL, el reconocimiento y la documentación antes de registrar.');
     }
@@ -499,7 +530,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cardCandidate) {
       alert('Confirma la ficha del carnet o cancela su recuperación antes de registrar.');
@@ -590,7 +621,17 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       finalData.sitioReconocimiento = '';
     }
 
-    onRegister(finalData);
+    if (registering.current) return;
+    registering.current = true;
+    setSaving(true);
+    try {
+      const result = await onRegister(finalData, fromWorkerCard.current);
+      if (result === false) return;
+    } finally {
+      registering.current = false;
+      setSaving(false);
+    }
+    fromWorkerCard.current = false;
     setFormData(prev => ({
       ...prev,
       apellidosNombre: '',
@@ -689,8 +730,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           <button type="button" disabled={pairingCard || scanningCard} onClick={() => { setCardCandidate(null); setCardMessage(''); setScanningCard(true); }} className="min-h-11 rounded-xl border px-4 py-2 font-bold disabled:opacity-50">Leer QR con este dispositivo</button>
         </div>
         {cardMessage && <p role="status" className="mt-3 text-sm">{cardMessage}</p>}
-        {pairingCard && <Suspense fallback={<p role="status">Preparando vinculación…</p>}><WorkerCardPairing key={accountId} onClose={() => setPairingCard(false)} onWorker={previewScannedWorker} /></Suspense>}
-        {scanningCard && <Suspense fallback={<p role="status">Preparando escáner…</p>}><WorkerCardScanner key={accountId} onClose={closeCardScanner} onFound={previewScannedWorker} /></Suspense>}
+        {pairingCard && <Suspense fallback={<p role="status">Preparando vinculación…</p>}><WorkerCardPairing key={accountId} onClose={() => setPairingCard(false)} onWorker={previewPairedCard} /></Suspense>}
+        {scanningCard && <Suspense fallback={<p role="status">Preparando escáner…</p>}><WorkerCardScanner key={accountId} onClose={closeCardScanner} onFound={previewScannedWorker} onToken={onOpenWorker ? previewScannedCard : undefined} /></Suspense>}
         {cardCandidate && <section ref={cardPreviewRef} className="mt-4 rounded-xl border p-3" aria-label="Confirmar ficha del carnet">
           {cardMaster ? <>
             <h4 className="font-bold">{cardMaster.apellidosNombre}</h4>
@@ -1140,8 +1181,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
         </div>
 
         <button 
-          type="submit" 
-          disabled={isPeriodInvalid}
+          type="submit"
+          disabled={saving || isPeriodInvalid}
           className={`w-full font-bold py-4 px-6 rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 text-sm uppercase tracking-widest ${
             isPeriodInvalid 
               ? 'bg-red-50 dark:bg-red-950/20 text-red-400 dark:text-red-600 border border-red-200 dark:border-red-900/50 cursor-not-allowed opacity-70' 

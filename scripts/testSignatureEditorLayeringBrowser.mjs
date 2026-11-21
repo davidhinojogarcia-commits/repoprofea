@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {build} from 'esbuild';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
 
 // Real editor, portal and application CSS. Only PDF transport/rendering and the
 // database are stubbed: this test targets layout/hit-testing, not PDF fidelity.
@@ -42,7 +42,8 @@ try {
     }
   }]});
   const styles=await Promise.all(['index.css','notification-modal-layout.css'].map(p=>fs.readFile(path.join(root,p),'utf8')));
-  browser=await chromium.launch({executablePath:process.env.SIGNATURE_BROWSER_EXECUTABLE,headless:true,args:['--no-sandbox']});
+  const useWebKit=process.env.BROWSER_ENGINE==='webkit';
+  browser=await (useWebKit?webkit:chromium).launch(useWebKit?{headless:true}:{executablePath:process.env.SIGNATURE_BROWSER_EXECUTABLE,headless:true,args:['--no-sandbox']});
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.setContent('<html><head><script>'+tailwind+'</script><script>tailwind.config={darkMode:"class"}</script><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"><aside class="app-navigation-panel fixed top-0 left-0 h-screen lg:w-20" style="width:80px;background:#eee"><button>Menú</button></aside><button id="launch">Abrir editor</button></div><div id="mount"></div></body></html>');
@@ -60,6 +61,13 @@ try {
     },{expanded,dark});
     const save=page.getByRole('button',{name:'Guardar trabajadores y posiciones',exact:true});
     await save.waitFor();await save.isEnabled().then(async enabled=>{if(!enabled)await page.waitForFunction(()=>!document.querySelector('.mandatory-editor-footer button:last-child').disabled);});
+    if(width===1536&&!expanded&&!dark){
+      await page.getByRole('button',{name:'Mover firma',exact:true}).click();
+      await page.locator('.mandatory-pdf-resize-handle').first().waitFor();
+      assert.equal(await page.locator('.mandatory-pdf-resize-handle').first().evaluate(el=>getComputedStyle(el).width),'26px','desktop vertex size must remain exactly 26px');
+      assert(!await page.locator('.mandatory-editor-phone-selection-bar').isVisible(),'desktop must not show phone navigation');
+      assert(!await page.locator('.mandatory-pdf-phone-navigate').isVisible(),'desktop toolbar unchanged');
+    }
     await page.locator('.mandatory-editor-controls select').scrollIntoViewIfNeeded();
     const metrics=await page.evaluate(()=>{
       const overlay=document.querySelector('.profea-modal-overlay');
@@ -137,9 +145,45 @@ try {
   assert.equal(touchState.hasAddedWorker,true,'new worker must appear in editor');
   await touch.locator('.mandatory-pdf-touch-mode[aria-pressed="true"]').waitFor({timeout:5000});
   assert(await touch.locator('.mandatory-editor-preview').isVisible(),'adding a worker opens PDF placement in edit mode');
+  const phone=await touch.evaluate(()=>({
+    preview:document.querySelector('.mandatory-editor-preview').getBoundingClientRect().height,
+    main:document.querySelector('.mandatory-editor-main').getBoundingClientRect().height,
+    screen:innerHeight,
+    tools:document.querySelector('.mandatory-continuous-toolbar'),
+    selection:getComputedStyle(document.querySelector('.mandatory-editor-phone-selection-bar')).display,
+    pane:document.querySelector('.mandatory-anchor-editor')?.dataset.mobilePanel,
+  }));
+  assert.equal(phone.pane,'pdf');
+  assert.equal(phone.selection,'flex','mobile PDF provides compact worker navigation');
+  assert(phone.preview>=phone.main-2&&phone.preview>phone.screen*.7,'PDF occupies the entire editor main area on phones');
+  assert.equal(phone.tools,null,'zoom tools start collapsed on phones');
+  await touch.getByRole('button',{name:'Zoom y páginas'}).click();
+  assert(await touch.locator('.mandatory-continuous-toolbar').isVisible(),'zoom options are available on demand');
+  await touch.getByRole('button',{name:'Zoom y páginas'}).click();
   await touch.waitForFunction(()=>document.querySelector('.mandatory-pdf-page canvas')?.getBoundingClientRect().width>150);
+  await touch.getByRole('button',{name:'Desplazar PDF'}).click();
+  await touch.locator('.mandatory-pdf-page canvas').tap({position:{x:70,y:70}});
+  assert.equal(await touch.locator('[data-signature-index="1"]').count(),0,'navigating cannot accidentally place a signature');
+  await touch.getByRole('button',{name:'Colocar firma'}).click();
   await touch.locator('.mandatory-pdf-page canvas').tap({position:{x:70,y:70}});
   await touch.locator('[data-signature-index="1"]').waitFor();
+  const markers=await touch.evaluate(()=>{
+    const box=document.querySelector('[data-signature-index="1"]');
+    const handle=box.querySelector('.mandatory-pdf-resize-handle.se');
+    return {
+      handle:parseFloat(getComputedStyle(handle).width),
+      dot:parseFloat(getComputedStyle(handle,'::after').width),
+      corners:box.querySelectorAll('.mandatory-pdf-phone-corner').length,
+      top:box.getBoundingClientRect().top,
+    };
+  });
+  assert.equal(markers.handle,28,'phone resize hit target is compact');
+  assert.equal(markers.dot,8,'phone vertex visual is eight pixels');
+  assert.equal(markers.corners,3,'all four corners are identifiable without huge dots');
+  await touch.getByRole('button',{name:'Seleccionar firma anterior'}).click();
+  assert.match(await touch.locator('.mandatory-editor-phone-selection-bar span').innerText(),/^1 de 2/);
+  await touch.getByRole('button',{name:'Seleccionar firma siguiente'}).click();
+  assert.match(await touch.locator('.mandatory-editor-phone-selection-bar span').innerText(),/^2 de 2/);
   const before=await touch.locator('[data-signature-index="1"]').evaluate(el=>Number.parseFloat(el.style.left));
   await touch.getByRole('button',{name:'Mover firma a la derecha'}).click();
   await touch.waitForFunction(before=>Number.parseFloat(document.querySelector('[data-signature-index="1"]').style.left)>before,before);
@@ -154,13 +198,14 @@ try {
   assert(await touch.locator('.mandatory-editor-mobile-tabs').isVisible(),'large landscape iPad must remain in tablet mode');
   await touch.setViewportSize({width:844,height:390});
   assert(await touch.locator('.mandatory-editor-preview').isVisible(),'landscape touch remains in PDF editor');
+  assert(await touch.getByRole('button',{name:'Desplazar PDF'}).isVisible(),'phone landscape uses the compact full-screen placement controls');
   assert(!await touch.evaluate(()=>document.documentElement.scrollWidth>innerWidth),'no horizontal overflow on touch');
   await touch.getByRole('button',{name:'Guardar trabajadores y posiciones'}).click();
   await touch.waitForFunction(()=>window.saved?.length===2);
   assert.equal((await touch.evaluate(()=>window.saved))[1].workerName,'Trabajador prueba tactil');
   await touch.close();
   assert.deepEqual(errors,[]);
-  console.log('PASS: desktop/modal layering plus real touchscreen phone, tablet and landscape worker creation, PDF placement and 2pt precision nudging.');
+  console.log('PASS '+(process.env.BROWSER_ENGINE==='webkit'?'WebKit':'Chromium')+': unchanged desktop controls/26px handles; phone PDF fills the editor, separate pan/place modes, 8px visible vertices, compact resize hit target, zoom overlay, worker stepper, tablet/landscape navigation and 2pt precision nudging.');
 } finally {
   await browser?.close();
   await fs.rm(out,{recursive:true,force:true});
